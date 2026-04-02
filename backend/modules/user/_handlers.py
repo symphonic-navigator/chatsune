@@ -242,3 +242,214 @@ async def change_password(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
+
+
+# --- User Management ---
+
+
+@router.post("/admin/users", status_code=201)
+async def create_user(
+    body: CreateUserRequestDto,
+    user: dict = Depends(require_admin),
+):
+    # Only master_admin can create admins
+    if body.role == "admin" and user["role"] != "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Only master admin can create admin users"
+        )
+    if body.role == "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Cannot create another master admin"
+        )
+    if body.role not in ("admin", "user"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    repo = _user_repo()
+    password = generate_random_password()
+    password_hash = hash_password(password)
+
+    try:
+        doc = await repo.create(
+            username=body.username,
+            email=body.email,
+            display_name=body.display_name,
+            password_hash=password_hash,
+            role=body.role,
+            must_change_password=True,
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=409, detail="Username or email already exists"
+        )
+
+    audit = _audit_repo()
+    await audit.log(
+        actor_id=user["sub"],
+        action="user.created",
+        resource_type="user",
+        resource_id=doc["_id"],
+        detail={"role": body.role},
+    )
+
+    return CreateUserResponseDto(
+        user=UserRepository.to_dto(doc),
+        generated_password=password,
+    )
+
+
+@router.get("/admin/users")
+async def list_users(
+    skip: int = 0,
+    limit: int = 50,
+    user: dict = Depends(require_admin),
+):
+    repo = _user_repo()
+    users = await repo.list_users(skip=skip, limit=limit)
+    total = await repo.count()
+    return {
+        "users": [UserRepository.to_dto(u) for u in users],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+@router.get("/admin/users/{user_id}")
+async def get_user(
+    user_id: str,
+    user: dict = Depends(require_admin),
+):
+    repo = _user_repo()
+    doc = await repo.find_by_id(user_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserRepository.to_dto(doc)
+
+
+@router.patch("/admin/users/{user_id}")
+async def update_user(
+    user_id: str,
+    body: UpdateUserRequestDto,
+    user: dict = Depends(require_admin),
+):
+    repo = _user_repo()
+    target = await repo.find_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Permission checks
+    if target["role"] == "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Cannot modify master admin"
+        )
+    if target["role"] == "admin" and user["role"] != "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Only master admin can modify admin users"
+        )
+    if body.is_active is False and user_id == user["sub"]:
+        raise HTTPException(
+            status_code=403, detail="Cannot deactivate yourself"
+        )
+    if body.role is not None:
+        if user["role"] != "master_admin":
+            raise HTTPException(
+                status_code=403, detail="Only master admin can change roles"
+            )
+        if body.role == "master_admin":
+            raise HTTPException(
+                status_code=403, detail="Cannot assign master admin role"
+            )
+        if body.role not in ("admin", "user"):
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+    fields = body.model_dump(exclude_none=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updated = await repo.update(user_id, fields)
+
+    audit = _audit_repo()
+    await audit.log(
+        actor_id=user["sub"],
+        action="user.updated",
+        resource_type="user",
+        resource_id=user_id,
+        detail={"changes": fields},
+    )
+
+    return UserRepository.to_dto(updated)
+
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    user: dict = Depends(require_admin),
+):
+    repo = _user_repo()
+    target = await repo.find_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if target["role"] == "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Cannot deactivate master admin"
+        )
+    if target["role"] == "admin" and user["role"] != "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Only master admin can deactivate admin users"
+        )
+    if user_id == user["sub"]:
+        raise HTTPException(
+            status_code=403, detail="Cannot deactivate yourself"
+        )
+
+    await repo.update(user_id, {"is_active": False})
+
+    audit = _audit_repo()
+    await audit.log(
+        actor_id=user["sub"],
+        action="user.deactivated",
+        resource_type="user",
+        resource_id=user_id,
+    )
+
+    return {"status": "ok"}
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+async def reset_password(
+    user_id: str,
+    user: dict = Depends(require_admin),
+):
+    repo = _user_repo()
+    target = await repo.find_by_id(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if target["role"] == "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Cannot reset master admin password"
+        )
+    if target["role"] == "admin" and user["role"] != "master_admin":
+        raise HTTPException(
+            status_code=403, detail="Only master admin can reset admin passwords"
+        )
+
+    password = generate_random_password()
+    password_hash = hash_password(password)
+    updated = await repo.update(
+        user_id, {"password_hash": password_hash, "must_change_password": True}
+    )
+
+    audit = _audit_repo()
+    await audit.log(
+        actor_id=user["sub"],
+        action="user.password_reset",
+        resource_type="user",
+        resource_id=user_id,
+    )
+
+    return ResetPasswordResponseDto(
+        user=UserRepository.to_dto(updated),
+        generated_password=password,
+    )
