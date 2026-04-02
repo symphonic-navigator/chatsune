@@ -7,7 +7,6 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from backend.database import get_redis
 from backend.modules.user import decode_access_token
-from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 
 _log = logging.getLogger(__name__)
@@ -43,6 +42,7 @@ async def websocket_endpoint(
 
     try:
         if since is not None:
+            # Phase 1: replay from global scope only; future scopes (persona, session) extend this
             entries = await get_redis().xrange("events:global", min=f"({since}", max="+")
             for stream_id, data in entries:
                 try:
@@ -70,6 +70,10 @@ async def websocket_endpoint(
 
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
+
+            # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
+            # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
+            # event prompts the client to refresh via the REST endpoint
 
     except WebSocketDisconnect:
         pass
