@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -32,7 +32,7 @@ class UserRepository:
         role: str,
         must_change_password: bool = False,
     ) -> dict:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
             "username": username,
@@ -49,7 +49,7 @@ class UserRepository:
         return doc
 
     async def update(self, user_id: str, fields: dict) -> dict | None:
-        fields["updated_at"] = datetime.utcnow()
+        fields["updated_at"] = datetime.now(UTC)
         await self._collection.update_one(
             {"_id": user_id}, {"$set": fields}
         )

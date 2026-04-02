@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -26,7 +26,7 @@ class AuditRepository:
     ) -> dict:
         doc = {
             "_id": str(uuid4()),
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(UTC),
             "actor_id": actor_id,
             "action": action,
             "resource_type": resource_type,
