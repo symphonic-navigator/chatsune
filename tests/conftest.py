@@ -5,16 +5,21 @@ import pytest
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from backend.config import settings
+from backend.database import connect_db, disconnect_db
 from backend.main import app
 
 
 @pytest.fixture
 async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
-        base_url="http://test",
-    ) as ac:
-        yield ac
+    await connect_db()
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+        ) as ac:
+            yield ac
+    finally:
+        await disconnect_db()
 
 
 @pytest.fixture(autouse=True)
