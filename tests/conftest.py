@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import AsyncGenerator
 
 import httpx
@@ -7,13 +6,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from backend.config import settings
 from backend.main import app
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture
@@ -25,13 +17,19 @@ async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
         yield ac
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 async def clean_db():
-    """Drop test database before each test."""
+    """Drop test database and flush Redis before each test."""
+    from redis.asyncio import Redis
+
     mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
     db = mongo_client.get_database()
     collections = await db.list_collection_names()
     for col in collections:
         await db[col].drop()
     mongo_client.close()
+
+    redis_client = Redis.from_url(settings.redis_uri, decode_responses=True)
+    await redis_client.flushdb()
+    await redis_client.aclose()
     yield
