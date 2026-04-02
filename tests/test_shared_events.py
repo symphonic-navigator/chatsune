@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timezone
 from shared.events.base import BaseEvent
 from shared.events.audit import AuditLoggedEvent
