@@ -50,6 +50,7 @@ services:
       - ./backend:/app/backend
       - ./shared:/app/shared
       - ./tests:/app/tests
+      - ./pyproject.toml:/app/pyproject.toml:ro
 
 volumes:
   mongodb_data:
