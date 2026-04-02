@@ -6,6 +6,7 @@ Public API: import only from this file.
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._auth import (
     create_access_token,
+    decode_access_token,
     generate_refresh_token,
     generate_session_id,
 )
@@ -51,4 +52,4 @@ async def perform_token_refresh(refresh_token: str, redis) -> dict | None:
     }
 
 
-__all__ = ["router", "init_indexes", "perform_token_refresh"]
+__all__ = ["router", "init_indexes", "perform_token_refresh", "decode_access_token"]

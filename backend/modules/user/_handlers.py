@@ -30,6 +30,14 @@ from shared.dtos.auth import (
     UserDto,
     AuditLogEntryDto,
 )
+from shared.events.auth import (
+    UserCreatedEvent,
+    UserDeactivatedEvent,
+    UserPasswordResetEvent,
+    UserUpdatedEvent,
+)
+from shared.events.audit import AuditLoggedEvent
+from shared.topics import Topics
 
 router = APIRouter(prefix="/api")
 
@@ -109,10 +117,6 @@ async def setup(
         resource_id=doc["_id"],
         detail={"role": "master_admin", "method": "setup"},
     )
-
-    from shared.events.auth import UserCreatedEvent
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
 
     await event_bus.publish(
         Topics.USER_CREATED,
@@ -259,9 +263,6 @@ async def change_password(
         resource_id=doc["_id"],
     )
 
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
-
     await event_bus.publish(
         Topics.AUDIT_LOGGED,
         AuditLoggedEvent(actor_id=doc["_id"], action="user.password_changed", resource_type="user", resource_id=doc["_id"]),
@@ -320,10 +321,6 @@ async def create_user(
         resource_id=doc["_id"],
         detail={"role": body.role},
     )
-
-    from shared.events.auth import UserCreatedEvent
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
 
     await event_bus.publish(
         Topics.USER_CREATED,
@@ -421,10 +418,6 @@ async def update_user(
         detail={"changes": fields},
     )
 
-    from shared.events.auth import UserUpdatedEvent
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
-
     await event_bus.publish(
         Topics.USER_UPDATED,
         UserUpdatedEvent(user_id=user_id, changes=fields, timestamp=updated["updated_at"]),
@@ -472,10 +465,6 @@ async def delete_user(
         resource_id=user_id,
     )
 
-    from shared.events.auth import UserDeactivatedEvent
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
-
     await event_bus.publish(
         Topics.USER_DEACTIVATED,
         UserDeactivatedEvent(user_id=user_id, timestamp=datetime.now(timezone.utc)),
@@ -522,10 +511,6 @@ async def reset_password(
         resource_type="user",
         resource_id=user_id,
     )
-
-    from shared.events.auth import UserPasswordResetEvent
-    from shared.events.audit import AuditLoggedEvent
-    from shared.topics import Topics
 
     await event_bus.publish(
         Topics.USER_PASSWORD_RESET,
