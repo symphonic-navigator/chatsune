@@ -239,6 +239,7 @@ class ModelMetaDto(BaseModel):
 ```python
 class LlmCredentialSetEvent(BaseEvent): ...     # payload: ProviderCredentialDto
 class LlmCredentialRemovedEvent(BaseEvent): ... # payload: {"provider_id": str}
+class LlmCredentialTestedEvent(BaseEvent): ...  # payload: {"provider_id": str, "valid": bool}
 ```
 
 **Topics** (added to `shared/topics.py`):
@@ -246,6 +247,7 @@ class LlmCredentialRemovedEvent(BaseEvent): ... # payload: {"provider_id": str}
 ```python
 LLM_CREDENTIAL_SET     = "llm.credential.set"
 LLM_CREDENTIAL_REMOVED = "llm.credential.removed"
+LLM_CREDENTIAL_TESTED  = "llm.credential.tested"
 ```
 
 ### Model Metadata Cache
@@ -261,8 +263,11 @@ See INSIGHTS.md INS-001 for the full reasoning.
 GET    /api/llm/providers                        → list all registered providers + is_configured per user
 PUT    /api/llm/providers/{provider_id}/key      → set/overwrite API key → publishes LlmCredentialSetEvent
 DELETE /api/llm/providers/{provider_id}/key      → remove API key → publishes LlmCredentialRemovedEvent
+POST   /api/llm/providers/{provider_id}/test     → validate key without storing → publishes LlmCredentialTestedEvent
 GET    /api/llm/providers/{provider_id}/models   → available models (from Redis cache, lazy-fetched)
 ```
+
+The `/test` endpoint accepts `{"api_key": str}` in the request body. It calls `adapter.validate_key()` and publishes `LlmCredentialTestedEvent` with `valid: true/false`. It never stores the key.
 
 ### Module Structure
 
@@ -289,8 +294,8 @@ backend/modules/llm/
 | `shared/dtos/persona.py` | `PersonaDto`, `CreatePersonaDto`, `UpdatePersonaDto` |
 | `shared/dtos/llm.py` | `ProviderCredentialDto`, `SetProviderKeyDto`, `ModelMetaDto` |
 | `shared/events/persona.py` | `PersonaCreatedEvent`, `PersonaUpdatedEvent`, `PersonaDeletedEvent` |
-| `shared/events/llm.py` | `LlmCredentialSetEvent`, `LlmCredentialRemovedEvent` |
-| `shared/topics.py` | 5 new topic constants |
+| `shared/events/llm.py` | `LlmCredentialSetEvent`, `LlmCredentialRemovedEvent`, `LlmCredentialTestedEvent` |
+| `shared/topics.py` | 6 new topic constants |
 
 ---
 
