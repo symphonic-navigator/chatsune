@@ -1,0 +1,27 @@
+[project]
+name = "chatsune-backend"
+version = "0.1.0"
+description = "Chatsune backend — privacy-first AI companion platform"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "motor>=3.7",
+    "redis>=5.2",
+    "pyjwt>=2.10",
+    "bcrypt>=4.2",
+    "email-validator>=2.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["../tests"]
