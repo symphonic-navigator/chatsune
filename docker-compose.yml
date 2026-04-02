@@ -49,6 +49,7 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./shared:/app/shared
+      - ./tests:/app/tests
 
 volumes:
   mongodb_data:

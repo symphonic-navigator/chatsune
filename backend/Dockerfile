@@ -5,12 +5,12 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY backend/pyproject.toml ./backend/
-RUN cd backend && uv sync --no-dev --no-install-project
+RUN uv venv /app/.venv && cd backend && UV_PROJECT_ENVIRONMENT=/app/.venv uv sync --no-install-project
 
 COPY backend/ ./backend/
 COPY shared/ ./shared/
 
-ENV PATH="/app/backend/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
