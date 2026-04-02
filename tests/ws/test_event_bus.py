@@ -5,7 +5,7 @@ import pytest
 
 from backend.ws.event_bus import EventBus
 from backend.ws.manager import ConnectionManager
-from shared.events.auth import UserCreatedEvent, UserUpdatedEvent, UserDeactivatedEvent
+from shared.events.auth import UserCreatedEvent, UserUpdatedEvent, UserDeactivatedEvent, UserPasswordResetEvent
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
 
@@ -115,6 +115,36 @@ async def test_audit_logged_sends_to_admin_only_if_actor_matches():
     await bus.publish(Topics.AUDIT_LOGGED, event)
     # Only admin1 (the actor) gets it, not admin2
     manager.send_to_user.assert_awaited_once_with("admin1", ANY)
+
+
+async def test_user_deactivated_broadcasts_to_admins_and_target():
+    redis = make_redis()
+    manager = make_manager()
+    bus = EventBus(redis=redis, manager=manager)
+    event = UserDeactivatedEvent(
+        user_id="u1",
+        timestamp=datetime.now(timezone.utc),
+    )
+    await bus.publish(Topics.USER_DEACTIVATED, event, target_user_ids=["u1"])
+    manager.broadcast_to_roles.assert_awaited_once_with(
+        ["admin", "master_admin"], ANY
+    )
+    manager.send_to_users.assert_awaited_once_with(["u1"], ANY)
+
+
+async def test_user_password_reset_broadcasts_to_admins_and_target():
+    redis = make_redis()
+    manager = make_manager()
+    bus = EventBus(redis=redis, manager=manager)
+    event = UserPasswordResetEvent(
+        user_id="u1",
+        timestamp=datetime.now(timezone.utc),
+    )
+    await bus.publish(Topics.USER_PASSWORD_RESET, event, target_user_ids=["u1"])
+    manager.broadcast_to_roles.assert_awaited_once_with(
+        ["admin", "master_admin"], ANY
+    )
+    manager.send_to_users.assert_awaited_once_with(["u1"], ANY)
 
 
 async def test_publish_uses_custom_scope():

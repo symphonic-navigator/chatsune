@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from pydantic import BaseModel
 from redis.asyncio import Redis
+
+_log = logging.getLogger(__name__)
 
 from backend.ws.manager import ConnectionManager
 from shared.events.base import BaseEvent
@@ -50,9 +53,12 @@ class EventBus:
         envelope.sequence = stream_id
 
         now_ms = int(now.timestamp() * 1000)
-        await self._redis.xtrim(
-            stream_key, minid=str(now_ms - _TWENTY_FOUR_HOURS_MS)
-        )
+        try:
+            await self._redis.xtrim(
+                stream_key, minid=str(now_ms - _TWENTY_FOUR_HOURS_MS)
+            )
+        except Exception:
+            pass  # trim failure must not abort delivery
 
         await self._fan_out(
             topic, envelope.model_dump(mode="json"), target_user_ids or []
@@ -66,6 +72,9 @@ class EventBus:
             return
 
         if topic not in _FANOUT:
+            _log.warning(
+                "EventBus: no fan-out rule for topic %r — event persisted but not delivered", topic
+            )
             return
 
         roles, send_to_targets = _FANOUT[topic]
