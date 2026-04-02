@@ -453,3 +453,39 @@ async def reset_password(
         user=UserRepository.to_dto(updated),
         generated_password=password,
     )
+
+
+# --- Audit Log ---
+
+
+@router.get("/admin/audit-log")
+async def get_audit_log(
+    skip: int = 0,
+    limit: int = 50,
+    action: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+    actor_id: str | None = None,
+    user: dict = Depends(require_admin),
+):
+    audit = _audit_repo()
+
+    # Non-master admins can only see their own entries
+    effective_actor_id = actor_id
+    if user["role"] != "master_admin":
+        effective_actor_id = user["sub"]
+
+    entries = await audit.list_entries(
+        skip=skip,
+        limit=limit,
+        actor_id=effective_actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+    )
+
+    return {
+        "entries": [AuditRepository.to_dto(e) for e in entries],
+        "skip": skip,
+        "limit": limit,
+    }
