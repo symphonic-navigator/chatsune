@@ -3,6 +3,9 @@
 This file is the single source of truth for architectural decisions, conventions,
 and hard requirements. Read it before touching any code. Update it when decisions change.
 
+For non-obvious design choices and the reasoning behind them, see **[INSIGHTS.md](INSIGHTS.md)**.
+Add an entry there whenever a significant architectural decision is made during development.
+
 ---
 
 ## What is Chatsune?
@@ -165,8 +168,10 @@ persona = await db["personas"].find_one({"_id": persona_id})
 
 ### LLM Inference
 
-- **Ollama only** (Phase 1) — local, CPU-capable for embeddings
-- Abstracted behind `backend/modules/llm/` — never call Ollama directly from other modules
+- **Ollama Cloud** as first upstream provider — cloud inference, per-user API key (BYOK)
+- Abstracted behind `backend/modules/llm/` — never call any upstream provider directly from other modules
+- Adapters registered at startup via `ADAPTER_REGISTRY` in `backend/modules/llm/_registry.py`
+- Model unique ID format: `<provider_id>:<model_slug>` (e.g. `ollama_cloud:llama3.2`) — see INSIGHTS.md INS-004
 
 ---
 
