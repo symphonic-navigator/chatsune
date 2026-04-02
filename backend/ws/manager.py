@@ -1,4 +1,5 @@
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 _manager: "ConnectionManager | None" = None
 
@@ -12,7 +13,7 @@ class ConnectionManager:
         if user_id not in self._connections:
             self._connections[user_id] = set()
         self._connections[user_id].add(ws)
-        self._user_roles[user_id] = role
+        self._user_roles[user_id] = role  # last-write-wins across sessions; role is immutable per user in practice
 
     async def disconnect(self, user_id: str, ws: WebSocket) -> None:
         if user_id not in self._connections:
@@ -26,8 +27,8 @@ class ConnectionManager:
         for ws in list(self._connections.get(user_id, set())):
             try:
                 await ws.send_json(event)
-            except Exception:
-                pass
+            except WebSocketDisconnect:
+                await self.disconnect(user_id, ws)
 
     async def send_to_users(self, user_ids: list[str], event: dict) -> None:
         for user_id in user_ids:
@@ -48,5 +49,6 @@ def set_manager(manager: ConnectionManager) -> None:
 
 
 def get_manager() -> ConnectionManager:
-    assert _manager is not None, "ConnectionManager not initialised"
+    if _manager is None:
+        raise RuntimeError("ConnectionManager not initialised")
     return _manager
