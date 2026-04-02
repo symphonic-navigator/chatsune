@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 
 from backend.config import settings
 from backend.database import get_db, get_redis
 from backend.dependencies import get_current_user, require_admin, require_active_session
+from backend.ws.event_bus import EventBus, get_event_bus
 from backend.modules.user._auth import (
     create_access_token,
     generate_random_password,
@@ -64,7 +67,11 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 @router.post("/setup", status_code=201)
-async def setup(body: SetupRequestDto, response: Response):
+async def setup(
+    body: SetupRequestDto,
+    response: Response,
+    event_bus: EventBus = Depends(get_event_bus),
+):
     repo = _user_repo()
     audit = _audit_repo()
 
@@ -101,6 +108,19 @@ async def setup(body: SetupRequestDto, response: Response):
         resource_type="user",
         resource_id=doc["_id"],
         detail={"role": "master_admin", "method": "setup"},
+    )
+
+    from shared.events.auth import UserCreatedEvent
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.USER_CREATED,
+        UserCreatedEvent(user_id=doc["_id"], username=doc["username"], role="master_admin", timestamp=doc["created_at"]),
+    )
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=doc["_id"], action="user.created", resource_type="user", resource_id=doc["_id"], detail={"role": "master_admin", "method": "setup"}),
     )
 
     return SetupResponseDto(
@@ -199,6 +219,7 @@ async def change_password(
     body: ChangePasswordRequestDto,
     response: Response,
     user: dict = Depends(get_current_user),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _user_repo()
     doc = await repo.find_by_id(user["sub"])
@@ -238,6 +259,14 @@ async def change_password(
         resource_id=doc["_id"],
     )
 
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=doc["_id"], action="user.password_changed", resource_type="user", resource_id=doc["_id"]),
+    )
+
     return TokenResponseDto(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
@@ -251,6 +280,7 @@ async def change_password(
 async def create_user(
     body: CreateUserRequestDto,
     user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     # Only master_admin can create admins
     if body.role == "admin" and user["role"] != "master_admin":
@@ -289,6 +319,19 @@ async def create_user(
         resource_type="user",
         resource_id=doc["_id"],
         detail={"role": body.role},
+    )
+
+    from shared.events.auth import UserCreatedEvent
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.USER_CREATED,
+        UserCreatedEvent(user_id=doc["_id"], username=doc["username"], role=body.role, timestamp=doc["created_at"]),
+    )
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=user["sub"], action="user.created", resource_type="user", resource_id=doc["_id"], detail={"role": body.role}),
     )
 
     return CreateUserResponseDto(
@@ -331,6 +374,7 @@ async def update_user(
     user_id: str,
     body: UpdateUserRequestDto,
     user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _user_repo()
     target = await repo.find_by_id(user_id)
@@ -377,6 +421,20 @@ async def update_user(
         detail={"changes": fields},
     )
 
+    from shared.events.auth import UserUpdatedEvent
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.USER_UPDATED,
+        UserUpdatedEvent(user_id=user_id, changes=fields, timestamp=updated["updated_at"]),
+        target_user_ids=[user_id],
+    )
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=user["sub"], action="user.updated", resource_type="user", resource_id=user_id, detail={"changes": fields}),
+    )
+
     return UserRepository.to_dto(updated)
 
 
@@ -384,6 +442,7 @@ async def update_user(
 async def delete_user(
     user_id: str,
     user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _user_repo()
     target = await repo.find_by_id(user_id)
@@ -413,6 +472,20 @@ async def delete_user(
         resource_id=user_id,
     )
 
+    from shared.events.auth import UserDeactivatedEvent
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.USER_DEACTIVATED,
+        UserDeactivatedEvent(user_id=user_id, timestamp=datetime.now(timezone.utc)),
+        target_user_ids=[user_id],
+    )
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=user["sub"], action="user.deactivated", resource_type="user", resource_id=user_id),
+    )
+
     return {"status": "ok"}
 
 
@@ -420,6 +493,7 @@ async def delete_user(
 async def reset_password(
     user_id: str,
     user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _user_repo()
     target = await repo.find_by_id(user_id)
@@ -447,6 +521,20 @@ async def reset_password(
         action="user.password_reset",
         resource_type="user",
         resource_id=user_id,
+    )
+
+    from shared.events.auth import UserPasswordResetEvent
+    from shared.events.audit import AuditLoggedEvent
+    from shared.topics import Topics
+
+    await event_bus.publish(
+        Topics.USER_PASSWORD_RESET,
+        UserPasswordResetEvent(user_id=user_id, timestamp=datetime.now(timezone.utc)),
+        target_user_ids=[user_id],
+    )
+    await event_bus.publish(
+        Topics.AUDIT_LOGGED,
+        AuditLoggedEvent(actor_id=user["sub"], action="user.password_reset", resource_type="user", resource_id=user_id),
     )
 
     return ResetPasswordResponseDto(
