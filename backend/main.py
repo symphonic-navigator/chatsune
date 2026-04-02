@@ -3,17 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from backend.database import connect_db, disconnect_db, get_db
-from backend.modules.user._handlers import router as user_router
-from backend.modules.user._repository import UserRepository
-from backend.modules.user._audit import AuditRepository
+from backend.modules.user import router as user_router, init_indexes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
-    db = get_db()
-    await UserRepository(db).create_indexes()
-    await AuditRepository(db).create_indexes()
+    await init_indexes(get_db())
     yield
     await disconnect_db()
 
