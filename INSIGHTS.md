@@ -170,3 +170,30 @@ system prompt is part of the prototype UI improvements spec.
 The user model config system prompt addition is unique to Chatsune. Neither Open WebUI nor
 SillyTavern offer per-user per-model prompt additions. This lets users encode community
 knowledge about model quirks directly into their configuration.
+
+---
+
+## INS-008 — Sanitized Mode (NSFW Flag System)
+
+**Decision:** Personas, projects, and knowledge base entries can be tagged with an `nsfw: bool`
+flag. A global user toggle called "Sanitized Mode" hides all resources that carry this flag.
+
+**Why:**
+Chatsune targets mixed deployment scenarios — shared household setups, workplace environments,
+or any context where a user needs to temporarily present a clean UI without permanently deleting
+or reconfiguring their data. The flag is per-resource; the toggle is per-session (persisted in
+user preferences).
+
+**Behaviour when Sanitized Mode is active:**
+- NSFW-flagged personas are hidden from the sidebar and persona selection screen.
+- NSFW-flagged projects are hidden from the Projects section and project management.
+- NSFW-flagged knowledge base entries are excluded from context injection.
+- If the user's last active chat involves an NSFW persona, the app falls back to the most
+  recently used non-NSFW persona (or the empty/new-chat state if none exists).
+
+**UI placement (TBD at implementation time):**
+The toggle should be quickly accessible — candidate locations are the user menu (bottom of
+sidebar) or a persistent status pill in the topbar.
+
+**This was requested by users of a prior prototype.** Do not remove this feature without
+reviewing whether demand still exists.

@@ -29,6 +29,9 @@ uv.lock
 # Git worktrees
 .worktrees/
 
+# Superpowers brainstorm sessions
+.superpowers/
+
 # Obsidian state
 obsidian/.obsidian/workspace.json
 obsidian/.obsidian/workspace-mobile.json
