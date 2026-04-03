@@ -305,6 +305,15 @@ async def update_about_me(
     return {"about_me": body.about_me}
 
 
+@router.get("/users/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    repo = _user_repo()
+    doc = await repo.find_by_id(user["sub"])
+    if doc is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserRepository.to_dto(doc)
+
+
 # --- User Management ---
 
 
@@ -334,7 +343,7 @@ async def create_user(
         doc = await repo.create(
             username=body.username,
             email=body.email,
-            display_name=body.display_name,
+            display_name=body.display_name or "Unnamed User",
             password_hash=password_hash,
             role=body.role,
             must_change_password=True,
