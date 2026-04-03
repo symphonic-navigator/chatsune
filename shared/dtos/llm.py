@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, computed_field
 
@@ -14,6 +15,26 @@ class SetProviderKeyDto(BaseModel):
     api_key: str
 
 
+class ModelRating(str, Enum):
+    AVAILABLE = "available"
+    RECOMMENDED = "recommended"
+    NOT_RECOMMENDED = "not_recommended"
+
+
+class ModelCurationDto(BaseModel):
+    overall_rating: ModelRating = ModelRating.AVAILABLE
+    hidden: bool = False
+    admin_description: str | None = None
+    last_curated_at: datetime | None = None
+    last_curated_by: str | None = None
+
+
+class SetModelCurationDto(BaseModel):
+    overall_rating: ModelRating = ModelRating.AVAILABLE
+    hidden: bool = False
+    admin_description: str | None = None
+
+
 class ModelMetaDto(BaseModel):
     provider_id: str
     model_id: str
@@ -22,6 +43,9 @@ class ModelMetaDto(BaseModel):
     supports_reasoning: bool
     supports_vision: bool
     supports_tool_calls: bool
+    parameter_count: str | None = None
+    quantisation_level: str | None = None
+    curation: ModelCurationDto | None = None
 
     @computed_field
     @property
