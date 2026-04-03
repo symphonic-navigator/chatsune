@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useUsers } from "../../core/hooks/useUsers"
 import { useNotificationStore } from "../../core/store/notificationStore"
+import { llmApi } from "../../core/api/llm"
 import type { CreateUserRequest, UpdateUserRequest, UserDto } from "../../core/types/auth"
 
 function CreateUserForm({ onCreate }: { onCreate: (data: CreateUserRequest) => Promise<void> }) {
@@ -67,11 +68,13 @@ function UserRow({
   onUpdate,
   onDeactivate,
   onResetPassword,
+  providerIds,
 }: {
   user: UserDto
   onUpdate: (id: string, data: UpdateUserRequest) => Promise<unknown>
   onDeactivate: (id: string) => Promise<unknown>
   onResetPassword: (id: string) => Promise<void>
+  providerIds: string[]
 }) {
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user.display_name)
@@ -113,6 +116,17 @@ function UserRow({
           {user.is_active ? "Active" : "Inactive"}
         </span>
       </td>
+      <td className="px-4 py-2 text-sm">
+        {providerIds.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {providerIds.map((pid) => (
+              <span key={pid} className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-700">{pid}</span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300">No keys</span>
+        )}
+      </td>
       <td className="px-4 py-2 text-sm space-x-1">
         {editing ? (
           <>
@@ -136,6 +150,19 @@ function UserRow({
 export default function UsersPage() {
   const { users, total, isLoading, error, create, update, deactivate, resetPassword } = useUsers()
   const addNotification = useNotificationStore((s) => s.addNotification)
+  const [credentialStatus, setCredentialStatus] = useState<Map<string, string[]>>(new Map())
+
+  useEffect(() => {
+    llmApi.adminCredentialStatus()
+      .then((data) => {
+        const map = new Map<string, string[]>()
+        for (const entry of data) {
+          map.set(entry.user_id, entry.providers.map((p) => p.provider_id))
+        }
+        setCredentialStatus(map)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleCreate = async (data: CreateUserRequest) => {
     const res = await create(data)
@@ -175,17 +202,18 @@ export default function UsersPage() {
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Email</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Role</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+              <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">API Keys</th>
               <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">Loading...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">No users</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No users</td></tr>
             ) : (
               users.map((u) => (
-                <UserRow key={u.id} user={u} onUpdate={update} onDeactivate={deactivate} onResetPassword={handleResetPassword} />
+                <UserRow key={u.id} user={u} onUpdate={update} onDeactivate={deactivate} onResetPassword={handleResetPassword} providerIds={credentialStatus.get(u.id) ?? []} />
               ))
             )}
           </tbody>

@@ -43,4 +43,9 @@ export const llmApi = {
 
   deleteUserConfig: (providerId: string, modelSlug: string) =>
     api.delete<UserModelConfigDto>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/user-config`),
+
+  adminCredentialStatus: () =>
+    api.get<{ user_id: string; providers: { provider_id: string; is_configured: boolean }[] }[]>(
+      "/api/llm/admin/credential-status",
+    ),
 }
