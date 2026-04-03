@@ -36,6 +36,10 @@
   --ui-scale: 1;
 }
 
+html {
+  overflow: hidden;
+}
+
 body {
   zoom: var(--ui-scale, 1);
 }
