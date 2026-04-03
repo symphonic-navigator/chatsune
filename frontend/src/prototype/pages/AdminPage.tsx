@@ -1,9 +1,71 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useSettings } from "../../core/hooks/useSettings"
 import { useLlm } from "../../core/hooks/useLlm"
+import { settingsApi } from "../../core/api/settings"
+import { useNotificationStore } from "../../core/store/notificationStore"
 import type { ModelMetaDto, ModelRating } from "../../core/types/llm"
 
-type Tab = "settings" | "curation"
+type Tab = "system-prompt" | "settings" | "curation"
+
+function SystemPromptTab() {
+  const [content, setContent] = useState("")
+  const [savedContent, setSavedContent] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const addNotification = useNotificationStore((s) => s.addNotification)
+
+  useEffect(() => {
+    settingsApi.getSystemPrompt().then((data) => {
+      setContent(data.content)
+      setSavedContent(data.content)
+      setIsLoading(false)
+    }).catch(() => setIsLoading(false))
+  }, [])
+
+  const isDirty = content !== savedContent
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      await settingsApi.setSystemPrompt(content)
+      setSavedContent(content)
+      addNotification({ level: "success", title: "System prompt saved", message: "" })
+    } catch {
+      addNotification({ level: "error", title: "Failed to save system prompt", message: "" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (isLoading) return <p className="text-sm text-gray-400">Loading...</p>
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500">
+        This prompt is prepended to every inference request, regardless of persona.
+        Use it to enforce safety rules and operational boundaries.
+      </p>
+      <textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        maxLength={4000}
+        rows={12}
+        className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none"
+        placeholder="Enter the global system prompt..."
+      />
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">{content.length} / 4000</span>
+        <button
+          onClick={handleSave}
+          disabled={!isDirty || isSaving}
+          className="rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isSaving ? "Saving..." : "Save"}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function SettingsTab() {
   const { settings, isLoading, error, set, remove } = useSettings()
@@ -207,7 +269,7 @@ function CurationTab() {
 }
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<Tab>("settings")
+  const [tab, setTab] = useState<Tab>("system-prompt")
 
   const tabClass = (t: Tab) =>
     `rounded-t px-4 py-2 text-sm ${tab === t ? "bg-white border-b-2 border-blue-600 font-medium" : "text-gray-500 hover:text-gray-700"}`
@@ -216,9 +278,11 @@ export default function AdminPage() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">Admin</h2>
       <div className="flex gap-1 border-b border-gray-200">
+        <button onClick={() => setTab("system-prompt")} className={tabClass("system-prompt")}>System Prompt</button>
         <button onClick={() => setTab("settings")} className={tabClass("settings")}>Settings</button>
         <button onClick={() => setTab("curation")} className={tabClass("curation")}>Model Curation</button>
       </div>
+      {tab === "system-prompt" && <SystemPromptTab />}
       {tab === "settings" && <SettingsTab />}
       {tab === "curation" && <CurationTab />}
     </div>

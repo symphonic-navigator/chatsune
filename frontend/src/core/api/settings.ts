@@ -13,4 +13,10 @@ export const settingsApi = {
 
   remove: (key: string) =>
     api.delete<{ status: string }>(`/api/settings/${encodeURIComponent(key)}`),
+
+  getSystemPrompt: () =>
+    api.get<{ content: string; updated_at: string | null; updated_by: string | null }>("/api/settings/system-prompt"),
+
+  setSystemPrompt: (content: string) =>
+    api.put<{ content: string; updated_at: string; updated_by: string }>("/api/settings/system-prompt", { content }),
 }
