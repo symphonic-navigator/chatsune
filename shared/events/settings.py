@@ -16,3 +16,10 @@ class SettingDeletedEvent(BaseModel):
     key: str
     deleted_by: str
     timestamp: datetime
+
+
+class SettingSystemPromptUpdatedEvent(BaseModel):
+    type: str = "setting.system_prompt.updated"
+    content: str
+    updated_by: str
+    timestamp: datetime

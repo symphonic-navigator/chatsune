@@ -7,10 +7,12 @@ from backend.dependencies import require_admin
 from backend.modules.settings._repository import SettingsRepository
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.settings import SetSettingDto
-from shared.events.settings import SettingDeletedEvent, SettingUpdatedEvent
+from shared.events.settings import SettingDeletedEvent, SettingSystemPromptUpdatedEvent, SettingUpdatedEvent
 from shared.topics import Topics
 
 router = APIRouter(prefix="/api/settings")
+
+SYSTEM_PROMPT_KEY = "system_prompt"
 
 
 def _repo() -> SettingsRepository:
@@ -22,6 +24,45 @@ async def list_settings(user: dict = Depends(require_admin)):
     repo = _repo()
     docs = await repo.list_all()
     return [SettingsRepository.to_dto(doc) for doc in docs]
+
+
+@router.get("/system-prompt")
+async def get_system_prompt(user: dict = Depends(require_admin)):
+    repo = _repo()
+    doc = await repo.find(SYSTEM_PROMPT_KEY)
+    if not doc:
+        return {"content": "", "updated_at": None, "updated_by": None}
+    return {
+        "content": doc["value"],
+        "updated_at": doc["updated_at"],
+        "updated_by": doc["updated_by"],
+    }
+
+
+@router.put("/system-prompt", status_code=200)
+async def set_system_prompt(
+    body: dict,
+    user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    content = body.get("content", "")
+    repo = _repo()
+    doc = await repo.upsert(SYSTEM_PROMPT_KEY, content, user["sub"])
+
+    await event_bus.publish(
+        Topics.SETTING_SYSTEM_PROMPT_UPDATED,
+        SettingSystemPromptUpdatedEvent(
+            content=content,
+            updated_by=user["sub"],
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+    return {
+        "content": doc["value"],
+        "updated_at": doc["updated_at"],
+        "updated_by": doc["updated_by"],
+    }
 
 
 @router.get("/{key}")

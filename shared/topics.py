@@ -16,6 +16,7 @@ class Topics:
     LLM_USER_MODEL_CONFIG_UPDATED = "llm.user_model_config.updated"
     SETTING_UPDATED = "setting.updated"
     SETTING_DELETED = "setting.deleted"
+    SETTING_SYSTEM_PROMPT_UPDATED = "setting.system_prompt.updated"
     # Chat inference
     CHAT_STREAM_STARTED = "chat.stream.started"
     CHAT_CONTENT_DELTA = "chat.content.delta"
