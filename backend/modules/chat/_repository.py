@@ -77,6 +77,38 @@ class ChatRepository:
         cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
         return await cursor.to_list(length=5000)
 
+    async def delete_messages_after(self, session_id: str, message_id: str) -> bool:
+        """Delete all messages in a session created after the given message."""
+        target = await self._messages.find_one({"_id": message_id, "session_id": session_id})
+        if target is None:
+            return False
+        await self._messages.delete_many({
+            "session_id": session_id,
+            "created_at": {"$gt": target["created_at"]},
+        })
+        return True
+
+    async def update_message_content(
+        self, message_id: str, content: str, token_count: int,
+    ) -> dict | None:
+        """Overwrite a message's content and token count."""
+        await self._messages.update_one(
+            {"_id": message_id},
+            {"$set": {"content": content, "token_count": token_count}},
+        )
+        return await self._messages.find_one({"_id": message_id})
+
+    async def get_last_message(self, session_id: str) -> dict | None:
+        """Return the last message in a session by created_at, or None."""
+        cursor = self._messages.find({"session_id": session_id}).sort("created_at", -1).limit(1)
+        docs = await cursor.to_list(length=1)
+        return docs[0] if docs else None
+
+    async def delete_message(self, message_id: str) -> bool:
+        """Delete a single message by ID."""
+        result = await self._messages.delete_one({"_id": message_id})
+        return result.deleted_count > 0
+
     @staticmethod
     def session_to_dto(doc: dict) -> ChatSessionDto:
         return ChatSessionDto(
