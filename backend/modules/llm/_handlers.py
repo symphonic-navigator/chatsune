@@ -6,7 +6,7 @@ from backend.database import get_db, get_redis
 from backend.dependencies import require_active_session
 from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._metadata import get_models
-from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_DISPLAY_NAMES
+from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS, PROVIDER_DISPLAY_NAMES
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.llm import ProviderCredentialDto, SetProviderKeyDto
 from shared.events.llm import (
@@ -109,7 +109,7 @@ async def test_provider_key(
     if provider_id not in ADAPTER_REGISTRY:
         raise HTTPException(status_code=404, detail="Unknown provider")
 
-    adapter = ADAPTER_REGISTRY[provider_id]()
+    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
     try:
         valid = await adapter.validate_key(body.api_key)
     except NotImplementedError:
@@ -140,6 +140,6 @@ async def list_models(
     if provider_id not in ADAPTER_REGISTRY:
         raise HTTPException(status_code=404, detail="Unknown provider")
 
-    adapter = ADAPTER_REGISTRY[provider_id]()
+    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
     redis = get_redis()
     return await get_models(provider_id, redis, adapter)

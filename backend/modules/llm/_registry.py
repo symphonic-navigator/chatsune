@@ -8,3 +8,7 @@ ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
 PROVIDER_DISPLAY_NAMES: dict[str, str] = {
     "ollama_cloud": "Ollama Cloud",
 }
+
+PROVIDER_BASE_URLS: dict[str, str] = {
+    "ollama_cloud": "https://ollama.com",
+}

@@ -6,6 +6,9 @@ from shared.dtos.llm import ModelMetaDto
 class BaseAdapter(ABC):
     """Abstract base for all upstream inference provider adapters."""
 
+    def __init__(self, base_url: str) -> None:
+        self.base_url = base_url.rstrip("/")
+
     @abstractmethod
     async def validate_key(self, api_key: str) -> bool:
         """Return True if the key is valid for this provider."""
