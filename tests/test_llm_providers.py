@@ -106,24 +106,23 @@ async def test_remove_provider_key_when_none_set(client: AsyncClient):
     assert resp.status_code == 404
 
 
-async def test_test_provider_key_returns_501_for_stub(client: AsyncClient):
+async def test_test_provider_key_unknown_provider(client: AsyncClient):
     token = await _setup_and_login(client)
     resp = await client.post(
-        "/api/llm/providers/ollama_cloud/test",
+        "/api/llm/providers/nonexistent/test",
         json={"api_key": "test-api-key"},
         headers=_auth(token),
     )
-    assert resp.status_code == 501
+    assert resp.status_code == 404
 
 
-async def test_list_models_returns_empty_for_stub(client: AsyncClient):
+async def test_list_models_unknown_provider(client: AsyncClient):
     token = await _setup_and_login(client)
     resp = await client.get(
-        "/api/llm/providers/ollama_cloud/models",
+        "/api/llm/providers/nonexistent/models",
         headers=_auth(token),
     )
-    assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.status_code == 404
 
 
 async def test_key_update_overwrites_existing(client: AsyncClient):
