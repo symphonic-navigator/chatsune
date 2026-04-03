@@ -14,3 +14,18 @@ class UserCredentialDocument(BaseModel):
     updated_at: datetime
 
     model_config = {"populate_by_name": True}
+
+
+class ModelCurationDocument(BaseModel):
+    """Internal MongoDB document for admin model curation. Never expose outside llm module."""
+
+    id: str = Field(alias="_id")
+    provider_id: str
+    model_slug: str
+    overall_rating: str
+    hidden: bool
+    admin_description: str | None
+    last_curated_at: datetime
+    last_curated_by: str
+
+    model_config = {"populate_by_name": True}

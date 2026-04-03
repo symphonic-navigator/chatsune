@@ -4,6 +4,7 @@ Public API: import only from this file.
 """
 
 from backend.modules.llm._credentials import CredentialRepository
+from backend.modules.llm._curation import CurationRepository
 from backend.modules.llm._handlers import router
 from backend.modules.llm._registry import ADAPTER_REGISTRY
 from backend.database import get_db
@@ -12,6 +13,7 @@ from backend.database import get_db
 async def init_indexes(db) -> None:
     """Create MongoDB indexes for the LLM module collections."""
     await CredentialRepository(db).create_indexes()
+    await CurationRepository(db).create_indexes()
 
 
 def is_valid_provider(provider_id: str) -> bool:
