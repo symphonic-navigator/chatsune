@@ -8,13 +8,15 @@ from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._curation import CurationRepository
 from backend.modules.llm._metadata import get_models
 from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS, PROVIDER_DISPLAY_NAMES
+from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.ws.event_bus import EventBus, get_event_bus
-from shared.dtos.llm import ModelCurationDto, ModelMetaDto, ProviderCredentialDto, SetModelCurationDto, SetProviderKeyDto
+from shared.dtos.llm import ModelCurationDto, ModelMetaDto, ProviderCredentialDto, SetModelCurationDto, SetProviderKeyDto, SetUserModelConfigDto, UserModelConfigDto
 from shared.events.llm import (
     LlmCredentialRemovedEvent,
     LlmCredentialSetEvent,
     LlmCredentialTestedEvent,
     LlmModelCuratedEvent,
+    LlmUserModelConfigUpdatedEvent,
 )
 from shared.topics import Topics
 
@@ -27,6 +29,10 @@ def _credential_repo() -> CredentialRepository:
 
 def _curation_repo() -> CurationRepository:
     return CurationRepository(get_db())
+
+
+def _user_config_repo() -> UserModelConfigRepository:
+    return UserModelConfigRepository(get_db())
 
 
 @router.get("/providers")
@@ -272,3 +278,90 @@ async def remove_model_curation(
     )
 
     return {"status": "ok"}
+
+
+@router.get("/user-model-configs")
+async def list_user_model_configs(user: dict = Depends(require_active_session)):
+    repo = _user_config_repo()
+    docs = await repo.list_for_user(user["sub"])
+    return [UserModelConfigRepository.to_dto(doc) for doc in docs]
+
+
+@router.get("/providers/{provider_id}/models/{model_slug:path}/user-config")
+async def get_user_model_config(
+    provider_id: str,
+    model_slug: str,
+    user: dict = Depends(require_active_session),
+):
+    if provider_id not in ADAPTER_REGISTRY:
+        raise HTTPException(status_code=404, detail="Unknown provider")
+
+    model_unique_id = f"{provider_id}:{model_slug}"
+    repo = _user_config_repo()
+    doc = await repo.find(user["sub"], model_unique_id)
+    if doc:
+        return UserModelConfigRepository.to_dto(doc)
+    return UserModelConfigRepository.default_dto(model_unique_id)
+
+
+@router.put("/providers/{provider_id}/models/{model_slug:path}/user-config", status_code=200)
+async def set_user_model_config(
+    provider_id: str,
+    model_slug: str,
+    body: SetUserModelConfigDto,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    if provider_id not in ADAPTER_REGISTRY:
+        raise HTTPException(status_code=404, detail="Unknown provider")
+
+    model_unique_id = f"{provider_id}:{model_slug}"
+    repo = _user_config_repo()
+    doc = await repo.upsert(
+        user_id=user["sub"],
+        model_unique_id=model_unique_id,
+        is_favourite=body.is_favourite,
+        is_hidden=body.is_hidden,
+        notes=body.notes,
+        system_prompt_addition=body.system_prompt_addition,
+    )
+    config_dto = UserModelConfigRepository.to_dto(doc)
+
+    await event_bus.publish(
+        Topics.LLM_USER_MODEL_CONFIG_UPDATED,
+        LlmUserModelConfigUpdatedEvent(
+            model_unique_id=model_unique_id,
+            config=config_dto,
+        ),
+        target_user_ids=[user["sub"]],
+    )
+
+    return config_dto
+
+
+@router.delete("/providers/{provider_id}/models/{model_slug:path}/user-config", status_code=200)
+async def delete_user_model_config(
+    provider_id: str,
+    model_slug: str,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    if provider_id not in ADAPTER_REGISTRY:
+        raise HTTPException(status_code=404, detail="Unknown provider")
+
+    model_unique_id = f"{provider_id}:{model_slug}"
+    repo = _user_config_repo()
+    await repo.delete(user["sub"], model_unique_id)
+
+    default_config = UserModelConfigRepository.default_dto(model_unique_id)
+
+    await event_bus.publish(
+        Topics.LLM_USER_MODEL_CONFIG_UPDATED,
+        LlmUserModelConfigUpdatedEvent(
+            model_unique_id=model_unique_id,
+            config=default_config,
+        ),
+        target_user_ids=[user["sub"]],
+    )
+
+    return default_config

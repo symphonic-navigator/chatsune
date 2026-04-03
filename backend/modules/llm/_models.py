@@ -29,3 +29,19 @@ class ModelCurationDocument(BaseModel):
     last_curated_by: str
 
     model_config = {"populate_by_name": True}
+
+
+class UserModelConfigDocument(BaseModel):
+    """Internal MongoDB document for per-user model configuration. Never expose outside llm module."""
+
+    id: str = Field(alias="_id")
+    user_id: str
+    model_unique_id: str
+    is_favourite: bool = False
+    is_hidden: bool = False
+    notes: str | None = None
+    system_prompt_addition: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"populate_by_name": True}
