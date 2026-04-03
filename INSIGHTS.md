@@ -108,3 +108,63 @@ validate that the specific model slug exists (that would require an upstream cal
 **Why:** Provider data is volatile — models appear, disappear, change specs on the upstream. Curation is an admin decision that must survive cache flushes and temporary provider outages. Coupling them (as Prototype 2 did) means a cache flush or provider hiccup wipes admin work. Separating them means curation persists even if a model temporarily vanishes.
 
 **Event differentiation:** `llm.model.curated` events carry the full merged DTO (instant client update). `llm.models.refreshed` events are trigger-only (client re-fetches). This distinction matters for frontend implementation: curated = update store in place, refreshed = invalidate and re-fetch.
+
+---
+
+## INS-006 — Three-Layer Model Data (Extension of INS-005)
+
+**Decision:** Model data is now served from three layers, merged at read time:
+
+1. **Provider metadata** (Redis, ephemeral, 30min TTL) — what the model *is*
+   (capabilities, parameter count, context window). Fetched from upstream adapter.
+2. **Admin curation** (MongoDB, persistent) — how the admin *rates* the model
+   (overall rating, hidden flag, admin description). Collection: `llm_model_curations`.
+3. **User config** (MongoDB, persistent, per-user) — how the user *uses* the model
+   (favourite, hidden, notes, system prompt addition). Collection: `llm_user_model_configs`.
+
+**Why three layers:**
+Each layer has a different owner (provider, admin, user), lifecycle (volatile, persistent,
+persistent-per-user), and event semantics. Keeping them separate means changes in one layer
+never corrupt or invalidate another.
+
+**Default behaviour:**
+When no user config document exists, the API returns sensible defaults (not-favourite,
+not-hidden, no notes, no system prompt addition). The document is only created on first
+explicit user action.
+
+**Delete semantics:**
+There is no separate "deleted" event for user config. The DELETE endpoint removes the
+MongoDB document but emits an `llm.user_model_config.updated` event with default values.
+The frontend handles a single event type — this is a general pattern: if a resource has
+sensible defaults, "deleted" and "reset to defaults" are identical from the client's
+perspective.
+
+---
+
+## INS-007 — System Prompt Hierarchy
+
+**Decision:** The system prompt for a chat session is assembled from three sources,
+concatenated in priority order:
+
+| Priority | Source | Scope |
+|----------|--------|-------|
+| 1 (highest) | Global system prompt | Platform-wide admin setting |
+| 2 | User model config addition | Per user, per model |
+| 3 | Persona system prompt | Per persona |
+
+**Why this order:**
+The global system prompt contains admin guardrails ("be harmless", content policy).
+These must not be overridden by user or persona prompts. The user model config addition
+carries community-sourced model-specific tweaks (e.g. "tell Mistral to focus on the last
+message") — these are model-level, not persona-level. The persona prompt defines character
+and behaviour, which is the most specific and variable layer.
+
+**Implementation note:**
+The three layers are concatenated as separate blocks, not merged. Each block is a distinct
+section in the final prompt. The chat module (not yet implemented) will be responsible for
+assembling the final prompt from these sources.
+
+**Differentiating feature:**
+The user model config system prompt addition is unique to Chatsune. Neither Open WebUI nor
+SillyTavern offer per-user per-model prompt additions. This lets users encode community
+knowledge about model quirks directly into their configuration.
