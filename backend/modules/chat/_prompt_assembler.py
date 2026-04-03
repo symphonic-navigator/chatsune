@@ -1,0 +1,109 @@
+from backend.modules.chat._prompt_sanitiser import sanitise
+
+
+async def _get_admin_prompt() -> str | None:
+    """Fetch the global system prompt from settings."""
+    from backend.modules.settings import get_setting
+    return await get_setting("system_prompt")
+
+
+async def _get_model_instructions(user_id: str, model_unique_id: str) -> str | None:
+    """Fetch the user's per-model system prompt addition."""
+    from backend.modules.llm import UserModelConfigRepository
+    from backend.database import get_db
+    repo = UserModelConfigRepository(get_db())
+    config = await repo.find(user_id, model_unique_id)
+    if config is None:
+        return None
+    return config.get("system_prompt_addition")
+
+
+async def _get_persona_prompt(persona_id: str | None, user_id: str) -> str | None:
+    """Fetch the persona's system prompt."""
+    if not persona_id:
+        return None
+    from backend.modules.persona import get_persona
+    persona = await get_persona(persona_id, user_id)
+    if persona is None:
+        return None
+    return persona.get("system_prompt")
+
+
+async def _get_user_about_me(user_id: str) -> str | None:
+    """Fetch the user's about_me text."""
+    from backend.modules.user import get_user_about_me
+    return await get_user_about_me(user_id)
+
+
+async def assemble(
+    user_id: str,
+    persona_id: str | None,
+    model_unique_id: str,
+) -> str:
+    """Assemble the full 4-layer XML system prompt for LLM consumption."""
+    admin_prompt = await _get_admin_prompt()
+    model_instructions = await _get_model_instructions(user_id, model_unique_id)
+    persona_prompt = await _get_persona_prompt(persona_id, user_id)
+    user_about_me = await _get_user_about_me(user_id)
+
+    parts: list[str] = []
+
+    # Layer 1: Admin — trusted, NOT sanitised
+    if admin_prompt and admin_prompt.strip():
+        parts.append(
+            f'<systeminstructions priority="highest">\n{admin_prompt.strip()}\n</systeminstructions>'
+        )
+
+    # Layer 2: Model instructions — user-controlled, sanitised
+    if model_instructions and model_instructions.strip():
+        cleaned = sanitise(model_instructions.strip())
+        if cleaned:
+            parts.append(
+                f'<modelinstructions priority="high">\n{cleaned}\n</modelinstructions>'
+            )
+
+    # Layer 3: Persona — user-controlled, sanitised
+    if persona_prompt and persona_prompt.strip():
+        cleaned = sanitise(persona_prompt.strip())
+        if cleaned:
+            parts.append(f'<you priority="normal">\n{cleaned}\n</you>')
+
+    # Layer 4: User about_me — user-controlled, sanitised
+    if user_about_me and user_about_me.strip():
+        cleaned = sanitise(user_about_me.strip())
+        if cleaned:
+            parts.append(
+                f'<userinfo priority="low">\nWhat the user wants you to know about themselves:\n{cleaned}\n</userinfo>'
+            )
+
+    return "\n\n".join(parts)
+
+
+async def assemble_preview(
+    user_id: str,
+    persona_id: str | None,
+    model_unique_id: str,
+) -> str:
+    """Assemble a human-readable preview (excludes admin prompt)."""
+    model_instructions = await _get_model_instructions(user_id, model_unique_id)
+    persona_prompt = await _get_persona_prompt(persona_id, user_id)
+    user_about_me = await _get_user_about_me(user_id)
+
+    parts: list[str] = []
+
+    if model_instructions and model_instructions.strip():
+        cleaned = sanitise(model_instructions.strip())
+        if cleaned:
+            parts.append(f"--- Model Instructions ---\n{cleaned}")
+
+    if persona_prompt and persona_prompt.strip():
+        cleaned = sanitise(persona_prompt.strip())
+        if cleaned:
+            parts.append(f"--- Persona ---\n{cleaned}")
+
+    if user_about_me and user_about_me.strip():
+        cleaned = sanitise(user_about_me.strip())
+        if cleaned:
+            parts.append(f"--- About Me ---\n{cleaned}")
+
+    return "\n\n".join(parts)
