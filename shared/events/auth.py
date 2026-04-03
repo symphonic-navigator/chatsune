@@ -28,3 +28,10 @@ class UserPasswordResetEvent(BaseModel):
     type: str = "user.password_reset"
     user_id: str
     timestamp: datetime
+
+
+class UserProfileUpdatedEvent(BaseModel):
+    type: str = "user.profile.updated"
+    user_id: str
+    display_name: str
+    timestamp: datetime

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserDto(BaseModel):
@@ -81,3 +81,15 @@ class AuditLogEntryDto(BaseModel):
 
 class UpdateAboutMeDto(BaseModel):
     about_me: str | None = None
+
+
+class UpdateDisplayNameDto(BaseModel):
+    display_name: str = Field(..., max_length=64)
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_and_validate(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Display name cannot be blank")
+        return stripped
