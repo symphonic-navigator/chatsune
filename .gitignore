@@ -26,6 +26,9 @@ htmlcov/
 # uv
 uv.lock
 
+# Git worktrees
+.worktrees/
+
 # Obsidian state
 obsidian/.obsidian/workspace.json
 obsidian/.obsidian/workspace-mobile.json
