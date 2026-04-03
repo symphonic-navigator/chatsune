@@ -23,3 +23,7 @@ class Topics:
     CHAT_THINKING_DELTA = "chat.thinking.delta"
     CHAT_STREAM_ENDED = "chat.stream.ended"
     CHAT_STREAM_ERROR = "chat.stream.error"
+    # Chat edit/regenerate
+    CHAT_MESSAGES_TRUNCATED = "chat.messages.truncated"
+    CHAT_MESSAGE_UPDATED = "chat.message.updated"
+    CHAT_MESSAGE_DELETED = "chat.message.deleted"

@@ -30,6 +30,7 @@ class ChatStreamEndedEvent(BaseModel):
     status: Literal["completed", "cancelled", "error"]
     usage: dict | None = None
     context_status: Literal["green", "yellow", "orange", "red"]
+    context_fill_percentage: float = 0.0
     timestamp: datetime
 
 
@@ -39,4 +40,30 @@ class ChatStreamErrorEvent(BaseModel):
     error_code: str
     recoverable: bool
     user_message: str
+    timestamp: datetime
+
+
+class ChatMessagesTruncatedEvent(BaseModel):
+    type: str = "chat.messages.truncated"
+    session_id: str
+    after_message_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class ChatMessageUpdatedEvent(BaseModel):
+    type: str = "chat.message.updated"
+    session_id: str
+    message_id: str
+    content: str
+    token_count: int
+    correlation_id: str
+    timestamp: datetime
+
+
+class ChatMessageDeletedEvent(BaseModel):
+    type: str = "chat.message.deleted"
+    session_id: str
+    message_id: str
+    correlation_id: str
     timestamp: datetime

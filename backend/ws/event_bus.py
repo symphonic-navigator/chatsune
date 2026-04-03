@@ -33,6 +33,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_THINKING_DELTA: ([], True),
     Topics.CHAT_STREAM_ENDED: ([], True),
     Topics.CHAT_STREAM_ERROR: ([], True),
+    Topics.CHAT_MESSAGES_TRUNCATED: ([], True),
+    Topics.CHAT_MESSAGE_UPDATED: ([], True),
+    Topics.CHAT_MESSAGE_DELETED: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {
