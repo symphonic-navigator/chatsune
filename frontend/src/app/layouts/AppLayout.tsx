@@ -39,6 +39,7 @@ export default function AppLayout() {
         activePersonaId={activePersonaId}
         activeSessionId={activeSessionId}
         onOpenModal={openModal}
+        onCloseModal={closeModal}
         activeModalTab={modalTab}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">

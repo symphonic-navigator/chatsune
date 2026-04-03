@@ -15,6 +15,7 @@ interface SidebarProps {
   activePersonaId: string | null
   activeSessionId: string | null
   onOpenModal: (tab: UserModalTab) => void
+  onCloseModal: () => void
   activeModalTab: UserModalTab | null
 }
 
@@ -24,6 +25,7 @@ export function Sidebar({
   activePersonaId,
   activeSessionId,
   onOpenModal,
+  onCloseModal,
   activeModalTab,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
@@ -60,7 +62,7 @@ export function Sidebar({
   const avatarHighlight =
     activeModalTab === 'about-me' || activeModalTab === 'settings'
 
-  const displayName = user?.display_name || user?.username || '?'
+  const displayName = user?.display_name || user?.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
 
   return (
@@ -76,7 +78,7 @@ export function Sidebar({
       {isAdmin && (
         <button
           type="button"
-          onClick={() => navigate("/admin")}
+          onClick={() => { onCloseModal(); navigate("/admin") }}
           className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-gold/16 bg-gold/7 px-2.5 py-1.5 transition-colors hover:bg-gold/12"
         >
           <span className="text-[12px]">✦</span>
@@ -87,7 +89,7 @@ export function Sidebar({
 
       {/* CHAT */}
       <div className="mt-1.5 flex-shrink-0">
-        <NavRow icon="◈" label="Chat" onClick={() => navigate("/personas")} />
+        <NavRow icon="◈" label="Chat" onClick={() => { onCloseModal(); navigate("/personas") }} />
         <div className="mt-0.5">
           {personas.map((p) => (
             <PersonaItem
