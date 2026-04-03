@@ -98,3 +98,13 @@ The remainder is passed as-is to the adapter — adapters own their slug format.
 When a Persona is created or updated with a `model_unique_id`, the backend
 validates that the provider segment matches a registered adapter. It does not
 validate that the specific model slug exists (that would require an upstream call).
+
+---
+
+## INS-005: Two-Layer Model Data (Ephemeral + Persistent)
+
+**Decision:** Provider model metadata (Redis, 30min TTL) is stored separately from admin curation (MongoDB, persistent). They are merged at read time.
+
+**Why:** Provider data is volatile — models appear, disappear, change specs on the upstream. Curation is an admin decision that must survive cache flushes and temporary provider outages. Coupling them (as Prototype 2 did) means a cache flush or provider hiccup wipes admin work. Separating them means curation persists even if a model temporarily vanishes.
+
+**Event differentiation:** `llm.model.curated` events carry the full merged DTO (instant client update). `llm.models.refreshed` events are trigger-only (client re-fetches). This distinction matters for frontend implementation: curated = update store in place, refreshed = invalidate and re-fetch.
