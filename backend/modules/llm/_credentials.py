@@ -65,6 +65,11 @@ class CredentialRepository:
         cursor = self._collection.find({"user_id": user_id})
         return await cursor.to_list(length=100)
 
+    async def list_all(self) -> list[dict]:
+        """List all credentials across all users. Admin use only."""
+        cursor = self._collection.find({}, {"user_id": 1, "provider_id": 1, "_id": 0})
+        return await cursor.to_list(length=10000)
+
     def get_raw_key(self, doc: dict) -> str:
         """Decrypt and return the raw API key. Use only at inference time."""
         return decrypt(doc["api_key_encrypted"])

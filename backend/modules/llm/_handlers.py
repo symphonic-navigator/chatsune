@@ -367,3 +367,24 @@ async def delete_user_model_config(
     )
 
     return default_config
+
+
+@router.get("/admin/credential-status")
+async def admin_credential_status(user: dict = Depends(require_admin)):
+    repo = _credential_repo()
+    all_creds = await repo.list_all()
+
+    by_user: dict[str, list[dict]] = {}
+    for cred in all_creds:
+        uid = cred["user_id"]
+        if uid not in by_user:
+            by_user[uid] = []
+        by_user[uid].append({
+            "provider_id": cred["provider_id"],
+            "is_configured": True,
+        })
+
+    return [
+        {"user_id": uid, "providers": providers}
+        for uid, providers in by_user.items()
+    ]
