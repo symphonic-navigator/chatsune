@@ -37,6 +37,7 @@ export default function ChatPage() {
   const [initError, setInitError] = useState<string | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
+  const sessionRef = useRef<string | null>(null)
   // Track correlation_id of the active stream to match delta events
   const activeCorrelationRef = useRef<string | null>(null)
 
@@ -49,15 +50,19 @@ export default function ChatPage() {
   useEffect(() => {
     if (!personaId) return
     chatApi.createSession(personaId)
-      .then((s) => setSession(s))
+      .then((s) => {
+        sessionRef.current = s.id
+        setSession(s)
+      })
       .catch((err) => setInitError(err instanceof Error ? err.message : "Failed to create session"))
   }, [personaId])
 
   // Subscribe to streaming events
   useEffect(() => {
     const unsubStart = eventBus.on("chat.stream.started", (event: BaseEvent) => {
-      const correlationId = event.correlation_id
-      activeCorrelationRef.current = correlationId
+      const payload = event.payload as { session_id?: string }
+      if (payload.session_id !== sessionRef.current) return
+      activeCorrelationRef.current = event.correlation_id
       setIsStreaming(true)
       setStreamingContent("")
       setStreamingThinking("")
@@ -78,23 +83,26 @@ export default function ChatPage() {
     })
 
     const unsubEnd = eventBus.on("chat.stream.ended", (event: BaseEvent) => {
-      const payload = event.payload as {
-        session_id?: string
-        correlation_id?: string
-        context_status?: string
-        assistant_message?: { id: string; content: string; thinking?: string }
-      }
+      if (event.correlation_id !== activeCorrelationRef.current) return
+      const payload = event.payload as { context_status?: string }
 
-      // Finalise the streamed message
-      setMessages((prev) => {
-        const finalContent = payload.assistant_message?.content ?? ""
-        const finalThinking = payload.assistant_message?.thinking ?? undefined
-        const id = payload.assistant_message?.id ?? crypto.randomUUID()
-        return [...prev, { id, role: "assistant", content: finalContent, thinking: finalThinking }]
+      // Finalise the streamed message using accumulated content from deltas
+      setStreamingContent((finalContent) => {
+        setStreamingThinking((finalThinking) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: "assistant" as const,
+              content: finalContent,
+              thinking: finalThinking || undefined,
+            },
+          ])
+          return ""
+        })
+        return ""
       })
 
-      setStreamingContent("")
-      setStreamingThinking("")
       setIsStreaming(false)
       activeCorrelationRef.current = null
 
