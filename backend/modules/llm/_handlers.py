@@ -332,6 +332,7 @@ async def set_user_model_config(
         LlmUserModelConfigUpdatedEvent(
             model_unique_id=model_unique_id,
             config=config_dto,
+            timestamp=datetime.now(timezone.utc),
         ),
         target_user_ids=[user["sub"]],
     )
@@ -360,6 +361,7 @@ async def delete_user_model_config(
         LlmUserModelConfigUpdatedEvent(
             model_unique_id=model_unique_id,
             config=default_config,
+            timestamp=datetime.now(timezone.utc),
         ),
         target_user_ids=[user["sub"]],
     )

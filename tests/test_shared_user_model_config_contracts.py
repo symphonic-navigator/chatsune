@@ -39,13 +39,17 @@ def test_set_user_model_config_dto_partial():
 
 
 def test_user_model_config_updated_event():
+    from datetime import datetime, timezone
     config = UserModelConfigDto(model_unique_id="ollama_cloud:llama3.2")
+    now = datetime.now(timezone.utc)
     event = LlmUserModelConfigUpdatedEvent(
         model_unique_id="ollama_cloud:llama3.2",
         config=config,
+        timestamp=now,
     )
     assert event.type == "llm.user_model_config.updated"
     assert event.config.is_favourite is False
+    assert event.timestamp == now
 
 
 def test_topic_constant():

@@ -49,3 +49,4 @@ class LlmUserModelConfigUpdatedEvent(BaseModel):
     type: str = "llm.user_model_config.updated"
     model_unique_id: str
     config: UserModelConfigDto
+    timestamp: datetime
