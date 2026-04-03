@@ -13,7 +13,7 @@ from backend.ws.manager import ConnectionManager, set_manager
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
+async def client(clean_db) -> AsyncGenerator[httpx.AsyncClient, None]:
     await connect_db()
     manager = ConnectionManager()
     set_manager(manager)
@@ -28,9 +28,14 @@ async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
         await disconnect_db()
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def clean_db():
-    """Drop test database and flush Redis before each test."""
+    """Drop test database and flush Redis before each test.
+
+    Not autouse — only runs for tests that request it (directly or via the
+    ``client`` fixture).  Pure unit tests that validate Pydantic models or
+    other non-DB code run without needing a live MongoDB/Redis instance.
+    """
     from redis.asyncio import Redis
 
     mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
