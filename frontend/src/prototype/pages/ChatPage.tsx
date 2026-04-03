@@ -38,8 +38,10 @@ export default function ChatPage() {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const sessionRef = useRef<string | null>(null)
-  // Track correlation_id of the active stream to match delta events
   const activeCorrelationRef = useRef<string | null>(null)
+  // Refs mirror streaming state so stream.ended can read without side-effectful updaters
+  const contentRef = useRef("")
+  const thinkingRef = useRef("")
 
   // Auto-scroll to bottom on new content
   useEffect(() => {
@@ -63,6 +65,8 @@ export default function ChatPage() {
       const payload = event.payload as { session_id?: string }
       if (payload.session_id !== sessionRef.current) return
       activeCorrelationRef.current = event.correlation_id
+      contentRef.current = ""
+      thinkingRef.current = ""
       setIsStreaming(true)
       setStreamingContent("")
       setStreamingThinking("")
@@ -73,36 +77,36 @@ export default function ChatPage() {
     const unsubContentDelta = eventBus.on("chat.content.delta", (event: BaseEvent) => {
       const flat = event as unknown as { type: string; correlation_id: string; delta: string }
       if (flat.correlation_id !== activeCorrelationRef.current) return
-      setStreamingContent((prev) => prev + flat.delta)
+      contentRef.current += flat.delta
+      setStreamingContent(contentRef.current)
     })
 
     const unsubThinkingDelta = eventBus.on("chat.thinking.delta", (event: BaseEvent) => {
       const flat = event as unknown as { type: string; correlation_id: string; delta: string }
       if (flat.correlation_id !== activeCorrelationRef.current) return
-      setStreamingThinking((prev) => prev + flat.delta)
+      thinkingRef.current += flat.delta
+      setStreamingThinking(thinkingRef.current)
     })
 
     const unsubEnd = eventBus.on("chat.stream.ended", (event: BaseEvent) => {
       if (event.correlation_id !== activeCorrelationRef.current) return
       const payload = event.payload as { context_status?: string }
 
-      // Finalise the streamed message using accumulated content from deltas
-      setStreamingContent((finalContent) => {
-        setStreamingThinking((finalThinking) => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              role: "assistant" as const,
-              content: finalContent,
-              thinking: finalThinking || undefined,
-            },
-          ])
-          return ""
-        })
-        return ""
-      })
+      // Read accumulated content from refs — no side effects in updaters
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant" as const,
+          content: contentRef.current,
+          thinking: thinkingRef.current || undefined,
+        },
+      ])
 
+      contentRef.current = ""
+      thinkingRef.current = ""
+      setStreamingContent("")
+      setStreamingThinking("")
       setIsStreaming(false)
       activeCorrelationRef.current = null
 
