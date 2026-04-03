@@ -28,11 +28,23 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_USER_MODEL_CONFIG_UPDATED: ([], True),
     Topics.SETTING_UPDATED: (["admin", "master_admin"], False),
     Topics.SETTING_DELETED: (["admin", "master_admin"], False),
+    Topics.CHAT_STREAM_STARTED: ([], True),
+    Topics.CHAT_CONTENT_DELTA: ([], True),
+    Topics.CHAT_THINKING_DELTA: ([], True),
+    Topics.CHAT_STREAM_ENDED: ([], True),
+    Topics.CHAT_STREAM_ERROR: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {
     Topics.LLM_MODEL_CURATED,
     Topics.LLM_MODELS_REFRESHED,
+}
+
+# Chat events that skip Redis Streams persistence (high-frequency, ephemeral).
+# They are delivered directly to the target user's WebSocket but not stored.
+_SKIP_PERSISTENCE: set[str] = {
+    Topics.CHAT_CONTENT_DELTA,
+    Topics.CHAT_THINKING_DELTA,
 }
 
 _bus: "EventBus | None" = None
@@ -60,19 +72,20 @@ class EventBus:
             payload=event.model_dump(mode="json"),
         )
 
-        stream_key = f"events:{scope}"
-        stream_id = await self._redis.xadd(
-            stream_key, {"envelope": envelope.model_dump_json()}
-        )
-        envelope.sequence = stream_id
-
-        now_ms = int(now.timestamp() * 1000)
-        try:
-            await self._redis.xtrim(
-                stream_key, minid=str(now_ms - _TWENTY_FOUR_HOURS_MS)
+        if topic not in _SKIP_PERSISTENCE:
+            stream_key = f"events:{scope}"
+            stream_id = await self._redis.xadd(
+                stream_key, {"envelope": envelope.model_dump_json()}
             )
-        except Exception:
-            pass  # trim failure must not abort delivery
+            envelope.sequence = stream_id
+
+            now_ms = int(now.timestamp() * 1000)
+            try:
+                await self._redis.xtrim(
+                    stream_key, minid=str(now_ms - _TWENTY_FOUR_HOURS_MS)
+                )
+            except Exception:
+                pass  # trim failure must not abort delivery
 
         await self._fan_out(
             topic, envelope.model_dump(mode="json"), target_user_ids or []
