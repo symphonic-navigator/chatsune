@@ -1,0 +1,97 @@
+import { useEffect } from 'react'
+import { AboutMeTab } from './AboutMeTab'
+import { SettingsTab } from './SettingsTab'
+import { HistoryTab } from './HistoryTab'
+import { ProjectsTab } from './ProjectsTab'
+import { KnowledgeTab } from './KnowledgeTab'
+
+export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'settings'
+
+interface Tab {
+  id: UserModalTab
+  label: string
+}
+
+const TABS: Tab[] = [
+  { id: 'about-me', label: 'About me' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'history', label: 'History' },
+  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'settings', label: 'Settings' },
+]
+
+interface UserModalProps {
+  activeTab: UserModalTab
+  onClose: () => void
+  onTabChange: (tab: UserModalTab) => void
+  displayName: string
+}
+
+export function UserModal({ activeTab, onClose, onTabChange, displayName }: UserModalProps) {
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <>
+      {/* Backdrop — covers main content area, clicking it closes the modal */}
+      <div
+        className="absolute inset-0 bg-black/50 z-10"
+        onClick={onClose}
+        aria-hidden
+      />
+
+      {/* Modal box */}
+      <div className="absolute inset-4 z-20 flex flex-col bg-surface border border-white/8 rounded-xl shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/6 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-semibold text-white/80">{displayName}</span>
+            <span className="text-[11px] text-white/30">· User Area</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Tab bar */}
+        <div className="flex border-b border-white/6 px-4 flex-shrink-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onTabChange(tab.id)}
+              className={[
+                'px-3 py-2.5 text-[12px] border-b-2 -mb-px transition-colors whitespace-nowrap',
+                activeTab === tab.id
+                  ? 'border-gold text-gold'
+                  : 'border-transparent text-white/55 hover:text-white/75',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {activeTab === 'about-me' && <AboutMeTab />}
+          {activeTab === 'projects' && <ProjectsTab />}
+          {activeTab === 'history' && <HistoryTab onClose={onClose} />}
+          {activeTab === 'knowledge' && <KnowledgeTab />}
+          {activeTab === 'settings' && <SettingsTab />}
+        </div>
+      </div>
+    </>
+  )
+}
