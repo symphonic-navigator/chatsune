@@ -11,9 +11,13 @@ from uuid import uuid4
 from backend.modules.chat._handlers import router
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._repository import ChatRepository
+from backend.modules.chat._token_counter import count_tokens
+from backend.modules.chat._prompt_assembler import assemble
+from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
 from backend.database import get_db
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
+    get_model_context_window,
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
@@ -22,6 +26,9 @@ from backend.ws.manager import get_manager
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.chat import (
     ChatContentDeltaEvent,
+    ChatMessageDeletedEvent,
+    ChatMessagesTruncatedEvent,
+    ChatMessageUpdatedEvent,
     ChatStreamEndedEvent,
     ChatStreamErrorEvent,
     ChatStreamStartedEvent,
@@ -36,14 +43,200 @@ _runner = InferenceRunner()
 # Active cancel events keyed by correlation_id
 _cancel_events: dict[str, asyncio.Event] = {}
 
+_DEFAULT_CONTEXT_WINDOW = 8192
+
 
 async def init_indexes(db) -> None:
     """Create MongoDB indexes for the chat module collections."""
     await ChatRepository(db).create_indexes()
 
 
+async def _run_inference(
+    user_id: str,
+    session_id: str,
+    repo: ChatRepository,
+    session: dict,
+) -> None:
+    """Shared inference path used by send, edit, and regenerate."""
+    persona_id = session.get("persona_id")
+    model_unique_id = session.get("model_unique_id", "")
+
+    if ":" not in model_unique_id:
+        _log.error("Invalid model_unique_id format: %s", model_unique_id)
+        await repo.update_session_state(session_id, "idle")
+        return
+
+    provider_id, model_slug = model_unique_id.split(":", 1)
+
+    # Assemble system prompt
+    system_prompt = await assemble(
+        user_id=user_id,
+        persona_id=persona_id,
+        model_unique_id=model_unique_id,
+    )
+    system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
+
+    # Get context window size
+    max_context = await get_model_context_window(provider_id, model_slug)
+    if max_context is None or max_context == 0:
+        max_context = _DEFAULT_CONTEXT_WINDOW
+
+    # Load message history
+    history_docs = await repo.list_messages(session_id)
+
+    # The last message should be the user's new message
+    new_msg_tokens = history_docs[-1]["token_count"] if history_docs else 0
+
+    # Calculate budget (exclude the new user message from pair selection)
+    budget = calculate_budget(
+        max_context_tokens=max_context,
+        system_prompt_tokens=system_prompt_tokens,
+        new_message_tokens=new_msg_tokens,
+    )
+
+    # Check if context is full (pre-send check)
+    all_history_tokens = sum(doc["token_count"] for doc in history_docs)
+    total_tokens_used = system_prompt_tokens + all_history_tokens
+    fill_ratio = total_tokens_used / max_context if max_context > 0 else 1.0
+
+    if fill_ratio >= 0.8:
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        manager = get_manager()
+        await manager.send_to_user(user_id, ChatStreamErrorEvent(
+            correlation_id=correlation_id,
+            error_code="context_window_full",
+            recoverable=False,
+            user_message="Context window is full. Please start a new session.",
+            timestamp=now,
+        ).model_dump(mode="json"))
+        await repo.update_session_state(session_id, "idle")
+        return
+
+    # Pair-based backread: select history pairs (exclude last user message)
+    history_for_pairs = history_docs[:-1] if history_docs else []
+    selected_history, _ = select_message_pairs(history_for_pairs, budget.available_for_chat)
+
+    # Build messages for the LLM
+    messages: list[CompletionMessage] = []
+
+    if system_prompt:
+        messages.append(CompletionMessage(
+            role="system",
+            content=[ContentPart(type="text", text=system_prompt)],
+        ))
+
+    for doc in selected_history:
+        messages.append(CompletionMessage(
+            role=doc["role"],
+            content=[ContentPart(type="text", text=doc["content"])],
+        ))
+
+    # Append the new user message
+    if history_docs:
+        last_msg = history_docs[-1]
+        messages.append(CompletionMessage(
+            role=last_msg["role"],
+            content=[ContentPart(type="text", text=last_msg["content"])],
+        ))
+
+    # Get persona settings for temperature/reasoning
+    persona = await get_persona(persona_id, user_id) if persona_id else None
+
+    request = CompletionRequest(
+        model=model_slug,
+        messages=messages,
+        temperature=persona.get("temperature") if persona else None,
+        reasoning_enabled=persona.get("reasoning_enabled", False) if persona else False,
+    )
+
+    # Set session state to streaming
+    await repo.update_session_state(session_id, "streaming")
+
+    correlation_id = str(uuid4())
+    cancel_event = asyncio.Event()
+    _cancel_events[correlation_id] = cancel_event
+
+    manager = get_manager()
+    event_bus = get_event_bus()
+
+    _DELTA_TYPES = {Topics.CHAT_CONTENT_DELTA, Topics.CHAT_THINKING_DELTA}
+
+    async def emit_fn(event) -> None:
+        event_dict = event.model_dump(mode="json")
+        event_type = event_dict.get("type", "")
+
+        if event_type in _DELTA_TYPES:
+            await manager.send_to_user(user_id, event_dict)
+        else:
+            await event_bus.publish(
+                event_type,
+                event,
+                scope=f"session:{session_id}",
+                target_user_ids=[user_id],
+                correlation_id=correlation_id,
+            )
+
+    def stream_fn():
+        return llm_stream_completion(user_id, provider_id, request)
+
+    async def save_fn(content: str, thinking: str | None, usage: dict | None) -> None:
+        token_count = count_tokens(content)
+        await repo.save_message(
+            session_id,
+            role="assistant",
+            content=content,
+            token_count=token_count,
+            thinking=thinking,
+        )
+        await repo.update_session_state(session_id, "idle")
+
+    # Calculate ampel status for the response
+    context_status = get_ampel_status(fill_ratio)
+
+    try:
+        await _runner.run(
+            user_id=user_id,
+            session_id=session_id,
+            correlation_id=correlation_id,
+            stream_fn=stream_fn,
+            emit_fn=emit_fn,
+            save_fn=save_fn,
+            cancel_event=cancel_event,
+            context_status=context_status,
+            context_fill_percentage=fill_ratio,
+        )
+    except LlmCredentialNotFoundError:
+        now = datetime.now(timezone.utc)
+        await emit_fn(ChatStreamStartedEvent(
+            session_id=session_id, correlation_id=correlation_id, timestamp=now,
+        ))
+        await emit_fn(ChatStreamErrorEvent(
+            correlation_id=correlation_id,
+            error_code="credential_not_found",
+            recoverable=False,
+            user_message="No API key configured for this model's provider. Please add one in settings.",
+            timestamp=now,
+        ))
+        await emit_fn(ChatStreamEndedEvent(
+            correlation_id=correlation_id,
+            session_id=session_id,
+            status="error",
+            usage=None,
+            context_status="green",
+            context_fill_percentage=0.0,
+            timestamp=now,
+        ))
+        await repo.update_session_state(session_id, "idle")
+    except Exception as e:
+        _log.error("Unexpected error in _run_inference for session %s: %s", session_id, e)
+        await repo.update_session_state(session_id, "idle")
+    finally:
+        _cancel_events.pop(correlation_id, None)
+
+
 async def handle_chat_send(user_id: str, data: dict) -> None:
-    """Handle a chat.send WebSocket message — run inference for the session."""
+    """Handle a chat.send WebSocket message — save user message, run inference."""
     session_id = data.get("session_id")
     content_parts = data.get("content")
     if not session_id or not content_parts:
@@ -57,136 +250,143 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
         if not session:
             return
 
-        # Join text content parts into a single string
+        if session.get("state") != "idle":
+            return
+
         text = "".join(
             part.get("text", "") for part in content_parts if part.get("type") == "text"
         ).strip()
         if not text:
             return
 
-        # Save the user message
-        await repo.save_message(session_id, role="user", content=text, token_count=0)
+        token_count = count_tokens(text)
+        await repo.save_message(session_id, role="user", content=text, token_count=token_count)
 
-        # Set session state to streaming
-        await repo.update_session_state(session_id, "streaming")
-
-        # Load persona for system prompt
-        persona_id = session.get("persona_id")
-        persona = await get_persona(persona_id, user_id) if persona_id else None
-        system_prompt = persona.get("system_prompt", "") if persona else ""
-
-        # Load message history
-        history_docs = await repo.list_messages(session_id)
-        messages: list[CompletionMessage] = []
-
-        if system_prompt:
-            messages.append(CompletionMessage(
-                role="system",
-                content=[ContentPart(type="text", text=system_prompt)],
-            ))
-
-        for doc in history_docs:
-            messages.append(CompletionMessage(
-                role=doc["role"],
-                content=[ContentPart(type="text", text=doc["content"])],
-            ))
-
-        # Parse provider and model from the session's model_unique_id
-        model_unique_id = session.get("model_unique_id", "")
-        if ":" not in model_unique_id:
-            _log.error("Invalid model_unique_id format: %s", model_unique_id)
-            await repo.update_session_state(session_id, "idle")
-            return
-
-        provider_id, model_slug = model_unique_id.split(":", 1)
-
-        request = CompletionRequest(
-            model=model_slug,
-            messages=messages,
-            temperature=persona.get("temperature") if persona else None,
-            reasoning_enabled=persona.get("reasoning_enabled", False) if persona else False,
-        )
-
-        correlation_id = str(uuid4())
-        cancel_event = asyncio.Event()
-        _cancel_events[correlation_id] = cancel_event
-
-        manager = get_manager()
-        event_bus = get_event_bus()
-
-        # Delta events go directly to user (no persistence); lifecycle events go via event bus
-        _DELTA_TYPES = {Topics.CHAT_CONTENT_DELTA, Topics.CHAT_THINKING_DELTA}
-
-        async def emit_fn(event) -> None:
-            event_dict = event.model_dump(mode="json")
-            event_type = event_dict.get("type", "")
-
-            if event_type in _DELTA_TYPES:
-                # Send deltas directly to user — high frequency, ephemeral
-                await manager.send_to_user(user_id, event_dict)
-            else:
-                # Lifecycle events go through event bus for persistence and fan-out
-                await event_bus.publish(
-                    event_type,
-                    event,
-                    scope=f"session:{session_id}",
-                    target_user_ids=[user_id],
-                    correlation_id=correlation_id,
-                )
-
-        def stream_fn():
-            return llm_stream_completion(user_id, provider_id, request)
-
-        async def save_fn(content: str, thinking: str | None, usage: dict | None) -> None:
-            token_count = usage.get("output_tokens", 0) if usage else 0
-            await repo.save_message(
-                session_id,
-                role="assistant",
-                content=content,
-                token_count=token_count,
-                thinking=thinking,
-            )
-            await repo.update_session_state(session_id, "idle")
-
-        try:
-            await _runner.run(
-                user_id=user_id,
-                session_id=session_id,
-                correlation_id=correlation_id,
-                stream_fn=stream_fn,
-                emit_fn=emit_fn,
-                save_fn=save_fn,
-                cancel_event=cancel_event,
-            )
-        except LlmCredentialNotFoundError:
-            now = datetime.now(timezone.utc)
-            await emit_fn(ChatStreamStartedEvent(
-                session_id=session_id, correlation_id=correlation_id, timestamp=now,
-            ))
-            await emit_fn(ChatStreamErrorEvent(
-                correlation_id=correlation_id,
-                error_code="credential_not_found",
-                recoverable=False,
-                user_message="No API key configured for this model's provider. Please add one in settings.",
-                timestamp=now,
-            ))
-            await emit_fn(ChatStreamEndedEvent(
-                correlation_id=correlation_id,
-                session_id=session_id,
-                status="error",
-                usage=None,
-                context_status="green",
-                timestamp=now,
-            ))
-            await repo.update_session_state(session_id, "idle")
-        except Exception as e:
-            _log.error("Unexpected error in handle_chat_send for session %s: %s", session_id, e)
-            await repo.update_session_state(session_id, "idle")
-        finally:
-            _cancel_events.pop(correlation_id, None)
-            await repo.update_session_state(session_id, "idle")
+        await _run_inference(user_id, session_id, repo, session)
     except Exception:
         _log.exception("Unhandled error in handle_chat_send for user %s", user_id)
+
+
+async def handle_chat_edit(user_id: str, data: dict) -> None:
+    """Handle a chat.edit WebSocket message — truncate, update, re-infer."""
+    session_id = data.get("session_id")
+    message_id = data.get("message_id")
+    content_parts = data.get("content")
+    if not session_id or not message_id or not content_parts:
+        return
+
+    try:
+        db = get_db()
+        repo = ChatRepository(db)
+
+        session = await repo.get_session(session_id, user_id)
+        if not session or session.get("state") != "idle":
+            return
+
+        # Validate message exists and belongs to this session
+        messages = await repo.list_messages(session_id)
+        target = None
+        for msg in messages:
+            if msg["_id"] == message_id:
+                target = msg
+                break
+
+        if target is None or target["role"] != "user":
+            return
+
+        text = "".join(
+            part.get("text", "") for part in content_parts if part.get("type") == "text"
+        ).strip()
+        if not text:
+            return
+
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        event_bus = get_event_bus()
+
+        # Truncate messages after the target
+        await repo.delete_messages_after(session_id, message_id)
+
+        await event_bus.publish(
+            Topics.CHAT_MESSAGES_TRUNCATED,
+            ChatMessagesTruncatedEvent(
+                session_id=session_id,
+                after_message_id=message_id,
+                correlation_id=correlation_id,
+                timestamp=now,
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+
+        # Update the target message
+        token_count = count_tokens(text)
+        await repo.update_message_content(message_id, text, token_count)
+
+        await event_bus.publish(
+            Topics.CHAT_MESSAGE_UPDATED,
+            ChatMessageUpdatedEvent(
+                session_id=session_id,
+                message_id=message_id,
+                content=text,
+                token_count=token_count,
+                correlation_id=correlation_id,
+                timestamp=now,
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+
+        # Run inference
+        await _run_inference(user_id, session_id, repo, session)
+    except Exception:
+        _log.exception("Unhandled error in handle_chat_edit for user %s", user_id)
+
+
+async def handle_chat_regenerate(user_id: str, data: dict) -> None:
+    """Handle a chat.regenerate WebSocket message — delete last assistant msg, re-infer."""
+    session_id = data.get("session_id")
+    if not session_id:
+        return
+
+    try:
+        db = get_db()
+        repo = ChatRepository(db)
+
+        session = await repo.get_session(session_id, user_id)
+        if not session or session.get("state") != "idle":
+            return
+
+        last_msg = await repo.get_last_message(session_id)
+        if last_msg is None or last_msg["role"] != "assistant":
+            return
+
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        event_bus = get_event_bus()
+
+        # Delete the last assistant message
+        await repo.delete_message(last_msg["_id"])
+
+        await event_bus.publish(
+            Topics.CHAT_MESSAGE_DELETED,
+            ChatMessageDeletedEvent(
+                session_id=session_id,
+                message_id=last_msg["_id"],
+                correlation_id=correlation_id,
+                timestamp=now,
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+
+        # Run inference using existing last user message
+        await _run_inference(user_id, session_id, repo, session)
+    except Exception:
+        _log.exception("Unhandled error in handle_chat_regenerate for user %s", user_id)
 
 
 def handle_chat_cancel(user_id: str, data: dict) -> None:
@@ -196,4 +396,8 @@ def handle_chat_cancel(user_id: str, data: dict) -> None:
         _cancel_events[correlation_id].set()
 
 
-__all__ = ["router", "init_indexes", "handle_chat_send", "handle_chat_cancel"]
+__all__ = [
+    "router", "init_indexes",
+    "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
+    "handle_chat_cancel",
+]

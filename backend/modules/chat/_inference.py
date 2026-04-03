@@ -34,11 +34,14 @@ class InferenceRunner:
         emit_fn: Callable,
         save_fn: Callable,
         cancel_event: asyncio.Event | None = None,
+        context_status: str = "green",
+        context_fill_percentage: float = 0.0,
     ) -> None:
         lock = self._get_lock(user_id)
         async with lock:
             await self._run_locked(
                 session_id, correlation_id, stream_fn, emit_fn, save_fn, cancel_event,
+                context_status, context_fill_percentage,
             )
 
     async def _run_locked(
@@ -49,6 +52,8 @@ class InferenceRunner:
         emit_fn: Callable,
         save_fn: Callable,
         cancel_event: asyncio.Event | None,
+        context_status: str = "green",
+        context_fill_percentage: float = 0.0,
     ) -> None:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamStartedEvent(
@@ -121,6 +126,7 @@ class InferenceRunner:
             session_id=session_id,
             status=status,
             usage=usage,
-            context_status="green",  # Phase 1: always green (no context management yet)
+            context_status=context_status,
+            context_fill_percentage=context_fill_percentage,
             timestamp=datetime.now(timezone.utc),
         ))
