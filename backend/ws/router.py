@@ -12,6 +12,8 @@ from backend.ws.manager import get_manager
 
 _log = logging.getLogger(__name__)
 
+_background_tasks: set[asyncio.Task] = set()
+
 ws_router = APIRouter()
 
 
@@ -72,7 +74,9 @@ async def websocket_endpoint(
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
             elif msg_type == "chat.send":
-                asyncio.create_task(handle_chat_send(user_id, data))
+                task = asyncio.create_task(handle_chat_send(user_id, data))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
 
