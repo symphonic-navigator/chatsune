@@ -92,19 +92,22 @@ export default function ChatPage() {
       if (event.correlation_id !== activeCorrelationRef.current) return
       const payload = event.payload as { context_status?: string }
 
-      // Read accumulated content from refs — no side effects in updaters
+      // Capture before resetting — updater runs later during render
+      const finalContent = contentRef.current
+      const finalThinking = thinkingRef.current || undefined
+
+      contentRef.current = ""
+      thinkingRef.current = ""
+
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant" as const,
-          content: contentRef.current,
-          thinking: thinkingRef.current || undefined,
+          content: finalContent,
+          thinking: finalThinking,
         },
       ])
-
-      contentRef.current = ""
-      thinkingRef.current = ""
       setStreamingContent("")
       setStreamingThinking("")
       setIsStreaming(false)
