@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useLlm } from "../../core/hooks/useLlm"
 import type { ModelMetaDto } from "../../core/types/llm"
+import ModelBrowser from "../components/ModelBrowser"
 
 type Tab = "credentials" | "models" | "config"
 
@@ -105,50 +106,7 @@ function ModelsTab() {
       </div>
 
       {selectedProvider && (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Model</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Context</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Capabilities</th>
-                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Rating</th>
-              </tr>
-            </thead>
-            <tbody>
-              {providerModels.map((m) => (
-                <tr key={m.unique_id} className="border-b border-gray-100">
-                  <td className="px-4 py-2">
-                    <div className="text-sm font-medium">{m.display_name}</div>
-                    <div className="text-xs text-gray-400">{m.model_id}</div>
-                  </td>
-                  <td className="px-4 py-2 text-sm">{(m.context_window / 1024).toFixed(0)}k</td>
-                  <td className="px-4 py-2 text-sm space-x-1">
-                    {m.supports_reasoning && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">reasoning</span>}
-                    {m.supports_vision && <span className="rounded bg-green-50 px-1.5 py-0.5 text-xs text-green-600">vision</span>}
-                    {m.supports_tool_calls && <span className="rounded bg-purple-50 px-1.5 py-0.5 text-xs text-purple-600">tools</span>}
-                  </td>
-                  <td className="px-4 py-2 text-sm">
-                    {m.curation ? (
-                      <span className={`rounded px-2 py-0.5 text-xs ${
-                        m.curation.overall_rating === "recommended" ? "bg-green-100 text-green-700" :
-                        m.curation.overall_rating === "not_recommended" ? "bg-red-100 text-red-700" :
-                        "bg-gray-100 text-gray-600"
-                      }`}>
-                        {m.curation.overall_rating}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">uncurated</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {providerModels.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">No models loaded</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <ModelBrowser models={providerModels} showConfigActions={false} />
       )}
     </div>
   )
@@ -166,20 +124,19 @@ function UserConfigTab() {
   }
 
   const providerModels = selectedProvider ? (models.get(selectedProvider) ?? []) : []
-  const configMap = new Map(userConfigs.map((c) => [c.model_unique_id, c]))
 
-  const toggleFavourite = async (model: ModelMetaDto) => {
-    const current = configMap.get(model.unique_id)
+  const handleToggleFavourite = async (model: ModelMetaDto) => {
+    const config = userConfigs.find((c) => c.model_unique_id === model.unique_id)
     const [providerId, ...slugParts] = model.unique_id.split(":")
     const modelSlug = slugParts.join(":")
-    await setUserConfig(providerId, modelSlug, { is_favourite: !(current?.is_favourite ?? false) })
+    await setUserConfig(providerId, modelSlug, { is_favourite: !(config?.is_favourite ?? false) })
   }
 
-  const toggleHidden = async (model: ModelMetaDto) => {
-    const current = configMap.get(model.unique_id)
+  const handleToggleHidden = async (model: ModelMetaDto) => {
+    const config = userConfigs.find((c) => c.model_unique_id === model.unique_id)
     const [providerId, ...slugParts] = model.unique_id.split(":")
     const modelSlug = slugParts.join(":")
-    await setUserConfig(providerId, modelSlug, { is_hidden: !(current?.is_hidden ?? false) })
+    await setUserConfig(providerId, modelSlug, { is_hidden: !(config?.is_hidden ?? false) })
   }
 
   return (
@@ -197,33 +154,13 @@ function UserConfigTab() {
       </div>
 
       {selectedProvider && (
-        <div className="space-y-2">
-          {providerModels.map((m) => {
-            const config = configMap.get(m.unique_id)
-            return (
-              <div key={m.unique_id} className="flex items-center justify-between rounded border border-gray-200 bg-white px-4 py-3">
-                <div>
-                  <span className="text-sm font-medium">{m.display_name}</span>
-                  <span className="ml-2 text-xs text-gray-400">{m.model_id}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleFavourite(m)}
-                    className={`rounded px-2 py-1 text-xs ${config?.is_favourite ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}
-                  >
-                    {config?.is_favourite ? "Favourited" : "Favourite"}
-                  </button>
-                  <button
-                    onClick={() => toggleHidden(m)}
-                    className={`rounded px-2 py-1 text-xs ${config?.is_hidden ? "bg-gray-300 text-gray-700" : "bg-gray-100 text-gray-500"}`}
-                  >
-                    {config?.is_hidden ? "Hidden" : "Hide"}
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <ModelBrowser
+          models={providerModels}
+          userConfigs={userConfigs}
+          onToggleFavourite={handleToggleFavourite}
+          onToggleHidden={handleToggleHidden}
+          showConfigActions={true}
+        />
       )}
     </div>
   )
