@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from shared.dtos.persona import PersonaDto
+
 
 class PersonaCreatedEvent(BaseModel):
     type: str = "persona.created"
@@ -15,6 +17,7 @@ class PersonaUpdatedEvent(BaseModel):
     type: str = "persona.updated"
     persona_id: str
     user_id: str
+    persona: PersonaDto
     timestamp: datetime
 
 

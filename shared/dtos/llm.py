@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 
 class ProviderCredentialDto(BaseModel):
@@ -22,3 +22,8 @@ class ModelMetaDto(BaseModel):
     supports_reasoning: bool
     supports_vision: bool
     supports_tool_calls: bool
+
+    @computed_field
+    @property
+    def unique_id(self) -> str:
+        return f"{self.provider_id}:{self.model_id}"
