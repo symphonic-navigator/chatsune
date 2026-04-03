@@ -1,12 +1,15 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Outlet, useMatch } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useAuthStore } from "../../core/store/authStore"
+import { useEventBus } from "../../core/hooks/useEventBus"
 import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
 import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
+import { Topics } from "../../core/types/events"
+import type { UserDto } from "../../core/types/auth"
 
 export default function AppLayout() {
   useWebSocket()
@@ -14,6 +17,7 @@ export default function AppLayout() {
   const { personas } = usePersonas()
   const { sessions } = useChatSessions()
   const user = useAuthStore((s) => s.user)
+  const setUser = useAuthStore((s) => s.setUser)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
   const activePersonaId = chatMatch?.params.personaId ?? null
@@ -29,7 +33,15 @@ export default function AppLayout() {
     setModalTab(null)
   }
 
-  const displayName = user?.display_name || user?.username || 'You'
+  // Live-update display name when user changes it in another tab or device
+  const { latest: profileUpdate } = useEventBus(Topics.USER_PROFILE_UPDATED)
+  useEffect(() => {
+    if (!profileUpdate || !user) return
+    const payload = profileUpdate.payload as Pick<UserDto, 'display_name'>
+    setUser({ ...user, display_name: payload.display_name })
+  }, [profileUpdate])
+
+  const displayName = user?.display_name || user?.username || 'Unnamed User'
 
   return (
     <div className="flex h-screen overflow-hidden bg-base text-white">
