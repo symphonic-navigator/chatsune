@@ -6,13 +6,18 @@ import pytest_asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from backend.config import settings
-from backend.database import connect_db, disconnect_db
+from backend.database import connect_db, disconnect_db, get_redis
 from backend.main import app
+from backend.ws.event_bus import EventBus, set_event_bus
+from backend.ws.manager import ConnectionManager, set_manager
 
 
 @pytest_asyncio.fixture
 async def client() -> AsyncGenerator[httpx.AsyncClient, None]:
     await connect_db()
+    manager = ConnectionManager()
+    set_manager(manager)
+    set_event_bus(EventBus(redis=get_redis(), manager=manager))
     try:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
