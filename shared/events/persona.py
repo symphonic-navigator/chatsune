@@ -9,7 +9,7 @@ class PersonaCreatedEvent(BaseModel):
     type: str = "persona.created"
     persona_id: str
     user_id: str
-    name: str
+    persona: PersonaDto
     timestamp: datetime
 
 
