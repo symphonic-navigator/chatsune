@@ -33,4 +33,16 @@
   --chat-font-family: 'Lora', Georgia, serif;
   --chat-font-size: 14px;
   --chat-line-height: 1.65;
+  --ui-scale: 1;
+}
+
+body {
+  zoom: var(--ui-scale, 1);
+}
+
+/* Applied to chat message text in ChatPage */
+.chat-text {
+  font-family: var(--chat-font-family);
+  font-size: var(--chat-font-size);
+  line-height: var(--chat-line-height);
 }
