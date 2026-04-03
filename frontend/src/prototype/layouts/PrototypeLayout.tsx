@@ -3,6 +3,7 @@ import { useAuthStore } from "../../core/store/authStore"
 import { useAuth } from "../../core/hooks/useAuth"
 import { useEventStore, type ConnectionStatus } from "../../core/store/eventStore"
 import StatusBar from "../components/StatusBar"
+import Toasts from "../components/Toasts"
 
 const statusColours: Record<ConnectionStatus, string> = {
   connected: "bg-green-500",
@@ -62,6 +63,7 @@ export default function PrototypeLayout() {
           <Outlet />
         </div>
       </main>
+      <Toasts />
     </div>
   )
 }
