@@ -47,13 +47,17 @@ class OllamaCloudAdapter(BaseAdapter):
     """Ollama Cloud inference adapter."""
 
     async def validate_key(self, api_key: str) -> bool:
-        """Validate key via GET /api/me. Returns True on 200, False on 401/403."""
+        """Validate key via GET /api/me. Returns True on 200, False on 401/403, raises otherwise."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(
                 f"{self.base_url}/api/me",
                 headers={"Authorization": f"Bearer {api_key}"},
             )
-        return resp.status_code == 200
+        if resp.status_code == 200:
+            return True
+        if resp.status_code in (401, 403):
+            return False
+        resp.raise_for_status()
 
     async def fetch_models(self) -> list[ModelMetaDto]:
         """Fetch model list from /api/tags, then details from /api/show per model."""

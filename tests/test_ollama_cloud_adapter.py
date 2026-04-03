@@ -38,6 +38,15 @@ async def test_validate_key_returns_false_on_403(adapter: OllamaCloudAdapter):
 
 
 @respx.mock
+async def test_validate_key_raises_on_server_error(adapter: OllamaCloudAdapter):
+    respx.get("https://test.ollama.com/api/me").mock(
+        return_value=httpx.Response(500)
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        await adapter.validate_key("some-key")
+
+
+@respx.mock
 async def test_fetch_models_returns_models_with_capabilities(adapter: OllamaCloudAdapter):
     respx.get("https://test.ollama.com/api/tags").mock(
         return_value=httpx.Response(200, json={
