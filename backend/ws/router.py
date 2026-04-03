@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from backend.database import get_redis
+from backend.modules.chat import handle_chat_send, handle_chat_cancel
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
 
@@ -70,6 +71,10 @@ async def websocket_endpoint(
 
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
+            elif msg_type == "chat.send":
+                asyncio.create_task(handle_chat_send(user_id, data))
+            elif msg_type == "chat.cancel":
+                handle_chat_cancel(user_id, data)
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon

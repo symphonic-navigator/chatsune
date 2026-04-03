@@ -13,4 +13,11 @@ async def init_indexes(db) -> None:
     await PersonaRepository(db).create_indexes()
 
 
-__all__ = ["router", "init_indexes"]
+async def get_persona(persona_id: str, user_id: str) -> dict | None:
+    """Get a persona by ID, scoped to the owning user."""
+    db = get_db()
+    repo = PersonaRepository(db)
+    return await repo.find_by_id(persona_id, user_id)
+
+
+__all__ = ["router", "init_indexes", "get_persona"]
