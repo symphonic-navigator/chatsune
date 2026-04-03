@@ -100,6 +100,12 @@ export function sendPing() {
   }
 }
 
+export function sendMessage(message: Record<string, unknown>) {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message))
+  }
+}
+
 function scheduleReconnect() {
   useEventStore.getState().setStatus("reconnecting")
   reconnectTimer = setTimeout(() => {
