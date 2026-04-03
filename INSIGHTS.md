@@ -161,8 +161,10 @@ and behaviour, which is the most specific and variable layer.
 
 **Implementation note:**
 The three layers are concatenated as separate blocks, not merged. Each block is a distinct
-section in the final prompt. The chat module (not yet implemented) will be responsible for
-assembling the final prompt from these sources.
+section in the final prompt. The context/session management layer (being designed in a
+parallel session as of 2026-04-03) will be responsible for assembling the final prompt
+from these sources — not the InferenceRunner directly. The admin UI for editing the global
+system prompt is part of the prototype UI improvements spec.
 
 **Differentiating feature:**
 The user model config system prompt addition is unique to Chatsune. Neither Open WebUI nor
