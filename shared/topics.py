@@ -13,3 +13,5 @@ class Topics:
     LLM_CREDENTIAL_TESTED = "llm.credential.tested"
     LLM_MODEL_CURATED = "llm.model.curated"
     LLM_MODELS_REFRESHED = "llm.models.refreshed"
+    SETTING_UPDATED = "setting.updated"
+    SETTING_DELETED = "setting.deleted"
