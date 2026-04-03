@@ -1,0 +1,48 @@
+<h2>Design Overview -- 5 Arbeitspakete</h2>
+<p class="subtitle">Zusammenfassung der besprochenen Aenderungen am Prototyp</p>
+
+<div class="section">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="background: rgba(166,227,161,0.15); color: #a6e3a1; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">1</span>
+        <h3 style="margin: 0;">Auto-detect Master Admin</h3>
+      </div>
+      <p style="font-size: 14px; opacity: 0.7; margin: 0;">Backend: <code>GET /api/auth/status</code><br>Frontend: LoginPage erkennt Setup-Modus automatisch</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="background: rgba(137,180,250,0.15); color: #89b4fa; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">2</span>
+        <h3 style="margin: 0;">Toast Notification System</h3>
+      </div>
+      <p style="font-size: 14px; opacity: 0.7; margin: 0;">Zustand-Store + Toast-Komponente<br>Ersetzt alle <code>alert()</code> Aufrufe<br><em>Bell/Flyout → FOR_LATER.md</em></p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="background: rgba(249,226,175,0.15); color: #f9e2af; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">3</span>
+        <h3 style="margin: 0;">ModelBrowser mit Filtern</h3>
+      </div>
+      <p style="font-size: 14px; opacity: 0.7; margin: 0;">Suche + Provider + Capabilities + Favourites<br>Ersetzt die einfache Tabelle auf der Models-Seite<br>Wiederverwendbare Komponente</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="background: rgba(203,166,247,0.15); color: #cba6f7; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">4</span>
+        <h3 style="margin: 0;">Admin: System Prompt Tab</h3>
+      </div>
+      <p style="font-size: 14px; opacity: 0.7; margin: 0;">Globaler System-Prompt auf der AdminPage<br>Wird bei jeder Inference vorangestellt<br>Zentrales Sicherheits-Feature</p>
+    </div>
+
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <span style="background: rgba(243,139,168,0.15); color: #f38ba8; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">5</span>
+        <h3 style="margin: 0;">Admin: API Key Status pro User</h3>
+      </div>
+      <p style="font-size: 14px; opacity: 0.7; margin: 0;">Neuer LLM-Endpoint: <code>/api/llm/admin/credential-status</code><br>UsersPage merged Daten im Frontend<br>Module bleiben sauber getrennt</p>
+    </div>
+
+  </div>
+</div>
