@@ -1,8 +1,11 @@
 import logging
+from collections.abc import AsyncIterator
 
 import httpx
 
 from backend.modules.llm._adapters._base import BaseAdapter
+from backend.modules.llm._adapters._events import ProviderStreamEvent
+from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -83,6 +86,14 @@ class OllamaCloudAdapter(BaseAdapter):
                 models.append(self._map_to_dto(name, detail))
 
         return models
+
+    async def stream_completion(
+        self,
+        api_key: str,
+        request: CompletionRequest,
+    ) -> AsyncIterator[ProviderStreamEvent]:
+        raise NotImplementedError("Streaming not yet implemented")
+        yield  # makes this an async generator
 
     def _map_to_dto(self, model_name: str, detail: dict) -> ModelMetaDto:
         capabilities = detail.get("capabilities", [])
