@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useUsers } from "../../core/hooks/useUsers"
+import { useNotificationStore } from "../../core/store/notificationStore"
 import type { CreateUserRequest, UpdateUserRequest, UserDto } from "../../core/types/auth"
 
 function CreateUserForm({ onCreate }: { onCreate: (data: CreateUserRequest) => Promise<void> }) {
@@ -134,15 +135,24 @@ function UserRow({
 
 export default function UsersPage() {
   const { users, total, isLoading, error, create, update, deactivate, resetPassword } = useUsers()
+  const addNotification = useNotificationStore((s) => s.addNotification)
 
   const handleCreate = async (data: CreateUserRequest) => {
     const res = await create(data)
-    alert(`User created. Generated password: ${res.generated_password}`)
+    addNotification({
+      level: "success",
+      title: "User created",
+      message: `Generated password: ${res.generated_password}`,
+    })
   }
 
   const handleResetPassword = async (userId: string) => {
     const res = await resetPassword(userId)
-    alert(`Password reset. New password: ${res.generated_password}`)
+    addNotification({
+      level: "success",
+      title: "Password reset",
+      message: `New password: ${res.generated_password}`,
+    })
   }
 
   return (
