@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Lora';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Lora-Regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Lora-Italic.woff2') format('woff2');
+}
+
 @theme {
   /* Backgrounds */
   --color-base: #0a0810;
@@ -10,4 +26,11 @@
   --color-gold: #c9a84c;
   --color-live: #22c55e;
   --color-purple: #7c5cbf;
+}
+
+/* Chat font — overridden at runtime by displaySettingsStore */
+:root {
+  --chat-font-family: 'Lora', Georgia, serif;
+  --chat-font-size: 14px;
+  --chat-line-height: 1.65;
 }
