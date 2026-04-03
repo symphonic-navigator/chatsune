@@ -21,4 +21,7 @@ export const authApi = {
 
   setup: (data: SetupRequest) =>
     apiRequest<SetupResponse>("POST", "/api/setup", data, true),
+
+  status: () =>
+    apiRequest<{ is_setup_complete: boolean }>("GET", "/api/auth/status", undefined, true),
 }

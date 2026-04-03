@@ -1,16 +1,17 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Navigate } from "react-router-dom"
 import { useAuth } from "../../core/hooks/useAuth"
 import { useAuthStore } from "../../core/store/authStore"
+import { authApi } from "../../core/api/auth"
 
-type Mode = "login" | "setup" | "change-password"
+type Mode = "loading" | "login" | "setup" | "change-password"
 
 export default function LoginPage() {
   const { login, setup, changePassword, isLoading, error } = useAuth()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const mustChangePassword = useAuthStore((s) => s.user?.must_change_password)
 
-  const [mode, setMode] = useState<Mode>("login")
+  const [mode, setMode] = useState<Mode>("loading")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [email, setEmail] = useState("")
@@ -18,6 +19,12 @@ export default function LoginPage() {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [setupResult, setSetupResult] = useState<string | null>(null)
+
+  useEffect(() => {
+    authApi.status()
+      .then((data) => setMode(data.is_setup_complete ? "login" : "setup"))
+      .catch(() => setMode("login"))
+  }, [])
 
   if (isAuthenticated && !mustChangePassword) {
     return <Navigate to="/dashboard" replace />
@@ -75,6 +82,12 @@ export default function LoginPage() {
           </div>
         )}
 
+        {mode === "loading" && (
+          <div className="flex justify-center py-8">
+            <span className="text-sm text-gray-400">Loading...</span>
+          </div>
+        )}
+
         {mode === "login" && (
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
@@ -104,18 +117,14 @@ export default function LoginPage() {
             >
               {isLoading ? "Logging in..." : "Login"}
             </button>
-            <button
-              type="button"
-              onClick={() => setMode("setup")}
-              className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
-            >
-              First time? Set up master admin
-            </button>
           </form>
         )}
 
         {mode === "setup" && (
           <form onSubmit={handleSetup} className="space-y-4">
+            <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded px-3 py-2">
+              No master admin found. Please create one to get started.
+            </p>
             <div>
               <label className="block text-sm font-medium text-gray-700">Setup PIN</label>
               <input
@@ -162,13 +171,6 @@ export default function LoginPage() {
               className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {isLoading ? "Setting up..." : "Create Master Admin"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("login")}
-              className="w-full text-center text-sm text-gray-500 hover:text-gray-700"
-            >
-              Back to login
             </button>
           </form>
         )}
