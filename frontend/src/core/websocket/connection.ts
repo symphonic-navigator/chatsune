@@ -23,6 +23,17 @@ export function connect() {
   const token = useAuthStore.getState().accessToken
   if (!token) return
 
+  // Disarm and close any existing connection to prevent orphaned sockets
+  // (React StrictMode double-mounts can race with async onclose)
+  if (ws) {
+    ws.onopen = null
+    ws.onmessage = null
+    ws.onclose = null
+    ws.onerror = null
+    ws.close()
+    ws = null
+  }
+
   intentionalClose = false
   const { setStatus, lastSequence } = useEventStore.getState()
   setStatus("connecting")
@@ -32,14 +43,17 @@ export function connect() {
     url += `&since=${encodeURIComponent(lastSequence)}`
   }
 
-  ws = new WebSocket(url)
+  const socket = new WebSocket(url)
+  ws = socket
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (ws !== socket) return
     reconnectDelay = INITIAL_RECONNECT_DELAY
     useEventStore.getState().setStatus("connected")
   }
 
-  ws.onmessage = (msg) => {
+  socket.onmessage = (msg) => {
+    if (ws !== socket) return
     try {
       const data = JSON.parse(msg.data)
 
@@ -60,7 +74,8 @@ export function connect() {
     }
   }
 
-  ws.onclose = (ev) => {
+  socket.onclose = (ev) => {
+    if (ws !== socket) return
     useEventStore.getState().setStatus("disconnected")
     ws = null
 
@@ -69,16 +84,11 @@ export function connect() {
     }
 
     if (ev.code === 4001) {
-      // Invalid token — try refresh
       handleTokenRefresh()
-    }
-
-    if (ev.code === 4003) {
-      // Must change password — auth store handles redirect
     }
   }
 
-  ws.onerror = () => {
+  socket.onerror = () => {
     // onclose will fire after onerror, reconnect handled there
   }
 }
