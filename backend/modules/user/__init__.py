@@ -52,4 +52,10 @@ async def perform_token_refresh(refresh_token: str, redis) -> dict | None:
     }
 
 
-__all__ = ["router", "init_indexes", "perform_token_refresh", "decode_access_token"]
+async def get_user_about_me(user_id: str) -> str | None:
+    """Return the user's about_me text, or None if not set."""
+    repo = UserRepository(get_db())
+    return await repo.get_about_me(user_id)
+
+
+__all__ = ["router", "init_indexes", "perform_token_refresh", "decode_access_token", "get_user_about_me"]

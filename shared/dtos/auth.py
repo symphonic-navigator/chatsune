@@ -77,3 +77,7 @@ class AuditLogEntryDto(BaseModel):
     resource_type: str
     resource_id: str | None = None
     detail: dict | None = None
+
+
+class UpdateAboutMeDto(BaseModel):
+    about_me: str | None = None

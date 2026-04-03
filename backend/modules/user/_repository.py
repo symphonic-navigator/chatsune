@@ -64,6 +64,17 @@ class UserRepository:
     async def count(self) -> int:
         return await self._collection.count_documents({})
 
+    async def update_about_me(self, user_id: str, about_me: str | None) -> dict | None:
+        fields = {"about_me": about_me, "updated_at": datetime.now(UTC)}
+        await self._collection.update_one({"_id": user_id}, {"$set": fields})
+        return await self.find_by_id(user_id)
+
+    async def get_about_me(self, user_id: str) -> str | None:
+        doc = await self.find_by_id(user_id)
+        if doc is None:
+            return None
+        return doc.get("about_me")
+
     @staticmethod
     def to_dto(doc: dict) -> UserDto:
         return UserDto(

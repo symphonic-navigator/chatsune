@@ -26,6 +26,7 @@ from shared.dtos.auth import (
     SetupRequestDto,
     SetupResponseDto,
     TokenResponseDto,
+    UpdateAboutMeDto,
     UpdateUserRequestDto,
     UserDto,
     AuditLogEntryDto,
@@ -282,6 +283,26 @@ async def change_password(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
+
+
+# --- User Profile ---
+
+
+@router.get("/users/me/about-me")
+async def get_about_me(user: dict = Depends(get_current_user)):
+    repo = _user_repo()
+    about_me = await repo.get_about_me(user["sub"])
+    return {"about_me": about_me}
+
+
+@router.patch("/users/me/about-me")
+async def update_about_me(
+    body: UpdateAboutMeDto,
+    user: dict = Depends(get_current_user),
+):
+    repo = _user_repo()
+    await repo.update_about_me(user["sub"], body.about_me)
+    return {"about_me": body.about_me}
 
 
 # --- User Management ---
