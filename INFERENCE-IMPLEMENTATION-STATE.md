@@ -1,6 +1,6 @@
 # Inference Implementation — Current State
 
-Last updated: 2026-04-03
+Last updated: 2026-04-03 (Phase 2 complete)
 
 ---
 
@@ -49,51 +49,37 @@ Minimal streaming loop: Ollama Cloud → WebSocket → User.
   `test_ollama_cloud_streaming.py`, `test_shared_chat_contracts.py`,
   `test_inference_runner.py`, `test_chat_repository.py`, `test_chat_sessions.py`
 
-### Known limitations (Phase 1)
+### Known limitations (remaining after Phase 2)
 
-- No context window management (loads all messages, can overflow)
-- Token counting is rough estimate (`len // 4`)
-- Context ampel hardcoded to `"green"`
-- No message edit or regenerate
-- No system prompt assembly (only persona system prompt, no layers)
 - No tool calls
+- No attachments (images, files)
+- No memory system
+- No session cloning
+- No "Synopsis & Continue" for full context windows
 
 ---
 
-## Phase 2 — TO DO
+## Phase 2 — COMPLETE
 
 Design spec: `docs/superpowers/specs/2026-04-03-context-management-and-chat-features-design.md`
 
-### Features to implement
+### What was built
 
-1. **System prompt assembly** — 4-layer XML hierarchy with sanitiser
-   (admin → model config → persona → user about_me)
-2. **Token counting** — tiktoken `cl100k_base`, replacing `len // 4`
-3. **Context window management** — pair-based backread, no rolling window,
-   hard block at 80% of total context
-4. **Context ampel** — green/yellow/orange/red thresholds
-5. **Message edit** — truncate-after + overwrite + auto-inference
-6. **Message regenerate** — delete last assistant message + re-inference
-
-### New files needed
-
-- `backend/modules/chat/_prompt_assembler.py`
-- `backend/modules/chat/_prompt_sanitiser.py`
-- `backend/modules/chat/_context.py`
-- `backend/modules/chat/_token_counter.py`
-
-### Modified files
-
-- `backend/modules/chat/__init__.py` — refactor to extract `_run_inference`,
-  add `handle_chat_edit`, `handle_chat_regenerate`
-- `backend/modules/chat/_repository.py` — new query methods
-- `backend/modules/user/__init__.py` + `_repository.py` + `_handlers.py` — about_me field
-- `backend/modules/settings/__init__.py` — expose `get_setting()`
-- `backend/ws/router.py` — add `chat.edit` and `chat.regenerate`
-- `backend/ws/event_bus.py` — fan-out rules for new events
-- `shared/events/chat.py` — new event models
-- `shared/topics.py` — new constants
-- `backend/pyproject.toml` — add `tiktoken`
+| Component | Files | Status |
+|-----------|-------|--------|
+| tiktoken dependency | `backend/pyproject.toml` | Done |
+| Token counter | `backend/modules/chat/_token_counter.py` | Done |
+| Prompt sanitiser | `backend/modules/chat/_prompt_sanitiser.py` | Done |
+| Settings public API | `backend/modules/settings/__init__.py` — `get_setting()` | Done |
+| User about_me field | `backend/modules/user/_repository.py`, `_handlers.py`, `__init__.py` | Done |
+| LLM context window API | `backend/modules/llm/__init__.py` — `get_model_context_window()` | Done |
+| Prompt assembler | `backend/modules/chat/_prompt_assembler.py` | Done |
+| Context window manager | `backend/modules/chat/_context.py` | Done |
+| Edit/regenerate events | `shared/events/chat.py`, `shared/topics.py`, `backend/ws/event_bus.py` | Done |
+| Repository query methods | `backend/modules/chat/_repository.py` | Done |
+| Chat module refactor | `backend/modules/chat/__init__.py` — `_run_inference`, edit, regenerate | Done |
+| InferenceRunner update | `backend/modules/chat/_inference.py` — context params | Done |
+| WebSocket router | `backend/ws/router.py` — `chat.edit`, `chat.regenerate` dispatch | Done |
 
 ### Key design decisions
 
