@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, UserModelConfigDto
 
 
 class LlmCredentialSetEvent(BaseModel):
@@ -42,3 +42,10 @@ class LlmModelsRefreshedEvent(BaseModel):
     type: str = "llm.models.refreshed"
     provider_id: str
     timestamp: datetime
+
+
+class LlmUserModelConfigUpdatedEvent(BaseModel):
+    """Emitted when a user updates OR deletes their model config. Delete sends defaults."""
+    type: str = "llm.user_model_config.updated"
+    model_unique_id: str
+    config: UserModelConfigDto
