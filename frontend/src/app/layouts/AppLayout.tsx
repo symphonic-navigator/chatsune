@@ -37,9 +37,10 @@ export default function AppLayout() {
   const { latest: profileUpdate } = useEventBus(Topics.USER_PROFILE_UPDATED)
   useEffect(() => {
     if (!profileUpdate || !user) return
-    const payload = profileUpdate.payload as Pick<UserDto, 'display_name'>
-    setUser({ ...user, display_name: payload.display_name })
-  }, [profileUpdate])
+    const rawName = (profileUpdate.payload as Record<string, unknown>).display_name
+    if (typeof rawName !== 'string') return
+    setUser({ ...user, display_name: rawName })
+  }, [profileUpdate, user, setUser])
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
