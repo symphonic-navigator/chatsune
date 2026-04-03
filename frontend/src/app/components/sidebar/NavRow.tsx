@@ -5,9 +5,10 @@ interface NavRowProps {
   label: string
   onClick: () => void
   actions?: ReactNode
+  isActive?: boolean
 }
 
-export function NavRow({ icon, label, onClick, actions }: NavRowProps) {
+export function NavRow({ icon, label, onClick, actions, isActive }: NavRowProps) {
   return (
     <button
       type="button"
@@ -16,7 +17,10 @@ export function NavRow({ icon, label, onClick, actions }: NavRowProps) {
       style={{ width: "calc(100% - 12px)" }}
     >
       <span className="w-4 flex-shrink-0 text-center text-sm text-white/50">{icon}</span>
-      <span className="flex-1 text-left text-[13px] font-semibold text-white/60 underline-offset-2 transition-colors group-hover:text-white/90 group-hover:underline">
+      <span className={[
+        "flex-1 text-left text-[13px] font-semibold underline-offset-2 transition-colors group-hover:underline",
+        isActive ? "text-gold group-hover:text-gold" : "text-white/60 group-hover:text-white/90",
+      ].join(" ")}>
         {label}
       </span>
       {actions && (

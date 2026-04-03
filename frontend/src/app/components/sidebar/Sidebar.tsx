@@ -7,15 +7,25 @@ import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
 import type { ChatSessionDto } from "../../../core/api/chat"
+import type { UserModalTab } from "../user-modal/UserModal"
 
 interface SidebarProps {
   personas: PersonaDto[]
   sessions: ChatSessionDto[]
   activePersonaId: string | null
   activeSessionId: string | null
+  onOpenModal: (tab: UserModalTab) => void
+  activeModalTab: UserModalTab | null
 }
 
-export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }: SidebarProps) {
+export function Sidebar({
+  personas,
+  sessions,
+  activePersonaId,
+  activeSessionId,
+  onOpenModal,
+  activeModalTab,
+}: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { logout } = useAuth()
   const navigate = useNavigate()
@@ -44,16 +54,25 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
     navigate(`/chat/${session.persona_id}/${session.id}`)
   }
 
+  const isTabActive = (tab: UserModalTab) => activeModalTab === tab
+
+  // Avatar row is highlighted when modal opened via avatar or settings
+  const avatarHighlight =
+    activeModalTab === 'about-me' || activeModalTab === 'settings'
+
+  const displayName = user?.display_name || user?.username || '?'
+  const initial = displayName.charAt(0).toUpperCase()
+
   return (
     <aside className="flex h-full w-[232px] flex-shrink-0 flex-col border-r border-white/6 bg-base">
 
       {/* Logo */}
       <div className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/5 px-3.5">
-        <span className="text-[17px]">⬡</span>
+        <span className="text-[17px]">🦊</span>
         <span className="text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
       </div>
 
-      {/* Admin banner — admins only */}
+      {/* Admin banner */}
       {isAdmin && (
         <button
           type="button"
@@ -82,7 +101,7 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
             />
           ))}
           {personas.length === 0 && (
-            <p className="px-4 py-1 text-[12px] text-white/20">No personas yet</p>
+            <p className="px-4 py-1 text-[12px] text-white/50">No personas yet</p>
           )}
         </div>
       </div>
@@ -90,27 +109,28 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
       <div className="mx-2 my-1.5 h-px bg-white/4" />
 
       {/* Shared scroll zone: Projects + History */}
-      <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/8">
+      <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
 
         {/* PROJECTS */}
         <NavRow
           icon="◫"
           label="Projects"
-          onClick={() => navigate("/projects")}
+          isActive={isTabActive('projects')}
+          onClick={() => onOpenModal('projects')}
           actions={
             <>
               <button
                 type="button"
-                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/20 transition-colors hover:bg-white/8 hover:text-white/55"
-                onClick={() => navigate("/projects?search=1")}
-                aria-label="Search projects"
+                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+                onClick={(e) => { e.stopPropagation(); onOpenModal('projects') }}
+                aria-label="Open projects"
               >
                 🔍
               </button>
               <button
                 type="button"
-                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/20 transition-colors hover:bg-white/8 hover:text-white/55"
-                onClick={toggleProjects}
+                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+                onClick={(e) => { e.stopPropagation(); toggleProjects() }}
                 aria-label={projectsOpen ? "Collapse projects" : "Expand projects"}
               >
                 {projectsOpen ? "∨" : "›"}
@@ -120,7 +140,7 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
         />
 
         {projectsOpen && (
-          <p className="mx-3 py-1 text-[12px] text-white/20">No projects yet</p>
+          <p className="mx-3 py-1 text-[12px] text-white/50">No projects yet</p>
         )}
 
         <div className="mx-2 my-1 h-px bg-white/4" />
@@ -129,12 +149,13 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
         <NavRow
           icon="◷"
           label="History"
-          onClick={() => navigate("/history")}
+          isActive={isTabActive('history')}
+          onClick={() => onOpenModal('history')}
           actions={
             <button
               type="button"
-              className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/20 transition-colors hover:bg-white/8 hover:text-white/55"
-              onClick={() => navigate("/history?search=1")}
+              className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+              onClick={(e) => { e.stopPropagation(); onOpenModal('history') }}
               aria-label="Search history"
             >
               🔍
@@ -153,7 +174,7 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
             />
           ))}
           {sessions.length === 0 && (
-            <p className="px-4 py-1 text-[12px] text-white/20">No history yet</p>
+            <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
           )}
         </div>
 
@@ -161,22 +182,60 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
 
       {/* Bottom */}
       <div className="flex-shrink-0 border-t border-white/5">
-        <NavRow icon="🧠" label="Knowledge" onClick={() => navigate("/knowledge")} />
+        {/* Knowledge */}
+        <NavRow
+          icon="🧠"
+          label="Knowledge"
+          isActive={isTabActive('knowledge')}
+          onClick={() => onOpenModal('knowledge')}
+        />
 
-        {/* User row — entire area is the menu trigger (logout for now, full menu is Phase 2) */}
+        {/* User row */}
+        <div
+          className={[
+            "flex items-center gap-2.5 px-3 py-2 transition-colors",
+            avatarHighlight ? "bg-gold/7" : "",
+          ].join(" ")}
+        >
+          <button
+            type="button"
+            onClick={() => onOpenModal('about-me')}
+            className="flex flex-1 items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity"
+            title="Your profile"
+          >
+            <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
+              {initial}
+            </div>
+            <div className="text-left min-w-0">
+              <p className={[
+                "text-[13px] font-medium truncate transition-colors",
+                avatarHighlight ? "text-gold" : "text-white/65",
+              ].join(" ")}>
+                {displayName}
+              </p>
+              <p className="text-[10px] text-white/30">{user?.role}</p>
+            </div>
+          </button>
+
+          {/* Settings shortcut */}
+          <button
+            type="button"
+            onClick={() => onOpenModal('settings')}
+            title="Settings"
+            className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+          >
+            ···
+          </button>
+        </div>
+
+        {/* Logout */}
         <button
           type="button"
           onClick={() => logout()}
-          className="flex w-full items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-white/4"
-          title="Click to log out (settings menu coming soon)"
+          className="flex w-full items-center gap-2 px-4 py-1.5 text-[11px] text-white/30 hover:text-white/55 transition-colors font-mono"
         >
-          <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
-            {user?.display_name?.charAt(0).toUpperCase() ?? user?.username?.charAt(0).toUpperCase() ?? "?"}
-          </div>
-          <div className="text-left">
-            <p className="text-[13px] font-medium text-white/65">{user?.display_name || user?.username}</p>
-            <p className="text-[10px] text-white/22">{user?.role}</p>
-          </div>
+          <span>↪</span>
+          <span>Log out</span>
         </button>
       </div>
 
