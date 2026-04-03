@@ -133,66 +133,73 @@ class OllamaCloudAdapter(BaseAdapter):
         payload = self._build_chat_payload(request)
 
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                resp = await client.post(
-                    f"{self.base_url}/api/chat",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-        except httpx.ConnectError:
-            yield StreamError(error_code="provider_unavailable", message="Connection failed")
-            return
-
-        if resp.status_code in (401, 403):
-            yield StreamError(error_code="invalid_api_key", message="Invalid API key")
-            return
-        if resp.status_code != 200:
-            yield StreamError(
-                error_code="provider_unavailable",
-                message=f"Upstream returned {resp.status_code}",
-            )
+            client = httpx.AsyncClient(timeout=_TIMEOUT)
+        except Exception:
+            yield StreamError(error_code="provider_unavailable", message="Failed to create HTTP client")
             return
 
         seen_done = False
-        for line in resp.text.splitlines():
-            line = line.strip()
-            if not line:
-                continue
+        try:
+            async with client.stream(
+                "POST",
+                f"{self.base_url}/api/chat",
+                json=payload,
+                headers={"Authorization": f"Bearer {api_key}"},
+            ) as resp:
+                if resp.status_code in (401, 403):
+                    yield StreamError(error_code="invalid_api_key", message="Invalid API key")
+                    return
+                if resp.status_code != 200:
+                    yield StreamError(
+                        error_code="provider_unavailable",
+                        message=f"Upstream returned {resp.status_code}",
+                    )
+                    return
 
-            try:
-                chunk = json.loads(line)
-            except json.JSONDecodeError:
-                _log.warning("Skipping malformed NDJSON line: %s", line)
-                continue
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
 
-            if chunk.get("done"):
-                seen_done = True
-                yield StreamDone(
-                    input_tokens=chunk.get("prompt_eval_count"),
-                    output_tokens=chunk.get("eval_count"),
-                )
-                break
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        _log.warning("Skipping malformed NDJSON line: %s", line)
+                        continue
 
-            message = chunk.get("message", {})
+                    if chunk.get("done"):
+                        seen_done = True
+                        yield StreamDone(
+                            input_tokens=chunk.get("prompt_eval_count"),
+                            output_tokens=chunk.get("eval_count"),
+                        )
+                        break
 
-            # Thinking deltas
-            thinking = message.get("thinking", "")
-            if thinking:
-                yield ThinkingDelta(delta=thinking)
+                    message = chunk.get("message", {})
 
-            # Content deltas
-            content = message.get("content", "")
-            if content:
-                yield ContentDelta(delta=content)
+                    # Thinking deltas
+                    thinking = message.get("thinking", "")
+                    if thinking:
+                        yield ThinkingDelta(delta=thinking)
 
-            # Tool calls
-            for tc in message.get("tool_calls", []):
-                fn = tc.get("function", {})
-                yield ToolCallEvent(
-                    id=f"call_{uuid4().hex[:12]}",
-                    name=fn.get("name", ""),
-                    arguments=json.dumps(fn.get("arguments", {})),
-                )
+                    # Content deltas
+                    content = message.get("content", "")
+                    if content:
+                        yield ContentDelta(delta=content)
+
+                    # Tool calls
+                    for tc in message.get("tool_calls", []):
+                        fn = tc.get("function", {})
+                        yield ToolCallEvent(
+                            id=f"call_{uuid4().hex[:12]}",
+                            name=fn.get("name", ""),
+                            arguments=json.dumps(fn.get("arguments", {})),
+                        )
+        except httpx.ConnectError:
+            yield StreamError(error_code="provider_unavailable", message="Connection failed")
+            return
+        finally:
+            await client.aclose()
 
         if not seen_done:
             yield StreamDone()
