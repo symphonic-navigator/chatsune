@@ -9,7 +9,6 @@ import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
 import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
 import { Topics } from "../../core/types/events"
-import type { UserDto } from "../../core/types/auth"
 
 export default function AppLayout() {
   useWebSocket()
