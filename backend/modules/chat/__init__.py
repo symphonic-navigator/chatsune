@@ -3,7 +3,7 @@
 Public API: import only from this file.
 """
 
-from backend.database import get_db
+from backend.modules.chat._handlers import router
 from backend.modules.chat._repository import ChatRepository
 
 
@@ -12,4 +12,4 @@ async def init_indexes(db) -> None:
     await ChatRepository(db).create_indexes()
 
 
-__all__ = ["init_indexes"]
+__all__ = ["router", "init_indexes"]

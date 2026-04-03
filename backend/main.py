@@ -7,6 +7,7 @@ from backend.modules.user import router as user_router, init_indexes as user_ini
 from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
 from backend.modules.persona import router as persona_router, init_indexes as persona_init_indexes
 from backend.modules.settings import router as settings_router, init_indexes as settings_init_indexes
+from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router
@@ -20,6 +21,7 @@ async def lifespan(app: FastAPI):
     await llm_init_indexes(db)
     await persona_init_indexes(db)
     await settings_init_indexes(db)
+    await chat_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
     set_event_bus(EventBus(redis=get_redis(), manager=manager))
@@ -32,6 +34,7 @@ app.include_router(user_router)
 app.include_router(llm_router)
 app.include_router(persona_router)
 app.include_router(settings_router)
+app.include_router(chat_router)
 app.include_router(ws_router)
 
 
