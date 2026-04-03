@@ -1,11 +1,20 @@
+import json
 import logging
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import httpx
 
 from backend.modules.llm._adapters._base import BaseAdapter
-from backend.modules.llm._adapters._events import ProviderStreamEvent
-from shared.dtos.inference import CompletionRequest
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    ProviderStreamEvent,
+    StreamDone,
+    StreamError,
+    ThinkingDelta,
+    ToolCallEvent,
+)
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -44,6 +53,35 @@ def _build_display_name(model_name: str) -> str:
     if not tag or tag.lower() == "latest":
         return title
     return f"{title} ({tag.upper()})"
+
+
+def _translate_message(msg: CompletionMessage) -> dict:
+    """Convert a CompletionMessage to Ollama's message format."""
+    text_parts = [p.text for p in msg.content if p.type == "text" and p.text]
+    images = [p.data for p in msg.content if p.type == "image" and p.data]
+
+    result: dict = {
+        "role": msg.role,
+        "content": " ".join(text_parts) if text_parts else "",
+    }
+
+    if images:
+        result["images"] = images
+
+    if msg.tool_calls:
+        result["tool_calls"] = [
+            {
+                "function": {
+                    "name": tc.name,
+                    "arguments": json.loads(tc.arguments),
+                },
+            }
+            for tc in msg.tool_calls
+        ]
+
+    # tool_call_id is dropped — Ollama uses positional matching
+
+    return result
 
 
 class OllamaCloudAdapter(BaseAdapter):
@@ -92,8 +130,104 @@ class OllamaCloudAdapter(BaseAdapter):
         api_key: str,
         request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        raise NotImplementedError("Streaming not yet implemented")
-        yield  # makes this an async generator
+        payload = self._build_chat_payload(request)
+
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                resp = await client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+        except httpx.ConnectError:
+            yield StreamError(error_code="provider_unavailable", message="Connection failed")
+            return
+
+        if resp.status_code in (401, 403):
+            yield StreamError(error_code="invalid_api_key", message="Invalid API key")
+            return
+        if resp.status_code != 200:
+            yield StreamError(
+                error_code="provider_unavailable",
+                message=f"Upstream returned {resp.status_code}",
+            )
+            return
+
+        seen_done = False
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError:
+                _log.warning("Skipping malformed NDJSON line: %s", line)
+                continue
+
+            if chunk.get("done"):
+                seen_done = True
+                yield StreamDone(
+                    input_tokens=chunk.get("prompt_eval_count"),
+                    output_tokens=chunk.get("eval_count"),
+                )
+                break
+
+            message = chunk.get("message", {})
+
+            # Thinking deltas
+            thinking = message.get("thinking", "")
+            if thinking:
+                yield ThinkingDelta(delta=thinking)
+
+            # Content deltas
+            content = message.get("content", "")
+            if content:
+                yield ContentDelta(delta=content)
+
+            # Tool calls
+            for tc in message.get("tool_calls", []):
+                fn = tc.get("function", {})
+                yield ToolCallEvent(
+                    id=f"call_{uuid4().hex[:12]}",
+                    name=fn.get("name", ""),
+                    arguments=json.dumps(fn.get("arguments", {})),
+                )
+
+        if not seen_done:
+            yield StreamDone()
+
+    @staticmethod
+    def _build_chat_payload(request: CompletionRequest) -> dict:
+        """Translate a CompletionRequest into Ollama's /api/chat JSON format."""
+        messages = [_translate_message(m) for m in request.messages]
+
+        payload: dict = {
+            "model": request.model,
+            "messages": messages,
+            "stream": True,
+        }
+
+        if request.reasoning_enabled:
+            payload["think"] = True
+
+        if request.temperature is not None:
+            payload["options"] = {"temperature": request.temperature}
+
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "type": t.type,
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                }
+                for t in request.tools
+            ]
+
+        return payload
 
     def _map_to_dto(self, model_name: str, detail: dict) -> ModelMetaDto:
         capabilities = detail.get("capabilities", [])
