@@ -27,6 +27,7 @@ from shared.dtos.auth import (
     SetupResponseDto,
     TokenResponseDto,
     UpdateAboutMeDto,
+    UpdateDisplayNameDto,
     UpdateUserRequestDto,
     UserDto,
     AuditLogEntryDto,
@@ -36,6 +37,7 @@ from shared.events.auth import (
     UserDeactivatedEvent,
     UserPasswordResetEvent,
     UserUpdatedEvent,
+    UserProfileUpdatedEvent,
 )
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
@@ -311,6 +313,30 @@ async def get_me(user: dict = Depends(get_current_user)):
     doc = await repo.find_by_id(user["sub"])
     if doc is None:
         raise HTTPException(status_code=404, detail="User not found")
+    return UserRepository.to_dto(doc)
+
+
+@router.patch("/users/me/profile")
+async def update_my_profile(
+    body: UpdateDisplayNameDto,
+    user: dict = Depends(get_current_user),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    repo = _user_repo()
+    doc = await repo.update(user["sub"], {"display_name": body.display_name})
+    if doc is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await event_bus.publish(
+        Topics.USER_PROFILE_UPDATED,
+        UserProfileUpdatedEvent(
+            user_id=user["sub"],
+            display_name=doc["display_name"],
+            timestamp=doc["updated_at"],
+        ),
+        target_user_ids=[user["sub"]],
+    )
+
     return UserRepository.to_dto(doc)
 
 
