@@ -1,7 +1,7 @@
+from __future__ import annotations
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from backend.modules.user._auth import decode_access_token
 
 _bearer_scheme = HTTPBearer()
 
@@ -10,6 +10,8 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> dict:
     """Decode JWT and return payload. Raises 401 if invalid or expired."""
+    from backend.modules.user._auth import decode_access_token  # deferred to break circular import
+
     try:
         payload = decode_access_token(credentials.credentials)
     except Exception:
