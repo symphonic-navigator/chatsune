@@ -25,6 +25,8 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_CREDENTIAL_SET: ([], True),
     Topics.LLM_CREDENTIAL_REMOVED: ([], True),
     Topics.LLM_CREDENTIAL_TESTED: ([], True),
+    Topics.SETTING_UPDATED: (["admin", "master_admin"], False),
+    Topics.SETTING_DELETED: (["admin", "master_admin"], False),
 }
 
 _BROADCAST_ALL: set[str] = {
