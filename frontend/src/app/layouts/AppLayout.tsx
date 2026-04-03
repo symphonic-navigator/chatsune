@@ -36,11 +36,13 @@ export default function AppLayout() {
   // Live-update display name when user changes it in another tab or device
   const { latest: profileUpdate } = useEventBus(Topics.USER_PROFILE_UPDATED)
   useEffect(() => {
-    if (!profileUpdate || !user) return
+    if (!profileUpdate) return
     const rawName = (profileUpdate.payload as Record<string, unknown>).display_name
     if (typeof rawName !== 'string') return
-    setUser({ ...user, display_name: rawName })
-  }, [profileUpdate, user, setUser])
+    const current = useAuthStore.getState().user
+    if (!current) return
+    setUser({ ...current, display_name: rawName })
+  }, [profileUpdate, setUser])
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
