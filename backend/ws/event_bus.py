@@ -19,6 +19,12 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.USER_UPDATED: (["admin", "master_admin"], True),
     Topics.USER_DEACTIVATED: (["admin", "master_admin"], True),
     Topics.USER_PASSWORD_RESET: (["admin", "master_admin"], True),
+    Topics.PERSONA_CREATED: ([], True),
+    Topics.PERSONA_UPDATED: ([], True),
+    Topics.PERSONA_DELETED: ([], True),
+    Topics.LLM_CREDENTIAL_SET: ([], True),
+    Topics.LLM_CREDENTIAL_REMOVED: ([], True),
+    Topics.LLM_CREDENTIAL_TESTED: ([], True),
 }
 
 _bus: "EventBus | None" = None
