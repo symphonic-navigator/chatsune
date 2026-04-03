@@ -9,6 +9,7 @@ import UsersPage from "./prototype/pages/UsersPage"
 import LlmPage from "./prototype/pages/LlmPage"
 import PersonasPage from "./prototype/pages/PersonasPage"
 import AdminPage from "./prototype/pages/AdminPage"
+import ChatPage from "./prototype/pages/ChatPage"
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/users" element={<UsersPage />} />
         <Route path="/llm" element={<LlmPage />} />
         <Route path="/personas" element={<PersonasPage />} />
+        <Route path="/chat/:personaId" element={<ChatPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

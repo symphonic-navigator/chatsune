@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import type { PersonaDto, CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 
@@ -125,6 +126,8 @@ function PersonaCard({
   onEdit: (p: PersonaDto) => void
   onDelete: (id: string) => void
 }) {
+  const navigate = useNavigate()
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex items-start justify-between">
@@ -133,6 +136,7 @@ function PersonaCard({
           <p className="text-xs text-gray-500 mt-0.5">{persona.tagline}</p>
         </div>
         <div className="flex gap-1">
+          <button onClick={() => navigate(`/chat/${persona.id}`)} className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">Chat</button>
           <button onClick={() => onEdit(persona)} className="rounded bg-gray-100 px-2 py-1 text-xs hover:bg-gray-200">Edit</button>
           <button onClick={() => onDelete(persona.id)} className="rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200">Delete</button>
         </div>
