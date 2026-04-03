@@ -71,6 +71,16 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
+# --- Auth Status ---
+
+
+@router.get("/auth/status")
+async def auth_status():
+    repo = _user_repo()
+    master_admin = await repo.find_by_role("master_admin")
+    return {"is_setup_complete": master_admin is not None}
+
+
 # --- Setup ---
 
 
