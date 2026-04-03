@@ -1,4 +1,4 @@
-import { useMatch, useNavigate } from "react-router-dom"
+import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import type { PersonaDto } from "../../../core/types/persona"
 
@@ -18,6 +18,7 @@ interface TopbarProps {
 export function Topbar({ personas }: TopbarProps) {
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
   const adminMatch = useMatch("/admin/*")
@@ -89,7 +90,7 @@ export function Topbar({ personas }: TopbarProps) {
     )
   }
 
-  const path = window.location.pathname
+  const path = location.pathname
   const title = SECTION_TITLES[path] ?? ""
 
   return (

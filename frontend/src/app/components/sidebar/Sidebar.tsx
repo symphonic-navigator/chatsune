@@ -79,9 +79,6 @@ export function Sidebar({ personas, sessions, activePersonaId, activeSessionId }
               onNewChat={handleNewChat}
               onNewIncognitoChat={(persona) => navigate(`/chat/${persona.id}?incognito=1`)}
               onEdit={(persona) => navigate(`/personas?edit=${persona.id}`)}
-              onUnpin={() => {
-                // Phase 2 — requires pin field in backend
-              }}
             />
           ))}
           {personas.length === 0 && (

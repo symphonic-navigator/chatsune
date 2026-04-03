@@ -9,7 +9,7 @@ interface PersonaItemProps {
   onNewChat: (persona: PersonaDto) => void
   onNewIncognitoChat: (persona: PersonaDto) => void
   onEdit: (persona: PersonaDto) => void
-  onUnpin: (persona: PersonaDto) => void
+  onUnpin?: (persona: PersonaDto) => void
 }
 
 export function PersonaItem({
@@ -39,7 +39,7 @@ export function PersonaItem({
     { label: "New Chat", action: () => { onNewChat(persona); setMenuOpen(false) } },
     { label: "New Incognito Chat", action: () => { onNewIncognitoChat(persona); setMenuOpen(false) } },
     { label: "Edit", action: () => { onEdit(persona); setMenuOpen(false) } },
-    { label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) }, muted: true },
+    ...(onUnpin ? [{ label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) }, muted: true }] : []),
   ]
 
   return (
