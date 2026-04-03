@@ -42,6 +42,11 @@ class ConnectionManager:
     def user_ids_by_role(self, role: str) -> list[str]:
         return [uid for uid, r in self._user_roles.items() if r == role]
 
+    async def broadcast_to_all(self, event: dict) -> None:
+        """Send an event to every connected user."""
+        for user_id in list(self._connections.keys()):
+            await self.send_to_user(user_id, event)
+
 
 def set_manager(manager: ConnectionManager) -> None:
     global _manager

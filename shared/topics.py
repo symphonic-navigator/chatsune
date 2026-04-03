@@ -11,3 +11,5 @@ class Topics:
     LLM_CREDENTIAL_SET = "llm.credential.set"
     LLM_CREDENTIAL_REMOVED = "llm.credential.removed"
     LLM_CREDENTIAL_TESTED = "llm.credential.tested"
+    LLM_MODEL_CURATED = "llm.model.curated"
+    LLM_MODELS_REFRESHED = "llm.models.refreshed"

@@ -27,6 +27,11 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_CREDENTIAL_TESTED: ([], True),
 }
 
+_BROADCAST_ALL: set[str] = {
+    Topics.LLM_MODEL_CURATED,
+    Topics.LLM_MODELS_REFRESHED,
+}
+
 _bus: "EventBus | None" = None
 
 
@@ -75,6 +80,10 @@ class EventBus:
     ) -> None:
         if topic == Topics.AUDIT_LOGGED:
             await self._fan_out_audit(event_dict)
+            return
+
+        if topic in _BROADCAST_ALL:
+            await self._manager.broadcast_to_all(event_dict)
             return
 
         if topic not in _FANOUT:

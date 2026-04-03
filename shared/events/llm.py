@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from shared.dtos.llm import ModelMetaDto
+
 
 class LlmCredentialSetEvent(BaseModel):
     type: str = "llm.credential.set"
@@ -22,4 +24,21 @@ class LlmCredentialTestedEvent(BaseModel):
     provider_id: str
     user_id: str
     valid: bool
+    timestamp: datetime
+
+
+class LlmModelCuratedEvent(BaseModel):
+    """Carries the full updated model DTO so clients can update in place."""
+    type: str = "llm.model.curated"
+    provider_id: str
+    model_slug: str
+    model: ModelMetaDto
+    curated_by: str
+    timestamp: datetime
+
+
+class LlmModelsRefreshedEvent(BaseModel):
+    """Trigger-only: tells clients to re-fetch the model list."""
+    type: str = "llm.models.refreshed"
+    provider_id: str
     timestamp: datetime
