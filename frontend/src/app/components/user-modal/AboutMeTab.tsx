@@ -3,13 +3,14 @@ import { meApi } from '../../../core/api/meApi'
 
 const MAX_LENGTH = 2000
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
 export function AboutMeTab() {
   const [text, setText] = useState('')
   const [original, setOriginal] = useState('')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [saveError, setSaveError] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
 
   useEffect(() => {
     meApi.getAboutMe()
@@ -18,25 +19,21 @@ export function AboutMeTab() {
         setText(value)
         setOriginal(value)
       })
-      .catch(() => {})
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }, [])
 
   async function handleSave() {
-    setSaving(true)
-    setSaved(false)
-    setSaveError(false)
+    setSaveStatus('saving')
     try {
       const data = await meApi.updateAboutMe(text || null)
       const value = data.about_me ?? ''
       setText(value)
       setOriginal(value)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 2000)
     } catch {
-      setSaveError(true)
-    } finally {
-      setSaving(false)
+      setSaveStatus('error')
     }
   }
 
@@ -46,6 +43,14 @@ export function AboutMeTab() {
     return (
       <div className="p-6 text-[12px] text-white/30 font-mono tracking-widest uppercase">
         Loading...
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 text-[12px] text-red-400/70 font-mono">
+        Could not load profile — please try again later.
       </div>
     )
   }
@@ -73,12 +78,12 @@ export function AboutMeTab() {
           {text.length} / {MAX_LENGTH}
         </span>
         <div className="flex items-center gap-3">
-          {saved && (
+          {saveStatus === 'saved' && (
             <span className="font-mono text-[10px] text-white/40 tracking-wider uppercase">
               Saved
             </span>
           )}
-          {saveError && (
+          {saveStatus === 'error' && (
             <span className="font-mono text-[10px] text-red-400/80 tracking-wider uppercase">
               Save failed
             </span>
@@ -86,7 +91,7 @@ export function AboutMeTab() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || !isDirty}
+            disabled={saveStatus === 'saving' || !isDirty}
             className={[
               'font-mono text-[11px] uppercase tracking-[0.12em] px-5 py-2 rounded-lg transition-all border border-white/10',
               isDirty
@@ -94,7 +99,7 @@ export function AboutMeTab() {
                 : 'bg-transparent text-white/25 cursor-default',
             ].join(' ')}
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saveStatus === 'saving' ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>

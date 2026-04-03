@@ -39,17 +39,13 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
 
-  const personaName = (personaId: string): string =>
-    personas.find((p) => p.id === personaId)?.name ?? personaId
-
   const filtered = useMemo(() => {
     if (!search.trim()) return sessions
     const term = search.toLowerCase()
-    return sessions.filter(
-      (s) =>
-        personaName(s.persona_id).toLowerCase().includes(term) ||
-        s.id.toLowerCase().includes(term),
-    )
+    return sessions.filter((s) => {
+      const name = personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id
+      return name.toLowerCase().includes(term) || s.id.toLowerCase().includes(term)
+    })
   }, [sessions, search, personas])
 
   const grouped = useMemo(() => groupSessions(filtered), [filtered])
@@ -68,6 +64,7 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search history..."
+          aria-label="Search session history"
           className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none focus:border-gold/30 transition-colors font-mono"
         />
       </div>
@@ -94,7 +91,7 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-                    {personaName(s.persona_id)}
+                    {personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id}
                   </p>
                   <p className="text-[10px] text-white/30 font-mono mt-0.5">
                     {new Date(s.updated_at).toLocaleDateString(undefined, {
