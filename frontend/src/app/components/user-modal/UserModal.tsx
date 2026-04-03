@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
@@ -27,14 +27,47 @@ interface UserModalProps {
   displayName: string
 }
 
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+
 export function UserModal({ activeTab, onClose, onTabChange, displayName }: UserModalProps) {
-  // Close on Escape
+  const modalRef = useRef<HTMLDivElement>(null)
+
+  // Focus trap + Escape key
   useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null
+    modalRef.current?.focus()
+
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (e.key !== 'Tab') return
+
+      const focusable = modalRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE)
+      if (!focusable || focusable.length === 0) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
+
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      previousFocus?.focus()
+    }
   }, [onClose])
 
   return (
@@ -47,7 +80,14 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
       />
 
       {/* Modal box */}
-      <div className="absolute inset-4 z-20 flex flex-col bg-surface border border-white/8 rounded-xl shadow-2xl overflow-hidden">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="User Area"
+        tabIndex={-1}
+        className="absolute inset-4 z-20 flex flex-col bg-surface border border-white/8 rounded-xl shadow-2xl overflow-hidden outline-none"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/6 flex-shrink-0">
           <div className="flex items-center gap-2">

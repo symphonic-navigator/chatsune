@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { meApi } from '../../../core/api/meApi'
 
 const MAX_LENGTH = 2000
@@ -11,6 +11,13 @@ export function AboutMeTab() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     meApi.getAboutMe()
@@ -31,7 +38,8 @@ export function AboutMeTab() {
       setText(value)
       setOriginal(value)
       setSaveStatus('saved')
-      setTimeout(() => setSaveStatus('idle'), 2000)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
     } catch {
       setSaveStatus('error')
     }
@@ -57,7 +65,7 @@ export function AboutMeTab() {
 
   return (
     <div className="p-6 max-w-2xl">
-      <label className="block text-[10px] uppercase tracking-[0.15em] text-white/50 font-mono mb-2">
+      <label htmlFor="about-me-textarea" className="block text-[10px] uppercase tracking-[0.15em] text-white/50 font-mono mb-2">
         About You
       </label>
       <p className="text-[12px] text-white/40 font-mono mb-4 leading-relaxed">
@@ -65,6 +73,7 @@ export function AboutMeTab() {
         priority in every conversation.
       </p>
       <textarea
+        id="about-me-textarea"
         value={text}
         onChange={(e) => {
           if (e.target.value.length <= MAX_LENGTH) setText(e.target.value)
