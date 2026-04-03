@@ -26,6 +26,9 @@ export const chatApi = {
   createSession: (personaId: string) =>
     api.post<ChatSessionDto>("/api/chat/sessions", { persona_id: personaId }),
 
+  listSessions: () =>
+    api.get<ChatSessionDto[]>("/api/chat/sessions"),
+
   getSession: (sessionId: string) =>
     api.get<ChatSessionDto>(`/api/chat/sessions/${sessionId}`),
 
