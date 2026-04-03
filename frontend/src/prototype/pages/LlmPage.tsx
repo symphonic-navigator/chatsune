@@ -93,7 +93,7 @@ function ModelsTab() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        {providers.filter((p) => p.is_configured).map((p) => (
+        {providers.map((p) => (
           <button
             key={p.provider_id}
             onClick={() => handleSelectProvider(p.provider_id)}
@@ -185,7 +185,7 @@ function UserConfigTab() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        {providers.filter((p) => p.is_configured).map((p) => (
+        {providers.map((p) => (
           <button
             key={p.provider_id}
             onClick={() => handleSelectProvider(p.provider_id)}
@@ -237,7 +237,7 @@ export default function LlmPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">LLM</h2>
+      <h2 className="text-lg font-semibold">Models</h2>
       <div className="flex gap-1 border-b border-gray-200">
         <button onClick={() => setTab("credentials")} className={tabClass("credentials")}>Credentials</button>
         <button onClick={() => setTab("models")} className={tabClass("models")}>Models</button>

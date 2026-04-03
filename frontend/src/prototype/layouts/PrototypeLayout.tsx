@@ -32,7 +32,7 @@ export default function PrototypeLayout() {
         <nav className="flex-1 space-y-1 p-3">
           <NavLink to="/dashboard" className={navLinkClass}>Dashboard</NavLink>
           {isAdmin && <NavLink to="/users" className={navLinkClass}>Users</NavLink>}
-          <NavLink to="/llm" className={navLinkClass}>LLM</NavLink>
+          <NavLink to="/llm" className={navLinkClass}>Models</NavLink>
           <NavLink to="/personas" className={navLinkClass}>Personas</NavLink>
           {isAdmin && <NavLink to="/admin" className={navLinkClass}>Admin</NavLink>}
         </nav>
