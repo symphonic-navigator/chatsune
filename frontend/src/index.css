@@ -1,1 +1,13 @@
 @import "tailwindcss";
+
+@theme {
+  /* Backgrounds */
+  --color-base: #0a0810;
+  --color-surface: #0f0d16;
+  --color-elevated: #1a1528;
+
+  /* Brand accents */
+  --color-gold: #c9a84c;
+  --color-live: #22c55e;
+  --color-purple: #7c5cbf;
+}
