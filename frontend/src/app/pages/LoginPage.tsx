@@ -15,7 +15,7 @@ export default function LoginPage() {
     setError(null)
     setIsLoading(true)
     try {
-      await login(username, password)
+      await login({ username, password })
       const last = localStorage.getItem("chatsune_last_route")
       navigate(last ?? "/personas", { replace: true })
     } catch {
