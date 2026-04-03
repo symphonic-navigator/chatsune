@@ -68,8 +68,8 @@ function UserRow({
   onResetPassword,
 }: {
   user: UserDto
-  onUpdate: (id: string, data: UpdateUserRequest) => Promise<void>
-  onDeactivate: (id: string) => Promise<void>
+  onUpdate: (id: string, data: UpdateUserRequest) => Promise<unknown>
+  onDeactivate: (id: string) => Promise<unknown>
   onResetPassword: (id: string) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)

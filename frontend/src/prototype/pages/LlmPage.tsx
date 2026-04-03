@@ -155,7 +155,7 @@ function ModelsTab() {
 }
 
 function UserConfigTab() {
-  const { userConfigs, providers, models, fetchModels, setUserConfig, deleteUserConfig } = useLlm()
+  const { userConfigs, providers, models, fetchModels, setUserConfig } = useLlm()
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   const handleSelectProvider = (providerId: string) => {
