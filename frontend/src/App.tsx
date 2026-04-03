@@ -1,20 +1,33 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { useEffect } from "react"
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "./core/store/authStore"
-import { useWebSocket } from "./core/hooks/useWebSocket"
-import PrototypeLayout from "./prototype/layouts/PrototypeLayout"
+import { useBootstrap } from "./core/hooks/useBootstrap"
+import AppLayout from "./app/layouts/AppLayout"
+import LoginPage from "./app/pages/LoginPage"
+import PersonasPage from "./app/pages/PersonasPage"
+import ChatPage from "./app/pages/ChatPage"
+import ProjectsPage from "./app/pages/ProjectsPage"
+import HistoryPage from "./app/pages/HistoryPage"
+import KnowledgePage from "./app/pages/KnowledgePage"
+import AdminPage from "./app/pages/AdminPage"
 
-import LoginPage from "./prototype/pages/LoginPage"
-import DashboardPage from "./prototype/pages/DashboardPage"
-import UsersPage from "./prototype/pages/UsersPage"
-import LlmPage from "./prototype/pages/LlmPage"
-import PersonasPage from "./prototype/pages/PersonasPage"
-import AdminPage from "./prototype/pages/AdminPage"
-import ChatPage from "./prototype/pages/ChatPage"
+/** Persists current /chat/... route to localStorage for bootstrap redirect */
+function LastRouteTracker() {
+  const location = useLocation()
+  useEffect(() => {
+    if (location.pathname.startsWith("/chat/")) {
+      localStorage.setItem("chatsune_last_route", location.pathname)
+    }
+  }, [location.pathname])
+  return null
+}
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
+  const isInitialising = useAuthStore((s) => s.isInitialising)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const mustChangePassword = useAuthStore((s) => s.user?.must_change_password)
 
+  if (isInitialising) return null
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (mustChangePassword) return <Navigate to="/login" replace />
 
@@ -22,27 +35,30 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
-  useWebSocket()
+  useBootstrap()
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <AuthGuard>
-            <PrototypeLayout />
-          </AuthGuard>
-        }
-      >
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/users" element={<UsersPage />} />
-        <Route path="/llm" element={<LlmPage />} />
-        <Route path="/personas" element={<PersonasPage />} />
-        <Route path="/chat/:personaId" element={<ChatPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <>
+      <LastRouteTracker />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <AuthGuard>
+              <AppLayout />
+            </AuthGuard>
+          }
+        >
+          <Route path="/personas" element={<PersonasPage />} />
+          <Route path="/chat/:personaId/:sessionId?" element={<ChatPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/admin/*" element={<AdminPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/personas" replace />} />
+      </Routes>
+    </>
   )
 }
 
