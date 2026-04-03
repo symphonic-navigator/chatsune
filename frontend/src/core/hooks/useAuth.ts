@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react"
 import { useAuthStore } from "../store/authStore"
 import { authApi } from "../api/auth"
+import { meApi } from "../api/meApi"
 import { connect, disconnect } from "../websocket/connection"
 import type {
   LoginRequest,
@@ -20,6 +21,12 @@ export function useAuth() {
     try {
       const res = await authApi.login(data)
       setToken(res.access_token)
+      try {
+        const me = await meApi.getMe()
+        setUser(me)
+      } catch {
+        // getMe failed — user stays authenticated with fallback display name
+      }
       connect()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
@@ -27,7 +34,7 @@ export function useAuth() {
     } finally {
       setIsLoading(false)
     }
-  }, [setToken])
+  }, [setToken, setUser])
 
   const setup = useCallback(async (data: SetupRequest) => {
     setIsLoading(true)
