@@ -13,7 +13,10 @@ let reconnectDelay = INITIAL_RECONNECT_DELAY
 let intentionalClose = false
 
 function wsUrl(): string {
-  return import.meta.env.VITE_WS_URL ?? ""
+  const env = import.meta.env.VITE_WS_URL
+  if (env) return env
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
+  return `${proto}//${window.location.host}`
 }
 
 export function connect() {
