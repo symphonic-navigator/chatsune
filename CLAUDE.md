@@ -19,6 +19,13 @@ The architecture here reflects hard-won lessons — do not shortcut them.
 
 ---
 
+## Implementation defaults
+
+1. Please use subagent driven implementation always (no need to ask here)
+2. Please always merge to master after implementation
+
+---
+
 ## Repository Layout
 
 ```
