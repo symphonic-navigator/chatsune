@@ -84,3 +84,30 @@ explicit alternative to implicit message branching.
 **Why deferred:** Edit with truncation covers the primary use case. Cloning is
 a convenience feature for power users who want to explore alternatives without
 losing the original conversation.
+
+---
+
+## Notification Bell & Flyout
+
+**What:** A bell icon in the top-right corner with an unread badge count and a
+flyout panel showing persistent notification history. Notifications would persist
+across page navigation and show relative timestamps ("5m ago", "2h ago").
+The previous prototype (chat-client-02) had this fully implemented with a
+Zustand store, NotificationBell, and NotificationFlyout components.
+
+**Why deferred:** The toast-only system is sufficient for the prototype. The bell
+and flyout add complexity (read/unread state, flyout positioning, click-outside
+dismiss) without validating new patterns. The toast store already supports the
+data model needed — adding the bell/flyout is a UI-only extension.
+
+---
+
+## Backend-Driven Notifications
+
+**What:** The backend publishes notification events via WebSocket (e.g. embedding
+job completed, consolidation failed). The frontend notification store subscribes
+to these events and creates toasts/entries automatically.
+
+**Why deferred:** There are no background jobs yet that would produce
+notifications. When the memory consolidation pipeline or other async processes
+are added, this becomes relevant.
