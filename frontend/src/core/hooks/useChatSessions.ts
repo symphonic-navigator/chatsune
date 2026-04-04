@@ -38,7 +38,9 @@ export function useChatSessions() {
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
       }
-      setSessions((prev) => [newSession, ...prev])
+      setSessions((prev) =>
+        prev.some((s) => s.id === newSession.id) ? prev : [newSession, ...prev],
+      )
     })
 
     const unsubDeleted = eventBus.on(Topics.CHAT_SESSION_DELETED, (event: BaseEvent) => {

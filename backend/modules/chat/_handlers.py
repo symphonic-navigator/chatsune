@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
@@ -126,7 +126,7 @@ async def delete_session(session_id: str, user: dict = Depends(require_active_se
 
 
 class UpdateSessionRequest(BaseModel):
-    title: str
+    title: str = Field(min_length=1, max_length=200, strip_whitespace=True)
 
 
 @router.patch("/sessions/{session_id}")
