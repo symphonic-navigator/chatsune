@@ -24,7 +24,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const resolvingSession = useRef(false)
 
   useEffect(() => {
-    if (!personaId || sessionId || resolvingSession.current) return
+    resolvingSession.current = false
+    if (!personaId || sessionId) return
     resolvingSession.current = true
 
     const forceNew = searchParams.get('new') === '1'
@@ -33,7 +34,7 @@ export function ChatView({ persona }: ChatViewProps) {
       chatApi
         .createSession(personaId)
         .then((session) => navigate(`/chat/${personaId}/${session.id}`, { replace: true }))
-        .catch(() => { resolvingSession.current = false })
+        .finally(() => { resolvingSession.current = false })
       return
     }
 
@@ -52,7 +53,7 @@ export function ChatView({ persona }: ChatViewProps) {
           })
         }
       })
-      .catch(() => { resolvingSession.current = false })
+      .finally(() => { resolvingSession.current = false })
   }, [searchParams, personaId, sessionId, navigate])
 
   const messages = useChatStore((s) => s.messages)
