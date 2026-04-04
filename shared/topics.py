@@ -30,3 +30,9 @@ class Topics:
     CHAT_MESSAGES_TRUNCATED = "chat.messages.truncated"
     CHAT_MESSAGE_UPDATED = "chat.message.updated"
     CHAT_MESSAGE_DELETED = "chat.message.deleted"
+    # Background jobs
+    JOB_STARTED = "job.started"
+    JOB_COMPLETED = "job.completed"
+    JOB_FAILED = "job.failed"
+    JOB_RETRY = "job.retry"
+    JOB_EXPIRED = "job.expired"

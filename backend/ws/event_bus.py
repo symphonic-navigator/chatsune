@@ -37,6 +37,12 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_MESSAGES_TRUNCATED: ([], True),
     Topics.CHAT_MESSAGE_UPDATED: ([], True),
     Topics.CHAT_MESSAGE_DELETED: ([], True),
+    # Background jobs — target user only
+    Topics.JOB_STARTED: ([], True),
+    Topics.JOB_COMPLETED: ([], True),
+    Topics.JOB_FAILED: ([], True),
+    Topics.JOB_RETRY: ([], True),
+    Topics.JOB_EXPIRED: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {
