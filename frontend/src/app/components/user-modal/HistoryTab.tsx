@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { chatApi, type ChatSessionDto } from '../../../core/api/chat'
 import { useChatSessions } from '../../../core/hooks/useChatSessions'
 import { usePersonas } from '../../../core/hooks/usePersonas'
-import type { ChatSessionDto } from '../../../core/api/chat'
+import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 
 interface HistoryTabProps {
   onClose: () => void
@@ -33,20 +34,72 @@ function groupSessions(sessions: ChatSessionDto[]): [string, ChatSessionDto[]][]
   return Array.from(map.entries())
 }
 
+function formatDate(isoString: string): string {
+  return new Date(isoString).toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+const BTN = 'px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border transition-colors cursor-pointer'
+const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
+const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
+
 export function HistoryTab({ onClose }: HistoryTabProps) {
   const { sessions, isLoading } = useChatSessions()
   const { personas } = usePersonas()
+  const isSanitised = useSanitisedMode((s) => s.isSanitised)
   const [search, setSearch] = useState('')
+  const [personaFilter, setPersonaFilter] = useState<string>('all')
   const navigate = useNavigate()
 
+  // Sanitised mode: build set of NSFW persona IDs
+  const nsfwPersonaIds = useMemo(
+    () => new Set(personas.filter((p) => p.nsfw).map((p) => p.id)),
+    [personas],
+  )
+
+  // Filter sessions by sanitised mode, persona filter, and search
   const filtered = useMemo(() => {
-    if (!search.trim()) return sessions
-    const term = search.toLowerCase()
-    return sessions.filter((s) => {
-      const name = personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id
-      return name.toLowerCase().includes(term) || s.id.toLowerCase().includes(term)
-    })
-  }, [sessions, search, personas])
+    let result = sessions
+
+    // Sanitised mode
+    if (isSanitised) {
+      result = result.filter((s) => !nsfwPersonaIds.has(s.persona_id))
+    }
+
+    // Persona filter
+    if (personaFilter !== 'all') {
+      result = result.filter((s) => s.persona_id === personaFilter)
+    }
+
+    // Text search
+    if (search.trim()) {
+      const term = search.toLowerCase()
+      result = result.filter((s) => {
+        const name = personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id
+        const title = s.title ?? ''
+        return (
+          name.toLowerCase().includes(term) ||
+          title.toLowerCase().includes(term) ||
+          s.id.toLowerCase().includes(term)
+        )
+      })
+    }
+
+    return result
+  }, [sessions, search, personas, personaFilter, isSanitised, nsfwPersonaIds])
+
+  // Personas available for the filter dropdown (only those with sessions, respecting sanitised mode)
+  const filterPersonas = useMemo(() => {
+    const personaIdsWithSessions = new Set(sessions.map((s) => s.persona_id))
+    return personas
+      .filter((p) => personaIdsWithSessions.has(p.id))
+      .filter((p) => !isSanitised || !p.nsfw)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [personas, sessions, isSanitised])
 
   const grouped = useMemo(() => groupSessions(filtered), [filtered])
 
@@ -57,16 +110,27 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Search */}
-      <div className="px-4 pt-4 pb-2 flex-shrink-0">
+      {/* Filters */}
+      <div className="px-4 pt-4 pb-2 flex-shrink-0 flex gap-2">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search history..."
           aria-label="Search session history"
-          className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none focus:border-gold/30 transition-colors font-mono"
+          className="flex-1 bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none focus:border-gold/30 transition-colors font-mono"
         />
+        <select
+          value={personaFilter}
+          onChange={(e) => setPersonaFilter(e.target.value)}
+          aria-label="Filter by persona"
+          className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 outline-none focus:border-gold/30 transition-colors font-mono cursor-pointer appearance-none min-w-[140px]"
+        >
+          <option value="all">All Personas</option>
+          {filterPersonas.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
       </div>
 
       {/* List */}
@@ -83,30 +147,177 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
               {group}
             </div>
             {groupSessions.map((s) => (
-              <button
+              <SessionRow
                 key={s.id}
-                type="button"
-                onClick={() => handleOpen(s)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-white/4 group"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-                    {personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id}
-                  </p>
-                  <p className="text-[10px] text-white/30 font-mono mt-0.5">
-                    {new Date(s.updated_at).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-                <span className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors">›</span>
-              </button>
+                session={s}
+                personaName={personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id}
+                onOpen={() => handleOpen(s)}
+              />
             ))}
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+
+interface SessionRowProps {
+  session: ChatSessionDto
+  personaName: string
+  onOpen: () => void
+}
+
+function SessionRow({ session, personaName, onOpen }: SessionRowProps) {
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const deleteTimer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus()
+  }, [editing])
+
+  // Auto-dismiss delete confirmation
+  useEffect(() => {
+    return () => {
+      if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    }
+  }, [])
+
+  const startEdit = useCallback(() => {
+    setEditValue(session.title ?? '')
+    setEditing(true)
+  }, [session.title])
+
+  const cancelEdit = useCallback(() => {
+    setEditing(false)
+    setEditValue('')
+  }, [])
+
+  const saveEdit = useCallback(async () => {
+    const trimmed = editValue.trim()
+    if (!trimmed || trimmed === session.title) {
+      cancelEdit()
+      return
+    }
+    try {
+      await chatApi.updateSession(session.id, { title: trimmed })
+    } catch {
+      // Title update arrives via event; error is non-critical
+    }
+    setEditing(false)
+  }, [editValue, session.id, session.title, cancelEdit])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') saveEdit()
+    if (e.key === 'Escape') cancelEdit()
+  }, [saveEdit, cancelEdit])
+
+  const handleGenerateTitle = useCallback(async () => {
+    setGenerating(true)
+    try {
+      await chatApi.generateTitle(session.id)
+    } catch {
+      // Title arrives via event
+    } finally {
+      // Keep generating state for a short time to show feedback
+      setTimeout(() => setGenerating(false), 2000)
+    }
+  }, [session.id])
+
+  const handleDelete = useCallback(async () => {
+    try {
+      await chatApi.deleteSession(session.id)
+    } catch {
+      // Removal via event
+    }
+    setConfirmDelete(false)
+  }, [session.id])
+
+  const startDeleteConfirm = useCallback(() => {
+    if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    setConfirmDelete(true)
+    deleteTimer.current = setTimeout(() => setConfirmDelete(false), 3000)
+  }, [])
+
+  return (
+    <div className="group rounded-lg transition-colors hover:bg-white/4">
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        {/* Main content — clickable to open chat */}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex-1 min-w-0 text-left"
+        >
+          <div className="flex items-center gap-2">
+            {editing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={saveEdit}
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
+              />
+            ) : (
+              <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
+                {session.title ?? formatDate(session.updated_at)}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-[10px] text-white/40 font-mono truncate">
+              {personaName}
+            </p>
+            <span className="text-[10px] text-white/20">·</span>
+            <p className="text-[10px] text-white/30 font-mono">
+              {formatDate(session.updated_at)}
+            </p>
+          </div>
+        </button>
+
+        {/* Actions — visible on hover */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <button
+            type="button"
+            onClick={startEdit}
+            title="Rename"
+            className={BTN_NEUTRAL}
+          >
+            REN
+          </button>
+          <button
+            type="button"
+            onClick={handleGenerateTitle}
+            disabled={generating}
+            title="Generate title"
+            className={`${BTN_NEUTRAL} ${generating ? 'opacity-30 cursor-not-allowed' : ''}`}
+          >
+            {generating ? '...' : 'GEN'}
+          </button>
+          {confirmDelete ? (
+            <button type="button" onClick={handleDelete} className={BTN_RED}>
+              SURE?
+            </button>
+          ) : (
+            <button type="button" onClick={startDeleteConfirm} className={BTN_NEUTRAL}>
+              DEL
+            </button>
+          )}
+        </div>
+
+        {/* Open arrow */}
+        <span
+          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer"
+          onClick={onOpen}
+        >
+          ›
+        </span>
       </div>
     </div>
   )
