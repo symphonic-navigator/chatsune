@@ -17,10 +17,10 @@ export function ModelsTab() {
     setError(null)
     try {
       const providers = await llmApi.listProviders()
-      const configured = providers.filter((p) => p.is_configured)
+      const listable = providers.filter((p) => p.is_configured || !p.requires_key_for_listing)
 
       const results = await Promise.allSettled(
-        configured.map((p) => llmApi.listModels(p.provider_id)),
+        listable.map((p) => llmApi.listModels(p.provider_id)),
       )
 
       const allModels: ModelMetaDto[] = []
@@ -99,7 +99,7 @@ export function ModelsTab() {
   if (models.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-[12px] text-white/30">
-        No models available. Configure a provider key first.
+        No models available.
       </div>
     )
   }

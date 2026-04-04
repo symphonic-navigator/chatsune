@@ -8,6 +8,7 @@ class ProviderCredentialDto(BaseModel):
     provider_id: str
     display_name: str
     is_configured: bool
+    requires_key_for_listing: bool = True
     created_at: datetime | None = None
 
 

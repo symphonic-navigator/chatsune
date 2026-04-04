@@ -9,6 +9,8 @@ from shared.dtos.llm import ModelMetaDto
 class BaseAdapter(ABC):
     """Abstract base for all upstream inference provider adapters."""
 
+    requires_key_for_listing: bool = True
+
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 

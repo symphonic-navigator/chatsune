@@ -43,16 +43,20 @@ async def list_providers(user: dict = Depends(require_active_session)):
         for doc in await repo.list_for_user(user["sub"])
     }
     result = []
-    for provider_id in ADAPTER_REGISTRY:
+    for provider_id, adapter_cls in ADAPTER_REGISTRY.items():
+        requires_key = adapter_cls.requires_key_for_listing
         doc = configured.get(provider_id)
         if doc:
-            result.append(CredentialRepository.to_dto(doc, PROVIDER_DISPLAY_NAMES[provider_id]))
+            dto = CredentialRepository.to_dto(doc, PROVIDER_DISPLAY_NAMES[provider_id])
+            dto = dto.model_copy(update={"requires_key_for_listing": requires_key})
+            result.append(dto)
         else:
             result.append(
                 ProviderCredentialDto(
                     provider_id=provider_id,
                     display_name=PROVIDER_DISPLAY_NAMES[provider_id],
                     is_configured=False,
+                    requires_key_for_listing=requires_key,
                 )
             )
     return result

@@ -2,6 +2,7 @@ export interface ProviderCredentialDto {
   provider_id: string
   display_name: string
   is_configured: boolean
+  requires_key_for_listing: boolean
   created_at: string | null
 }
 

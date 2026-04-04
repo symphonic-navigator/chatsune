@@ -87,6 +87,8 @@ def _translate_message(msg: CompletionMessage) -> dict:
 class OllamaCloudAdapter(BaseAdapter):
     """Ollama Cloud inference adapter."""
 
+    requires_key_for_listing: bool = False
+
     async def validate_key(self, api_key: str) -> bool:
         """Validate key via GET /api/me. Returns True on 200, False on 401/403, raises otherwise."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
