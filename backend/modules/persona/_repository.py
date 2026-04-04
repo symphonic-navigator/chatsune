@@ -78,6 +78,16 @@ class PersonaRepository:
         )
         return result.deleted_count > 0
 
+    async def list_monograms_for_user(
+        self, user_id: str, exclude_persona_id: str | None = None,
+    ) -> set[str]:
+        query: dict = {"user_id": user_id, "monogram": {"$exists": True, "$ne": ""}}
+        if exclude_persona_id:
+            query["_id"] = {"$ne": exclude_persona_id}
+        cursor = self._collection.find(query, {"monogram": 1})
+        docs = await cursor.to_list(length=500)
+        return {doc["monogram"] for doc in docs}
+
     @staticmethod
     def to_dto(doc: dict) -> PersonaDto:
         return PersonaDto(

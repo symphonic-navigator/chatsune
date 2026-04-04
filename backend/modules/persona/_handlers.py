@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.llm import is_valid_provider
+from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.persona import CreatePersonaDto, UpdatePersonaDto
@@ -66,6 +67,12 @@ async def create_persona(
         display_order=body.display_order,
     )
 
+    user_id = user["sub"]
+    existing_monograms = await repo.list_monograms_for_user(user_id)
+    monogram = generate_monogram(body.name, existing_monograms)
+    await repo.update(doc["_id"], user_id, {"monogram": monogram})
+    doc["monogram"] = monogram
+
     dto = PersonaRepository.to_dto(doc)
     await event_bus.publish(
         Topics.PERSONA_CREATED,
@@ -112,6 +119,13 @@ async def replace_persona(
     if not updated:
         raise HTTPException(status_code=404, detail="Persona not found")
 
+    existing_monograms = await repo.list_monograms_for_user(
+        user["sub"], exclude_persona_id=persona_id,
+    )
+    monogram = generate_monogram(body.name, existing_monograms)
+    await repo.update(persona_id, user["sub"], {"monogram": monogram})
+    updated = await repo.find_by_id(persona_id, user["sub"])
+
     dto = PersonaRepository.to_dto(updated)
     await event_bus.publish(
         Topics.PERSONA_UPDATED,
@@ -146,6 +160,14 @@ async def update_persona(
     updated = await repo.update(persona_id, user["sub"], fields)
     if not updated:
         raise HTTPException(status_code=404, detail="Persona not found")
+
+    if body.name is not None:
+        existing_monograms = await repo.list_monograms_for_user(
+            user["sub"], exclude_persona_id=persona_id,
+        )
+        monogram = generate_monogram(body.name, existing_monograms)
+        await repo.update(persona_id, user["sub"], {"monogram": monogram})
+        updated["monogram"] = monogram
 
     dto = PersonaRepository.to_dto(updated)
     await event_bus.publish(
