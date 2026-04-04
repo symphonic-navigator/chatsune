@@ -35,4 +35,13 @@ export const chatApi = {
 
   getMessages: (sessionId: string) =>
     api.get<ChatMessageDto[]>(`/api/chat/sessions/${sessionId}/messages`),
+
+  deleteSession: (sessionId: string) =>
+    api.delete<{ status: string }>(`/api/chat/sessions/${sessionId}`),
+
+  updateSession: (sessionId: string, body: { title: string }) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}`, body),
+
+  generateTitle: (sessionId: string) =>
+    api.post<{ status: string }>(`/api/chat/sessions/${sessionId}/generate-title`),
 }
