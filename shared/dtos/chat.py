@@ -10,6 +10,7 @@ class ChatSessionDto(BaseModel):
     persona_id: str
     model_unique_id: str
     state: Literal["idle", "streaming", "requires_action"]
+    title: str | None = None
     created_at: datetime
     updated_at: datetime
 

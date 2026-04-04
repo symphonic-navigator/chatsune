@@ -37,6 +37,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_MESSAGES_TRUNCATED: ([], True),
     Topics.CHAT_MESSAGE_UPDATED: ([], True),
     Topics.CHAT_MESSAGE_DELETED: ([], True),
+    Topics.CHAT_SESSION_TITLE_UPDATED: ([], True),
     # Background jobs — target user only
     Topics.JOB_STARTED: ([], True),
     Topics.JOB_COMPLETED: ([], True),

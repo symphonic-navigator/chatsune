@@ -45,6 +45,15 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def update_session_title(self, session_id: str, title: str) -> dict | None:
+        """Set the title of a chat session."""
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"title": title, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
     async def delete_session(self, session_id: str, user_id: str) -> bool:
         result = await self._sessions.delete_one({"_id": session_id, "user_id": user_id})
         if result.deleted_count > 0:
@@ -117,6 +126,7 @@ class ChatRepository:
             persona_id=doc["persona_id"],
             model_unique_id=doc["model_unique_id"],
             state=doc["state"],
+            title=doc.get("title"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

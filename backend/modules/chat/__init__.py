@@ -29,6 +29,7 @@ from shared.events.chat import (
     ChatMessageDeletedEvent,
     ChatMessagesTruncatedEvent,
     ChatMessageUpdatedEvent,
+    ChatSessionTitleUpdatedEvent,
     ChatStreamEndedEvent,
     ChatStreamErrorEvent,
     ChatStreamStartedEvent,
@@ -396,8 +397,28 @@ def handle_chat_cancel(user_id: str, data: dict) -> None:
         _cancel_events[correlation_id].set()
 
 
+async def update_session_title(session_id: str, title: str, user_id: str, correlation_id: str) -> None:
+    """Update a session's title and publish the change event."""
+    db = get_db()
+    repo = ChatRepository(db)
+    await repo.update_session_title(session_id, title)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_TITLE_UPDATED,
+        ChatSessionTitleUpdatedEvent(
+            session_id=session_id,
+            title=title,
+            correlation_id=correlation_id,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
-    "handle_chat_cancel",
+    "handle_chat_cancel", "update_session_title",
 ]

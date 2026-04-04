@@ -67,3 +67,11 @@ class ChatMessageDeletedEvent(BaseModel):
     message_id: str
     correlation_id: str
     timestamp: datetime
+
+
+class ChatSessionTitleUpdatedEvent(BaseModel):
+    type: str = "chat.session.title_updated"
+    session_id: str
+    title: str
+    correlation_id: str
+    timestamp: datetime
