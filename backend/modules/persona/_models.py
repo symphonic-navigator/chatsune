@@ -17,6 +17,9 @@ class PersonaDocument(BaseModel):
     nsfw: bool
     colour_scheme: str
     display_order: int
+    monogram: str
+    pinned: bool
+    profile_image: str | None
     created_at: datetime
     updated_at: datetime
 

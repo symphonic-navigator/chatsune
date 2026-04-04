@@ -26,6 +26,8 @@ class PersonaRepository:
         nsfw: bool,
         colour_scheme: str,
         display_order: int,
+        pinned: bool = False,
+        profile_image: str | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -40,6 +42,9 @@ class PersonaRepository:
             "nsfw": nsfw,
             "colour_scheme": colour_scheme,
             "display_order": display_order,
+            "monogram": "",
+            "pinned": pinned,
+            "profile_image": profile_image,
             "created_at": now,
             "updated_at": now,
         }
@@ -87,6 +92,9 @@ class PersonaRepository:
             nsfw=doc.get("nsfw", False),
             colour_scheme=doc["colour_scheme"],
             display_order=doc["display_order"],
+            monogram=doc.get("monogram", "??"),
+            pinned=doc.get("pinned", False),
+            profile_image=doc.get("profile_image"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
