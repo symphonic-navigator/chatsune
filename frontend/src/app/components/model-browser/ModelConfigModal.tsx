@@ -5,6 +5,35 @@ import { slugWithoutProvider } from "./modelFilters"
 
 const SYSTEM_PROMPT_LIMIT = 4000
 const NOTES_LIMIT = 2000
+const DISPLAY_NAME_LIMIT = 100
+const MIN_CONTEXT_FOR_SLIDER = 96_000
+
+const CONTEXT_STEPS: number[] = [
+  96_000, 128_000, 160_000, 192_000, 224_000, 256_000,
+  384_000, 512_000,
+  768_000, 1_000_000, 1_250_000, 1_500_000, 2_000_000,
+]
+
+function availableSteps(maxContext: number): number[] {
+  const steps = CONTEXT_STEPS.filter((s) => s <= maxContext)
+  if (steps.length === 0 || steps[steps.length - 1] !== maxContext) {
+    steps.push(maxContext)
+  }
+  return steps
+}
+
+function formatContextLabel(ctx: number): string {
+  if (ctx >= 1_000_000) {
+    const val = ctx / 1_000_000
+    return val % 1 === 0 ? `${val}M` : `${val.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}M`
+  }
+  return `${Math.round(ctx / 1_000)}k`
+}
+
+function autoGrow(el: HTMLTextAreaElement) {
+  el.style.height = "auto"
+  el.style.height = `${Math.min(el.scrollHeight, 12 * 24)}px`
+}
 
 interface ModelConfigModalProps {
   model: EnrichedModelDto
@@ -20,7 +49,22 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isHidden, setIsHidden] = useState(model.user_config?.is_hidden ?? false)
+  const [customDisplayName, setCustomDisplayName] = useState(
+    model.user_config?.custom_display_name ?? "",
+  )
+  const [customContextWindow, setCustomContextWindow] = useState<number | null>(
+    model.user_config?.custom_context_window ?? null,
+  )
   const backdropRef = useRef<HTMLDivElement>(null)
+
+  const contextSliderAvailable = model.context_window >= MIN_CONTEXT_FOR_SLIDER
+  const steps = contextSliderAvailable ? availableSteps(model.context_window) : []
+  const effectiveContext = customContextWindow ?? model.context_window
+  const stepIndex = steps.length > 0
+    ? steps.reduce((closest, s, i) =>
+        Math.abs(s - effectiveContext) < Math.abs(steps[closest] - effectiveContext) ? i : closest, 0)
+    : 0
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -43,6 +87,11 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
 
       const data: SetUserModelConfigRequest = {
         is_favourite: isFavourite,
+        is_hidden: isHidden,
+        custom_display_name: customDisplayName.trim() || null,
+        custom_context_window: contextSliderAvailable && customContextWindow !== null && customContextWindow !== model.context_window
+          ? customContextWindow
+          : null,
         notes: notes.trim() || null,
         system_prompt_addition: systemPromptAddition.trim() || null,
       }
@@ -115,6 +164,114 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             </div>
           </label>
 
+          {/* Hidden toggle */}
+          <div
+            className="flex items-center gap-3 cursor-pointer py-2"
+            onClick={() => setIsHidden(!isHidden)}
+          >
+            <div
+              className={[
+                "relative h-[18px] w-[32px] flex-shrink-0 rounded-full transition-colors",
+                isHidden ? "bg-[#f38ba8]" : "bg-white/15",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-all",
+                  isHidden ? "left-[16px]" : "left-[2px]",
+                ].join(" ")}
+              />
+            </div>
+            <div>
+              <div className="text-[12px] text-white/70">Hidden</div>
+              <div className="text-[10px] text-white/30">
+                Hide this model from your model selection lists
+              </div>
+            </div>
+          </div>
+
+          {/* Custom Display Name */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label
+                htmlFor="config-display-name"
+                className="block text-[11px] font-medium uppercase tracking-wider text-white/40"
+              >
+                Custom Display Name
+              </label>
+              <span className={[
+                "text-[10px]",
+                customDisplayName.length > DISPLAY_NAME_LIMIT * 0.9
+                  ? "text-[#f38ba8]"
+                  : "text-white/20",
+              ].join(" ")}>
+                {customDisplayName.length}/{DISPLAY_NAME_LIMIT}
+              </span>
+            </div>
+            <input
+              id="config-display-name"
+              type="text"
+              value={customDisplayName}
+              onChange={(e) => {
+                if (e.target.value.length <= DISPLAY_NAME_LIMIT) {
+                  setCustomDisplayName(e.target.value)
+                }
+              }}
+              placeholder="Leave empty to use default name"
+              className="w-full rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
+            />
+            {model.display_name && (
+              <div className="mt-1 text-[10px] text-white/25">
+                Original: {model.display_name}
+              </div>
+            )}
+          </div>
+
+          {/* Context Size */}
+          {contextSliderAvailable ? (
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-[11px] font-medium uppercase tracking-wider text-white/40">
+                  Context Size
+                </label>
+                <span className="text-[12px] font-semibold text-gold">
+                  {formatContextLabel(steps[stepIndex])}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={steps.length - 1}
+                value={stepIndex}
+                onChange={(e) => {
+                  const idx = parseInt(e.target.value, 10)
+                  const value = steps[idx]
+                  setCustomContextWindow(value === model.context_window ? null : value)
+                }}
+                className="w-full accent-[#f9e2af]"
+              />
+              <div className="mt-1 flex justify-between text-[9px] text-white/20">
+                <span>{formatContextLabel(steps[0])}</span>
+                <span className={effectiveContext === model.context_window ? "text-white/50 font-semibold" : ""}>
+                  {formatContextLabel(model.context_window)} (max)
+                </span>
+              </div>
+              <div className="mt-1.5 text-[10px] text-white/25">
+                Smaller context = lower cost per message. Default is the model's maximum.
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-white/25">
+                Context Size
+              </div>
+              <div className="text-[10px] text-white/20 italic">
+                Context adjustment available for models with 96k+ context window.
+                This model has {formatContextLabel(model.context_window)}.
+              </div>
+            </div>
+          )}
+
           {/* System Prompt Addition */}
           <div>
             <div className="mb-2 flex items-center justify-between">
@@ -141,9 +298,11 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
                   setSystemPromptAddition(e.target.value)
                 }
               }}
+              onInput={(e) => autoGrow(e.currentTarget)}
+              style={{ maxHeight: `${12 * 24}px` }}
               placeholder="Additional instructions appended to the system prompt when this model is used"
               rows={4}
-              className="w-full resize-none rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
+              className="w-full resize-none overflow-y-auto rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
             />
           </div>
 
@@ -173,9 +332,11 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
                   setNotes(e.target.value)
                 }
               }}
+              onInput={(e) => autoGrow(e.currentTarget)}
+              style={{ maxHeight: `${12 * 24}px` }}
               placeholder="Personal notes about this model (only visible to you)"
               rows={3}
-              className="w-full resize-none rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
+              className="w-full resize-none overflow-y-auto rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
             />
           </div>
 
