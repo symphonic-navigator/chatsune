@@ -23,6 +23,9 @@ export const llmApi = {
   testKey: (providerId: string, data: SetProviderKeyRequest) =>
     api.post<TestKeyResponse>(`/api/llm/providers/${providerId}/test`, data),
 
+  testStoredKey: (providerId: string) =>
+    api.post<TestKeyResponse>(`/api/llm/providers/${providerId}/test-stored`),
+
   listModels: (providerId: string) =>
     api.get<ModelMetaDto[]>(`/api/llm/providers/${providerId}/models`),
 

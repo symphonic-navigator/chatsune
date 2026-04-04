@@ -159,6 +159,54 @@ async def test_provider_key(
     return {"valid": valid, "error": error_message}
 
 
+@router.post("/providers/{provider_id}/test-stored", status_code=200)
+async def test_stored_provider_key(
+    provider_id: str,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    """Test the stored (encrypted) API key for this provider without requiring the key in the request."""
+    if provider_id not in ADAPTER_REGISTRY:
+        raise HTTPException(status_code=404, detail="Unknown provider")
+
+    repo = _credential_repo()
+    doc = await repo.find(user["sub"], provider_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="No key configured for this provider")
+
+    raw_key = repo.get_raw_key(doc)
+    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
+    error_message = None
+    try:
+        valid = await adapter.validate_key(raw_key)
+        if not valid:
+            error_message = "Key rejected by provider"
+    except NotImplementedError:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Provider '{provider_id}' is not yet fully implemented",
+        )
+    except Exception as exc:
+        valid = False
+        error_message = str(exc)
+
+    test_status = "valid" if valid else "failed"
+    await repo.update_test_status(user["sub"], provider_id, test_status, error_message)
+
+    await event_bus.publish(
+        Topics.LLM_CREDENTIAL_TESTED,
+        LlmCredentialTestedEvent(
+            provider_id=provider_id,
+            user_id=user["sub"],
+            valid=valid,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        target_user_ids=[user["sub"]],
+    )
+
+    return {"valid": valid, "error": error_message}
+
+
 @router.get("/providers/{provider_id}/models")
 async def list_models(
     provider_id: str,
