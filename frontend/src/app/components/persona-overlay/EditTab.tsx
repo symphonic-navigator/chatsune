@@ -23,9 +23,14 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [nsfw, setNsfw] = useState(persona.nsfw)
   const [saving, setSaving] = useState(false)
   const [modelUniqueId, setModelUniqueId] = useState(persona.model_unique_id)
-  const [modelDisplayName, setModelDisplayName] = useState('')
-  const [modelProvider, setModelProvider] = useState('')
-  const [canReason, setCanReason] = useState(persona.reasoning_enabled)
+  const [modelDisplayName, setModelDisplayName] = useState(
+    persona.model_unique_id ? persona.model_unique_id.split(':').slice(1).join(':') : ''
+  )
+  const [modelProvider, setModelProvider] = useState(
+    persona.model_unique_id ? persona.model_unique_id.split(':')[0] : ''
+  )
+  const [canReason, setCanReason] = useState(persona.model_unique_id !== '')
+
   const [modelModalOpen, setModelModalOpen] = useState(false)
 
   const isDirty = isCreating ||

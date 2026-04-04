@@ -111,7 +111,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
     <div
       ref={backdropRef}
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
     >
       <div className="w-full max-w-lg rounded-xl border border-white/8 bg-surface shadow-2xl">
         {/* Header */}
