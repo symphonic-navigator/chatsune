@@ -10,9 +10,12 @@ import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
 import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
 import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
+import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 import { Topics } from "../../core/types/events"
 import { llmApi } from "../../core/api/llm"
+import { personasApi } from "../../core/api/personas"
 import type { ProviderCredentialDto } from "../../core/types/llm"
+import type { UpdatePersonaRequest } from "../../core/types/persona"
 
 export default function AppLayout() {
   useWebSocket()
@@ -55,6 +58,43 @@ export default function AppLayout() {
   function closeAdmin() {
     setAdminTab(null)
   }
+
+  // Persona overlay state
+  const [personaOverlay, setPersonaOverlay] = useState<{
+    personaId: string
+    tab: PersonaOverlayTab
+  } | null>(null)
+
+  const openPersonaOverlay = useCallback(
+    (personaId: string, tab: PersonaOverlayTab = "overview") => {
+      setModalTab(null)
+      setAdminTab(null)
+      setPersonaOverlay({ personaId, tab })
+    },
+    [],
+  )
+
+  const closePersonaOverlay = useCallback(() => {
+    setPersonaOverlay(null)
+  }, [])
+
+  const handlePersonaOverlayTabChange = useCallback(
+    (tab: PersonaOverlayTab) => {
+      setPersonaOverlay((prev) => (prev ? { ...prev, tab } : null))
+    },
+    [],
+  )
+
+  const handlePersonaSave = useCallback(
+    async (personaId: string, data: Record<string, unknown>) => {
+      await personasApi.update(personaId, data as UpdatePersonaRequest)
+    },
+    [],
+  )
+
+  const overlayPersona = personaOverlay
+    ? allPersonas.find((p) => p.id === personaOverlay.personaId) ?? null
+    : null
 
   // Provider / API-key problem detection
   const [providers, setProviders] = useState<ProviderCredentialDto[]>([])
@@ -118,7 +158,7 @@ export default function AppLayout() {
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />
         <main className="relative flex-1 overflow-auto bg-surface">
-          <Outlet />
+          <Outlet context={{ openPersonaOverlay }} />
           {modalTab !== null && (
             <UserModal
               activeTab={modalTab}
@@ -134,6 +174,15 @@ export default function AppLayout() {
               activeTab={adminTab}
               onClose={closeAdmin}
               onTabChange={setAdminTab}
+            />
+          )}
+          {personaOverlay && (
+            <PersonaOverlay
+              persona={overlayPersona}
+              activeTab={personaOverlay.tab}
+              onClose={closePersonaOverlay}
+              onTabChange={handlePersonaOverlayTabChange}
+              onSave={handlePersonaSave}
             />
           )}
         </main>
