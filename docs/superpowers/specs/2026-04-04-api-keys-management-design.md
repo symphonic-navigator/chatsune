@@ -37,10 +37,18 @@ nothing is configured at all or something that IS configured is broken.
 
 **When no problem:** Normal behaviour — no warning, avatar opens About Me.
 
+### Backend Changes (added during implementation)
+
+During planning it became clear that `ProviderCredentialDto` needed `test_status`
+and `last_test_error` fields to persist test results across page reloads. Without
+this, the warning system would have no data source after a refresh. Changes:
+
+- `test_status` and `last_test_error` added to credential document, DTO, and repository
+- Test endpoints persist results to MongoDB
+- New `POST /providers/{id}/test-stored` endpoint for re-testing stored keys
+
 ### Non-Requirements
 
-- No backend changes needed — all endpoints already exist
-- No new shared DTOs needed — `ProviderCredentialDto` already covers the response shape
 - No WebSocket events for key changes (REST-only workflow, user-scoped)
 
 ## UI Design

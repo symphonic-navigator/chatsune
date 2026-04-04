@@ -87,7 +87,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
       ))
       // Auto-test
       try {
-        const result = await llmApi.testKey(providerId, { api_key: apiKey })
+        const result = await llmApi.testStoredKey(providerId)
         const status = result.valid ? 'valid' : 'failed'
         updateKey(providerId, { localTestStatus: status, localTestError: result.error })
         setKeys((prev) => prev.map((k) =>
