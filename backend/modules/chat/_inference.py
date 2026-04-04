@@ -4,9 +4,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from backend.jobs import get_user_lock
-from backend.modules.llm._adapters._events import (
-    ContentDelta, StreamDone, StreamError, ThinkingDelta,
-)
+from backend.modules.llm import ContentDelta, StreamDone, StreamError, ThinkingDelta
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamStartedEvent, ChatThinkingDeltaEvent,

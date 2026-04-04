@@ -1,7 +1,7 @@
 import logging
 
 from backend.jobs._models import JobConfig, JobEntry
-from backend.modules.llm._adapters._events import ContentDelta, StreamDone, StreamError
+from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 
 _log = logging.getLogger(__name__)

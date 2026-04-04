@@ -32,7 +32,7 @@ async def test_submit_and_consume_roundtrip(redis):
         queue_timeout_seconds=original.queue_timeout_seconds,
         execution_timeout_seconds=original.execution_timeout_seconds,
         reasoning_enabled=original.reasoning_enabled,
-        notify=original.notify,
+        notify=True,  # Enable notifications to verify JOB_COMPLETED event
         notify_error=original.notify_error,
     )
 

@@ -5,7 +5,13 @@ Public API: import only from this file.
 
 from collections.abc import AsyncIterator
 
-from backend.modules.llm._adapters._events import ProviderStreamEvent
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    ProviderStreamEvent,
+    StreamDone,
+    StreamError,
+    ThinkingDelta,
+)
 from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._curation import CurationRepository
 from backend.modules.llm._handlers import router
@@ -82,6 +88,11 @@ __all__ = [
     "init_indexes",
     "is_valid_provider",
     "stream_completion",
+    "ContentDelta",
+    "ThinkingDelta",
+    "StreamDone",
+    "StreamError",
+    "ProviderStreamEvent",
     "LlmCredentialNotFoundError",
     "LlmProviderNotFoundError",
     "UserModelConfigRepository",

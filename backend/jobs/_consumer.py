@@ -118,17 +118,18 @@ async def process_one(redis: Redis, event_bus) -> bool:
                 )
 
         # Success
-        await event_bus.publish(
-            Topics.JOB_COMPLETED,
-            JobCompletedEvent(
-                job_id=job.id,
-                job_type=job.job_type,
+        if config.notify:
+            await event_bus.publish(
+                Topics.JOB_COMPLETED,
+                JobCompletedEvent(
+                    job_id=job.id,
+                    job_type=job.job_type,
+                    correlation_id=job.correlation_id,
+                    timestamp=datetime.now(timezone.utc),
+                ),
+                target_user_ids=[job.user_id],
                 correlation_id=job.correlation_id,
-                timestamp=datetime.now(timezone.utc),
-            ),
-            target_user_ids=[job.user_id],
-            correlation_id=job.correlation_id,
-        )
+            )
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
         return True
