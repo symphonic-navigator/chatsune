@@ -57,6 +57,8 @@ export interface UserModelConfigDto {
   model_unique_id: string
   is_favourite: boolean
   is_hidden: boolean
+  custom_display_name: string | null
+  custom_context_window: number | null
   notes: string | null
   system_prompt_addition: string | null
 }
@@ -64,6 +66,8 @@ export interface UserModelConfigDto {
 export interface SetUserModelConfigRequest {
   is_favourite?: boolean
   is_hidden?: boolean
+  custom_display_name?: string | null
+  custom_context_window?: number | null
   notes?: string | null
   system_prompt_addition?: string | null
 }
