@@ -10,6 +10,8 @@ class UserCredentialDocument(BaseModel):
     user_id: str
     provider_id: str
     api_key_encrypted: str  # Fernet-encrypted; never returned via API
+    test_status: str = "untested"  # "untested" | "valid" | "failed"
+    last_test_error: str | None = None
     created_at: datetime
     updated_at: datetime
 

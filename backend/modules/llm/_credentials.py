@@ -41,7 +41,12 @@ class CredentialRepository:
         if existing:
             await self._collection.update_one(
                 {"_id": existing["_id"]},
-                {"$set": {"api_key_encrypted": encrypted, "updated_at": now}},
+                {"$set": {
+                    "api_key_encrypted": encrypted,
+                    "test_status": "untested",
+                    "last_test_error": None,
+                    "updated_at": now,
+                }},
             )
             return await self.find(user_id, provider_id)
         doc = {
@@ -49,11 +54,28 @@ class CredentialRepository:
             "user_id": user_id,
             "provider_id": provider_id,
             "api_key_encrypted": encrypted,
+            "test_status": "untested",
+            "last_test_error": None,
             "created_at": now,
             "updated_at": now,
         }
         await self._collection.insert_one(doc)
         return doc
+
+    async def update_test_status(
+        self, user_id: str, provider_id: str, test_status: str, last_test_error: str | None = None
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        result = await self._collection.find_one_and_update(
+            {"user_id": user_id, "provider_id": provider_id},
+            {"$set": {
+                "test_status": test_status,
+                "last_test_error": last_test_error,
+                "updated_at": now,
+            }},
+            return_document=True,
+        )
+        return result
 
     async def delete(self, user_id: str, provider_id: str) -> bool:
         result = await self._collection.delete_one(
@@ -80,5 +102,7 @@ class CredentialRepository:
             provider_id=doc["provider_id"],
             display_name=display_name,
             is_configured=True,
+            test_status=doc.get("test_status", "untested"),
+            last_test_error=doc.get("last_test_error"),
             created_at=doc["created_at"],
         )

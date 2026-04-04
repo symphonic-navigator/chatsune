@@ -9,6 +9,8 @@ class ProviderCredentialDto(BaseModel):
     display_name: str
     is_configured: bool
     requires_key_for_listing: bool = True
+    test_status: str | None = None        # "untested" | "valid" | "failed" | None (not configured)
+    last_test_error: str | None = None
     created_at: datetime | None = None
 
 
