@@ -27,8 +27,16 @@ export function MessageList({
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
 
+  const scrollbarStyle = `
+    .chat-scroll::-webkit-scrollbar { width: 4px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: ${accentColour}33; border-radius: 2px; }
+    .chat-scroll::-webkit-scrollbar-thumb:hover { background: ${accentColour}66; }
+  `
+
   return (
-    <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-6">
+    <div ref={containerRef} className="chat-scroll flex-1 overflow-y-auto px-4 py-6">
+      <style>{scrollbarStyle}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center py-20 text-center">

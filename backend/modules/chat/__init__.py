@@ -162,22 +162,17 @@ async def _run_inference(
     manager = get_manager()
     event_bus = get_event_bus()
 
-    _DELTA_TYPES = {Topics.CHAT_CONTENT_DELTA, Topics.CHAT_THINKING_DELTA}
-
     async def emit_fn(event) -> None:
         event_dict = event.model_dump(mode="json")
         event_type = event_dict.get("type", "")
 
-        if event_type in _DELTA_TYPES:
-            await manager.send_to_user(user_id, event_dict)
-        else:
-            await event_bus.publish(
-                event_type,
-                event,
-                scope=f"session:{session_id}",
-                target_user_ids=[user_id],
-                correlation_id=correlation_id,
-            )
+        await event_bus.publish(
+            event_type,
+            event,
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
 
     def stream_fn():
         return llm_stream_completion(user_id, provider_id, request)

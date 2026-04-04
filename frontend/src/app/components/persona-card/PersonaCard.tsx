@@ -11,6 +11,7 @@ interface PersonaCardProps {
   onContinue: (personaId: string) => void;
   onNewChat: (personaId: string) => void;
   onOpenOverlay: (personaId: string, tab: PersonaOverlayTab) => void;
+  onTogglePin?: (personaId: string, pinned: boolean) => void;
 }
 
 export default function PersonaCard({
@@ -19,6 +20,7 @@ export default function PersonaCard({
   onContinue,
   onNewChat,
   onOpenOverlay,
+  onTogglePin,
 }: PersonaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [hoveredZone, setHoveredZone] = useState<"continue" | "new" | null>(null);
@@ -95,12 +97,35 @@ export default function PersonaCard({
         ))}
       </div>
 
-      {/* NSFW indicator */}
-      {persona.nsfw && (
-        <div className="absolute top-2 right-2 z-10 text-xs leading-none">
-          💋
-        </div>
-      )}
+      {/* Pin button + NSFW indicator */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+        {onTogglePin && (
+          <button
+            className="flex h-5 w-5 items-center justify-center rounded-full transition-all duration-200"
+            style={{
+              color: persona.pinned ? chakra.hex : "rgba(255,255,255,0.2)",
+              background: persona.pinned ? chakra.hex + "1a" : "transparent",
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onTogglePin(persona.id, !persona.pinned)}
+            onMouseEnter={(e) => {
+              if (!persona.pinned) e.currentTarget.style.color = chakra.hex + "80";
+            }}
+            onMouseLeave={(e) => {
+              if (!persona.pinned) e.currentTarget.style.color = "rgba(255,255,255,0.2)";
+            }}
+            title={persona.pinned ? "Unpin" : "Pin"}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 17v5" />
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
+            </svg>
+          </button>
+        )}
+        {persona.nsfw && (
+          <span className="text-xs leading-none">💋</span>
+        )}
+      </div>
 
       {/* Card content — CSS Grid: name / avatar / tagline */}
       <div

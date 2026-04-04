@@ -50,7 +50,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           placeholder="Type a message..."
           disabled={isStreaming || disabled}
           rows={1}
-          className="chat-text flex-1 resize-none rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/20 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40"
+          className="chat-text flex-1 resize-none overflow-hidden rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/20 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40"
         />
         {isStreaming ? (
           <button

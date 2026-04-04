@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
@@ -17,8 +17,43 @@ interface ChatViewProps {
 }
 
 export function ChatView({ persona }: ChatViewProps) {
-  const { sessionId } = useParams<{ personaId: string; sessionId?: string }>()
+  const { personaId, sessionId } = useParams<{ personaId: string; sessionId?: string }>()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
+  const resolvingSession = useRef(false)
+
+  useEffect(() => {
+    if (!personaId || sessionId || resolvingSession.current) return
+    resolvingSession.current = true
+
+    const forceNew = searchParams.get('new') === '1'
+
+    if (forceNew) {
+      chatApi
+        .createSession(personaId)
+        .then((session) => navigate(`/chat/${personaId}/${session.id}`, { replace: true }))
+        .catch(() => { resolvingSession.current = false })
+      return
+    }
+
+    // Resume latest session, or create a new one if none exists
+    chatApi
+      .listSessions()
+      .then((sessions) => {
+        const latest = sessions
+          .filter((s) => s.persona_id === personaId)
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
+        if (latest) {
+          navigate(`/chat/${personaId}/${latest.id}`, { replace: true })
+        } else {
+          return chatApi.createSession(personaId).then((session) => {
+            navigate(`/chat/${personaId}/${session.id}`, { replace: true })
+          })
+        }
+      })
+      .catch(() => { resolvingSession.current = false })
+  }, [searchParams, personaId, sessionId, navigate])
 
   const messages = useChatStore((s) => s.messages)
   const isStreaming = useChatStore((s) => s.isStreaming)
@@ -110,7 +145,7 @@ export function ChatView({ persona }: ChatViewProps) {
   if (!sessionId) {
     return (
       <div className="flex flex-1 items-center justify-center text-[13px] text-white/20">
-        Select or start a chat session
+        Loading chat...
       </div>
     )
   }

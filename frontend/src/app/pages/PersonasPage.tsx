@@ -11,11 +11,13 @@ import { useNavigate, useOutletContext } from "react-router-dom"
 import PersonaCard from "../components/persona-card/PersonaCard"
 import AddPersonaCard from "../components/persona-card/AddPersonaCard"
 import { usePersonas } from "../../core/hooks/usePersonas"
+import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import type { PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 
 export default function PersonasPage() {
-  const { personas, reorder } = usePersonas()
+  const { personas, reorder, update } = usePersonas()
+  const { sessions } = useChatSessions()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
   const navigate = useNavigate()
   const { openPersonaOverlay } = useOutletContext<{
@@ -44,7 +46,12 @@ export default function PersonasPage() {
   }
 
   const handleContinue = (personaId: string) => {
-    navigate(`/chat/${personaId}`)
+    const lastSession = sessions.find((s) => s.persona_id === personaId)
+    if (lastSession) {
+      navigate(`/chat/${personaId}/${lastSession.id}`)
+    } else {
+      navigate(`/chat/${personaId}?new=1`)
+    }
   }
 
   const handleNewChat = (personaId: string) => {
@@ -53,6 +60,10 @@ export default function PersonasPage() {
 
   const handleOpenOverlay = (personaId: string, tab: PersonaOverlayTab) => {
     openPersonaOverlay(personaId, tab)
+  }
+
+  const handleTogglePin = (personaId: string, pinned: boolean) => {
+    update(personaId, { pinned })
   }
 
   const handleAddPersona = () => {
@@ -79,6 +90,7 @@ export default function PersonasPage() {
                 onContinue={handleContinue}
                 onNewChat={handleNewChat}
                 onOpenOverlay={handleOpenOverlay}
+                onTogglePin={handleTogglePin}
               />
             ))}
             <AddPersonaCard onClick={handleAddPersona} index={filtered.length} />
