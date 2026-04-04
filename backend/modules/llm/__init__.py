@@ -83,6 +83,22 @@ async def get_model_context_window(provider_id: str, model_slug: str) -> int | N
     return None
 
 
+async def get_effective_context_window(
+    user_id: str, provider_id: str, model_slug: str,
+) -> int | None:
+    """Return the effective context window: min(model_max, user_custom) if set."""
+    model_max = await get_model_context_window(provider_id, model_slug)
+    if model_max is None:
+        return None
+    db = get_db()
+    repo = UserModelConfigRepository(db)
+    unique_id = f"{provider_id}:{model_slug}"
+    config = await repo.find(user_id, unique_id)
+    if config and config.get("custom_context_window"):
+        return min(model_max, config["custom_context_window"])
+    return model_max
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -97,5 +113,6 @@ __all__ = [
     "LlmProviderNotFoundError",
     "UserModelConfigRepository",
     "get_model_context_window",
+    "get_effective_context_window",
     "refresh_all_providers",
 ]

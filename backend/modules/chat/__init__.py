@@ -18,7 +18,7 @@ from backend.jobs import submit, JobType
 from backend.database import get_db
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
-    get_model_context_window,
+    get_effective_context_window,
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
@@ -78,8 +78,8 @@ async def _run_inference(
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
-    # Get context window size
-    max_context = await get_model_context_window(provider_id, model_slug)
+    # Get context window size (respects user override)
+    max_context = await get_effective_context_window(user_id, provider_id, model_slug)
     if max_context is None or max_context == 0:
         max_context = _DEFAULT_CONTEXT_WINDOW
 

@@ -72,11 +72,18 @@ def select_message_pairs(
 
 
 def get_ampel_status(fill_ratio: float) -> Literal["green", "yellow", "orange", "red"]:
-    """Return the context ampel status based on fill ratio (0.0 to 1.0)."""
-    if fill_ratio >= 0.8:
+    """Return the context ampel status based on fill ratio (0.0 to 1.0).
+
+    Thresholds:
+      green  — below 50%: plenty of room
+      yellow — 50-65%: should consider synopsis soon
+      orange — 65-80%: urgent, synopsis recommended now
+      red    — 80%+: synopsis no longer viable (approaching autocompact at 83.5%)
+    """
+    if fill_ratio >= 0.80:
         return "red"
     if fill_ratio >= 0.65:
         return "orange"
-    if fill_ratio >= 0.5:
+    if fill_ratio >= 0.50:
         return "yellow"
     return "green"
