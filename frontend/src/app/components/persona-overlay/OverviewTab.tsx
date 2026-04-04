@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
+import { personasApi } from '../../../core/api/personas'
 
 interface OverviewTabProps {
   persona: PersonaDto
@@ -7,11 +9,26 @@ interface OverviewTabProps {
 }
 
 export function OverviewTab({ persona, chakra }: OverviewTabProps) {
+  const [preview, setPreview] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false)
+
   const createdDate = new Date(persona.created_at).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
+
+  useEffect(() => {
+    let mounted = true
+    personasApi.getSystemPromptPreview(persona.id).then(res => {
+      if (mounted) setPreview(res.preview)
+    }).catch(() => {
+      if (mounted) setPreview(null)
+    })
+    return () => { mounted = false }
+  }, [persona.id])
+
+  const hasPreview = preview !== null && preview.trim().length > 0
 
   return (
     <div className="flex flex-col items-center px-6 py-8 gap-6">
@@ -56,9 +73,9 @@ export function OverviewTab({ persona, chakra }: OverviewTabProps) {
         style={{ border: `1px solid ${chakra.hex}22` }}
       >
         {[
-          { label: 'Chats', value: '—' },
-          { label: 'Memory tokens', value: '—' },
-          { label: 'Pending journal', value: '—' },
+          { label: 'Chats', value: '\u2014' },
+          { label: 'Memory tokens', value: '\u2014' },
+          { label: 'Pending journal', value: '\u2014' },
         ].map((stat, i) => (
           <div
             key={stat.label}
@@ -73,6 +90,45 @@ export function OverviewTab({ persona, chakra }: OverviewTabProps) {
           </div>
         ))}
       </div>
+
+      {/* System prompt preview */}
+      {hasPreview && (
+        <div className="w-full max-w-sm">
+          <div className="relative">
+            <pre
+              className="font-mono text-[12px] text-white/50 leading-relaxed whitespace-pre-wrap break-words m-0 overflow-hidden transition-[max-height] duration-300 ease-in-out"
+              style={{
+                maxHeight: expanded ? '60vh' : '4.5em',
+                overflowY: expanded ? 'auto' : 'hidden',
+              }}
+            >
+              {preview.split(/(--- .+? ---)/  ).map((part, i) =>
+                part.match(/^--- .+? ---$/) ? (
+                  <span key={i} style={{ color: chakra.hex, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em' }}>
+                    {part}
+                  </span>
+                ) : (
+                  <span key={i}>{part}</span>
+                )
+              )}
+            </pre>
+            {!expanded && (
+              <div
+                className="absolute bottom-0 left-0 right-0 h-8 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(to bottom, transparent, #0f0d16)',
+                }}
+              />
+            )}
+          </div>
+          <button
+            onClick={() => setExpanded(prev => !prev)}
+            className="mt-2 font-mono text-[11px] text-white/35 hover:text-white/55 transition-colors cursor-pointer bg-transparent border-none p-0"
+          >
+            {expanded ? 'Collapse' : 'Show full prompt'}
+          </button>
+        </div>
+      )}
 
       {/* Created date */}
       <p className="text-[11px] text-white/25 font-mono">
