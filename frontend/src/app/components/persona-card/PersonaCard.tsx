@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { PersonaDto } from "../../../core/types/persona";
+import type { PersonaOverlayTab } from "../persona-overlay/PersonaOverlay";
 import { CHAKRA_PALETTE } from "../../../core/types/chakra";
 
 interface PersonaCardProps {
@@ -9,7 +10,7 @@ interface PersonaCardProps {
   index: number;
   onContinue: (personaId: string) => void;
   onNewChat: (personaId: string) => void;
-  onOpenOverlay: (personaId: string) => void;
+  onOpenOverlay: (personaId: string, tab: PersonaOverlayTab) => void;
 }
 
 export default function PersonaCard({
@@ -20,6 +21,7 @@ export default function PersonaCard({
   onOpenOverlay,
 }: PersonaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [hoveredZone, setHoveredZone] = useState<"continue" | "new" | null>(null);
 
   const {
     attributes,
@@ -50,53 +52,80 @@ export default function PersonaCard({
     animation: `card-entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.1}s both`,
   };
 
-  const avatarGlowStyle: React.CSSProperties = {
-    background: `radial-gradient(circle at center, ${chakra.hex}33 0%, ${chakra.hex}11 50%, transparent 70%)`,
-    boxShadow: `0 0 20px ${glowStrength}, 0 0 40px ${chakra.hex}22`,
-  };
-
-  const monogramBadgeStyle: React.CSSProperties = {
-    background: `${chakra.hex}22`,
-    border: `1px solid ${chakra.hex}44`,
-    color: chakra.hex,
-  };
+  const menuButtons: { label: string; tab: PersonaOverlayTab }[] = [
+    { label: "Overview", tab: "overview" },
+    { label: "Edit", tab: "edit" },
+    { label: "History", tab: "history" },
+  ];
 
   return (
     <div
       ref={setNodeRef}
       style={cardStyle}
-      className="relative flex flex-col items-center rounded-xl overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      className="relative flex flex-col rounded-xl overflow-hidden select-none"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setHoveredZone(null);
+      }}
       {...attributes}
-      {...listeners}
     >
-      {/* NSFW indicator */}
-      {persona.nsfw && (
-        <div className="absolute top-2 left-2 z-10 text-xs leading-none">
-          💋
-        </div>
-      )}
-
-      {/* Monogram badge */}
-      <div
-        className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-serif font-semibold"
-        style={monogramBadgeStyle}
-      >
-        {persona.monogram}
-      </div>
-
-      {/* Chakra gradient overlay at top */}
+      {/* Chakra gradient overlay */}
       <div
         className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
         style={{ background: chakra.gradient }}
       />
 
-      {/* Avatar area */}
-      <div className="flex-1 flex items-center justify-center pt-8">
+      {/* Drag handle — only this element triggers drag */}
+      <div
+        className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-[3px] cursor-grab active:cursor-grabbing p-1"
+        {...listeners}
+      >
+        {[0, 1, 2].map((row) => (
+          <div key={row} className="flex gap-[3px]">
+            <div
+              className="w-[3px] h-[3px] rounded-full"
+              style={{ background: "rgba(255,255,255,0.3)" }}
+            />
+            <div
+              className="w-[3px] h-[3px] rounded-full"
+              style={{ background: "rgba(255,255,255,0.3)" }}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* NSFW indicator */}
+      {persona.nsfw && (
+        <div className="absolute top-2 right-2 z-10 text-xs leading-none">
+          💋
+        </div>
+      )}
+
+      {/* Card content — CSS Grid: name / avatar / tagline */}
+      <div
+        className="flex-1 grid items-center justify-items-center px-3"
+        style={{
+          gridTemplateRows: "auto 1fr auto",
+          paddingBottom: "28px",
+        }}
+      >
+        {/* Name */}
+        <p
+          className="font-serif text-[15px] font-semibold leading-tight pt-4 self-start"
+          style={{ color: "#e8e0d4" }}
+        >
+          {persona.name}
+        </p>
+
+        {/* Avatar / Monogram */}
         <div
-          className="w-[100px] h-[100px] rounded-full flex items-center justify-center overflow-hidden"
-          style={avatarGlowStyle}
+          className="w-[90px] h-[90px] rounded-full flex items-center justify-center self-center overflow-hidden"
+          style={{
+            background: `radial-gradient(circle at center, ${chakra.hex}33 0%, ${chakra.hex}11 50%, transparent 70%)`,
+            boxShadow: `0 0 20px ${glowStrength}, 0 0 40px ${chakra.hex}22`,
+            border: `2px solid ${chakra.hex}4d`,
+          }}
         >
           {persona.profile_image ? (
             <img
@@ -113,69 +142,109 @@ export default function PersonaCard({
             </span>
           )}
         </div>
-      </div>
 
-      {/* Name and tagline */}
-      <div className="px-3 pb-2 text-center">
+        {/* Tagline — anchored at bottom, max 2 lines with ellipsis */}
         <p
-          className="font-serif text-sm font-semibold leading-tight mb-0.5"
-          style={{ color: "#e8e0d4" }}
-        >
-          {persona.name}
-        </p>
-        <p
-          className="font-mono text-[9px] uppercase tracking-widest leading-tight"
-          style={{ color: chakra.hex + "cc" }}
+          className="font-mono text-[11px] italic leading-snug text-center self-end w-full"
+          style={{
+            color: "rgba(255,255,255,0.4)",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
         >
           {persona.tagline}
         </p>
       </div>
 
-      {/* Overlay trigger button */}
-      <button
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity duration-200 z-20"
-        style={{
-          background: "rgba(10,8,16,0.7)",
-          border: `1px solid ${chakra.hex}55`,
-          color: chakra.hex,
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => onOpenOverlay(persona.id)}
-        aria-label="Open persona overlay"
-      >
-        <span className="text-base leading-none">⟡</span>
-      </button>
-
-      {/* Action zones */}
-      <div className="absolute bottom-0 inset-x-0 flex h-10">
-        {/* Continue — left 2/3 */}
+      {/* Chat zones — absolute overlay above menu bar */}
+      <div className="absolute top-0 left-0 right-0 bottom-[48px] flex">
+        {/* Continue zone — left 2/3 */}
         <button
-          className="flex-[2] flex items-center justify-center text-[10px] font-mono uppercase tracking-wider transition-colors duration-150"
-          style={{
-            background: isHovered ? `${chakra.hex}18` : "transparent",
-            borderTop: `1px solid ${chakra.hex}22`,
-            borderRight: `1px solid ${chakra.hex}22`,
-            color: "#e8e0d4aa",
-          }}
+          className="flex-[2] flex items-end justify-center pb-2 bg-transparent border-none cursor-pointer"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onContinue(persona.id)}
+          onMouseEnter={() => setHoveredZone("continue")}
+          onMouseLeave={() => setHoveredZone(null)}
         >
-          continue
+          <span
+            className="text-[10px] font-semibold uppercase tracking-[1.5px] transition-all duration-250"
+            style={{
+              color: hoveredZone === "continue"
+                ? chakra.hex + "b3"
+                : chakra.hex + "26",
+              textShadow: hoveredZone === "continue"
+                ? `0 0 12px ${chakra.glow}`
+                : "none",
+            }}
+          >
+            Continue
+          </span>
         </button>
 
-        {/* New chat — right 1/3 */}
-        <button
-          className="flex-[1] flex items-center justify-center text-[10px] font-mono uppercase tracking-wider transition-colors duration-150"
+        {/* Divider line */}
+        <div
+          className="w-px transition-colors duration-300 self-stretch my-[15%]"
           style={{
-            background: isHovered ? `${chakra.hex}28` : "transparent",
-            borderTop: `1px solid ${chakra.hex}22`,
-            color: chakra.hex + "bb",
+            background: isHovered ? chakra.hex + "26" : "transparent",
           }}
+        />
+
+        {/* New zone — right 1/3 */}
+        <button
+          className="flex-[1] flex items-end justify-center pb-2 bg-transparent border-none cursor-pointer"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onNewChat(persona.id)}
+          onMouseEnter={() => setHoveredZone("new")}
+          onMouseLeave={() => setHoveredZone(null)}
         >
-          new
+          <span
+            className="text-[10px] font-semibold uppercase tracking-[1.5px] transition-all duration-250"
+            style={{
+              color: hoveredZone === "new"
+                ? chakra.hex + "b3"
+                : chakra.hex + "26",
+              textShadow: hoveredZone === "new"
+                ? `0 0 12px ${chakra.glow}`
+                : "none",
+            }}
+          >
+            New
+          </span>
         </button>
+      </div>
+
+      {/* Menu bar — bottom */}
+      <div
+        className="flex h-12 relative z-[3]"
+        style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
+      >
+        {menuButtons.map((btn, i) => (
+          <button
+            key={btn.tab}
+            className="flex-1 flex items-center justify-center text-[10px] font-medium uppercase tracking-[1px] transition-colors duration-200 bg-transparent border-none cursor-pointer"
+            style={{
+              color: "rgba(255,255,255,0.35)",
+              borderRight: i < menuButtons.length - 1
+                ? "1px solid rgba(255,255,255,0.04)"
+                : "none",
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onOpenOverlay(persona.id, btn.tab)}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = chakra.hex;
+              e.currentTarget.style.background = chakra.hex + "0f";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "rgba(255,255,255,0.35)";
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            {btn.label}
+          </button>
+        ))}
       </div>
     </div>
   );
