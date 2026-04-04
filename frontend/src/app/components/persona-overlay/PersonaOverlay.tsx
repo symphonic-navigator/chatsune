@@ -11,10 +11,11 @@ export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' |
 
 interface PersonaOverlayProps {
   persona: PersonaDto | null
+  isCreating?: boolean
   activeTab: PersonaOverlayTab
   onClose: () => void
   onTabChange: (tab: PersonaOverlayTab) => void
-  onSave: (personaId: string, data: Record<string, unknown>) => Promise<void>
+  onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
 }
 
 const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
@@ -27,8 +28,28 @@ const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export function PersonaOverlay({ persona, activeTab, onClose, onTabChange, onSave }: PersonaOverlayProps) {
+const DEFAULT_PERSONA: PersonaDto = {
+  id: '',
+  user_id: '',
+  name: '',
+  tagline: '',
+  model_unique_id: '',
+  system_prompt: '',
+  temperature: 0.8,
+  reasoning_enabled: false,
+  nsfw: false,
+  colour_scheme: 'heart',
+  display_order: 0,
+  monogram: '?',
+  pinned: false,
+  profile_image: null,
+  created_at: '',
+  updated_at: '',
+}
+
+export function PersonaOverlay({ persona, isCreating, activeTab, onClose, onTabChange, onSave }: PersonaOverlayProps) {
   const modalRef = useRef<HTMLDivElement>(null)
+  const resolved = persona ?? (isCreating ? DEFAULT_PERSONA : null)
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null
@@ -67,9 +88,9 @@ export function PersonaOverlay({ persona, activeTab, onClose, onTabChange, onSav
     }
   }, [onClose])
 
-  if (!persona) return null
+  if (!resolved) return null
 
-  const chakra = CHAKRA_PALETTE[persona.colour_scheme]
+  const chakra = CHAKRA_PALETTE[resolved.colour_scheme]
   const borderColour = `${chakra.hex}26`
 
   return (
@@ -84,7 +105,7 @@ export function PersonaOverlay({ persona, activeTab, onClose, onTabChange, onSav
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Persona: ${persona.name}`}
+        aria-label={isCreating ? 'New Persona' : `Persona: ${resolved.name}`}
         tabIndex={-1}
         className="absolute inset-4 z-20 flex flex-col rounded-xl shadow-2xl overflow-hidden outline-none"
         style={{
@@ -107,9 +128,11 @@ export function PersonaOverlay({ persona, activeTab, onClose, onTabChange, onSav
                 color: chakra.hex,
               }}
             >
-              {persona.monogram}
+              {resolved.monogram}
             </div>
-            <span className="text-[13px] font-semibold text-white/80">{persona.name}</span>
+            <span className="text-[13px] font-semibold text-white/80">
+              {isCreating ? 'New Persona' : resolved.name}
+            </span>
           </div>
           <button
             type="button"
@@ -157,11 +180,11 @@ export function PersonaOverlay({ persona, activeTab, onClose, onTabChange, onSav
 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === 'overview' && <OverviewTab persona={persona} chakra={chakra} />}
-          {activeTab === 'edit' && <EditTab persona={persona} chakra={chakra} onSave={onSave} />}
-          {activeTab === 'knowledge' && <KnowledgeTab persona={persona} chakra={chakra} />}
-          {activeTab === 'memories' && <MemoriesTab persona={persona} chakra={chakra} />}
-          {activeTab === 'history' && <HistoryTab persona={persona} chakra={chakra} />}
+          {activeTab === 'overview' && !isCreating && <OverviewTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}
+          {activeTab === 'knowledge' && !isCreating && <KnowledgeTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'memories' && !isCreating && <MemoriesTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} />}
         </div>
       </div>
     </>

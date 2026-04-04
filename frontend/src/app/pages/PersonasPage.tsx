@@ -7,19 +7,19 @@ import {
 } from "@dnd-kit/core"
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable"
 import { useState } from "react"
-import { useNavigate, useOutletContext } from "react-router"
+import { useNavigate, useOutletContext } from "react-router-dom"
 import PersonaCard from "../components/persona-card/PersonaCard"
 import AddPersonaCard from "../components/persona-card/AddPersonaCard"
 import { usePersonas } from "../../core/hooks/usePersonas"
-import { useSanitisedModeStore } from "../../core/store/sanitisedModeStore"
+import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import type { PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 
 export default function PersonasPage() {
   const { personas, reorder } = usePersonas()
-  const isSanitised = useSanitisedModeStore((s) => s.isSanitised)
+  const isSanitised = useSanitisedMode((s) => s.isSanitised)
   const navigate = useNavigate()
   const { openPersonaOverlay } = useOutletContext<{
-    openPersonaOverlay: (personaId: string, tab?: PersonaOverlayTab) => void
+    openPersonaOverlay: (personaId: string | null, tab?: PersonaOverlayTab) => void
   }>()
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -56,7 +56,7 @@ export default function PersonasPage() {
   }
 
   const handleAddPersona = () => {
-    // TODO: Wire up persona creation flow
+    openPersonaOverlay(null, "edit")
   }
 
   return (

@@ -10,9 +10,11 @@ interface NavRowProps {
 
 export function NavRow({ icon, label, onClick, actions, isActive }: NavRowProps) {
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick() } }}
       className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 mx-1.5 my-0.5 cursor-pointer transition-colors hover:bg-white/6"
       style={{ width: "calc(100% - 12px)" }}
     >
@@ -31,6 +33,6 @@ export function NavRow({ icon, label, onClick, actions, isActive }: NavRowProps)
           {actions}
         </div>
       )}
-    </button>
+    </div>
   )
 }

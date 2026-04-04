@@ -6,12 +6,13 @@ import type { PersonaDto } from '../../../core/types/persona'
 interface EditTabProps {
   persona: PersonaDto
   chakra: ChakraPaletteEntry
-  onSave: (personaId: string, data: Record<string, unknown>) => Promise<void>
+  onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
+  isCreating?: boolean
 }
 
 const CHAKRA_COLOURS: ChakraColour[] = ['root', 'sacral', 'solar', 'heart', 'throat', 'third_eye', 'crown']
 
-export function EditTab({ persona, chakra, onSave }: EditTabProps) {
+export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [name, setName] = useState(persona.name)
   const [tagline, setTagline] = useState(persona.tagline)
   const [colourScheme, setColourScheme] = useState<ChakraColour>(persona.colour_scheme)
@@ -21,7 +22,7 @@ export function EditTab({ persona, chakra, onSave }: EditTabProps) {
   const [nsfw, setNsfw] = useState(persona.nsfw)
   const [saving, setSaving] = useState(false)
 
-  const isDirty =
+  const isDirty = isCreating ||
     name !== persona.name ||
     tagline !== persona.tagline ||
     colourScheme !== persona.colour_scheme ||
@@ -30,11 +31,13 @@ export function EditTab({ persona, chakra, onSave }: EditTabProps) {
     reasoningEnabled !== persona.reasoning_enabled ||
     nsfw !== persona.nsfw
 
+  const canSave = isCreating ? name.trim() !== '' && tagline.trim() !== '' : isDirty
+
   async function handleSave() {
-    if (!isDirty || saving) return
+    if (!canSave || saving) return
     setSaving(true)
     try {
-      await onSave(persona.id, {
+      const data: Record<string, unknown> = {
         name,
         tagline,
         colour_scheme: colourScheme,
@@ -42,7 +45,11 @@ export function EditTab({ persona, chakra, onSave }: EditTabProps) {
         temperature,
         reasoning_enabled: reasoningEnabled,
         nsfw,
-      })
+      }
+      if (isCreating) {
+        data.model_unique_id = persona.model_unique_id || 'ollama_cloud:llama3.2'
+      }
+      await onSave(isCreating ? null : persona.id, data)
     } finally {
       setSaving(false)
     }
@@ -174,7 +181,7 @@ export function EditTab({ persona, chakra, onSave }: EditTabProps) {
         />
         <Toggle
           label="NSFW"
-          description="Allow adult content in responses"
+          description="Hide this persona and related data in 'sanitised' mode"
           value={nsfw}
           onChange={setNsfw}
           chakraHex={chakra.hex}
@@ -185,16 +192,16 @@ export function EditTab({ persona, chakra, onSave }: EditTabProps) {
       <button
         type="button"
         onClick={handleSave}
-        disabled={!isDirty || saving}
+        disabled={!canSave || saving}
         className="mt-2 py-2 px-6 rounded-lg text-[13px] font-semibold transition-all self-end"
         style={{
-          background: isDirty && !saving ? chakra.hex : 'rgba(255,255,255,0.06)',
-          color: isDirty && !saving ? '#0f0d16' : 'rgba(255,255,255,0.25)',
-          cursor: isDirty && !saving ? 'pointer' : 'not-allowed',
+          background: canSave && !saving ? chakra.hex : 'rgba(255,255,255,0.06)',
+          color: canSave && !saving ? '#0f0d16' : 'rgba(255,255,255,0.25)',
+          cursor: canSave && !saving ? 'pointer' : 'not-allowed',
           border: 'none',
         }}
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
       </button>
     </div>
   )

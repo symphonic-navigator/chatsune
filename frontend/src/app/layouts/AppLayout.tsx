@@ -15,7 +15,7 @@ import { Topics } from "../../core/types/events"
 import { llmApi } from "../../core/api/llm"
 import { personasApi } from "../../core/api/personas"
 import type { ProviderCredentialDto } from "../../core/types/llm"
-import type { UpdatePersonaRequest } from "../../core/types/persona"
+import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 
 export default function AppLayout() {
   useWebSocket()
@@ -71,12 +71,12 @@ export default function AppLayout() {
 
   // Persona overlay state
   const [personaOverlay, setPersonaOverlay] = useState<{
-    personaId: string
+    personaId: string | null
     tab: PersonaOverlayTab
   } | null>(null)
 
   const openPersonaOverlay = useCallback(
-    (personaId: string, tab: PersonaOverlayTab = "overview") => {
+    (personaId: string | null, tab: PersonaOverlayTab = "overview") => {
       setModalTab(null)
       setAdminTab(null)
       setPersonaOverlay({ personaId, tab })
@@ -96,13 +96,18 @@ export default function AppLayout() {
   )
 
   const handlePersonaSave = useCallback(
-    async (personaId: string, data: Record<string, unknown>) => {
-      await personasApi.update(personaId, data as UpdatePersonaRequest)
+    async (personaId: string | null, data: Record<string, unknown>) => {
+      if (personaId) {
+        await personasApi.update(personaId, data as UpdatePersonaRequest)
+      } else {
+        const created = await personasApi.create(data as CreatePersonaRequest)
+        setPersonaOverlay({ personaId: created.id, tab: "overview" })
+      }
     },
     [],
   )
 
-  const overlayPersona = personaOverlay
+  const overlayPersona = personaOverlay?.personaId
     ? allPersonas.find((p) => p.id === personaOverlay.personaId) ?? null
     : null
 
@@ -190,6 +195,7 @@ export default function AppLayout() {
           {personaOverlay && (
             <PersonaOverlay
               persona={overlayPersona}
+              isCreating={personaOverlay.personaId === null}
               activeTab={personaOverlay.tab}
               onClose={closePersonaOverlay}
               onTabChange={handlePersonaOverlayTabChange}
