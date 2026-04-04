@@ -12,6 +12,8 @@ import {
 interface ModelBrowserProps {
   onEditConfig?: (model: EnrichedModelDto) => void
   onToggleFavourite?: (model: EnrichedModelDto) => void
+  onSelect?: (model: EnrichedModelDto) => void
+  currentModelId?: string | null
   models?: EnrichedModelDto[]
 }
 
@@ -65,6 +67,8 @@ function formatParams(model: EnrichedModelDto): string {
 export function ModelBrowser({
   onEditConfig,
   onToggleFavourite,
+  onSelect,
+  currentModelId,
   models: externalModels,
 }: ModelBrowserProps) {
   const { models: fetchedModels, isLoading: hookLoading, error: hookError } = useEnrichedModels()
@@ -84,6 +88,8 @@ export function ModelBrowser({
     () => [...providerMap.keys()].sort(),
     [providerMap],
   )
+
+  const selectionMode = onSelect != null
 
   // Determine if any models are favourited — auto-activate favourites tab
   const hasFavourites = useMemo(
@@ -263,7 +269,12 @@ export function ModelBrowser({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem] items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30">
+      <div className={[
+        "grid items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30",
+        selectionMode
+          ? "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
+          : "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
+      ].join(" ")}>
         <span title="Favourite">Fav</span>
         {SORT_FIELDS.map((sf) => (
           <button
@@ -277,6 +288,7 @@ export function ModelBrowser({
         ))}
         <span>Caps</span>
         <span>Rating</span>
+        {selectionMode && <span />}
       </div>
 
       {/* Model list */}
@@ -313,10 +325,14 @@ export function ModelBrowser({
           return (
             <div
               key={model.unique_id}
-              onClick={() => onEditConfig?.(model)}
+              onClick={() => selectionMode ? onSelect(model) : onEditConfig?.(model)}
               className={[
-                "grid grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem] items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors",
+                `grid items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors`,
+                selectionMode
+                  ? "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
+                  : "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
                 "cursor-pointer hover:bg-white/4",
+                model.unique_id === currentModelId ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
                 model.user_config?.is_hidden ? "opacity-45" : "",
               ].join(" ")}
             >
@@ -379,6 +395,21 @@ export function ModelBrowser({
 
               {/* Rating */}
               {ratingBadge(model)}
+
+              {/* Edit config button (selection mode only) */}
+              {selectionMode && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onEditConfig?.(model)
+                  }}
+                  className="text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer text-center"
+                  title="Configure model"
+                >
+                  &#x2026;
+                </button>
+              )}
             </div>
           )
         })}
