@@ -48,11 +48,11 @@ export default function PersonasPage() {
   }
 
   const handleNewChat = (personaId: string) => {
-    navigate(`/chat/${personaId}`)
+    navigate(`/chat/${personaId}?new=1`)
   }
 
-  const handleOpenOverlay = (personaId: string) => {
-    openPersonaOverlay(personaId, "overview")
+  const handleOpenOverlay = (personaId: string, tab: PersonaOverlayTab) => {
+    openPersonaOverlay(personaId, tab)
   }
 
   const handleAddPersona = () => {
