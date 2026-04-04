@@ -8,8 +8,10 @@ import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
 import { BookmarksTab } from './BookmarksTab'
 import { ModelsTab } from './ModelsTab'
+import { ApiKeysTab } from './ApiKeysTab'
+import type { ProviderCredentialDto } from '../../../core/types/llm'
 
-export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'models' | 'settings'
+export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'models' | 'settings' | 'api-keys'
 
 interface Tab {
   id: UserModalTab
@@ -26,6 +28,7 @@ const TABS: Tab[] = [
   { id: 'artefacts', label: 'Artefacts' },
   { id: 'models', label: 'Models' },
   { id: 'settings', label: 'Settings' },
+  { id: 'api-keys', label: 'API-Keys' },
 ]
 
 interface UserModalProps {
@@ -33,11 +36,13 @@ interface UserModalProps {
   onClose: () => void
   onTabChange: (tab: UserModalTab) => void
   displayName: string
+  hasApiKeyProblem: boolean
+  onProvidersChanged: (providers: ProviderCredentialDto[]) => void
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export function UserModal({ activeTab, onClose, onTabChange, displayName }: UserModalProps) {
+export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApiKeyProblem, onProvidersChanged }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Focus trap + Escape key
@@ -127,6 +132,9 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
               ].join(' ')}
             >
               {tab.label}
+              {tab.id === 'api-keys' && hasApiKeyProblem && (
+                <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected">!</span>
+              )}
             </button>
           ))}
         </div>
@@ -142,6 +150,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
           {activeTab === 'artefacts' && <ArtefactsTab />}
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'settings' && <SettingsTab />}
+          {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
         </div>
       </div>
     </>

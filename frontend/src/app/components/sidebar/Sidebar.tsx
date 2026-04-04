@@ -21,6 +21,7 @@ interface SidebarProps {
   activeModalTab: UserModalTab | null
   onOpenAdmin: () => void
   isAdminOpen: boolean
+  hasApiKeyProblem: boolean
 }
 
 function IconBtn({
@@ -62,6 +63,7 @@ export function Sidebar({
   activeModalTab,
   onOpenAdmin,
   isAdminOpen,
+  hasApiKeyProblem,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
@@ -106,8 +108,10 @@ export function Sidebar({
 
   const isTabActive = (tab: UserModalTab) => activeModalTab === tab
 
+  const avatarTab: UserModalTab = hasApiKeyProblem ? 'api-keys' : 'about-me'
+
   const avatarHighlight =
-    activeModalTab === 'about-me' || activeModalTab === 'settings'
+    activeModalTab === 'about-me' || activeModalTab === 'settings' || activeModalTab === 'api-keys'
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
@@ -225,15 +229,18 @@ export function Sidebar({
         {/* User avatar */}
         <button
           type="button"
-          onClick={() => onOpenModal('about-me')}
+          onClick={() => onOpenModal(avatarTab)}
           title={displayName}
           className={[
-            "flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition-colors",
+            "relative flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition-colors",
             avatarHighlight ? "ring-1 ring-gold" : "",
           ].join(" ")}
           style={{ background: "linear-gradient(to bottom right, var(--purple), var(--gold))" }}
         >
           {initial}
+          {hasApiKeyProblem && (
+            <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[7px] font-bold text-white">!</span>
+          )}
         </button>
 
         {/* Logout */}
@@ -455,12 +462,15 @@ export function Sidebar({
         >
           <button
             type="button"
-            onClick={() => onOpenModal('about-me')}
+            onClick={() => onOpenModal(avatarTab)}
             className="flex flex-1 items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity"
             title="Your profile"
           >
-            <div className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
+            <div className="relative flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
               {initial}
+              {hasApiKeyProblem && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[7px] font-bold text-white">!</span>
+              )}
             </div>
             <div className="text-left min-w-0">
               <p className={[

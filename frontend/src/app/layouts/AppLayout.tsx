@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Outlet, useMatch } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
@@ -11,6 +11,8 @@ import { Topbar } from "../components/topbar/Topbar"
 import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
 import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
 import { Topics } from "../../core/types/events"
+import { llmApi } from "../../core/api/llm"
+import type { ProviderCredentialDto } from "../../core/types/llm"
 
 export default function AppLayout() {
   useWebSocket()
@@ -54,6 +56,38 @@ export default function AppLayout() {
     setAdminTab(null)
   }
 
+  // Provider / API-key problem detection
+  const [providers, setProviders] = useState<ProviderCredentialDto[]>([])
+  const autoOpenFired = useRef(false)
+
+  const hasApiKeyProblem = useMemo(() => {
+    const configured = providers.filter((p) => p.is_configured)
+    if (configured.length === 0) return true
+    return configured.some((p) => p.test_status === 'failed')
+  }, [providers])
+
+  const fetchProviders = useCallback(async () => {
+    try {
+      const result = await llmApi.listProviders()
+      setProviders(result)
+    } catch {
+      // Silently fail
+    }
+  }, [])
+
+  // Fetch providers on mount
+  useEffect(() => {
+    if (user) fetchProviders()
+  }, [user, fetchProviders])
+
+  // Auto-open API-Keys tab once per session if there's a problem
+  useEffect(() => {
+    if (hasApiKeyProblem && !autoOpenFired.current && user && providers.length > 0) {
+      autoOpenFired.current = true
+      openModal('api-keys')
+    }
+  }, [hasApiKeyProblem, user, providers])
+
   // Live-update display name when user changes it in another tab or device
   const { latest: profileUpdate } = useEventBus(Topics.USER_PROFILE_UPDATED)
   useEffect(() => {
@@ -79,6 +113,7 @@ export default function AppLayout() {
         activeModalTab={modalTab}
         onOpenAdmin={openAdmin}
         isAdminOpen={adminTab !== null}
+        hasApiKeyProblem={hasApiKeyProblem}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />
@@ -90,6 +125,8 @@ export default function AppLayout() {
               onClose={closeModal}
               onTabChange={setModalTab}
               displayName={displayName}
+              hasApiKeyProblem={hasApiKeyProblem}
+              onProvidersChanged={setProviders}
             />
           )}
           {adminTab !== null && (
