@@ -23,6 +23,7 @@ class PersonaRepository:
         system_prompt: str,
         temperature: float,
         reasoning_enabled: bool,
+        nsfw: bool,
         colour_scheme: str,
         display_order: int,
     ) -> dict:
@@ -36,6 +37,7 @@ class PersonaRepository:
             "system_prompt": system_prompt,
             "temperature": temperature,
             "reasoning_enabled": reasoning_enabled,
+            "nsfw": nsfw,
             "colour_scheme": colour_scheme,
             "display_order": display_order,
             "created_at": now,
@@ -82,6 +84,7 @@ class PersonaRepository:
             system_prompt=doc["system_prompt"],
             temperature=doc["temperature"],
             reasoning_enabled=doc["reasoning_enabled"],
+            nsfw=doc.get("nsfw", False),
             colour_scheme=doc["colour_scheme"],
             display_order=doc["display_order"],
             created_at=doc["created_at"],

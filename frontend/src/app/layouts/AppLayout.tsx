@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Outlet, useMatch } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useAuthStore } from "../../core/store/authStore"
+import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import { useEventBus } from "../../core/hooks/useEventBus"
 import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
@@ -13,9 +14,15 @@ import { Topics } from "../../core/types/events"
 export default function AppLayout() {
   useWebSocket()
 
-  const { personas } = usePersonas()
+  const { personas: allPersonas } = usePersonas()
   const { sessions } = useChatSessions()
   const user = useAuthStore((s) => s.user)
+  const isSanitised = useSanitisedMode((s) => s.isSanitised)
+
+  const personas = useMemo(
+    () => isSanitised ? allPersonas.filter((p) => !p.nsfw) : allPersonas,
+    [allPersonas, isSanitised],
+  )
   const setUser = useAuthStore((s) => s.setUser)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")

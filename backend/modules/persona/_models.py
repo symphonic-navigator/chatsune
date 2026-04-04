@@ -14,6 +14,7 @@ class PersonaDocument(BaseModel):
     system_prompt: str
     temperature: float
     reasoning_enabled: bool
+    nsfw: bool
     colour_scheme: str
     display_order: int
     created_at: datetime

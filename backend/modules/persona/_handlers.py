@@ -61,6 +61,7 @@ async def create_persona(
         system_prompt=body.system_prompt,
         temperature=body.temperature,
         reasoning_enabled=body.reasoning_enabled,
+        nsfw=body.nsfw,
         colour_scheme=body.colour_scheme,
         display_order=body.display_order,
     )

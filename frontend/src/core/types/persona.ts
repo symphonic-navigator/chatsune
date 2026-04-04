@@ -7,6 +7,7 @@ export interface PersonaDto {
   system_prompt: string
   temperature: number
   reasoning_enabled: boolean
+  nsfw: boolean
   colour_scheme: string
   display_order: number
   created_at: string
@@ -20,6 +21,7 @@ export interface CreatePersonaRequest {
   system_prompt: string
   temperature?: number
   reasoning_enabled?: boolean
+  nsfw?: boolean
   colour_scheme?: string
   display_order?: number
 }
@@ -31,6 +33,7 @@ export interface UpdatePersonaRequest {
   system_prompt?: string
   temperature?: number
   reasoning_enabled?: boolean
+  nsfw?: boolean
   colour_scheme?: string
   display_order?: number
 }

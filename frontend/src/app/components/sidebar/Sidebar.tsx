@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../../../core/store/authStore"
+import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useAuth } from "../../../core/hooks/useAuth"
 import { NavRow } from "./NavRow"
 import { PersonaItem } from "./PersonaItem"
@@ -29,6 +30,7 @@ export function Sidebar({
   activeModalTab,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
+  const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
   const { logout } = useAuth()
   const navigate = useNavigate()
 
@@ -215,6 +217,24 @@ export function Sidebar({
           isActive={isTabActive('artefacts')}
           onClick={() => onOpenModal('artefacts')}
         />
+
+        <div className="mx-2 my-1.5 h-px bg-white/4" />
+
+        {/* Sanitised mode toggle */}
+        <button
+          type="button"
+          onClick={toggleSanitised}
+          title={isSanitised ? "Sanitised mode on — NSFW content hidden" : "Sanitised mode off — all content visible"}
+          className="flex w-full items-center gap-2.5 px-3.5 py-1.5 transition-colors hover:bg-white/5"
+        >
+          <span className={`text-[15px] ${isSanitised ? "opacity-100" : "opacity-25 grayscale"}`}>
+            🔒
+          </span>
+          <span className={`text-[13px] transition-colors ${isSanitised ? "text-gold font-medium" : "text-white/30"}`}>
+            Sanitised
+          </span>
+        </button>
+
         <div className="mx-2 my-1.5 h-px bg-white/4" />
 
         {/* User row */}
