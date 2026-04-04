@@ -46,7 +46,7 @@ export default function AppLayout() {
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
   return (
-    <div className="flex h-screen overflow-hidden bg-base text-white">
+    <div className="flex h-full overflow-hidden bg-base text-white">
       <Sidebar
         personas={personas}
         sessions={sessions}
