@@ -27,4 +27,7 @@ export const personasApi = {
   reorder: async (orderedIds: string[]): Promise<void> => {
     await api.patch("/api/personas/reorder", { ordered_ids: orderedIds });
   },
+
+  getSystemPromptPreview: (personaId: string) =>
+    api.get<{ preview: string }>(`/api/personas/${personaId}/system-prompt-preview`),
 }
