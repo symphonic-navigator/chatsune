@@ -121,9 +121,10 @@ export function Sidebar({
           type="button"
           onClick={toggleCollapsed}
           title="Expand sidebar"
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
+          className="group flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
         >
-          🦊
+          <span className="group-hover:hidden">🦊</span>
+          <span className="hidden group-hover:inline">⏩</span>
         </button>
 
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
@@ -140,7 +141,7 @@ export function Sidebar({
 
         {/* Personas */}
         <IconBtn
-          icon="��"
+          icon="💞"
           onClick={() => { onCloseModal(); navigate("/personas") }}
           title="Personas"
         />
@@ -148,10 +149,9 @@ export function Sidebar({
         {/* Continue — hidden when in chat */}
         {!isInChat && lastSession && (
           <IconBtn
-            icon="▶"
+            icon="▶️"
             onClick={handleContinue}
             title="Continue last chat"
-            className="text-[11px]"
           />
         )}
 
@@ -261,9 +261,9 @@ export function Sidebar({
           type="button"
           onClick={toggleCollapsed}
           title="Collapse sidebar"
-          className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-white/25 transition-colors hover:bg-white/8 hover:text-white/55"
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-white/25 transition-colors hover:bg-white/8 hover:text-white/55"
         >
-          «
+          ⏪
         </button>
       </div>
 
@@ -296,7 +296,7 @@ export function Sidebar({
             onClick={handleContinue}
             className="group mx-3 mb-0.5 flex w-[calc(100%-24px)] items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5"
           >
-            <span className="text-[10px] text-white/25 group-hover:text-white/50">▶</span>
+            <span className="text-[10px] text-white/25 group-hover:text-white/50">▶️</span>
             <span className="text-[12px] text-white/35 group-hover:text-white/60">Continue</span>
           </button>
         )}
