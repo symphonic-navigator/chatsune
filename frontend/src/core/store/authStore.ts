@@ -32,9 +32,11 @@ interface AuthState {
   user: UserDto | null
   isAuthenticated: boolean
   isInitialising: boolean
+  isSetupComplete: boolean | null
 
   setToken: (token: string) => void
   setUser: (user: UserDto) => void
+  setSetupComplete: (value: boolean) => void
   setInitialised: () => void
   clear: () => void
 }
@@ -44,6 +46,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isInitialising: true,
+  isSetupComplete: null,
+
+  setSetupComplete: (value: boolean) => set({ isSetupComplete: value }),
 
   setToken: (token: string) => {
     const partial = extractUserFromToken(token)
