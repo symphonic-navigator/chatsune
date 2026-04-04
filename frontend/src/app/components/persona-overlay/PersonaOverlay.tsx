@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
+import { suggestColour } from '../../../core/utils/suggestColour'
 import { OverviewTab } from './OverviewTab'
 import { EditTab } from './EditTab'
 import { KnowledgeTab } from './KnowledgeTab'
@@ -11,6 +12,7 @@ export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' |
 
 interface PersonaOverlayProps {
   persona: PersonaDto | null
+  allPersonas: PersonaDto[]
   isCreating?: boolean
   activeTab: PersonaOverlayTab
   onClose: () => void
@@ -47,9 +49,14 @@ const DEFAULT_PERSONA: PersonaDto = {
   updated_at: '',
 }
 
-export function PersonaOverlay({ persona, isCreating, activeTab, onClose, onTabChange, onSave }: PersonaOverlayProps) {
+export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, onClose, onTabChange, onSave }: PersonaOverlayProps) {
   const modalRef = useRef<HTMLDivElement>(null)
-  const resolved = persona ?? (isCreating ? DEFAULT_PERSONA : null)
+  const resolved = persona ?? (isCreating
+    ? {
+        ...DEFAULT_PERSONA,
+        colour_scheme: suggestColour(allPersonas.map((p) => p.colour_scheme)),
+      }
+    : null)
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null

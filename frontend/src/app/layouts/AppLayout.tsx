@@ -195,6 +195,7 @@ export default function AppLayout() {
           {personaOverlay && (
             <PersonaOverlay
               persona={overlayPersona}
+              allPersonas={allPersonas}
               isCreating={personaOverlay.personaId === null}
               activeTab={personaOverlay.tab}
               onClose={closePersonaOverlay}
