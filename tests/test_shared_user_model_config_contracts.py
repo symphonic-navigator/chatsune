@@ -54,3 +54,34 @@ def test_user_model_config_updated_event():
 
 def test_topic_constant():
     assert Topics.LLM_USER_MODEL_CONFIG_UPDATED == "llm.user_model_config.updated"
+
+
+def test_user_model_config_dto_with_new_fields():
+    dto = UserModelConfigDto(
+        model_unique_id="ollama_cloud:llama3.2",
+        custom_display_name="My Llama",
+        custom_context_window=128_000,
+    )
+    assert dto.custom_display_name == "My Llama"
+    assert dto.custom_context_window == 128_000
+
+
+def test_user_model_config_dto_new_fields_default_none():
+    dto = UserModelConfigDto(model_unique_id="ollama_cloud:llama3.2")
+    assert dto.custom_display_name is None
+    assert dto.custom_context_window is None
+
+
+def test_set_user_model_config_dto_new_fields():
+    dto = SetUserModelConfigDto(
+        custom_display_name="My Llama",
+        custom_context_window=128_000,
+    )
+    assert dto.custom_display_name == "My Llama"
+    assert dto.custom_context_window == 128_000
+
+
+def test_set_user_model_config_dto_new_fields_default_none():
+    dto = SetUserModelConfigDto()
+    assert dto.custom_display_name is None
+    assert dto.custom_context_window is None

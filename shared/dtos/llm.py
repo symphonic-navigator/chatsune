@@ -66,6 +66,8 @@ class UserModelConfigDto(BaseModel):
     model_unique_id: str
     is_favourite: bool = False
     is_hidden: bool = False
+    custom_display_name: str | None = None
+    custom_context_window: int | None = None
     notes: str | None = None
     system_prompt_addition: str | None = None
 
@@ -73,5 +75,7 @@ class UserModelConfigDto(BaseModel):
 class SetUserModelConfigDto(BaseModel):
     is_favourite: bool | None = None
     is_hidden: bool | None = None
+    custom_display_name: str | None = None
+    custom_context_window: int | None = None
     notes: str | None = None
     system_prompt_addition: str | None = None
