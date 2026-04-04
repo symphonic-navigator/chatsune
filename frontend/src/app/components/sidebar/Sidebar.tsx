@@ -81,7 +81,7 @@ export function Sidebar({
           onClick={() => { onCloseModal(); navigate("/admin") }}
           className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-gold/16 bg-gold/7 px-2.5 py-1.5 transition-colors hover:bg-gold/12"
         >
-          <span className="text-[12px]">✦</span>
+          <span className="text-[12px]">🪄</span>
           <span className="flex-1 text-left text-[12px] font-bold uppercase tracking-widest text-gold">Admin</span>
           <span className="text-[11px] text-gold/50">›</span>
         </button>
@@ -89,7 +89,7 @@ export function Sidebar({
 
       {/* CHAT */}
       <div className="mt-1.5 flex-shrink-0">
-        <NavRow icon="◈" label="Chat" onClick={() => { onCloseModal(); navigate("/personas") }} />
+        <NavRow icon="💞" label="Chat" onClick={() => { onCloseModal(); navigate("/personas") }} />
         <div className="mt-0.5">
           {personas.map((p) => (
             <PersonaItem
@@ -115,7 +115,7 @@ export function Sidebar({
 
         {/* PROJECTS */}
         <NavRow
-          icon="◫"
+          icon="🔭"
           label="Projects"
           isActive={isTabActive('projects')}
           onClick={() => onOpenModal('projects')}
@@ -149,7 +149,7 @@ export function Sidebar({
 
         {/* HISTORY */}
         <NavRow
-          icon="◷"
+          icon="📖"
           label="History"
           isActive={isTabActive('history')}
           onClick={() => onOpenModal('history')}
@@ -186,11 +186,36 @@ export function Sidebar({
       <div className="flex-shrink-0 border-t border-white/5">
         {/* Knowledge */}
         <NavRow
-          icon="🧠"
+          icon="🎓"
           label="Knowledge"
           isActive={isTabActive('knowledge')}
           onClick={() => onOpenModal('knowledge')}
         />
+
+        {/* Bookmarks */}
+        <NavRow
+          icon="🔖"
+          label="Bookmarks"
+          isActive={isTabActive('bookmarks')}
+          onClick={() => onOpenModal('bookmarks')}
+        />
+
+        {/* Uploads */}
+        <NavRow
+          icon="📂"
+          label="Uploads"
+          isActive={isTabActive('uploads')}
+          onClick={() => onOpenModal('uploads')}
+        />
+
+        {/* Artefacts */}
+        <NavRow
+          icon="🧪"
+          label="Artefacts"
+          isActive={isTabActive('artefacts')}
+          onClick={() => onOpenModal('artefacts')}
+        />
+        <div className="mx-2 my-1.5 h-px bg-white/4" />
 
         {/* User row */}
         <div

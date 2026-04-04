@@ -4,8 +4,11 @@ import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
 import { ProjectsTab } from './ProjectsTab'
 import { KnowledgeTab } from './KnowledgeTab'
+import { UploadsTab } from './UploadsTab'
+import { ArtefactsTab } from './ArtefactsTab'
+import { BookmarksTab } from './BookmarksTab'
 
-export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'settings'
+export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'settings'
 
 interface Tab {
   id: UserModalTab
@@ -17,6 +20,9 @@ const TABS: Tab[] = [
   { id: 'projects', label: 'Projects' },
   { id: 'history', label: 'History' },
   { id: 'knowledge', label: 'Knowledge' },
+  { id: 'bookmarks', label: 'Bookmarks' },
+  { id: 'uploads', label: 'Uploads' },
+  { id: 'artefacts', label: 'Artefacts' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -129,6 +135,9 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
           {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
+          {activeTab === 'bookmarks' && <BookmarksTab />}
+          {activeTab === 'uploads' && <UploadsTab />}
+          {activeTab === 'artefacts' && <ArtefactsTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </div>
