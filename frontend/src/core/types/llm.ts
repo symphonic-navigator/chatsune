@@ -70,4 +70,5 @@ export interface SetUserModelConfigRequest {
 
 export interface TestKeyResponse {
   valid: boolean
+  error: string | null
 }

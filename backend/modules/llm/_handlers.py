@@ -126,13 +126,24 @@ async def test_provider_key(
         raise HTTPException(status_code=404, detail="Unknown provider")
 
     adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
+    error_message = None
     try:
         valid = await adapter.validate_key(body.api_key)
+        if not valid:
+            error_message = "Key rejected by provider"
     except NotImplementedError:
         raise HTTPException(
             status_code=501,
             detail=f"Provider '{provider_id}' is not yet fully implemented",
         )
+    except Exception as exc:
+        valid = False
+        error_message = str(exc)
+
+    # Persist test result
+    repo = _credential_repo()
+    test_status = "valid" if valid else "failed"
+    await repo.update_test_status(user["sub"], provider_id, test_status, error_message)
 
     await event_bus.publish(
         Topics.LLM_CREDENTIAL_TESTED,
@@ -145,7 +156,7 @@ async def test_provider_key(
         target_user_ids=[user["sub"]],
     )
 
-    return {"valid": valid}
+    return {"valid": valid, "error": error_message}
 
 
 @router.get("/providers/{provider_id}/models")
