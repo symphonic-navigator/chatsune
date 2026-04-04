@@ -29,6 +29,16 @@ export default function AppLayout() {
     () => isSanitised ? allPersonas.filter((p) => !p.nsfw) : allPersonas,
     [allPersonas, isSanitised],
   )
+
+  const nsfwPersonaIds = useMemo(
+    () => new Set(allPersonas.filter((p) => p.nsfw).map((p) => p.id)),
+    [allPersonas],
+  )
+
+  const filteredSessions = useMemo(
+    () => isSanitised ? sessions.filter((s) => !nsfwPersonaIds.has(s.persona_id)) : sessions,
+    [sessions, isSanitised, nsfwPersonaIds],
+  )
   const setUser = useAuthStore((s) => s.setUser)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
@@ -145,7 +155,7 @@ export default function AppLayout() {
     <div className="flex h-full overflow-hidden bg-base text-white">
       <Sidebar
         personas={personas}
-        sessions={sessions}
+        sessions={filteredSessions}
         activePersonaId={activePersonaId}
         activeSessionId={activeSessionId}
         onOpenModal={openModal}
@@ -154,6 +164,7 @@ export default function AppLayout() {
         onOpenAdmin={openAdmin}
         isAdminOpen={adminTab !== null}
         hasApiKeyProblem={hasApiKeyProblem}
+        onOpenOverlay={(personaId) => openPersonaOverlay(personaId, "overview")}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />

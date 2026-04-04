@@ -22,6 +22,7 @@ interface SidebarProps {
   onOpenAdmin: () => void
   isAdminOpen: boolean
   hasApiKeyProblem: boolean
+  onOpenOverlay?: (personaId: string) => void
 }
 
 function IconBtn({
@@ -64,6 +65,7 @@ export function Sidebar({
   onOpenAdmin,
   isAdminOpen,
   hasApiKeyProblem,
+  onOpenOverlay,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
@@ -309,20 +311,23 @@ export function Sidebar({
         )}
 
         <div className="mt-0.5">
-          {personas.map((p) => (
-            <PersonaItem
-              key={p.id}
-              persona={p}
-              isActive={p.id === activePersonaId}
-              onSelect={handlePersonaSelect}
-              onNewChat={handleNewChat}
-              onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-              onEdit={(persona) => navigate(`/personas?edit=${persona.id}`)}
-            />
-          ))}
-          {personas.length === 0 && (
-            <p className="px-4 py-1 text-[12px] text-white/50">No personas yet</p>
-          )}
+          {(() => {
+            const pinnedPersonas = personas.filter((p) => p.pinned)
+            return pinnedPersonas.length > 0 ? pinnedPersonas.map((p) => (
+              <PersonaItem
+                key={p.id}
+                persona={p}
+                isActive={p.id === activePersonaId}
+                onSelect={handlePersonaSelect}
+                onNewChat={handleNewChat}
+                onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                onEdit={(persona) => navigate(`/personas?edit=${persona.id}`)}
+                onOpenOverlay={() => onOpenOverlay?.(p.id)}
+              />
+            )) : (
+              <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
+            )
+          })()}
         </div>
       </div>
 

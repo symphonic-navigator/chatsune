@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import type { PersonaDto } from "../../../core/types/persona"
-import { personaGradient, personaInitial } from "./personaColour"
+import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 
 interface PersonaItemProps {
   persona: PersonaDto
@@ -10,6 +10,7 @@ interface PersonaItemProps {
   onNewIncognitoChat: (persona: PersonaDto) => void
   onEdit: (persona: PersonaDto) => void
   onUnpin?: (persona: PersonaDto) => void
+  onOpenOverlay?: () => void
 }
 
 export function PersonaItem({
@@ -20,9 +21,12 @@ export function PersonaItem({
   onNewIncognitoChat,
   onEdit,
   onUnpin,
+  onOpenOverlay,
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const chakra = CHAKRA_PALETTE[persona.colour_scheme as ChakraColour] ?? CHAKRA_PALETTE.solar
 
   useEffect(() => {
     if (!menuOpen) return
@@ -39,6 +43,7 @@ export function PersonaItem({
     { label: "New Chat", action: () => { onNewChat(persona); setMenuOpen(false) } },
     { label: "New Incognito Chat", action: () => { onNewIncognitoChat(persona); setMenuOpen(false) } },
     { label: "Edit", action: () => { onEdit(persona); setMenuOpen(false) } },
+    ...(onOpenOverlay ? [{ label: "⟡ Persona", action: () => { onOpenOverlay(); setMenuOpen(false) } }] : []),
     ...(onUnpin ? [{ label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) }, muted: true }] : []),
   ]
 
@@ -53,10 +58,13 @@ export function PersonaItem({
       </span>
 
       <div
-        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-        style={{ background: personaGradient(persona) }}
+        className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-serif"
+        style={{
+          background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
+          color: `${chakra.hex}CC`,
+        }}
       >
-        {personaInitial(persona)}
+        {persona.monogram || persona.name.charAt(0).toUpperCase()}
       </div>
 
       <span
