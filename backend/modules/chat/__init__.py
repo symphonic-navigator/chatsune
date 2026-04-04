@@ -12,7 +12,7 @@ from backend.modules.chat._handlers import router
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.chat._token_counter import count_tokens
-from backend.modules.chat._prompt_assembler import assemble
+from backend.modules.chat._prompt_assembler import assemble, assemble_preview
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
 from backend.jobs import submit, JobType
 from backend.database import get_db
@@ -443,4 +443,5 @@ __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "update_session_title",
+    "assemble_preview",
 ]

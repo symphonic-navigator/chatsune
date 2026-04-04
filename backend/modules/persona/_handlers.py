@@ -113,6 +113,26 @@ async def get_persona(
     return PersonaRepository.to_dto(doc)
 
 
+@router.get("/{persona_id}/system-prompt-preview")
+async def get_system_prompt_preview(
+    persona_id: str,
+    user: dict = Depends(require_active_session),
+):
+    from backend.modules.chat import assemble_preview  # deferred to avoid circular import
+
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    preview = await assemble_preview(
+        user_id=user["sub"],
+        persona_id=persona_id,
+        model_unique_id=doc["model_unique_id"],
+    )
+    return {"preview": preview}
+
+
 @router.put("/{persona_id}")
 async def replace_persona(
     persona_id: str,
