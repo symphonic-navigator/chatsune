@@ -90,9 +90,9 @@ class OllamaCloudAdapter(BaseAdapter):
     requires_key_for_listing: bool = False
 
     async def validate_key(self, api_key: str) -> bool:
-        """Validate key via GET /api/me. Returns True on 200, False on 401/403, raises otherwise."""
+        """Validate key via POST /api/me. Returns True on 200, False on 401/403, raises otherwise."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(
+            resp = await client.post(
                 f"{self.base_url}/api/me",
                 headers={"Authorization": f"Bearer {api_key}"},
             )

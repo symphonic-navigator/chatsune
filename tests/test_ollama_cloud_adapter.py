@@ -12,7 +12,7 @@ def adapter() -> OllamaCloudAdapter:
 
 @respx.mock
 async def test_validate_key_returns_true_on_200(adapter: OllamaCloudAdapter):
-    respx.get("https://test.ollama.com/api/me").mock(
+    respx.post("https://test.ollama.com/api/me").mock(
         return_value=httpx.Response(200, json={"username": "testuser"})
     )
     result = await adapter.validate_key("valid-key")
@@ -21,7 +21,7 @@ async def test_validate_key_returns_true_on_200(adapter: OllamaCloudAdapter):
 
 @respx.mock
 async def test_validate_key_returns_false_on_401(adapter: OllamaCloudAdapter):
-    respx.get("https://test.ollama.com/api/me").mock(
+    respx.post("https://test.ollama.com/api/me").mock(
         return_value=httpx.Response(401)
     )
     result = await adapter.validate_key("invalid-key")
@@ -30,7 +30,7 @@ async def test_validate_key_returns_false_on_401(adapter: OllamaCloudAdapter):
 
 @respx.mock
 async def test_validate_key_returns_false_on_403(adapter: OllamaCloudAdapter):
-    respx.get("https://test.ollama.com/api/me").mock(
+    respx.post("https://test.ollama.com/api/me").mock(
         return_value=httpx.Response(403)
     )
     result = await adapter.validate_key("forbidden-key")
@@ -39,7 +39,7 @@ async def test_validate_key_returns_false_on_403(adapter: OllamaCloudAdapter):
 
 @respx.mock
 async def test_validate_key_raises_on_server_error(adapter: OllamaCloudAdapter):
-    respx.get("https://test.ollama.com/api/me").mock(
+    respx.post("https://test.ollama.com/api/me").mock(
         return_value=httpx.Response(500)
     )
     with pytest.raises(httpx.HTTPStatusError):
