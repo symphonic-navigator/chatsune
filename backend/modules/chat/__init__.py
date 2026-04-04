@@ -14,6 +14,7 @@ from backend.modules.chat._repository import ChatRepository
 from backend.modules.chat._token_counter import count_tokens
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
+from backend.jobs import submit, JobType
 from backend.database import get_db
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
@@ -191,6 +192,27 @@ async def _run_inference(
             thinking=thinking,
         )
         await repo.update_session_state(session_id, "idle")
+
+        # Trigger title generation after first assistant response
+        if not session.get("title"):
+            messages = await repo.list_messages(session_id)
+            if len(messages) >= 2:
+                first_user = next((m for m in messages if m["role"] == "user"), None)
+                first_assistant = next((m for m in messages if m["role"] == "assistant"), None)
+                if first_user and first_assistant:
+                    await submit(
+                        job_type=JobType.TITLE_GENERATION,
+                        user_id=user_id,
+                        model_unique_id=model_unique_id,
+                        payload={
+                            "session_id": session_id,
+                            "messages": [
+                                {"role": "user", "content": first_user["content"]},
+                                {"role": "assistant", "content": first_assistant["content"]},
+                            ],
+                        },
+                        correlation_id=correlation_id,
+                    )
 
     # Calculate ampel status for the response
     context_status = get_ampel_status(fill_ratio)

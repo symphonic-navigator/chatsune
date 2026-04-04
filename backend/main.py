@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,12 +12,14 @@ from backend.modules.chat import router as chat_router, init_indexes as chat_ini
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router
+from backend.jobs import consumer_loop
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
     db = get_db()
+    redis = get_redis()
     await user_init_indexes(db)
     await llm_init_indexes(db)
     await persona_init_indexes(db)
@@ -24,8 +27,21 @@ async def lifespan(app: FastAPI):
     await chat_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
-    set_event_bus(EventBus(redis=get_redis(), manager=manager))
+    event_bus = EventBus(redis=redis, manager=manager)
+    set_event_bus(event_bus)
+
+    # Start background job consumer
+    consumer_task = asyncio.create_task(consumer_loop(redis, event_bus))
+
     yield
+
+    # Shut down consumer
+    consumer_task.cancel()
+    try:
+        await consumer_task
+    except asyncio.CancelledError:
+        pass
+
     await disconnect_db()
 
 
