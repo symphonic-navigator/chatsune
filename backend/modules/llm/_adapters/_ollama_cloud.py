@@ -263,6 +263,7 @@ class OllamaCloudAdapter(BaseAdapter):
 
         return ModelMetaDto(
             provider_id="ollama_cloud",
+            provider_display_name="Ollama Cloud",
             model_id=model_name,
             display_name=_build_display_name(model_name),
             context_window=context_window,
@@ -270,5 +271,6 @@ class OllamaCloudAdapter(BaseAdapter):
             supports_vision="vision" in capabilities,
             supports_tool_calls="tools" in capabilities,
             parameter_count=_format_parameter_count(raw_params),
+            raw_parameter_count=raw_params,
             quantisation_level=details.get("quantization_level"),
         )

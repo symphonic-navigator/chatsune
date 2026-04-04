@@ -30,6 +30,7 @@ export interface SetModelCurationRequest {
 
 export interface ModelMetaDto {
   provider_id: string
+  provider_display_name: string
   model_id: string
   display_name: string
   context_window: number
@@ -37,6 +38,7 @@ export interface ModelMetaDto {
   supports_vision: boolean
   supports_tool_calls: boolean
   parameter_count: string | null
+  raw_parameter_count: number | null
   quantisation_level: string | null
   curation: ModelCurationDto | null
   unique_id: string

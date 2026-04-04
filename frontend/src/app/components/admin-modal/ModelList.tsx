@@ -11,17 +11,6 @@ type SortDir = "asc" | "desc"
 type RatingFilter = "all" | ModelRating | "none"
 type VisibilityFilter = "all" | "visible" | "hidden"
 
-/** Parse parameter count into a sortable number (e.g. "70B" -> 70, "1.5B" -> 1.5, "405B" -> 405) */
-function parseParamCount(value: string | null): number {
-  if (!value) return 0
-  const match = value.match(/^([\d.]+)\s*[BbMmKk]?/)
-  if (!match) return 0
-  const num = parseFloat(match[1])
-  const unit = value.slice(match[1].length).trim().toUpperCase()
-  if (unit.startsWith("M")) return num / 1000
-  if (unit.startsWith("K")) return num / 1_000_000
-  return num
-}
 
 /** Format context window nicely */
 function formatContext(ctx: number): string {
@@ -63,9 +52,14 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
   // Unique providers for the dropdown
+  const providerMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of models) map.set(m.provider_id, m.provider_display_name)
+    return map
+  }, [models])
   const providers = useMemo(
-    () => [...new Set(models.map((m) => m.provider_id))].sort(),
-    [models],
+    () => [...providerMap.keys()].sort(),
+    [providerMap],
   )
 
   // Filtering
@@ -113,7 +107,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         case "context":
           return dir * (a.context_window - b.context_window)
         case "params":
-          return dir * (parseParamCount(a.parameter_count) - parseParamCount(b.parameter_count))
+          return dir * ((a.raw_parameter_count ?? 0) - (b.raw_parameter_count ?? 0))
         default:
           return 0
       }
@@ -157,7 +151,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         >
           <option value="all">All Providers</option>
           {providers.map((p) => (
-            <option key={p} value={p}>{p}</option>
+            <option key={p} value={p}>{providerMap.get(p)}</option>
           ))}
         </select>
 
@@ -299,7 +293,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
               >
                 {/* Provider */}
                 <td className="px-4 py-2 text-[11px] text-white/40">
-                  {model.provider_id}
+                  {model.provider_display_name}
                 </td>
 
                 {/* Name + hidden badge */}

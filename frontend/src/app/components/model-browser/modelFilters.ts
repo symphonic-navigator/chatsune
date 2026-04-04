@@ -92,12 +92,6 @@ export function filterModels(
   })
 }
 
-/** Parse the numeric portion of a parameter_count string (e.g. "70B" -> 70). */
-function parseParamCount(paramStr: string | null): number | null {
-  if (!paramStr) return null
-  const match = paramStr.match(/^([\d.]+)/)
-  return match ? parseFloat(match[1]) : null
-}
 
 const RATING_ORDER: Record<ModelRating, number> = {
   recommended: 0,
@@ -128,8 +122,8 @@ export function sortModels(
         cmp = a.context_window - b.context_window
         break
       case "params": {
-        const pa = parseParamCount(a.parameter_count)
-        const pb = parseParamCount(b.parameter_count)
+        const pa = a.raw_parameter_count ?? null
+        const pb = b.raw_parameter_count ?? null
         if (pa === null && pb === null) cmp = 0
         else if (pa === null) cmp = 1 // null sorts last regardless of direction
         else if (pb === null) cmp = -1

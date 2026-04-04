@@ -69,7 +69,7 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
               {model.display_name}
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/40">
-              <span>{model.provider_id}</span>
+              <span>{model.provider_display_name}</span>
               {paramInfo && (
                 <>
                   <span className="text-white/20">|</span>

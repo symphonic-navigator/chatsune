@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, computed_field, field_validator
+from pydantic import BaseModel, computed_field, field_validator, model_validator
 
 
 class ProviderCredentialDto(BaseModel):
@@ -40,6 +40,7 @@ class SetModelCurationDto(BaseModel):
 
 class ModelMetaDto(BaseModel):
     provider_id: str
+    provider_display_name: str = ""
     model_id: str
     display_name: str
     context_window: int
@@ -47,8 +48,15 @@ class ModelMetaDto(BaseModel):
     supports_vision: bool
     supports_tool_calls: bool
     parameter_count: str | None = None
+    raw_parameter_count: int | None = None
     quantisation_level: str | None = None
     curation: ModelCurationDto | None = None
+
+    @model_validator(mode="after")
+    def _fill_provider_display_name(self) -> "ModelMetaDto":
+        if not self.provider_display_name:
+            self.provider_display_name = self.provider_id
+        return self
 
     @computed_field
     @property

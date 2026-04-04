@@ -240,6 +240,7 @@ async def set_model_curation(
     # Build a minimal model DTO for the event payload
     model_dto = ModelMetaDto(
         provider_id=provider_id,
+        provider_display_name=PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id),
         model_id=model_slug,
         display_name=model_slug,
         context_window=0,
@@ -289,6 +290,7 @@ async def remove_model_curation(
 
     model_dto = ModelMetaDto(
         provider_id=provider_id,
+        provider_display_name=PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id),
         model_id=model_slug,
         display_name=model_slug,
         context_window=0,

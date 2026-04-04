@@ -75,9 +75,14 @@ export function ModelBrowser({
   const allModels = externalModels ?? fetchedModels
   const loading = !externalModels && hookLoading
   const error = !externalModels ? hookError : null
+  const providerMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of allModels) map.set(m.provider_id, m.provider_display_name)
+    return map
+  }, [allModels])
   const providers = useMemo(
-    () => [...new Set(allModels.map((m) => m.provider_id))].sort(),
-    [allModels],
+    () => [...providerMap.keys()].sort(),
+    [providerMap],
   )
 
   // Determine if any models are favourited — auto-activate favourites tab
@@ -192,7 +197,7 @@ export function ModelBrowser({
         >
           <option value="">All Providers</option>
           {providers.map((p) => (
-            <option key={p} value={p}>{p}</option>
+            <option key={p} value={p}>{providerMap.get(p)}</option>
           ))}
         </select>
 
@@ -350,7 +355,7 @@ export function ModelBrowser({
               </div>
 
               {/* Provider */}
-              <span className="truncate text-[11px] text-white/40">{model.provider_id}</span>
+              <span className="truncate text-[11px] text-white/40">{model.provider_display_name}</span>
 
               {/* Params */}
               <span className="text-[11px] text-white/55">
