@@ -46,5 +46,17 @@ export function usePersonas() {
     return personasApi.remove(personaId)
   }, [])
 
-  return { personas, isLoading, error, fetch, create, update, remove }
+  const reorder = async (orderedIds: string[]) => {
+    setPersonas((prev) => {
+      const map = new Map(prev.map((p) => [p.id, p]))
+      return orderedIds.map((id) => map.get(id)!).filter(Boolean)
+    })
+    try {
+      await personasApi.reorder(orderedIds)
+    } catch {
+      await fetch()
+    }
+  }
+
+  return { personas, isLoading, error, fetch, create, update, remove, reorder }
 }

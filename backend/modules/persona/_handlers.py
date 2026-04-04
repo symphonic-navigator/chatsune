@@ -89,6 +89,18 @@ async def create_persona(
     return dto
 
 
+@router.patch("/reorder")
+async def reorder_personas(
+    body: dict,
+    user: dict = Depends(require_active_session),
+):
+    repo = _persona_repo()
+    ordered_ids: list[str] = body.get("ordered_ids", [])
+    for index, persona_id in enumerate(ordered_ids):
+        await repo.update(persona_id, user["sub"], {"display_order": index})
+    return {"status": "ok"}
+
+
 @router.get("/{persona_id}")
 async def get_persona(
     persona_id: str,

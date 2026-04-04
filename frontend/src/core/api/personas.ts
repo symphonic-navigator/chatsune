@@ -23,4 +23,8 @@ export const personasApi = {
 
   remove: (personaId: string) =>
     api.delete<{ status: string }>(`/api/personas/${personaId}`),
+
+  reorder: async (orderedIds: string[]): Promise<void> => {
+    await api.patch("/api/personas/reorder", { ordered_ids: orderedIds });
+  },
 }
