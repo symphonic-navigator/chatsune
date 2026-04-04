@@ -25,7 +25,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [modelUniqueId, setModelUniqueId] = useState(persona.model_unique_id)
   const [modelDisplayName, setModelDisplayName] = useState('')
   const [modelProvider, setModelProvider] = useState('')
-  const [canReason, setCanReason] = useState(false)
+  const [canReason, setCanReason] = useState(persona.reasoning_enabled)
   const [modelModalOpen, setModelModalOpen] = useState(false)
 
   const isDirty = isCreating ||
