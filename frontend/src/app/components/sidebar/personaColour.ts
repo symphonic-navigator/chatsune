@@ -1,30 +1,18 @@
-import type { PersonaDto } from "../../../core/types/persona"
+import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra";
 
-const PALETTE: [string, string][] = [
-  ["#7c5cbf", "#c9a84c"],
-  ["#1e6fbf", "#34d399"],
-  ["#bf4f1e", "#f59e0b"],
-  ["#2e7d32", "#66bb6a"],
-  ["#7b1fa2", "#e91e63"],
-  ["#0277bd", "#80deea"],
-]
-
-function hashId(id: string): number {
-  let h = 0
-  for (let i = 0; i < id.length; i++) {
-    h = (Math.imul(31, h) + id.charCodeAt(i)) | 0
+export function personaGradient(persona: { colour_scheme: string }): string {
+  const entry = CHAKRA_PALETTE[persona.colour_scheme as ChakraColour];
+  if (entry) {
+    return `linear-gradient(135deg, ${entry.hex}50, ${entry.hex}10)`;
   }
-  return Math.abs(h)
+  return `linear-gradient(135deg, #C9A84C50, #C9A84C10)`;
 }
 
-export function personaGradient(persona: PersonaDto): string {
-  if (/^#[0-9a-fA-F]{3,8}$/.test(persona.colour_scheme ?? "")) {
-    return `linear-gradient(135deg, ${persona.colour_scheme}, ${persona.colour_scheme}88)`
-  }
-  const [from, to] = PALETTE[hashId(persona.id) % PALETTE.length]
-  return `linear-gradient(135deg, ${from}, ${to})`
+export function personaHex(persona: { colour_scheme: string }): string {
+  const entry = CHAKRA_PALETTE[persona.colour_scheme as ChakraColour];
+  return entry?.hex ?? "#C9A84C";
 }
 
-export function personaInitial(persona: PersonaDto): string {
-  return persona.name.charAt(0).toUpperCase()
+export function personaInitial(persona: { name: string }): string {
+  return persona.name.charAt(0).toUpperCase();
 }
