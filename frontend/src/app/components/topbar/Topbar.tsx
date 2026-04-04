@@ -68,22 +68,32 @@ export function Topbar({ personas }: TopbarProps) {
   }
 
   if (adminMatch) {
+    const activeTab = location.pathname.split('/')[2] ?? 'users'
+
     return (
-      <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
-        <span className="text-[13px] font-semibold text-white/60">Admin</span>
-        <div className="flex gap-1">
-          {ADMIN_TABS.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => navigate(`/admin/${tab.toLowerCase()}`)}
-              className="rounded-md px-3 py-1 text-[13px] text-white/40 transition-colors hover:bg-white/6 hover:text-white/70"
-            >
-              {tab}
-            </button>
-          ))}
+      <header className="flex h-[50px] flex-shrink-0 items-stretch border-b border-white/6 bg-surface px-4">
+        <span className="flex items-center pr-4 text-[13px] font-semibold text-white/60">Admin</span>
+        <div className="flex">
+          {ADMIN_TABS.map((tab) => {
+            const isActive = activeTab === tab.toLowerCase()
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => navigate(`/admin/${tab.toLowerCase()}`)}
+                className={[
+                  'px-3 text-[13px] border-b-2 -mb-px cursor-pointer transition-colors',
+                  isActive
+                    ? 'border-gold text-gold'
+                    : 'border-transparent text-white/40 hover:text-white/70',
+                ].join(' ')}
+              >
+                {tab}
+              </button>
+            )
+          })}
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center">
           <LivePill />
         </div>
       </header>

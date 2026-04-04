@@ -54,6 +54,7 @@ function AppRoutes() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/admin" element={<Navigate to="/admin/users" replace />} />
           <Route path="/admin/*" element={<AdminPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/personas" replace />} />

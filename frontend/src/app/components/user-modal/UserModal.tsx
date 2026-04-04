@@ -112,10 +112,10 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
               type="button"
               onClick={() => onTabChange(tab.id)}
               className={[
-                'px-3 py-2.5 text-[12px] border-b-2 -mb-px transition-colors whitespace-nowrap',
+                'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
                 activeTab === tab.id
                   ? 'border-gold text-gold'
-                  : 'border-transparent text-white/55 hover:text-white/75',
+                  : 'border-transparent text-white/55 hover:text-white/75 hover:underline',
               ].join(' ')}
             >
               {tab.label}
