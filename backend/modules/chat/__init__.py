@@ -30,6 +30,8 @@ from shared.events.chat import (
     ChatMessageDeletedEvent,
     ChatMessagesTruncatedEvent,
     ChatMessageUpdatedEvent,
+    ChatSessionCreatedEvent,
+    ChatSessionDeletedEvent,
     ChatSessionTitleUpdatedEvent,
     ChatStreamEndedEvent,
     ChatStreamErrorEvent,
