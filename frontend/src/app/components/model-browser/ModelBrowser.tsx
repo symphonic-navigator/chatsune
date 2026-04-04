@@ -325,7 +325,7 @@ export function ModelBrowser({
           return (
             <div
               key={model.unique_id}
-              onClick={() => selectionMode ? onSelect(model) : onEditConfig?.(model)}
+              onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
               className={[
                 `grid items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors`,
                 selectionMode
