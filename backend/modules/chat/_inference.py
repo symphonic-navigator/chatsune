@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from backend.jobs import get_user_lock
 from backend.modules.llm._adapters._events import (
     ContentDelta, StreamDone, StreamError, ThinkingDelta,
 )
@@ -17,14 +18,6 @@ _log = logging.getLogger(__name__)
 class InferenceRunner:
     """Orchestrates a single inference stream with per-user serialisation."""
 
-    def __init__(self) -> None:
-        self._user_locks: dict[str, asyncio.Lock] = {}
-
-    def _get_lock(self, user_id: str) -> asyncio.Lock:
-        if user_id not in self._user_locks:
-            self._user_locks[user_id] = asyncio.Lock()
-        return self._user_locks[user_id]
-
     async def run(
         self,
         user_id: str,
@@ -37,7 +30,7 @@ class InferenceRunner:
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
     ) -> None:
-        lock = self._get_lock(user_id)
+        lock = get_user_lock(user_id)
         async with lock:
             await self._run_locked(
                 session_id, correlation_id, stream_fn, emit_fn, save_fn, cancel_event,
