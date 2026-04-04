@@ -27,14 +27,14 @@ def _format_parameter_count(value: int | None) -> str | None:
     if not value:
         return None
     if value >= 1_000_000_000_000:
-        n = value / 1_000_000_000_000
-        return f"{n:g}T"
+        n = round(value / 1_000_000_000_000)
+        return f"{n}T"
     if value >= 1_000_000_000:
-        n = value / 1_000_000_000
-        return f"{n:g}B"
+        n = round(value / 1_000_000_000)
+        return f"{n}B"
     if value >= 1_000_000:
-        n = value / 1_000_000
-        return f"{n:g}M"
+        n = round(value / 1_000_000)
+        return f"{n}M"
     return None
 
 
