@@ -26,6 +26,8 @@ class UserModelConfigRepository:
         model_unique_id: str,
         is_favourite: bool | None = None,
         is_hidden: bool | None = None,
+        custom_display_name: str | None = None,
+        custom_context_window: int | None = None,
         notes: str | None = None,
         system_prompt_addition: str | None = None,
     ) -> dict:
@@ -38,6 +40,10 @@ class UserModelConfigRepository:
                 update_fields["is_favourite"] = is_favourite
             if is_hidden is not None:
                 update_fields["is_hidden"] = is_hidden
+            if custom_display_name is not None:
+                update_fields["custom_display_name"] = custom_display_name
+            if custom_context_window is not None:
+                update_fields["custom_context_window"] = custom_context_window
             if notes is not None:
                 update_fields["notes"] = notes
             if system_prompt_addition is not None:
@@ -54,6 +60,8 @@ class UserModelConfigRepository:
             "model_unique_id": model_unique_id,
             "is_favourite": is_favourite if is_favourite is not None else False,
             "is_hidden": is_hidden if is_hidden is not None else False,
+            "custom_display_name": custom_display_name,
+            "custom_context_window": custom_context_window,
             "notes": notes,
             "system_prompt_addition": system_prompt_addition,
             "created_at": now,
@@ -78,6 +86,8 @@ class UserModelConfigRepository:
             model_unique_id=doc["model_unique_id"],
             is_favourite=doc.get("is_favourite", False),
             is_hidden=doc.get("is_hidden", False),
+            custom_display_name=doc.get("custom_display_name"),
+            custom_context_window=doc.get("custom_context_window"),
             notes=doc.get("notes"),
             system_prompt_addition=doc.get("system_prompt_addition"),
         )

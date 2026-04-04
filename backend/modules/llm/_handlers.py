@@ -362,6 +362,8 @@ async def set_user_model_config(
         model_unique_id=model_unique_id,
         is_favourite=body.is_favourite,
         is_hidden=body.is_hidden,
+        custom_display_name=body.custom_display_name,
+        custom_context_window=body.custom_context_window,
         notes=body.notes,
         system_prompt_addition=body.system_prompt_addition,
     )

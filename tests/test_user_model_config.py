@@ -182,3 +182,79 @@ async def test_unknown_provider_returns_404(client: AsyncClient):
         headers=_auth(token),
     )
     assert resp.status_code == 404
+
+
+async def test_set_custom_display_name(client: AsyncClient):
+    token = await _setup_admin(client)
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_display_name": "My Llama"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["custom_display_name"] == "My Llama"
+    assert data["custom_context_window"] is None
+
+
+async def test_set_custom_context_window(client: AsyncClient):
+    token = await _setup_admin(client)
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_context_window": 128_000},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["custom_context_window"] == 128_000
+
+
+async def test_custom_display_name_too_long_rejected(client: AsyncClient):
+    token = await _setup_admin(client)
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_display_name": "x" * 101},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 422
+
+
+async def test_custom_context_window_below_minimum_rejected(client: AsyncClient):
+    token = await _setup_admin(client)
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_context_window": 32_000},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 422
+
+
+async def test_partial_update_preserves_new_fields(client: AsyncClient):
+    token = await _setup_admin(client)
+    await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_display_name": "My Llama", "custom_context_window": 128_000},
+        headers=_auth(token),
+    )
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"is_favourite": True},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["custom_display_name"] == "My Llama"
+    assert data["custom_context_window"] == 128_000
+    assert data["is_favourite"] is True
+
+
+async def test_get_config_returns_new_field_defaults(client: AsyncClient):
+    token = await _setup_admin(client)
+    resp = await client.get(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["custom_display_name"] is None
+    assert data["custom_context_window"] is None

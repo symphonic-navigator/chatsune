@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, field_validator
 
 
 class ProviderCredentialDto(BaseModel):
@@ -79,3 +79,24 @@ class SetUserModelConfigDto(BaseModel):
     custom_context_window: int | None = None
     notes: str | None = None
     system_prompt_addition: str | None = None
+
+    @field_validator("custom_display_name")
+    @classmethod
+    def validate_display_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if len(v) == 0:
+            return None
+        if len(v) > 100:
+            raise ValueError("custom_display_name must be 100 characters or fewer")
+        return v
+
+    @field_validator("custom_context_window")
+    @classmethod
+    def validate_context_window(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 96_000:
+            raise ValueError("custom_context_window must be at least 96000")
+        return v
