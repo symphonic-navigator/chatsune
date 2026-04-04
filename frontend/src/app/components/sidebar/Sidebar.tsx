@@ -8,6 +8,7 @@ import { NavRow } from "./NavRow"
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
+import { chatApi } from "../../../core/api/chat"
 import type { ChatSessionDto } from "../../../core/api/chat"
 import type { UserModalTab } from "../user-modal/UserModal"
 
@@ -106,6 +107,14 @@ export function Sidebar({
     if (!lastSession) return
     onCloseModal()
     navigate(`/chat/${lastSession.persona_id}/${lastSession.id}`)
+  }
+
+  async function handleDeleteSession(session: ChatSessionDto) {
+    try {
+      await chatApi.deleteSession(session.id)
+    } catch {
+      // Event-driven removal handles the UI update; error is non-critical
+    }
   }
 
   const isTabActive = (tab: UserModalTab) => activeModalTab === tab
@@ -396,6 +405,7 @@ export function Sidebar({
               isPinned={false}
               isActive={s.id === activeSessionId}
               onClick={handleSessionClick}
+              onDelete={handleDeleteSession}
             />
           ))}
           {sessions.length === 0 && (
