@@ -10,8 +10,6 @@ import {
 } from "./modelFilters"
 
 interface ModelBrowserProps {
-  currentModelId?: string | null
-  onSelect?: (model: EnrichedModelDto) => void
   onEditConfig?: (model: EnrichedModelDto) => void
   onToggleFavourite?: (model: EnrichedModelDto) => void
   models?: EnrichedModelDto[]
@@ -22,12 +20,10 @@ const SORT_FIELDS: { field: SortField; label: string }[] = [
   { field: "provider", label: "Provider" },
   { field: "params", label: "Params" },
   { field: "context", label: "Context" },
-  { field: "rating", label: "Rating" },
 ]
 
 function ratingBadge(model: EnrichedModelDto) {
-  const rating = model.curation?.overall_rating
-  if (!rating) return <span className="text-white/20">--</span>
+  const rating = model.curation?.overall_rating ?? "available"
   switch (rating) {
     case "recommended":
       return <span className="text-[10px] text-[#a6e3a1]">Recommended</span>
@@ -67,8 +63,6 @@ function formatParams(model: EnrichedModelDto): string {
 }
 
 export function ModelBrowser({
-  currentModelId,
-  onSelect,
   onEditConfig,
   onToggleFavourite,
   models: externalModels,
@@ -252,9 +246,8 @@ export function ModelBrowser({
       </div>
 
       {/* Column headers */}
-      <div className="grid grid-cols-[2rem_2rem_5rem_1fr_5rem_4rem_3.5rem_6.5rem_2rem] items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30">
+      <div className="grid grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem] items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30">
         <span title="Favourite">Fav</span>
-        <span title="Customised">Cfg</span>
         {SORT_FIELDS.map((sf) => (
           <button
             key={sf.field}
@@ -266,7 +259,7 @@ export function ModelBrowser({
           </button>
         ))}
         <span>Caps</span>
-        <span />
+        <span>Rating</span>
       </div>
 
       {/* Model list */}
@@ -290,11 +283,12 @@ export function ModelBrowser({
         )}
 
         {sorted.map((model) => {
-          const isSelected = currentModelId === model.unique_id
           const isFav = model.user_config?.is_favourite ?? false
           const hasConfig = model.user_config != null && (
             model.user_config.is_favourite ||
             model.user_config.is_hidden ||
+            model.user_config.custom_display_name != null ||
+            model.user_config.custom_context_window != null ||
             (model.user_config.notes != null && model.user_config.notes.length > 0) ||
             (model.user_config.system_prompt_addition != null && model.user_config.system_prompt_addition.length > 0)
           )
@@ -302,13 +296,11 @@ export function ModelBrowser({
           return (
             <div
               key={model.unique_id}
-              onClick={() => onSelect?.(model)}
+              onClick={() => onEditConfig?.(model)}
               className={[
-                "grid grid-cols-[2rem_2rem_5rem_1fr_5rem_4rem_3.5rem_6.5rem_2rem] items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors",
-                onSelect ? "cursor-pointer" : "",
-                isSelected
-                  ? "bg-gold/8 border-l-2 border-l-gold"
-                  : "hover:bg-white/4",
+                "grid grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem] items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors",
+                "cursor-pointer hover:bg-white/4",
+                model.user_config?.is_hidden ? "opacity-45" : "",
               ].join(" ")}
             >
               {/* Favourite star */}
@@ -327,29 +319,26 @@ export function ModelBrowser({
                 {isFav ? "\u2605" : "\u2606"}
               </button>
 
-              {/* Config indicator */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEditConfig?.(model)
-                }}
-                className={[
-                  "text-[11px] transition-colors cursor-pointer",
-                  hasConfig ? "text-[#cba6f7]" : "text-white/15 hover:text-white/30",
-                ].join(" ")}
-                title="Edit configuration"
-              >
-                {hasConfig ? "\u2699" : "\u2699"}
-              </button>
+              {/* Name + customisation indicator */}
+              <div className="min-w-0 flex items-center gap-1.5">
+                <span className="truncate text-[12px] text-white/80">
+                  {model.user_config?.custom_display_name ?? model.display_name}
+                </span>
+                {hasConfig && (
+                  <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
+                )}
+                {model.user_config?.custom_display_name && (
+                  <span className="truncate text-[9px] text-white/25 italic flex-shrink-0">
+                    {model.display_name}
+                  </span>
+                )}
+                {model.user_config?.is_hidden && (
+                  <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
+                )}
+              </div>
 
               {/* Provider */}
               <span className="truncate text-[11px] text-white/40">{model.provider_id}</span>
-
-              {/* Name */}
-              <div className="min-w-0">
-                <span className="truncate text-[12px] text-white/80">{model.display_name}</span>
-              </div>
 
               {/* Params */}
               <span className="text-[11px] text-white/55">
@@ -373,19 +362,6 @@ export function ModelBrowser({
 
               {/* Rating */}
               {ratingBadge(model)}
-
-              {/* Menu placeholder */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEditConfig?.(model)
-                }}
-                className="text-[12px] text-white/20 hover:text-white/50 transition-colors cursor-pointer"
-                title="Configure"
-              >
-                ...
-              </button>
             </div>
           )
         })}
