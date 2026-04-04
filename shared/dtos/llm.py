@@ -53,6 +53,12 @@ class ModelMetaDto(BaseModel):
         return f"{self.provider_id}:{self.model_id}"
 
 
+class FaultyProviderDto(BaseModel):
+    provider_id: str
+    display_name: str
+    error_message: str
+
+
 class UserModelConfigDto(BaseModel):
     model_unique_id: str
     is_favourite: bool = False

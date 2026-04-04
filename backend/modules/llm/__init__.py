@@ -11,7 +11,7 @@ from backend.modules.llm._curation import CurationRepository
 from backend.modules.llm._handlers import router
 from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS
 from backend.modules.llm._user_config import UserModelConfigRepository
-from backend.modules.llm._metadata import get_models
+from backend.modules.llm._metadata import get_models, refresh_all_providers
 from backend.database import get_db, get_redis
 from shared.dtos.inference import CompletionRequest
 
@@ -86,4 +86,5 @@ __all__ = [
     "LlmProviderNotFoundError",
     "UserModelConfigRepository",
     "get_model_context_window",
+    "refresh_all_providers",
 ]
