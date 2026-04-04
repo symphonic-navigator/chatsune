@@ -38,6 +38,15 @@ export const Topics = {
   SETTING_UPDATED: "setting.updated",
   SETTING_DELETED: "setting.deleted",
   SETTING_SYSTEM_PROMPT_UPDATED: "setting.system_prompt.updated",
+  CHAT_STREAM_STARTED: "chat.stream.started",
+  CHAT_CONTENT_DELTA: "chat.content.delta",
+  CHAT_THINKING_DELTA: "chat.thinking.delta",
+  CHAT_STREAM_ENDED: "chat.stream.ended",
+  CHAT_STREAM_ERROR: "chat.stream.error",
+  CHAT_MESSAGES_TRUNCATED: "chat.messages.truncated",
+  CHAT_MESSAGE_UPDATED: "chat.message.updated",
+  CHAT_MESSAGE_DELETED: "chat.message.deleted",
+  CHAT_SESSION_TITLE_UPDATED: "chat.session.title_updated",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

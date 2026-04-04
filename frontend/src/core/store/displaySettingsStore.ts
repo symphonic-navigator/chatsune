@@ -24,12 +24,22 @@ export function saveDisplaySettings(settings: DisplaySettings): void {
   applyCssVars(settings)
 }
 
+const WHITE_SCRIPT_COLOUR = '#f7f3eb'
+
 function applyCssVars(settings: DisplaySettings): void {
   const root = document.documentElement
   root.style.setProperty('--chat-font-family', FONT_FAMILY_VALUES[settings.chatFontFamily])
   root.style.setProperty('--chat-font-size', FONT_SIZE_VALUES[settings.chatFontSize])
   root.style.setProperty('--chat-line-height', LINE_HEIGHT_VALUES[settings.chatLineHeight])
   root.style.setProperty('--ui-scale', String(settings.uiScale / 100))
+
+  if (settings.whiteScript) {
+    root.classList.add('white-script')
+    root.style.setProperty('--chat-text-colour', WHITE_SCRIPT_COLOUR)
+  } else {
+    root.classList.remove('white-script')
+    root.style.removeProperty('--chat-text-colour')
+  }
 }
 
 interface DisplaySettingsState {
