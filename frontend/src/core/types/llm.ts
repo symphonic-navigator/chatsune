@@ -39,6 +39,17 @@ export interface ModelMetaDto {
   unique_id: string
 }
 
+export interface FaultyProviderDto {
+  provider_id: string
+  display_name: string
+  error_message: string
+}
+
+/** Model enriched with the user's per-model configuration (merged client-side). */
+export interface EnrichedModelDto extends ModelMetaDto {
+  user_config: UserModelConfigDto | null
+}
+
 export interface UserModelConfigDto {
   model_unique_id: string
   is_favourite: boolean

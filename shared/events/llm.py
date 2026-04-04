@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -55,11 +56,10 @@ class LlmModelsFetchStartedEvent(BaseModel):
 class LlmModelsFetchCompletedEvent(BaseModel):
     """Published when model fetching from upstream providers finishes.
 
-    status is one of: success, partial, failed.
     faulty_providers lists providers that returned errors.
     """
     type: str = "llm.models.fetch_completed"
-    status: str
+    status: Literal["success", "partial", "failed"]
     total_models: int
     faulty_providers: list[FaultyProviderDto]
     correlation_id: str

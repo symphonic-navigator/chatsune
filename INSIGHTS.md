@@ -9,26 +9,33 @@ a simpler-seeming alternative was considered and rejected.
 
 ---
 
-## INS-001 — Model Metadata: Lazy Redis TTL, No Cron, No Events
+## INS-001 — Model Metadata: Lazy Redis TTL + Fetch Events
 
 **Decision:** Model metadata (available models per provider, including capabilities
 like reasoning/vision/tool-calls) is cached in Redis with a 30-minute TTL.
 It is fetched lazily: only when a cache miss occurs at request time.
-No background cron job. No WebSocket events for model list updates.
+No background cron job.
 
 **Why lazy load:**
 A cron job would poll the upstream provider even when no user is active.
 Lazy loading means the upstream is only hit when someone actually needs the data,
 and Redis absorbs all subsequent requests until the TTL expires.
 
-**Why no events for model list updates:**
-Model metadata is reference data, not mutable user state.
-It changes rarely (new models added by Ollama every few weeks at most).
-WebSocket events are for state changes that happen asynchronously without
-the user asking — model list updates do not qualify.
-The UI fetches the model list when it needs it (e.g. opening the model picker)
-via `GET /api/llm/providers/{provider_id}/models`. If the cache is warm, it is
-instant. If not, it fetches once and warms the cache for all other users.
+**Fetch events (added April 2026):**
+When the UI triggers a full model refresh across all providers (e.g. admin model
+management, or opening the model browser after cache expiry), the backend publishes
+two events via `refresh_all_providers()`:
+
+- `llm.models.fetch_started` — carries the list of provider IDs being queried and
+  a `correlation_id`. The frontend can show a loading indicator.
+- `llm.models.fetch_completed` — carries `status` (success/partial/failed),
+  `total_models` count, and a `faulty_providers` list with error details per
+  provider that failed. This supports partially successful multi-provider fetches.
+
+These events exist because we now have multiple upstream providers and fetching
+from source is not instantaneous. The UI needs to communicate progress and errors
+to the user — especially when a provider is down. Cached reads (from Redis) remain
+event-free since they are near-instant.
 
 **Trade-off accepted:**
 The very first user to open the model picker after TTL expiry bears the latency

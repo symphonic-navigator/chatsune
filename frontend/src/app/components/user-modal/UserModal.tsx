@@ -7,8 +7,9 @@ import { KnowledgeTab } from './KnowledgeTab'
 import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
 import { BookmarksTab } from './BookmarksTab'
+import { ModelsTab } from './ModelsTab'
 
-export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'settings'
+export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'models' | 'settings'
 
 interface Tab {
   id: UserModalTab
@@ -23,6 +24,7 @@ const TABS: Tab[] = [
   { id: 'bookmarks', label: 'Bookmarks' },
   { id: 'uploads', label: 'Uploads' },
   { id: 'artefacts', label: 'Artefacts' },
+  { id: 'models', label: 'Models' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -138,6 +140,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName }: User
           {activeTab === 'bookmarks' && <BookmarksTab />}
           {activeTab === 'uploads' && <UploadsTab />}
           {activeTab === 'artefacts' && <ArtefactsTab />}
+          {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'settings' && <SettingsTab />}
         </div>
       </div>
