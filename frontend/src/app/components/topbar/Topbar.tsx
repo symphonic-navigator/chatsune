@@ -1,5 +1,6 @@
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
+import { useChatStore } from "../../../core/store/chatStore"
 import type { PersonaDto } from "../../../core/types/persona"
 
 const SECTION_TITLES: Record<string, string> = {
@@ -19,6 +20,7 @@ export function Topbar({ personas }: TopbarProps) {
   const location = useLocation()
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
+  const sessionTitle = useChatStore((s) => s.sessionTitle)
 
   const isLive = wsStatus === "connected"
 
@@ -50,7 +52,7 @@ export function Topbar({ personas }: TopbarProps) {
         )}
         <span className="text-white/15">/</span>
         <span className="max-w-[260px] truncate text-[13px] text-white/32">
-          {chatMatch.params.sessionId ? "Continued session" : "New chat"}
+          {sessionTitle ?? (chatMatch.params.sessionId ? "Continued session" : "New chat")}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           {persona && (

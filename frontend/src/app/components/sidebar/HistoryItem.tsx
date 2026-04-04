@@ -25,7 +25,16 @@ export function HistoryItem({ session, isPinned, isActive, onClick }: HistoryIte
       onClick={() => onClick(session)}
     >
       {isPinned && <span className="flex-shrink-0 text-[11px]">📌</span>}
-      <span className="flex-1 truncate">{formatSessionDate(session.updated_at)}</span>
+      <div className="flex flex-col gap-0.5 overflow-hidden">
+        <span className="truncate text-[13px]">
+          {session.title ?? formatSessionDate(session.updated_at)}
+        </span>
+        {session.title && (
+          <span className="truncate text-[11px] opacity-50">
+            {formatSessionDate(session.updated_at)}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
