@@ -31,6 +31,8 @@ class Topics:
     CHAT_MESSAGE_UPDATED = "chat.message.updated"
     CHAT_MESSAGE_DELETED = "chat.message.deleted"
     CHAT_SESSION_TITLE_UPDATED = "chat.session.title_updated"
+    CHAT_SESSION_CREATED = "chat.session.created"
+    CHAT_SESSION_DELETED = "chat.session.deleted"
     # Background jobs
     JOB_STARTED = "job.started"
     JOB_COMPLETED = "job.completed"

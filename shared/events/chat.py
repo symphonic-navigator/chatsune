@@ -75,3 +75,23 @@ class ChatSessionTitleUpdatedEvent(BaseModel):
     title: str
     correlation_id: str
     timestamp: datetime
+
+
+class ChatSessionCreatedEvent(BaseModel):
+    type: str = "chat.session.created"
+    session_id: str
+    user_id: str
+    persona_id: str
+    model_unique_id: str
+    title: str | None = None
+    created_at: str
+    updated_at: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class ChatSessionDeletedEvent(BaseModel):
+    type: str = "chat.session.deleted"
+    session_id: str
+    correlation_id: str
+    timestamp: datetime

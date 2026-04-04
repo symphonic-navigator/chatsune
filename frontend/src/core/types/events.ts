@@ -47,6 +47,8 @@ export const Topics = {
   CHAT_MESSAGE_UPDATED: "chat.message.updated",
   CHAT_MESSAGE_DELETED: "chat.message.deleted",
   CHAT_SESSION_TITLE_UPDATED: "chat.session.title_updated",
+  CHAT_SESSION_CREATED: "chat.session.created",
+  CHAT_SESSION_DELETED: "chat.session.deleted",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]
