@@ -85,3 +85,13 @@ def test_set_user_model_config_dto_new_fields_default_none():
     dto = SetUserModelConfigDto()
     assert dto.custom_display_name is None
     assert dto.custom_context_window is None
+
+
+def test_display_name_whitespace_stripped():
+    dto = SetUserModelConfigDto(custom_display_name="  My Llama  ")
+    assert dto.custom_display_name == "My Llama"
+
+
+def test_display_name_empty_becomes_none():
+    dto = SetUserModelConfigDto(custom_display_name="   ")
+    assert dto.custom_display_name is None

@@ -357,15 +357,13 @@ async def set_user_model_config(
 
     model_unique_id = f"{provider_id}:{model_slug}"
     repo = _user_config_repo()
+    # Only pass fields that were explicitly sent in the request so that
+    # nullable fields (e.g. custom_display_name) can be reset to None.
+    fields = {k: getattr(body, k) for k in body.model_fields_set}
     doc = await repo.upsert(
         user_id=user["sub"],
         model_unique_id=model_unique_id,
-        is_favourite=body.is_favourite,
-        is_hidden=body.is_hidden,
-        custom_display_name=body.custom_display_name,
-        custom_context_window=body.custom_context_window,
-        notes=body.notes,
-        system_prompt_addition=body.system_prompt_addition,
+        fields=fields,
     )
     config_dto = UserModelConfigRepository.to_dto(doc)
 

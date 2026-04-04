@@ -248,6 +248,26 @@ async def test_partial_update_preserves_new_fields(client: AsyncClient):
     assert data["is_favourite"] is True
 
 
+async def test_nullable_fields_can_be_reset_to_null(client: AsyncClient):
+    token = await _setup_admin(client)
+    # Set custom values
+    await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_display_name": "My Llama", "notes": "Test note"},
+        headers=_auth(token),
+    )
+    # Reset to null explicitly
+    resp = await client.put(
+        "/api/llm/providers/ollama_cloud/models/llama3/user-config",
+        json={"custom_display_name": None, "notes": None},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["custom_display_name"] is None
+    assert data["notes"] is None
+
+
 async def test_get_config_returns_new_field_defaults(client: AsyncClient):
     token = await _setup_admin(client)
     resp = await client.get(

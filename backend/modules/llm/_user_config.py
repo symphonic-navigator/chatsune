@@ -24,30 +24,20 @@ class UserModelConfigRepository:
         self,
         user_id: str,
         model_unique_id: str,
-        is_favourite: bool | None = None,
-        is_hidden: bool | None = None,
-        custom_display_name: str | None = None,
-        custom_context_window: int | None = None,
-        notes: str | None = None,
-        system_prompt_addition: str | None = None,
+        fields: dict,
     ) -> dict:
+        """Create or update a user model config.
+
+        ``fields`` contains only the keys that were explicitly sent in the
+        request (determined via Pydantic ``model_fields_set``).  This allows
+        nullable fields to be reset to ``None`` -- a bare ``None`` default
+        would be indistinguishable from "not sent".
+        """
         now = datetime.now(UTC)
         existing = await self.find(user_id, model_unique_id)
 
         if existing:
-            update_fields: dict = {"updated_at": now}
-            if is_favourite is not None:
-                update_fields["is_favourite"] = is_favourite
-            if is_hidden is not None:
-                update_fields["is_hidden"] = is_hidden
-            if custom_display_name is not None:
-                update_fields["custom_display_name"] = custom_display_name
-            if custom_context_window is not None:
-                update_fields["custom_context_window"] = custom_context_window
-            if notes is not None:
-                update_fields["notes"] = notes
-            if system_prompt_addition is not None:
-                update_fields["system_prompt_addition"] = system_prompt_addition
+            update_fields: dict = {"updated_at": now, **fields}
             await self._collection.update_one(
                 {"_id": existing["_id"]},
                 {"$set": update_fields},
@@ -58,12 +48,13 @@ class UserModelConfigRepository:
             "_id": str(uuid4()),
             "user_id": user_id,
             "model_unique_id": model_unique_id,
-            "is_favourite": is_favourite if is_favourite is not None else False,
-            "is_hidden": is_hidden if is_hidden is not None else False,
-            "custom_display_name": custom_display_name,
-            "custom_context_window": custom_context_window,
-            "notes": notes,
-            "system_prompt_addition": system_prompt_addition,
+            "is_favourite": False,
+            "is_hidden": False,
+            "custom_display_name": None,
+            "custom_context_window": None,
+            "notes": None,
+            "system_prompt_addition": None,
+            **fields,
             "created_at": now,
             "updated_at": now,
         }
