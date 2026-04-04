@@ -117,3 +117,48 @@ async def test_consumer_expires_old_job(redis):
     call_args = event_bus.publish.call_args_list
     topics = [c.args[0] for c in call_args]
     assert "job.expired" in topics
+
+
+async def test_consumer_retries_then_fails(redis):
+    from backend.jobs._consumer import ensure_consumer_group, process_one
+    from backend.jobs._models import JobConfig, JobType
+    from backend.jobs._registry import JOB_REGISTRY
+
+    handler = AsyncMock(side_effect=RuntimeError("Boom"))
+    original = JOB_REGISTRY[JobType.TITLE_GENERATION]
+    JOB_REGISTRY[JobType.TITLE_GENERATION] = JobConfig(
+        handler=handler,
+        max_retries=2,
+        retry_delay_seconds=0.1,  # Short for testing
+        queue_timeout_seconds=3600.0,
+        execution_timeout_seconds=60.0,
+        reasoning_enabled=False,
+        notify=False,
+        notify_error=True,
+    )
+
+    try:
+        event_bus = AsyncMock()
+        entry = await _enqueue_job(redis, payload={"retry": True})
+        await ensure_consumer_group(redis)
+
+        # First attempt — should schedule retry
+        result = await process_one(redis, event_bus)
+        assert result is False
+
+        topics = [c.args[0] for c in event_bus.publish.call_args_list]
+        assert "job.started" in topics
+        assert "job.retry" in topics
+
+        # Wait for retry delay
+        await asyncio.sleep(0.2)
+
+        # Second attempt — should fail permanently (max_retries=2)
+        event_bus.reset_mock()
+        result = await process_one(redis, event_bus)
+        assert result is True
+
+        topics = [c.args[0] for c in event_bus.publish.call_args_list]
+        assert "job.failed" in topics
+    finally:
+        JOB_REGISTRY[JobType.TITLE_GENERATION] = original

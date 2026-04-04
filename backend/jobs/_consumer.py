@@ -96,21 +96,20 @@ async def process_one(redis: Redis, event_bus) -> bool:
         return False  # User busy — leave unacked for next iteration
 
     # Execute the job
-    await event_bus.publish(
-        Topics.JOB_STARTED,
-        JobStartedEvent(
-            job_id=job.id,
-            job_type=job.job_type,
-            correlation_id=job.correlation_id,
-            timestamp=now,
-        ),
-        target_user_ids=[job.user_id],
-        correlation_id=job.correlation_id,
-    )
-
     try:
         async with asyncio.timeout(config.execution_timeout_seconds):
             async with lock:
+                await event_bus.publish(
+                    Topics.JOB_STARTED,
+                    JobStartedEvent(
+                        job_id=job.id,
+                        job_type=job.job_type,
+                        correlation_id=job.correlation_id,
+                        timestamp=now,
+                    ),
+                    target_user_ids=[job.user_id],
+                    correlation_id=job.correlation_id,
+                )
                 await config.handler(
                     job=job,
                     config=config,
@@ -134,52 +133,57 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await redis.xack(_STREAM, _GROUP, stream_id)
         return True
 
+    except TimeoutError:
+        error_message = f"Execution timed out after {config.execution_timeout_seconds}s"
     except Exception as exc:
-        attempt = job.attempt + 1
-        now = datetime.now(timezone.utc)
+        error_message = str(exc)
 
-        if attempt >= config.max_retries:
-            # Final failure
-            should_notify = config.notify or config.notify_error
-            if should_notify:
-                await event_bus.publish(
-                    Topics.JOB_FAILED,
-                    JobFailedEvent(
-                        job_id=job.id,
-                        job_type=job.job_type,
-                        correlation_id=job.correlation_id,
-                        attempt=attempt,
-                        max_retries=config.max_retries,
-                        error_message=str(exc),
-                        recoverable=False,
-                        timestamp=now,
-                    ),
-                    target_user_ids=[job.user_id],
-                    correlation_id=job.correlation_id,
-                )
-            await clear_retry(redis, job.id)
-            await redis.xack(_STREAM, _GROUP, stream_id)
-            _log.warning("Job %s failed after %d attempts: %s", job.id, attempt, exc)
-            return True
-        else:
-            # Schedule retry
-            next_retry_at = now + timedelta(seconds=config.retry_delay_seconds)
-            await set_retry(redis, job.id, attempt=attempt, next_retry_at=next_retry_at)
+    # Retry / failure logic (shared between TimeoutError and Exception)
+    attempt = job.attempt + 1
+    now = datetime.now(timezone.utc)
+
+    if attempt >= config.max_retries:
+        # Final failure
+        should_notify = config.notify or config.notify_error
+        if should_notify:
             await event_bus.publish(
-                Topics.JOB_RETRY,
-                JobRetryEvent(
+                Topics.JOB_FAILED,
+                JobFailedEvent(
                     job_id=job.id,
                     job_type=job.job_type,
                     correlation_id=job.correlation_id,
                     attempt=attempt,
-                    next_retry_at=next_retry_at,
+                    max_retries=config.max_retries,
+                    error_message=error_message,
+                    recoverable=False,
                     timestamp=now,
                 ),
                 target_user_ids=[job.user_id],
                 correlation_id=job.correlation_id,
             )
-            _log.info("Job %s retry %d/%d scheduled at %s", job.id, attempt, config.max_retries, next_retry_at)
-            return False
+        await clear_retry(redis, job.id)
+        await redis.xack(_STREAM, _GROUP, stream_id)
+        _log.warning("Job %s failed after %d attempts: %s", job.id, attempt, error_message)
+        return True
+    else:
+        # Schedule retry
+        next_retry_at = now + timedelta(seconds=config.retry_delay_seconds)
+        await set_retry(redis, job.id, attempt=attempt, next_retry_at=next_retry_at)
+        await event_bus.publish(
+            Topics.JOB_RETRY,
+            JobRetryEvent(
+                job_id=job.id,
+                job_type=job.job_type,
+                correlation_id=job.correlation_id,
+                attempt=attempt,
+                next_retry_at=next_retry_at,
+                timestamp=now,
+            ),
+            target_user_ids=[job.user_id],
+            correlation_id=job.correlation_id,
+        )
+        _log.info("Job %s retry %d/%d scheduled at %s", job.id, attempt, config.max_retries, next_retry_at)
+        return False
 
 
 async def consumer_loop(redis: Redis, event_bus) -> None:
@@ -189,7 +193,9 @@ async def consumer_loop(redis: Redis, event_bus) -> None:
 
     while True:
         try:
-            await process_one(redis, event_bus)
+            processed = await process_one(redis, event_bus)
+            if not processed:
+                await asyncio.sleep(1)
         except asyncio.CancelledError:
             _log.info("Job consumer shutting down")
             break
