@@ -9,6 +9,7 @@ export interface ModelFilters {
   curation?: "recommended" | "available" | "not_recommended"
   favouritesOnly?: boolean
   hasCustomisation?: boolean
+  showHidden?: boolean
 }
 
 export type SortField = "name" | "provider" | "context" | "params" | "rating"
@@ -30,7 +31,8 @@ export function matchesSearch(model: EnrichedModelDto, query: string): boolean {
   if (!q) return true
   return (
     model.display_name.toLowerCase().includes(q) ||
-    model.model_id.toLowerCase().includes(q)
+    model.model_id.toLowerCase().includes(q) ||
+    (model.user_config?.custom_display_name?.toLowerCase().includes(q) ?? false)
   )
 }
 
@@ -40,6 +42,13 @@ export function filterModels(
   filters: ModelFilters,
 ): EnrichedModelDto[] {
   return models.filter((m) => {
+    // Hidden filter: by default exclude user-hidden models; when active show ONLY hidden
+    if (filters.showHidden) {
+      if (!m.user_config?.is_hidden) return false
+    } else {
+      if (m.user_config?.is_hidden) return false
+    }
+
     if (filters.search && !matchesSearch(m, filters.search)) return false
 
     if (filters.provider && m.provider_id !== filters.provider) return false
@@ -72,6 +81,8 @@ export function filterModels(
       const hasCustom =
         cfg.is_favourite ||
         cfg.is_hidden ||
+        cfg.custom_display_name != null ||
+        cfg.custom_context_window != null ||
         (cfg.notes != null && cfg.notes.length > 0) ||
         (cfg.system_prompt_addition != null && cfg.system_prompt_addition.length > 0)
       if (!hasCustom) return false

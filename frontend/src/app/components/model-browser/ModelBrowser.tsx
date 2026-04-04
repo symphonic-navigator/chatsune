@@ -156,6 +156,18 @@ export function ModelBrowser({
           >
             Customised
           </button>
+          <button
+            type="button"
+            onClick={() => updateFilter("showHidden", !filters.showHidden)}
+            className={[
+              "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
+              filters.showHidden
+                ? "bg-[#f38ba8]/15 border border-[#f38ba8]/30 text-[#f38ba8]"
+                : "border border-white/8 text-white/40 hover:text-white/60 hover:border-white/15",
+            ].join(" ")}
+          >
+            Hidden
+          </button>
         </div>
       </div>
 
