@@ -9,6 +9,7 @@ import { useEventBus } from "../../core/hooks/useEventBus"
 import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
 import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
+import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
 import { Topics } from "../../core/types/events"
 
 export default function AppLayout() {
@@ -29,14 +30,28 @@ export default function AppLayout() {
   const activePersonaId = chatMatch?.params.personaId ?? null
   const activeSessionId = chatMatch?.params.sessionId ?? null
 
+  // User modal state
   const [modalTab, setModalTab] = useState<UserModalTab | null>(null)
 
   function openModal(tab: UserModalTab) {
+    setAdminTab(null)
     setModalTab(tab)
   }
 
   function closeModal() {
     setModalTab(null)
+  }
+
+  // Admin modal state
+  const [adminTab, setAdminTab] = useState<AdminModalTab | null>(null)
+
+  function openAdmin() {
+    setModalTab(null)
+    setAdminTab('users')
+  }
+
+  function closeAdmin() {
+    setAdminTab(null)
   }
 
   // Live-update display name when user changes it in another tab or device
@@ -62,6 +77,8 @@ export default function AppLayout() {
         onOpenModal={openModal}
         onCloseModal={closeModal}
         activeModalTab={modalTab}
+        onOpenAdmin={openAdmin}
+        isAdminOpen={adminTab !== null}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />
@@ -73,6 +90,13 @@ export default function AppLayout() {
               onClose={closeModal}
               onTabChange={setModalTab}
               displayName={displayName}
+            />
+          )}
+          {adminTab !== null && (
+            <AdminModal
+              activeTab={adminTab}
+              onClose={closeAdmin}
+              onTabChange={setAdminTab}
             />
           )}
         </main>

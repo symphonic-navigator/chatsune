@@ -28,6 +28,8 @@ const defaults = {
   onOpenModal: vi.fn(),
   onCloseModal: vi.fn(),
   activeModalTab: null as null,
+  onOpenAdmin: vi.fn(),
+  isAdminOpen: false,
 }
 
 function renderSidebar(overrides: Partial<typeof defaults> = {}) {
@@ -43,17 +45,17 @@ beforeEach(() => {
 })
 
 describe('Sidebar — overlay close on navigation', () => {
-  it('calls onCloseModal when Admin banner is clicked', async () => {
-    const onCloseModal = vi.fn()
-    renderSidebar({ onCloseModal })
+  it('calls onOpenAdmin when Admin banner is clicked', async () => {
+    const onOpenAdmin = vi.fn()
+    renderSidebar({ onOpenAdmin })
     await userEvent.click(screen.getByText('Admin'))
-    expect(onCloseModal).toHaveBeenCalledOnce()
+    expect(onOpenAdmin).toHaveBeenCalledOnce()
   })
 
-  it('calls onCloseModal when Chat NavRow is clicked', async () => {
+  it('calls onCloseModal when Personas NavRow is clicked', async () => {
     const onCloseModal = vi.fn()
     renderSidebar({ onCloseModal })
-    await userEvent.click(screen.getByText('Chat'))
+    await userEvent.click(screen.getByText('Personas'))
     expect(onCloseModal).toHaveBeenCalledOnce()
   })
 })
