@@ -50,6 +50,7 @@ export default function AppLayout() {
 
   function openModal(tab: UserModalTab) {
     setAdminTab(null)
+    setPersonaOverlay(null)
     setModalTab(tab)
   }
 
@@ -62,6 +63,7 @@ export default function AppLayout() {
 
   function openAdmin() {
     setModalTab(null)
+    setPersonaOverlay(null)
     setAdminTab('users')
   }
 
@@ -169,7 +171,7 @@ export default function AppLayout() {
         onOpenAdmin={openAdmin}
         isAdminOpen={adminTab !== null}
         hasApiKeyProblem={hasApiKeyProblem}
-        onOpenOverlay={(personaId) => openPersonaOverlay(personaId, "overview")}
+        onOpenOverlay={(personaId, tab) => openPersonaOverlay(personaId, (tab as PersonaOverlayTab) ?? "overview")}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />

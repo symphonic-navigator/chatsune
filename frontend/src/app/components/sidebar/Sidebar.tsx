@@ -23,7 +23,7 @@ interface SidebarProps {
   onOpenAdmin: () => void
   isAdminOpen: boolean
   hasApiKeyProblem: boolean
-  onOpenOverlay?: (personaId: string) => void
+  onOpenOverlay?: (personaId: string, tab?: string) => void
 }
 
 function IconBtn({
@@ -330,7 +330,7 @@ export function Sidebar({
                 onSelect={handlePersonaSelect}
                 onNewChat={handleNewChat}
                 onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                onEdit={(persona) => navigate(`/personas?edit=${persona.id}`)}
+                onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
                 onOpenOverlay={() => onOpenOverlay?.(p.id)}
               />
             )) : (
