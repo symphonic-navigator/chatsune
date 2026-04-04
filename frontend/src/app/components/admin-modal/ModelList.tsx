@@ -281,13 +281,12 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
               </th>
               <th className="px-4 py-2 font-medium">Caps</th>
               <th className="px-4 py-2 font-medium">Rating</th>
-              <th className="px-4 py-2 font-medium text-right">Ops</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-[12px] text-white/20">
+                <td colSpan={6} className="px-4 py-8 text-center text-[12px] text-white/20">
                   No models match your filters
                 </td>
               </tr>
@@ -363,19 +362,6 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
                   )}
                 </td>
 
-                {/* Ops */}
-                <td className="px-4 py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSelectModel(model)
-                    }}
-                    className="rounded px-2 py-1 text-[10px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors cursor-pointer"
-                  >
-                    Curate
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
