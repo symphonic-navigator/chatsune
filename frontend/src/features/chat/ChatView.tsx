@@ -8,7 +8,7 @@ import { useChatStream } from './useChatStream'
 import { useAutoScroll } from './useAutoScroll'
 import { useHighlighter } from './useMarkdown'
 import { MessageList } from './MessageList'
-import { ChatInput } from './ChatInput'
+import { ChatInput, type ChatInputHandle } from './ChatInput'
 import { ToolToggles } from './ToolToggles'
 import { ContextStatusPill } from './ContextStatusPill'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
@@ -22,6 +22,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const { personaId, sessionId } = useParams<{ personaId: string; sessionId?: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
@@ -97,7 +98,10 @@ export function ChatView({ persona }: ChatViewProps) {
         setTimeout(() => scrollToBottom(), 50)
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false))
+      .finally(() => {
+        setIsLoading(false)
+        setTimeout(() => chatInputRef.current?.focus(), 100)
+      })
 
     chatApi
       .getSession(sessionId)
@@ -122,6 +126,18 @@ export function ChatView({ persona }: ChatViewProps) {
       })
       .catch(() => {})
   }, [sessionId, scrollToBottom])
+
+  // Shift+Esc focuses the input
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && e.shiftKey) {
+        e.preventDefault()
+        chatInputRef.current?.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
@@ -223,7 +239,7 @@ export function ChatView({ persona }: ChatViewProps) {
         />
       )}
 
-      <ChatInput onSend={handleSend} onCancel={handleCancel} isStreaming={isStreaming} disabled={isLoading}
+      <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel} isStreaming={isStreaming} disabled={isLoading}
         toolBar={sessionId ? (
           <ToolToggles
             sessionId={sessionId}

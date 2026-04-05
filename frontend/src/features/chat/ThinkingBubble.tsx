@@ -52,7 +52,10 @@ export function ThinkingBubble({ content, isStreaming, accentColour, defaultExpa
           color: `${accentColour}AA`,
         }}
       >
-        <span className="text-[10px]">{isExpanded ? '\u25BC' : '\u25B6'}</span>
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none"
+          style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+          <path d="M2 1L6 4L2 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
         <span>Thinking</span>
         {isStreaming && (
           <span data-testid="thinking-dots" className="flex items-center gap-1 ml-1">

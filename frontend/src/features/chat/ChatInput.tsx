@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 interface ChatInputProps {
   onSend: (text: string) => void
@@ -8,9 +8,19 @@ interface ChatInputProps {
   toolBar?: ReactNode
 }
 
-export function ChatInput({ onSend, onCancel, isStreaming, disabled, toolBar }: ChatInputProps) {
+export interface ChatInputHandle {
+  focus: () => void
+}
+
+export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
+  { onSend, onCancel, isStreaming, disabled, toolBar }, ref,
+) {
   const [text, setText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }))
 
   useEffect(() => {
     const el = textareaRef.current
@@ -83,4 +93,4 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled, toolBar }: 
       </div>
     </div>
   )
-}
+})

@@ -33,7 +33,10 @@ export function useAutoScroll(isStreaming: boolean) {
   }, [isStreaming])
 
   const scrollToBottom = useCallback(() => {
-    containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' })
+    // Use requestAnimationFrame to ensure DOM has rendered before scrolling
+    requestAnimationFrame(() => {
+      containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' })
+    })
   }, [])
 
   return { containerRef, showScrollButton, scrollToBottom }

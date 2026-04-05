@@ -356,14 +356,6 @@ export function Sidebar({
               <button
                 type="button"
                 className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
-                onClick={(e) => { e.stopPropagation(); onOpenModal('projects') }}
-                aria-label="Open projects"
-              >
-                🔍
-              </button>
-              <button
-                type="button"
-                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
                 onClick={(e) => { e.stopPropagation(); toggleProjects() }}
                 aria-label={projectsOpen ? "Collapse projects" : "Expand projects"}
               >
@@ -385,16 +377,7 @@ export function Sidebar({
           label="History"
           isActive={isTabActive('history')}
           onClick={() => onOpenModal('history')}
-          actions={
-            <button
-              type="button"
-              className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
-              onClick={(e) => { e.stopPropagation(); onOpenModal('history') }}
-              aria-label="Search history"
-            >
-              🔍
-            </button>
-          }
+          actions={null}
         />
 
         <div className="mt-0.5 pb-2">
