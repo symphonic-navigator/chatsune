@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import type { ChatSessionDto } from "../../../core/api/chat"
+import type { ChakraColour } from "../../../core/types/chakra"
+import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 
 function formatSessionDate(isoString: string): string {
   const d = new Date(isoString)
@@ -15,11 +17,14 @@ interface HistoryItemProps {
   session: ChatSessionDto
   isPinned: boolean
   isActive: boolean
+  monogram?: string
+  colourScheme?: ChakraColour
   onClick: (session: ChatSessionDto) => void
   onDelete: (session: ChatSessionDto) => void
 }
 
-export function HistoryItem({ session, isPinned, isActive, onClick, onDelete }: HistoryItemProps) {
+export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete }: HistoryItemProps) {
+  const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -42,6 +47,17 @@ export function HistoryItem({ session, isPinned, isActive, onClick, onDelete }: 
         ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}`}
       onClick={() => onClick(session)}
     >
+      {chakra && monogram && (
+        <div
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
+          style={{
+            background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
+            color: `${chakra.hex}CC`,
+          }}
+        >
+          {monogram}
+        </div>
+      )}
       {isPinned && <span className="flex-shrink-0 text-[11px]">📌</span>}
       <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
         <span className="truncate text-[13px]">

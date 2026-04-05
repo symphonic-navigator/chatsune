@@ -564,16 +564,21 @@ export function Sidebar({
         />
 
         <div className="mt-0.5 pb-2">
-          {sessions.map((s) => (
-            <HistoryItem
-              key={s.id}
-              session={s}
-              isPinned={false}
-              isActive={s.id === activeSessionId}
-              onClick={handleSessionClick}
-              onDelete={handleDeleteSession}
-            />
-          ))}
+          {sessions.map((s) => {
+            const persona = personas.find((p) => p.id === s.persona_id)
+            return (
+              <HistoryItem
+                key={s.id}
+                session={s}
+                isPinned={false}
+                isActive={s.id === activeSessionId}
+                monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                colourScheme={persona?.colour_scheme}
+                onClick={handleSessionClick}
+                onDelete={handleDeleteSession}
+              />
+            )
+          })}
           {sessions.length === 0 && (
             <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
           )}
