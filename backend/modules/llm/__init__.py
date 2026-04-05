@@ -105,6 +105,32 @@ async def get_api_key(user_id: str, provider_id: str) -> str:
     return repo.get_raw_key(cred)
 
 
+async def get_model_supports_vision(provider_id: str, model_slug: str) -> bool:
+    """Return True if the model supports vision/image input."""
+    if provider_id not in ADAPTER_REGISTRY:
+        return False
+    redis = get_redis()
+    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
+    models = await get_models(provider_id, redis, adapter)
+    for model in models:
+        if model.model_id == model_slug:
+            return model.supports_vision
+    return False
+
+
+async def get_model_supports_reasoning(provider_id: str, model_slug: str) -> bool:
+    """Return True if the model supports reasoning/thinking."""
+    if provider_id not in ADAPTER_REGISTRY:
+        return False
+    redis = get_redis()
+    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
+    models = await get_models(provider_id, redis, adapter)
+    for model in models:
+        if model.model_id == model_slug:
+            return model.supports_reasoning
+    return False
+
+
 async def get_effective_context_window(
     user_id: str, provider_id: str, model_slug: str,
 ) -> int | None:
@@ -137,5 +163,7 @@ __all__ = [
     "get_model_context_window",
     "get_api_key",
     "get_effective_context_window",
+    "get_model_supports_vision",
+    "get_model_supports_reasoning",
     "refresh_all_providers",
 ]

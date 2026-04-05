@@ -32,8 +32,13 @@ export function ChatView({ persona }: ChatViewProps) {
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
   const resolvingSession = useRef(false)
 
+  const isIncognito = searchParams.get('incognito') === '1'
+  const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
+  const effectiveSessionId = isIncognito ? incognitoIdRef.current : sessionId
+
   useEffect(() => {
     resolvingSession.current = false
+    if (isIncognito) return
     if (!personaId || sessionId) return
     resolvingSession.current = true
 
@@ -63,7 +68,7 @@ export function ChatView({ persona }: ChatViewProps) {
         }
       })
       .finally(() => { resolvingSession.current = false })
-  }, [searchParams, personaId, sessionId, navigate])
+  }, [searchParams, personaId, sessionId, navigate, isIncognito])
 
   const messages = useChatStore((s) => s.messages)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
@@ -87,11 +92,30 @@ export function ChatView({ persona }: ChatViewProps) {
   const highlighter = useHighlighter()
   const { containerRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
 
-  useChatStream(sessionId ?? null)
+  useChatStream(effectiveSessionId ?? null)
 
   useEffect(() => {
     const store = useChatStore.getState()
     store.reset()
+
+    if (isIncognito) {
+      // Load model capabilities from persona
+      if (persona?.model_unique_id) {
+        const uid = persona.model_unique_id
+        if (uid.includes(':')) {
+          const providerId = uid.split(':')[0]
+          const modelSlug = uid.split(':').slice(1).join(':')
+          llmApi.listModels(providerId)
+            .then((models) => {
+              const model = models.find((m) => m.model_id === modelSlug)
+              setModelSupportsTools(model?.supports_tool_calls ?? false)
+              setModelSupportsReasoning(model?.supports_reasoning ?? false)
+            })
+            .catch(() => {})
+        }
+      }
+      return
+    }
 
     if (!sessionId) return
 
@@ -128,7 +152,7 @@ export function ChatView({ persona }: ChatViewProps) {
         }
       })
       .catch(() => {})
-  }, [sessionId, scrollToBottom])
+  }, [sessionId, scrollToBottom, isIncognito, persona])
 
   // Shift+Esc focuses the input
   useEffect(() => {
@@ -156,33 +180,43 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const handleSend = useCallback(
     (text: string) => {
-      if (!sessionId) return
-      const attachmentIds = attachments.getAttachmentIds()
-      const attachmentRefs = attachments.getAttachmentRefs()
+      if (!effectiveSessionId) return
       const optimisticMsg: ChatMessageDto = {
         id: `optimistic-${Date.now()}`,
-        session_id: sessionId,
+        session_id: effectiveSessionId,
         role: 'user',
         content: text,
         thinking: null,
         token_count: 0,
-        attachments: attachmentRefs.length > 0 ? attachmentRefs : null,
+        attachments: isIncognito ? null : (attachments.getAttachmentRefs().length > 0 ? attachments.getAttachmentRefs() : null),
         web_search_context: null,
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
       useChatStore.getState().setWaitingForResponse(true)
-      sendMessage({
-        type: 'chat.send',
-        session_id: sessionId,
-        content: [{ type: 'text', text }],
-        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
-      })
-      attachments.clearAttachments()
-      setShowUploadBrowser(false)
+
+      if (isIncognito) {
+        const allMessages = useChatStore.getState().messages
+        sendMessage({
+          type: 'chat.incognito.send',
+          persona_id: personaId,
+          session_id: effectiveSessionId,
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
+      } else {
+        const attachmentIds = attachments.getAttachmentIds()
+        sendMessage({
+          type: 'chat.send',
+          session_id: effectiveSessionId,
+          content: [{ type: 'text', text }],
+          ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+        })
+        attachments.clearAttachments()
+        setShowUploadBrowser(false)
+      }
       setTimeout(() => scrollToBottom(), 50)
     },
-    [sessionId, scrollToBottom, attachments],
+    [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments],
   )
 
   const handleCancel = useCallback(() => {
@@ -192,25 +226,54 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
-      if (!sessionId) return
-      useChatStore.getState().setWaitingForResponse(true)
-      sendMessage({
-        type: 'chat.edit',
-        session_id: sessionId,
-        message_id: messageId,
-        content: [{ type: 'text', text: newContent }],
-      })
+      if (!effectiveSessionId) return
+      if (isIncognito) {
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true)
+        const allMessages = useChatStore.getState().messages
+        sendMessage({
+          type: 'chat.incognito.send',
+          persona_id: personaId,
+          session_id: effectiveSessionId,
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
+      } else {
+        useChatStore.getState().setWaitingForResponse(true)
+        sendMessage({
+          type: 'chat.edit',
+          session_id: effectiveSessionId,
+          message_id: messageId,
+          content: [{ type: 'text', text: newContent }],
+        })
+      }
     },
-    [sessionId],
+    [effectiveSessionId, isIncognito, personaId],
   )
 
   const handleRegenerate = useCallback(() => {
-    if (!sessionId) return
-    useChatStore.getState().setWaitingForResponse(true)
-    sendMessage({ type: 'chat.regenerate', session_id: sessionId })
-  }, [sessionId])
+    if (!effectiveSessionId) return
+    if (isIncognito) {
+      const store = useChatStore.getState()
+      const msgs = store.messages
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (lastAssistant) store.deleteMessage(lastAssistant.id)
+      store.setWaitingForResponse(true)
+      const allMessages = useChatStore.getState().messages
+      sendMessage({
+        type: 'chat.incognito.send',
+        persona_id: personaId,
+        session_id: effectiveSessionId,
+        messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+      })
+    } else {
+      useChatStore.getState().setWaitingForResponse(true)
+      sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId })
+    }
+  }, [effectiveSessionId, isIncognito, personaId])
 
-  if (!sessionId) {
+  if (!effectiveSessionId) {
     return (
       <div className="flex flex-1 items-center justify-center text-[13px] text-white/20">
         Loading chat...
@@ -221,9 +284,16 @@ export function ChatView({ persona }: ChatViewProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2">
-        <span className="max-w-[400px] truncate text-[13px] text-white/40">
-          {sessionTitle ?? 'New chat'}
-        </span>
+        <div className="flex items-center gap-2">
+          {isIncognito && (
+            <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/40" title="Messages are not saved">
+              INCOGNITO
+            </span>
+          )}
+          <span className="max-w-[400px] truncate text-[13px] text-white/40">
+            {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
+          </span>
+        </div>
         <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
       </div>
 
@@ -272,9 +342,9 @@ export function ChatView({ persona }: ChatViewProps) {
         attachmentStrip={attachments.hasAttachments ? (
           <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
         ) : undefined}
-        toolBar={sessionId ? (
+        toolBar={effectiveSessionId ? (
           <ToolToggles
-            sessionId={sessionId}
+            sessionId={effectiveSessionId}
             disabledToolGroups={disabledToolGroups}
             onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
             disabled={isStreaming}

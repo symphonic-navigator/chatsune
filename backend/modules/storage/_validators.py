@@ -12,6 +12,7 @@ _ALLOWED_IMAGE_TYPES = set(_IMAGE_SIGNATURES.keys())
 
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024   # 10 MB
 _MAX_TEXT_BYTES = 100 * 1024           # 100 KB
+_MAX_BINARY_BYTES = 50 * 1024 * 1024   # 50 MB
 _MAX_ATTACHMENTS_PER_MESSAGE = 10
 
 
@@ -33,6 +34,19 @@ def _check_magic_bytes(data: bytes, media_type: str) -> bool:
     return False
 
 
+def _detect_image_type(data: bytes) -> str | None:
+    """Detect image type from magic bytes, regardless of declared content-type."""
+    for media_type, sigs in _IMAGE_SIGNATURES.items():
+        for sig in sigs:
+            if data[: len(sig)] == sig:
+                if media_type == "image/webp":
+                    if len(data) >= 12 and data[8:12] == b"WEBP":
+                        return media_type
+                else:
+                    return media_type
+    return None
+
+
 def validate_upload(
     filename: str,
     data: bytes,
@@ -52,22 +66,23 @@ def validate_upload(
     binary = _is_binary(data)
 
     if binary:
-        if not content_type or content_type not in _ALLOWED_IMAGE_TYPES:
-            raise HTTPException(
-                status_code=415,
-                detail="Unsupported binary format. Only JPEG, PNG, GIF, and WebP images are allowed.",
-            )
-        if not _check_magic_bytes(data, content_type):
-            raise HTTPException(
-                status_code=415,
-                detail="File content does not match declared type",
-            )
-        if size > _MAX_IMAGE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Image too large. Maximum size is {_MAX_IMAGE_BYTES // (1024 * 1024)} MB.",
-            )
-        media_type = content_type
+        detected_image = _detect_image_type(data)
+        if detected_image:
+            # File is an image — trust magic bytes over declared content-type
+            if size > _MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Image too large. Maximum size is {_MAX_IMAGE_BYTES // (1024 * 1024)} MB.",
+                )
+            media_type = detected_image
+        else:
+            # Non-image binary file (PDF, ZIP, etc.)
+            if size > _MAX_BINARY_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Maximum size is {_MAX_BINARY_BYTES // (1024 * 1024)} MB.",
+                )
+            media_type = content_type or "application/octet-stream"
     else:
         if size > _MAX_TEXT_BYTES:
             raise HTTPException(

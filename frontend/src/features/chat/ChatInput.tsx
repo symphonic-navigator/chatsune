@@ -89,7 +89,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
   return (
     <div className="border-t border-white/6 bg-surface px-4 py-3" onDragOver={handleDragOver} onDrop={handleDrop}>
-      <input ref={fileInputRef} type="file" multiple accept="image/*,text/*" className="hidden"
+      <input ref={fileInputRef} type="file" multiple accept="*/*" className="hidden"
         onChange={(e) => { if (e.target.files?.length) { onFilesSelected(Array.from(e.target.files)); e.target.value = '' } }} />
       {toolBar && (
         <div className="mx-auto mb-2 max-w-3xl">{toolBar}</div>

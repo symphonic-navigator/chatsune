@@ -27,14 +27,20 @@ def _format_parameter_count(value: int | None) -> str | None:
     if not value:
         return None
     if value >= 1_000_000_000_000:
-        n = round(value / 1_000_000_000_000)
-        return f"{n}T"
+        n = value / 1_000_000_000_000
+        if n == int(n):
+            return f"{int(n)}T"
+        return f"{n:.1f}T"
     if value >= 1_000_000_000:
-        n = round(value / 1_000_000_000)
-        return f"{n}B"
+        n = value / 1_000_000_000
+        if n == int(n):
+            return f"{int(n)}B"
+        return f"{n:.1f}B"
     if value >= 1_000_000:
-        n = round(value / 1_000_000)
-        return f"{n}M"
+        n = value / 1_000_000
+        if n == int(n):
+            return f"{int(n)}M"
+        return f"{n:.1f}M"
     return None
 
 
@@ -152,9 +158,15 @@ class OllamaCloudAdapter(BaseAdapter):
                     yield StreamError(error_code="invalid_api_key", message="Invalid API key")
                     return
                 if resp.status_code != 200:
+                    body = await resp.aread()
+                    detail = body.decode("utf-8", errors="replace")[:500]
+                    _log.error(
+                        "Upstream returned %d for model %s: %s",
+                        resp.status_code, payload.get("model"), detail,
+                    )
                     yield StreamError(
                         error_code="provider_unavailable",
-                        message=f"Upstream returned {resp.status_code}",
+                        message=f"Upstream returned {resp.status_code}: {detail}",
                     )
                     return
 
@@ -217,9 +229,10 @@ class OllamaCloudAdapter(BaseAdapter):
             "stream": True,
         }
 
-        # Always set think explicitly — omitting it lets the model default
-        # to thinking on, which ignores the user's toggle.
-        payload["think"] = request.reasoning_enabled
+        # Only send think when the model actually supports it — models
+        # without thinking capability reject the parameter with HTTP 400.
+        if request.supports_reasoning:
+            payload["think"] = request.reasoning_enabled
 
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Outlet, useMatch } from "react-router-dom"
+import { Outlet, useMatch, useNavigate } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
@@ -19,6 +19,7 @@ import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/type
 
 export default function AppLayout() {
   useWebSocket()
+  const navigate = useNavigate()
 
   const { personas: allPersonas } = usePersonas()
   const { sessions } = useChatSessions()
@@ -203,6 +204,8 @@ export default function AppLayout() {
               onClose={closePersonaOverlay}
               onTabChange={handlePersonaOverlayTabChange}
               onSave={handlePersonaSave}
+              onNavigate={(path) => navigate(path)}
+              sessions={filteredSessions}
             />
           )}
         </main>

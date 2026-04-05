@@ -25,7 +25,7 @@ _VALID_PERSONA = {
     "system_prompt": "You are a helpful assistant.",
     "temperature": 0.8,
     "reasoning_enabled": False,
-    "colour_scheme": "#7c3aed",
+    "colour_scheme": "solar",
     "display_order": 0,
 }
 

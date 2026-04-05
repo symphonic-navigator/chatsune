@@ -25,7 +25,7 @@ def mock_save():
 
 def _make_stream(*events):
     """Return an async generator function that yields the given events."""
-    async def _gen():
+    async def _gen(extra_messages=None):
         for e in events:
             yield e
     return _gen
@@ -112,7 +112,7 @@ async def test_stream_error(runner, mock_emit, mock_save):
 async def test_cancellation(runner, mock_emit, mock_save):
     cancel_event = asyncio.Event()
 
-    async def _slow_stream():
+    async def _slow_stream(extra_messages=None):
         yield ContentDelta(delta="Start")
         cancel_event.set()
         await asyncio.sleep(10)
@@ -136,14 +136,14 @@ async def test_cancellation(runner, mock_emit, mock_save):
 async def test_per_user_serialisation(runner, mock_emit, mock_save):
     call_order = []
 
-    async def _stream_a():
+    async def _stream_a(extra_messages=None):
         call_order.append("a_start")
         yield ContentDelta(delta="A")
         await asyncio.sleep(0.05)
         yield StreamDone()
         call_order.append("a_end")
 
-    async def _stream_b():
+    async def _stream_b(extra_messages=None):
         call_order.append("b_start")
         yield ContentDelta(delta="B")
         yield StreamDone()

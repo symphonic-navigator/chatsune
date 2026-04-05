@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from backend.database import get_redis
-from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate
+from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate, handle_incognito_send
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
 
@@ -85,6 +85,10 @@ async def websocket_endpoint(
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.regenerate":
                 task = asyncio.create_task(handle_chat_regenerate(user_id, data))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+            elif msg_type == "chat.incognito.send":
+                task = asyncio.create_task(handle_incognito_send(user_id, data))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
 

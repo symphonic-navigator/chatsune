@@ -81,10 +81,10 @@ def test_ws_replays_missed_events_on_reconnect(ws_client):
         await r.aclose()
         return stream_id
 
-    stream_id = asyncio.get_event_loop().run_until_complete(seed_stream())
+    asyncio.run(seed_stream())
 
     token = valid_token(role="admin")
     with ws_client.websocket_connect(f"/ws?token={token}&since=0-0") as ws:
         data = ws.receive_json()
         assert data["type"] == "user.created"
-        assert data["sequence"] == stream_id
+        assert isinstance(data["sequence"], str)

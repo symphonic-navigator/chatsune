@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { storageApi } from '../../../core/api/storage'
 import { currentAccessToken } from '../../../core/api/client'
 import type { StorageFileDto, StorageQuotaDto } from '../../../core/api/storage'
+import { usePersonas } from '../../../core/hooks/usePersonas'
+import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 
 type SortBy = 'date' | 'size'
 type SortOrder = 'asc' | 'desc'
@@ -75,6 +77,8 @@ async function downloadFile(fileId: string, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+type PersonaFilter = 'all' | 'none' | string
+
 export function UploadsTab() {
   const [files, setFiles] = useState<StorageFileDto[]>([])
   const [quota, setQuota] = useState<StorageQuotaDto | null>(null)
@@ -82,10 +86,41 @@ export function UploadsTab() {
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<SortBy>('date')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
+  const [personaFilter, setPersonaFilter] = useState<PersonaFilter>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const editRef = useRef<HTMLInputElement>(null)
+  const { personas } = usePersonas()
+  const { isSanitised } = useSanitisedMode()
+
+  const nsfwPersonaIds = useMemo(
+    () => new Set(personas.filter((p) => p.nsfw).map((p) => p.id)),
+    [personas],
+  )
+
+  const visiblePersonas = useMemo(
+    () => isSanitised ? personas.filter((p) => !p.nsfw) : personas,
+    [personas, isSanitised],
+  )
+
+  const filteredFiles = useMemo(() => {
+    let result = files
+
+    // In sanitised mode, hide files belonging to NSFW personas
+    if (isSanitised) {
+      result = result.filter((f) => !f.persona_id || !nsfwPersonaIds.has(f.persona_id))
+    }
+
+    // Apply persona filter
+    if (personaFilter === 'none') {
+      result = result.filter((f) => !f.persona_id)
+    } else if (personaFilter !== 'all') {
+      result = result.filter((f) => f.persona_id === personaFilter)
+    }
+
+    return result
+  }, [files, isSanitised, nsfwPersonaIds, personaFilter])
 
   const fetchData = useCallback(async (sort?: SortBy, order?: SortOrder) => {
     try {
@@ -210,7 +245,21 @@ export function UploadsTab() {
 
       {/* Controls row */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* TODO: Persona filter dropdown — requires persona list, skipped for now */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-white/30 font-mono uppercase tracking-wider mr-1">Persona</span>
+          <select
+            value={personaFilter}
+            onChange={(e) => setPersonaFilter(e.target.value as PersonaFilter)}
+            className="bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
+            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
+          >
+            <option value="all">All</option>
+            <option value="none">No persona</option>
+            {visiblePersonas.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-white/30 font-mono uppercase tracking-wider mr-1">Sort</span>
@@ -240,19 +289,19 @@ export function UploadsTab() {
         </button>
 
         <span className="ml-auto text-[11px] text-white/25 font-mono">
-          {files.length} file{files.length !== 1 ? 's' : ''}
+          {filteredFiles.length} file{filteredFiles.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* File list */}
-      {files.length === 0 ? (
+      {filteredFiles.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-[13px] text-white/25 font-mono">
-          No files uploaded yet
+          {files.length === 0 ? 'No files uploaded yet' : 'No files match the current filter'}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
           <div className="flex flex-col gap-1">
-            {files.map((file) => (
+            {filteredFiles.map((file) => (
               <div
                 key={file.id}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/6 hover:border-white/10 transition-colors group"

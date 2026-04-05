@@ -19,6 +19,8 @@ from backend.database import get_db
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
     get_effective_context_window,
+    get_model_supports_vision,
+    get_model_supports_reasoning,
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
@@ -149,9 +151,16 @@ async def _run_inference(
         attachment_ids = last_msg.get("attachment_ids")
         if attachment_ids:
             from backend.modules.storage import get_files_by_ids
+            supports_vision = await get_model_supports_vision(provider_id, model_slug)
             files = await get_files_by_ids(attachment_ids, user_id)
             for f in files:
                 if f.get("data") and f["media_type"].startswith("image/"):
+                    if not supports_vision:
+                        last_msg_parts.append(ContentPart(
+                            type="text",
+                            text=f"\n[Image: {f['display_name']} — model does not support vision, image omitted]",
+                        ))
+                        continue
                     import base64
                     last_msg_parts.append(ContentPart(
                         type="image",
@@ -180,11 +189,14 @@ async def _run_inference(
     else:
         reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
 
+    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
         temperature=persona.get("temperature") if persona else None,
         reasoning_enabled=reasoning_enabled,
+        supports_reasoning=supports_reasoning,
         tools=active_tools,
     )
 
@@ -506,9 +518,136 @@ async def update_session_title(session_id: str, title: str, user_id: str, correl
     )
 
 
+async def handle_incognito_send(user_id: str, data: dict) -> None:
+    """Handle a chat.incognito.send WebSocket message — stateless inference, nothing saved."""
+    persona_id = data.get("persona_id")
+    session_id = data.get("session_id")
+    client_messages = data.get("messages")
+    if not persona_id or not session_id or not client_messages:
+        return
+
+    try:
+        persona = await get_persona(persona_id, user_id)
+        if not persona:
+            return
+
+        model_unique_id = persona.get("model_unique_id", "")
+        if ":" not in model_unique_id:
+            _log.error("Invalid model_unique_id format: %s", model_unique_id)
+            return
+
+        provider_id, model_slug = model_unique_id.split(":", 1)
+
+        # Assemble system prompt
+        system_prompt = await assemble(
+            user_id=user_id,
+            persona_id=persona_id,
+            model_unique_id=model_unique_id,
+        )
+
+        # Build CompletionMessage list
+        messages: list[CompletionMessage] = []
+
+        if system_prompt:
+            messages.append(CompletionMessage(
+                role="system",
+                content=[ContentPart(type="text", text=system_prompt)],
+            ))
+
+        for msg in client_messages:
+            messages.append(CompletionMessage(
+                role=msg["role"],
+                content=[ContentPart(type="text", text=msg["content"])],
+            ))
+
+        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+        active_tools = get_active_definitions([]) or None
+
+        request = CompletionRequest(
+            model=model_slug,
+            messages=messages,
+            temperature=persona.get("temperature"),
+            reasoning_enabled=persona.get("reasoning_enabled", False),
+            supports_reasoning=supports_reasoning,
+            tools=active_tools,
+        )
+
+        correlation_id = str(uuid4())
+        cancel_event = asyncio.Event()
+        _cancel_events[correlation_id] = cancel_event
+
+        event_bus = get_event_bus()
+
+        async def emit_fn(event) -> None:
+            event_dict = event.model_dump(mode="json")
+            event_type = event_dict.get("type", "")
+
+            await event_bus.publish(
+                event_type,
+                event,
+                scope=f"session:{session_id}",
+                target_user_ids=[user_id],
+                correlation_id=correlation_id,
+            )
+
+        def stream_fn(extra_messages=None):
+            req = request
+            if extra_messages:
+                extended = list(request.messages) + extra_messages
+                req = request.model_copy(update={"messages": extended})
+            return llm_stream_completion(user_id, provider_id, req)
+
+        async def save_fn(
+            content: str,
+            thinking: str | None,
+            usage: dict | None,
+            web_search_context: list[dict] | None = None,
+        ) -> None:
+            pass
+
+        try:
+            await _runner.run(
+                user_id=user_id,
+                session_id=session_id,
+                correlation_id=correlation_id,
+                stream_fn=stream_fn,
+                emit_fn=emit_fn,
+                save_fn=save_fn,
+                cancel_event=cancel_event,
+                context_status="green",
+                context_fill_percentage=0.0,
+                tool_executor_fn=execute_tool if active_tools else None,
+            )
+        except LlmCredentialNotFoundError:
+            now = datetime.now(timezone.utc)
+            await emit_fn(ChatStreamStartedEvent(
+                session_id=session_id, correlation_id=correlation_id, timestamp=now,
+            ))
+            await emit_fn(ChatStreamErrorEvent(
+                correlation_id=correlation_id,
+                error_code="credential_not_found",
+                recoverable=False,
+                user_message="No API key configured for this model's provider. Please add one in settings.",
+                timestamp=now,
+            ))
+            await emit_fn(ChatStreamEndedEvent(
+                correlation_id=correlation_id,
+                session_id=session_id,
+                status="error",
+                usage=None,
+                context_status="green",
+                context_fill_percentage=0.0,
+                timestamp=now,
+            ))
+        finally:
+            _cancel_events.pop(correlation_id, None)
+    except Exception:
+        _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
-    "handle_chat_cancel", "update_session_title",
+    "handle_chat_cancel", "handle_incognito_send", "update_session_title",
     "assemble_preview",
 ]

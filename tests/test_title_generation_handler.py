@@ -46,7 +46,8 @@ async def test_handler_generates_and_saves_title():
     event_bus = AsyncMock()
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
-         patch("backend.modules.chat.update_session_title", mock_update):
+         patch("backend.modules.chat.update_session_title", mock_update), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
 
         job = _make_job()
         config = _make_config()
@@ -76,7 +77,8 @@ async def test_handler_strips_quotes_from_title():
     mock_update = AsyncMock()
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
-         patch("backend.modules.chat.update_session_title", mock_update):
+         patch("backend.modules.chat.update_session_title", mock_update), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
 
         await handle_title_generation(
             job=_make_job(),
@@ -101,7 +103,8 @@ async def test_handler_truncates_long_title():
     mock_update = AsyncMock()
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
-         patch("backend.modules.chat.update_session_title", mock_update):
+         patch("backend.modules.chat.update_session_title", mock_update), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
 
         await handle_title_generation(
             job=_make_job(),
@@ -122,7 +125,8 @@ async def test_handler_raises_on_stream_error():
         yield StreamError(error_code="provider_unavailable", message="Down")
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
-         patch("backend.modules.chat.update_session_title", AsyncMock()):
+         patch("backend.modules.chat.update_session_title", AsyncMock()), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
 
         with pytest.raises(RuntimeError, match="provider_unavailable"):
             await handle_title_generation(

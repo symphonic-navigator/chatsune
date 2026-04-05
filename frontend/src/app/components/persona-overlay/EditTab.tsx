@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { llmApi } from '../../../core/api/llm'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
@@ -29,10 +30,31 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [modelProvider, setModelProvider] = useState(
     persona.model_unique_id ? persona.model_unique_id.split(':')[0] : ''
   )
-  const [canReason, setCanReason] = useState(persona.model_unique_id !== '')
+  const [canReason, setCanReason] = useState(false)
   const [canUseTools, setCanUseTools] = useState(true)
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
+
+  // Load actual model capabilities when editing an existing persona
+  useEffect(() => {
+    const uid = persona.model_unique_id
+    if (!uid || !uid.includes(':')) return
+    const providerId = uid.split(':')[0]
+    const modelSlug = uid.split(':').slice(1).join(':')
+    llmApi.listModels(providerId)
+      .then((models) => {
+        const model = models.find((m) => m.model_id === modelSlug)
+        setCanReason(model?.supports_reasoning ?? false)
+        setCanUseTools(model?.supports_tool_calls ?? false)
+        if (model && !model.supports_reasoning) {
+          setReasoningEnabled(false)
+        }
+      })
+      .catch(() => {
+        setCanReason(false)
+        setCanUseTools(true)
+      })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isDirty = isCreating ||
     name !== persona.name ||

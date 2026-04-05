@@ -18,6 +18,8 @@ interface PersonaOverlayProps {
   onClose: () => void
   onTabChange: (tab: PersonaOverlayTab) => void
   onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
+  onNavigate?: (path: string) => void
+  sessions?: Array<{ id: string; persona_id: string; updated_at: string }>
 }
 
 const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
@@ -49,7 +51,7 @@ const DEFAULT_PERSONA: PersonaDto = {
   updated_at: '',
 }
 
-export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, onClose, onTabChange, onSave }: PersonaOverlayProps) {
+export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, onClose, onTabChange, onSave, onNavigate, sessions }: PersonaOverlayProps) {
   const modalRef = useRef<HTMLDivElement>(null)
   const resolved = persona ?? (isCreating
     ? {
@@ -187,7 +189,30 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === 'overview' && !isCreating && <OverviewTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'overview' && !isCreating && (
+            <OverviewTab
+              persona={resolved}
+              chakra={chakra}
+              hasLastChat={!!(sessions ?? []).find((s) => s.persona_id === resolved.id)}
+              onContinue={() => {
+                const last = (sessions ?? [])
+                  .filter((s) => s.persona_id === resolved.id)
+                  .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
+                if (last) {
+                  onNavigate?.(`/chat/${resolved.id}/${last.id}`)
+                  onClose()
+                }
+              }}
+              onNewChat={() => {
+                onNavigate?.(`/chat/${resolved.id}?new=1`)
+                onClose()
+              }}
+              onNewIncognitoChat={() => {
+                onNavigate?.(`/chat/${resolved.id}?incognito=1`)
+                onClose()
+              }}
+            />
+          )}
           {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}
           {activeTab === 'knowledge' && !isCreating && <KnowledgeTab persona={resolved} chakra={chakra} />}
           {activeTab === 'memories' && !isCreating && <MemoriesTab persona={resolved} chakra={chakra} />}

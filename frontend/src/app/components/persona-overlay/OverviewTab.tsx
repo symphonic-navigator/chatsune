@@ -6,9 +6,13 @@ import { personasApi } from '../../../core/api/personas'
 interface OverviewTabProps {
   persona: PersonaDto
   chakra: ChakraPaletteEntry
+  onContinue: () => void
+  onNewChat: () => void
+  onNewIncognitoChat: () => void
+  hasLastChat: boolean
 }
 
-export function OverviewTab({ persona, chakra }: OverviewTabProps) {
+export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat }: OverviewTabProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
 
@@ -89,6 +93,50 @@ export function OverviewTab({ persona, chakra }: OverviewTabProps) {
             <span className="text-[10px] text-white/35 text-center leading-tight">{stat.label}</span>
           </div>
         ))}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 w-full max-w-sm">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!hasLastChat}
+          className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all"
+          style={{
+            background: hasLastChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${hasLastChat ? chakra.hex + '40' : 'rgba(255,255,255,0.06)'}`,
+            color: hasLastChat ? `${chakra.hex}cc` : 'rgba(255,255,255,0.2)',
+            cursor: hasLastChat ? 'pointer' : 'not-allowed',
+          }}
+        >
+          Continue
+        </button>
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
+          style={{
+            background: `${chakra.hex}18`,
+            border: `1px solid ${chakra.hex}40`,
+            color: `${chakra.hex}cc`,
+            cursor: 'pointer',
+          }}
+        >
+          New Chat
+        </button>
+        <button
+          type="button"
+          onClick={onNewIncognitoChat}
+          className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'rgba(255,255,255,0.45)',
+            cursor: 'pointer',
+          }}
+        >
+          Incognito
+        </button>
       </div>
 
       {/* System prompt preview */}

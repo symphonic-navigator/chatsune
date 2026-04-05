@@ -61,6 +61,11 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await redis.xack(_STREAM, _GROUP, stream_id)
         return True
 
+    _log.info(
+        "Picked up job %s (type=%s, model=%s, user=%s, attempt=%d)",
+        job.id, job.job_type.value, job.model_unique_id, job.user_id, job.attempt,
+    )
+
     now = datetime.now(timezone.utc)
 
     # Check queue timeout
@@ -136,8 +141,10 @@ async def process_one(redis: Redis, event_bus) -> bool:
 
     except TimeoutError:
         error_message = f"Execution timed out after {config.execution_timeout_seconds}s"
+        _log.error("Job %s timed out after %ds", job.id, config.execution_timeout_seconds)
     except Exception as exc:
         error_message = str(exc)
+        _log.exception("Job %s raised an exception", job.id)
 
     # Retry / failure logic (shared between TimeoutError and Exception)
     attempt = job.attempt + 1

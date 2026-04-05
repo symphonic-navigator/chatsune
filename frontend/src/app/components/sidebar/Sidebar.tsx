@@ -110,8 +110,10 @@ export function Sidebar({
   }
 
   async function handleDeleteSession(session: ChatSessionDto) {
+    const wasActive = session.id === activeSessionId
     try {
       await chatApi.deleteSession(session.id)
+      if (wasActive) navigate('/personas')
     } catch {
       // Event-driven removal handles the UI update; error is non-critical
     }

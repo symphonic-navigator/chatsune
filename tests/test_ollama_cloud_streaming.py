@@ -186,6 +186,7 @@ async def test_sends_correct_request_payload(adapter: OllamaCloudAdapter):
         ],
         temperature=0.7,
         reasoning_enabled=True,
+        supports_reasoning=True,
     )
 
     await _collect(adapter, request)

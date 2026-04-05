@@ -8,8 +8,8 @@ _log = logging.getLogger(__name__)
 
 _MAX_TITLE_LENGTH = 64
 
-_SYSTEM_PROMPT = (
-    "Generate a short, descriptive title for the following conversation. "
+_TITLE_INSTRUCTION = (
+    "Generate a short, descriptive title for the conversation above. "
     "Respond with ONLY the title — no quotes, no explanation, no punctuation at the end. "
     "Maximum 60 characters. Use the language of the conversation."
 )
@@ -40,37 +40,54 @@ async def handle_title_generation(
     # Deferred imports to avoid circular dependency (chat -> jobs -> handler -> chat).
     from backend.modules.chat import update_session_title
     from backend.modules.llm import stream_completion as llm_stream_completion
+    from backend.modules.llm import get_model_supports_reasoning
 
     provider_id, model_slug = job.model_unique_id.split(":", 1)
     messages_data = job.payload.get("messages", [])
+    session_id = job.payload.get("session_id", "unknown")
 
-    messages = [
-        CompletionMessage(
-            role="system",
-            content=[ContentPart(type="text", text=_SYSTEM_PROMPT)],
-        ),
-    ]
+    _log.info(
+        "Starting title generation for session %s (provider=%s, model=%s, messages=%d)",
+        session_id, provider_id, model_slug, len(messages_data),
+    )
+
+    messages: list[CompletionMessage] = []
     for msg in messages_data:
         messages.append(CompletionMessage(
             role=msg["role"],
             content=[ContentPart(type="text", text=msg["content"])],
         ))
+    # Append instruction as a user message so the last role is always "user".
+    # Some models (e.g. Mistral) reject requests where the last role is "assistant".
+    messages.append(CompletionMessage(
+        role="user",
+        content=[ContentPart(type="text", text=_TITLE_INSTRUCTION)],
+    ))
+
+    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
 
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
         temperature=0.3,
         reasoning_enabled=False,
+        supports_reasoning=supports_reasoning,
     )
 
+    _log.debug("Sending title generation request to %s:%s", provider_id, model_slug)
     full_content = ""
     async for event in llm_stream_completion(job.user_id, provider_id, request):
         match event:
             case ContentDelta(delta=delta):
                 full_content += delta
             case StreamDone():
+                _log.debug("Title generation stream completed for session %s", session_id)
                 break
             case StreamError() as err:
+                _log.error(
+                    "Title generation stream error for session %s: %s — %s",
+                    session_id, err.error_code, err.message,
+                )
                 raise RuntimeError(
                     f"Title generation failed: {err.error_code} — {err.message}"
                 )
