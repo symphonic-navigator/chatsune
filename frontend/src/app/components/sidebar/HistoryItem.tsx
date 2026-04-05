@@ -60,7 +60,7 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
       )}
       {isPinned && <span className="flex-shrink-0 text-[11px]">📌</span>}
       <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
-        <span className="truncate text-[13px]">
+        <span className="truncate text-[13px]" title={session.title ?? undefined}>
           {session.title ?? formatSessionDate(session.updated_at)}
         </span>
         {session.title && (
