@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 
 interface ChatInputProps {
   onSend: (text: string) => void
   onCancel: () => void
   isStreaming: boolean
   disabled: boolean
+  toolBar?: ReactNode
 }
 
-export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onCancel, isStreaming, disabled, toolBar }: ChatInputProps) {
   const [text, setText] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -41,6 +42,9 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
 
   return (
     <div className="border-t border-white/6 bg-surface px-4 py-3">
+      {toolBar && (
+        <div className="mx-auto mb-2 max-w-3xl">{toolBar}</div>
+      )}
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <textarea
           ref={textareaRef}

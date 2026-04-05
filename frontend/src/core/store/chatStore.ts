@@ -28,6 +28,7 @@ interface ChatState {
   contextFillPercentage: number
   error: ChatError | null
   sessionTitle: string | null
+  disabledToolGroups: string[]
   setMessages: (messages: ChatMessageDto[]) => void
   appendMessage: (message: ChatMessageDto) => void
   startStreaming: (correlationId: string) => void
@@ -44,6 +45,7 @@ interface ChatState {
   setError: (error: ChatError) => void
   clearError: () => void
   setSessionTitle: (title: string | null) => void
+  setDisabledToolGroups: (groups: string[]) => void
   reset: () => void
 }
 
@@ -59,6 +61,7 @@ const INITIAL_STATE = {
   contextFillPercentage: 0,
   error: null as ChatError | null,
   sessionTitle: null as string | null,
+  disabledToolGroups: [] as string[],
 }
 
 export const useChatStore = create<ChatState>((set, _get) => ({
@@ -113,5 +116,6 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
+  setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
   reset: () => set({ ...INITIAL_STATE }),
 }))

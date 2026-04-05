@@ -113,6 +113,11 @@ export function useChatStream(sessionId: string | null) {
           store().setSessionTitle(p.title as string)
           break
         }
+        case Topics.CHAT_SESSION_TOOLS_UPDATED: {
+          if (p.session_id !== sessionId) return
+          store().setDisabledToolGroups(p.disabled_tool_groups as string[])
+          break
+        }
       }
     }
 

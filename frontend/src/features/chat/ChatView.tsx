@@ -8,6 +8,7 @@ import { useAutoScroll } from './useAutoScroll'
 import { useHighlighter } from './useMarkdown'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
+import { ToolToggles } from './ToolToggles'
 import { ContextStatusPill } from './ContextStatusPill'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
 import type { PersonaDto } from '../../core/types/persona'
@@ -67,6 +68,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
+  const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
 
   const highlighter = useHighlighter()
   const { containerRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
@@ -93,6 +95,7 @@ export function ChatView({ persona }: ChatViewProps) {
       .getSession(sessionId)
       .then((session) => {
         useChatStore.getState().setSessionTitle(session.title)
+        useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
       })
       .catch(() => {})
   }, [sessionId, scrollToBottom])
@@ -193,7 +196,16 @@ export function ChatView({ persona }: ChatViewProps) {
         />
       )}
 
-      <ChatInput onSend={handleSend} onCancel={handleCancel} isStreaming={isStreaming} disabled={isLoading} />
+      <ChatInput onSend={handleSend} onCancel={handleCancel} isStreaming={isStreaming} disabled={isLoading}
+        toolBar={sessionId ? (
+          <ToolToggles
+            sessionId={sessionId}
+            disabledToolGroups={disabledToolGroups}
+            onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+            disabled={isStreaming}
+          />
+        ) : undefined}
+      />
     </div>
   )
 }
