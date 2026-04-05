@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
+import { DndContext, DragOverlay, useDroppable, useDraggable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
 import { useAuthStore } from "../../../core/store/authStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
@@ -24,6 +25,7 @@ interface SidebarProps {
   isAdminOpen: boolean
   hasApiKeyProblem: boolean
   onOpenOverlay?: (personaId: string, tab?: string) => void
+  onTogglePin?: (personaId: string, pinned: boolean) => void
 }
 
 function IconBtn({
@@ -55,6 +57,32 @@ function IconBtn({
   )
 }
 
+function DroppableZone({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id })
+  return (
+    <div ref={setNodeRef} className={`transition-colors rounded-md ${isOver ? "bg-white/4" : ""}`}>
+      {children}
+    </div>
+  )
+}
+
+function DraggablePersonaItem({
+  persona,
+  ...rest
+}: Omit<React.ComponentProps<typeof PersonaItem>, "dragRef" | "dragListeners" | "dragAttributes" | "isDragging">) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: persona.id })
+  return (
+    <PersonaItem
+      persona={persona}
+      dragRef={setNodeRef}
+      dragListeners={listeners as unknown as Record<string, Function>}
+      dragAttributes={attributes as Record<string, unknown>}
+      isDragging={isDragging}
+      {...rest}
+    />
+  )
+}
+
 export function Sidebar({
   personas,
   sessions,
@@ -67,6 +95,7 @@ export function Sidebar({
   isAdminOpen,
   hasApiKeyProblem,
   onOpenOverlay,
+  onTogglePin,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
@@ -86,6 +115,42 @@ export function Sidebar({
     const next = !projectsOpen
     setProjectsOpen(next)
     localStorage.setItem("chatsune_projects_open", String(next))
+  }
+
+  const [unpinnedOpen, setUnpinnedOpen] = useState(() => {
+    return localStorage.getItem("chatsune_unpinned_open") === "true"
+  })
+
+  function toggleUnpinned() {
+    const next = !unpinnedOpen
+    setUnpinnedOpen(next)
+    localStorage.setItem("chatsune_unpinned_open", String(next))
+  }
+
+  const [dragActiveId, setDragActiveId] = useState<string | null>(null)
+
+  const pinnedPersonas = personas.filter((p) => p.pinned)
+  const unpinnedPersonas = personas.filter((p) => !p.pinned)
+  const dragActivePersona = dragActiveId ? personas.find((p) => p.id === dragActiveId) ?? null : null
+
+  function handleDragStart(event: DragStartEvent) {
+    setDragActiveId(event.active.id as string)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setDragActiveId(null)
+    const { active, over } = event
+    if (!over) return
+    const personaId = active.id as string
+    const droppedOn = over.id as string
+    const persona = personas.find((p) => p.id === personaId)
+    if (!persona) return
+
+    if (droppedOn === "pinned-zone" && !persona.pinned) {
+      onTogglePin?.(personaId, true)
+    } else if (droppedOn === "unpinned-zone" && persona.pinned) {
+      onTogglePin?.(personaId, false)
+    }
   }
 
   function handlePersonaSelect(persona: PersonaDto) {
@@ -321,25 +386,71 @@ export function Sidebar({
           </button>
         )}
 
-        <div className="mt-0.5">
-          {(() => {
-            const pinnedPersonas = personas.filter((p) => p.pinned)
-            return pinnedPersonas.length > 0 ? pinnedPersonas.map((p) => (
-              <PersonaItem
-                key={p.id}
-                persona={p}
-                isActive={p.id === activePersonaId}
-                onSelect={handlePersonaSelect}
-                onNewChat={handleNewChat}
-                onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
-                onOpenOverlay={() => onOpenOverlay?.(p.id)}
-              />
-            )) : (
-              <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
-            )
-          })()}
-        </div>
+        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          {/* Pinned personas */}
+          <DroppableZone id="pinned-zone">
+            <div className="mt-0.5">
+              {pinnedPersonas.length > 0 ? pinnedPersonas.map((p) => (
+                <DraggablePersonaItem
+                  key={p.id}
+                  persona={p}
+                  isActive={p.id === activePersonaId}
+                  onSelect={handlePersonaSelect}
+                  onNewChat={handleNewChat}
+                  onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                  onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                  onUnpin={(persona) => onTogglePin?.(persona.id, false)}
+                  onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                />
+              )) : (
+                <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
+              )}
+            </div>
+          </DroppableZone>
+
+          {/* Other personas */}
+          {unpinnedPersonas.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={toggleUnpinned}
+                className="mx-2 mt-1 flex w-[calc(100%-16px)] items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5"
+              >
+                <span className="text-[10px] text-white/30">{unpinnedOpen ? "∨" : "›"}</span>
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/30">Other Personas</span>
+                <span className="text-[10px] text-white/20">{unpinnedPersonas.length}</span>
+              </button>
+              {unpinnedOpen && (
+                <DroppableZone id="unpinned-zone">
+                  <div className="mt-0.5">
+                    {unpinnedPersonas.map((p) => (
+                      <DraggablePersonaItem
+                        key={p.id}
+                        persona={p}
+                        isActive={p.id === activePersonaId}
+                        onSelect={handlePersonaSelect}
+                        onNewChat={handleNewChat}
+                        onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                        onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                        onPin={(persona) => onTogglePin?.(persona.id, true)}
+                        onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                      />
+                    ))}
+                  </div>
+                </DroppableZone>
+              )}
+            </>
+          )}
+
+          {/* Drag overlay */}
+          <DragOverlay>
+            {dragActivePersona ? (
+              <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
+                {dragActivePersona.name}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       <div className="mx-2 my-1.5 h-px bg-white/4" />

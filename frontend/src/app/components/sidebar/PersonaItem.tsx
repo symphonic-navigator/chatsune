@@ -9,8 +9,13 @@ interface PersonaItemProps {
   onNewChat: (persona: PersonaDto) => void
   onNewIncognitoChat: (persona: PersonaDto) => void
   onEdit: (persona: PersonaDto) => void
+  onPin?: (persona: PersonaDto) => void
   onUnpin?: (persona: PersonaDto) => void
   onOpenOverlay?: () => void
+  dragRef?: (node: HTMLElement | null) => void
+  dragListeners?: Record<string, Function>
+  dragAttributes?: Record<string, unknown>
+  isDragging?: boolean
 }
 
 export function PersonaItem({
@@ -20,8 +25,13 @@ export function PersonaItem({
   onNewChat,
   onNewIncognitoChat,
   onEdit,
+  onPin,
   onUnpin,
   onOpenOverlay,
+  dragRef,
+  dragListeners,
+  dragAttributes,
+  isDragging,
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -44,16 +54,23 @@ export function PersonaItem({
     { label: "New Incognito Chat", action: () => { onNewIncognitoChat(persona); setMenuOpen(false) } },
     { label: "Edit", action: () => { onEdit(persona); setMenuOpen(false) } },
     ...(onOpenOverlay ? [{ label: "⟡ Persona", action: () => { onOpenOverlay(); setMenuOpen(false) } }] : []),
+    ...(onPin ? [{ label: "Pin", action: () => { onPin(persona); setMenuOpen(false) }, muted: true }] : []),
     ...(onUnpin ? [{ label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) }, muted: true }] : []),
   ]
 
   return (
     <div
+      ref={dragRef}
       className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-colors
-        ${isActive ? "bg-white/8" : "hover:bg-white/5"}`}
+        ${isActive ? "bg-white/8" : "hover:bg-white/5"}
+        ${isDragging ? "opacity-40" : ""}`}
       onClick={() => onSelect(persona)}
     >
-      <span className="cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:text-white/30">
+      <span
+        className="cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:text-white/30"
+        {...(dragListeners ?? {})}
+        {...(dragAttributes ?? {})}
+      >
         ⠿
       </span>
 
