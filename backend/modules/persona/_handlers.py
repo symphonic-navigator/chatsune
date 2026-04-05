@@ -1,7 +1,9 @@
+import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
@@ -10,13 +12,27 @@ from backend.modules.persona._avatar_store import AvatarStore
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
-from shared.dtos.persona import CreatePersonaDto, UpdatePersonaDto
+from shared.dtos.persona import CreatePersonaDto, PersonaDto, UpdatePersonaDto
 from shared.events.persona import (
     PersonaCreatedEvent,
     PersonaDeletedEvent,
     PersonaUpdatedEvent,
 )
 from shared.topics import Topics
+
+from fastapi import Request
+
+async def _optional_user(request: Request) -> dict | None:
+    """Return user if Bearer header present, otherwise None (allows query-param auth fallback)."""
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    from backend.modules.user._auth import decode_access_token
+    try:
+        return decode_access_token(auth.removeprefix("Bearer "))
+    except Exception:
+        return None
+
 
 _ALLOWED_IMAGE_TYPES = {
     "image/jpeg": "jpg",
@@ -260,6 +276,7 @@ def _avatar_store() -> AvatarStore:
 async def upload_avatar(
     persona_id: str,
     file: UploadFile,
+    crop: str | None = Form(default=None),
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ):
@@ -291,6 +308,17 @@ async def upload_avatar(
     filename = store.save(data, extension)
 
     updated = await repo.update_profile_image(persona_id, user["sub"], filename)
+
+    # Parse and store crop parameters if provided
+    crop_dict = None
+    if crop:
+        try:
+            crop_dict = json.loads(crop)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid crop JSON")
+    await repo.update_profile_crop(persona_id, user["sub"], crop_dict)
+    updated = await repo.find_by_id(persona_id, user["sub"])
+
     dto = PersonaRepository.to_dto(updated)
 
     await event_bus.publish(
@@ -311,8 +339,19 @@ async def upload_avatar(
 @router.get("/{persona_id}/avatar")
 async def get_avatar(
     persona_id: str,
-    user: dict = Depends(require_active_session),
+    token: str | None = None,
+    user: dict | None = Depends(_optional_user),
 ):
+    # Allow auth via query param (for <img src>) or via header
+    if user is None and token:
+        from backend.modules.user._auth import decode_access_token
+        try:
+            user = decode_access_token(token)
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     repo = _persona_repo()
     doc = await repo.find_by_id(persona_id, user["sub"])
     if not doc:
@@ -335,6 +374,45 @@ async def get_avatar(
     return Response(content=data, media_type=media_type)
 
 
+class UpdateAvatarCropRequest(BaseModel):
+    x: float = 0
+    y: float = 0
+    zoom: float = 1.0
+    width: int = 0
+    height: int = 0
+
+
+@router.patch("/{persona_id}/avatar/crop")
+async def update_avatar_crop(
+    persona_id: str,
+    body: UpdateAvatarCropRequest,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    crop_dict = body.model_dump()
+    updated = await repo.update_profile_crop(persona_id, user["sub"], crop_dict)
+    dto = PersonaRepository.to_dto(updated)
+
+    await event_bus.publish(
+        Topics.PERSONA_UPDATED,
+        PersonaUpdatedEvent(
+            persona_id=persona_id,
+            user_id=user["sub"],
+            persona=dto,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"persona:{persona_id}",
+        target_user_ids=[user["sub"]],
+    )
+
+    return dto
+
+
 @router.delete("/{persona_id}/avatar")
 async def delete_avatar(
     persona_id: str,
@@ -352,6 +430,8 @@ async def delete_avatar(
         store.delete(filename)
 
     updated = await repo.update_profile_image(persona_id, user["sub"], None)
+    await repo.update_profile_crop(persona_id, user["sub"], None)
+    updated = await repo.find_by_id(persona_id, user["sub"])
     dto = PersonaRepository.to_dto(updated)
 
     await event_bus.publish(

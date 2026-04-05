@@ -3,6 +3,8 @@ import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
+import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
+import type { ProfileCrop } from '../../../core/types/persona'
 
 interface OverviewTabProps {
   persona: PersonaDto
@@ -11,9 +13,11 @@ interface OverviewTabProps {
   onNewChat: () => void
   onNewIncognitoChat: () => void
   hasLastChat: boolean
+  chatCount: number
+  onGoToHistory: () => void
 }
 
-export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat }: OverviewTabProps) {
+export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat, chatCount, onGoToHistory }: OverviewTabProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
@@ -40,8 +44,17 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
     ? personasApi.avatarSrc(persona.id, persona.updated_at)
     : null
 
-  async function handleAvatarSave(blob: Blob) {
-    await personasApi.uploadAvatar(persona.id, blob)
+  async function handleAvatarSave(blob: Blob | null, crop: ProfileCrop) {
+    if (blob) {
+      await personasApi.uploadAvatar(persona.id, blob, crop)
+    } else {
+      await personasApi.updateAvatarCrop(persona.id, crop)
+    }
+    setCropOpen(false)
+  }
+
+  async function handleAvatarRemove() {
+    await personasApi.deleteAvatar(persona.id)
     setCropOpen(false)
   }
 
@@ -62,10 +75,12 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         }}
       >
         {avatarSrc ? (
-          <img
-            src={avatarSrc}
+          <CroppedAvatar
+            personaId={persona.id}
+            updatedAt={persona.updated_at}
+            crop={persona.profile_crop}
+            size={116}
             alt={persona.name}
-            className="w-full h-full rounded-full object-cover"
           />
         ) : (
           <span
@@ -89,7 +104,10 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         isOpen={cropOpen}
         onClose={() => setCropOpen(false)}
         onSave={handleAvatarSave}
+        onRemove={handleAvatarRemove}
+        hasExisting={!!persona.profile_image}
         currentImageUrl={avatarSrc}
+        initialCrop={persona.profile_crop}
         accentColour={chakra.hex}
       />
 
@@ -107,17 +125,18 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         style={{ border: `1px solid ${chakra.hex}22` }}
       >
         {[
-          { label: 'Chats', value: '\u2014' },
+          { label: 'Chats', value: String(chatCount), onClick: onGoToHistory },
           { label: 'Memory tokens', value: '\u2014' },
           { label: 'Pending journal', value: '\u2014' },
         ].map((stat, i) => (
           <div
             key={stat.label}
-            className="flex flex-col items-center gap-1 py-4 px-2"
+            className={`flex flex-col items-center gap-1 py-4 px-2${stat.onClick ? ' cursor-pointer hover:brightness-125 transition-all' : ''}`}
             style={{
               background: `${chakra.hex}08`,
               borderRight: i < 2 ? `1px solid ${chakra.hex}22` : undefined,
             }}
+            onClick={stat.onClick}
           >
             <span className="text-[18px] font-semibold text-white/70">{stat.value}</span>
             <span className="text-[10px] text-white/35 text-center leading-tight">{stat.label}</span>

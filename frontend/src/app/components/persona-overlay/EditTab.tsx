@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
+import { personasApi } from '../../../core/api/personas'
+import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
+import type { ProfileCrop } from '../../../core/types/persona'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { ModelSelectionModal } from '../model-browser/ModelSelectionModal'
+import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 
 interface EditTabProps {
   persona: PersonaDto
@@ -34,6 +38,11 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [canUseTools, setCanUseTools] = useState(true)
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
+  const [cropOpen, setCropOpen] = useState(false)
+
+  const avatarSrc = persona.profile_image
+    ? personasApi.avatarSrc(persona.id, persona.updated_at)
+    : null
 
   // Load actual model capabilities when editing an existing persona
   useEffect(() => {
@@ -123,6 +132,51 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   return (
     <>
       <div className="flex flex-col gap-5 px-6 py-6 max-w-lg mx-auto w-full">
+        {/* Profile picture */}
+        {!isCreating && (
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setCropOpen(true)}
+              className="group relative rounded-full flex-shrink-0 cursor-pointer"
+              title="Change profile picture"
+              style={{
+                width: 64,
+                height: 64,
+                background: avatarSrc ? undefined : `${chakra.hex}22`,
+                border: `2px solid ${chakra.hex}44`,
+              }}
+            >
+              {avatarSrc ? (
+                <CroppedAvatar
+                  personaId={persona.id}
+                  updatedAt={persona.updated_at}
+                  crop={persona.profile_crop}
+                  size={60}
+                  alt={persona.name}
+                />
+              ) : (
+                <span
+                  className="flex items-center justify-center w-full h-full text-xl font-bold select-none rounded-full"
+                  style={{ color: chakra.hex }}
+                >
+                  {persona.monogram}
+                </span>
+              )}
+              <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+              </div>
+            </button>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-white/40 uppercase tracking-wider">Profile picture</span>
+              <span className="text-[11px] text-white/25">Click to {persona.profile_image ? 'change' : 'add'}</span>
+            </div>
+          </div>
+        )}
+
         {/* Name */}
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] text-white/40 uppercase tracking-wider">Name</span>
@@ -302,6 +356,29 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           {saving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
         </button>
       </div>
+
+      {cropOpen && !isCreating && (
+        <AvatarCropModal
+          isOpen={cropOpen}
+          onClose={() => setCropOpen(false)}
+          onSave={async (blob, crop) => {
+            if (blob) {
+              await personasApi.uploadAvatar(persona.id, blob, crop)
+            } else {
+              await personasApi.updateAvatarCrop(persona.id, crop)
+            }
+            setCropOpen(false)
+          }}
+          onRemove={async () => {
+            await personasApi.deleteAvatar(persona.id)
+            setCropOpen(false)
+          }}
+          hasExisting={!!persona.profile_image}
+          currentImageUrl={avatarSrc}
+          initialCrop={persona.profile_crop}
+          accentColour={chakra.hex}
+        />
+      )}
 
       {modelModalOpen && (
         <ModelSelectionModal

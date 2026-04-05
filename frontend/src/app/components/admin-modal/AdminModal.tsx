@@ -67,7 +67,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
   return (
     <>
       <div
-        className="absolute inset-0 bg-black/50 z-10"
+        className="fixed inset-0 bg-black/50 z-10"
         onClick={onClose}
         aria-hidden
       />

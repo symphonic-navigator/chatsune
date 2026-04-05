@@ -1,4 +1,4 @@
-import { type RefObject, useRef } from 'react'
+import { useRef } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import type { Highlighter } from 'shiki'
 import { UserBubble } from './UserBubble'
@@ -25,7 +25,8 @@ interface MessageListProps {
   isStreaming: boolean
   accentColour: string
   highlighter: Highlighter | null
-  containerRef: RefObject<HTMLDivElement | null>
+  containerRef: (node: HTMLDivElement | null) => void
+  bottomRef: React.RefObject<HTMLDivElement | null>
   showScrollButton: boolean
   onScrollToBottom: () => void
   onEdit: (messageId: string, content: string) => void
@@ -35,7 +36,7 @@ interface MessageListProps {
 export function MessageList({
   messages, streamingContent, streamingThinking, streamingWebSearchContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
-  containerRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate,
+  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
@@ -49,7 +50,8 @@ export function MessageList({
   `
 
   return (
-    <div ref={containerRef} className="chat-scroll flex-1 overflow-y-auto px-4 py-6">
+    <div className="relative flex-1">
+      <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-4 py-6">
       <style>{scrollbarStyle}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.length === 0 && !isStreaming && !isWaitingForResponse && (
@@ -106,11 +108,17 @@ export function MessageList({
             )}
           </div>
         )}
+
+        {/* Bottom anchor — scroll target */}
+        <div ref={bottomRef} />
       </div>
 
+      </div>
+
+      {/* Scroll-to-bottom button — centred above input */}
       {showScrollButton && (
         <button type="button" onClick={onScrollToBottom}
-          className="fixed bottom-24 right-8 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-elevated text-white/40 shadow-lg transition-colors hover:bg-white/10 hover:text-white/60"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-elevated text-white/40 shadow-lg transition-colors hover:bg-white/10 hover:text-white/60"
           title="Scroll to bottom">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M7 2V12M7 12L3 8M7 12L11 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

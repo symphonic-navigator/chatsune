@@ -8,6 +8,14 @@ ChakraColour = Literal[
 ]
 
 
+class ProfileCropDto(BaseModel):
+    x: float = 0
+    y: float = 0
+    zoom: float = 1.0
+    width: int = 0
+    height: int = 0
+
+
 class PersonaDto(BaseModel):
     id: str
     user_id: str
@@ -23,6 +31,7 @@ class PersonaDto(BaseModel):
     monogram: str
     pinned: bool
     profile_image: str | None
+    profile_crop: ProfileCropDto | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -53,3 +62,4 @@ class UpdatePersonaDto(BaseModel):
     display_order: int | None = None
     pinned: bool | None = None
     profile_image: str | None = None
+    profile_crop: ProfileCropDto | None = None

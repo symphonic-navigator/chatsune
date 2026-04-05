@@ -85,9 +85,9 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
 
   return (
     <>
-      {/* Backdrop — covers main content area, clicking it closes the modal */}
+      {/* Backdrop — covers entire screen, clicking it closes the modal */}
       <div
-        className="absolute inset-0 bg-black/50 z-10"
+        className="fixed inset-0 bg-black/50 z-10"
         onClick={onClose}
         aria-hidden
       />

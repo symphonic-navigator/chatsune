@@ -90,7 +90,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
-  const { containerRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
+  const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
 
   useChatStream(effectiveSessionId ?? null)
 
@@ -331,7 +331,7 @@ export function ChatView({ persona }: ChatViewProps) {
           streamingWebSearchContext={streamingWebSearchContext} activeToolCalls={activeToolCalls}
           isWaitingForResponse={isWaitingForResponse}
           isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
-          containerRef={containerRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
+          containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
           onEdit={handleEdit} onRegenerate={handleRegenerate}
         />
       )}

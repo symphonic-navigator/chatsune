@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from shared.dtos.persona import PersonaDto
+from shared.dtos.persona import PersonaDto, ProfileCropDto
 
 
 class PersonaRepository:
@@ -83,6 +83,17 @@ class PersonaRepository:
         )
         return result
 
+    async def update_profile_crop(
+        self, persona_id: str, user_id: str, crop: dict | None,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        result = await self._collection.find_one_and_update(
+            {"_id": persona_id, "user_id": user_id},
+            {"$set": {"profile_crop": crop, "updated_at": now}},
+            return_document=True,
+        )
+        return result
+
     async def delete(self, persona_id: str, user_id: str) -> bool:
         result = await self._collection.delete_one(
             {"_id": persona_id, "user_id": user_id}
@@ -116,6 +127,7 @@ class PersonaRepository:
             monogram=doc.get("monogram", "??"),
             pinned=doc.get("pinned", False),
             profile_image=doc.get("profile_image"),
+            profile_crop=ProfileCropDto(**doc["profile_crop"]) if doc.get("profile_crop") else None,
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

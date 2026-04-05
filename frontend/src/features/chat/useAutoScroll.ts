@@ -4,16 +4,17 @@ const SCROLL_THRESHOLD = 80
 
 export function useAutoScroll(isStreaming: boolean) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
-  // Track whether the user intentionally scrolled away from the bottom.
-  // Reset when streaming starts or when scrollToBottom is called.
   const userScrolledUpRef = useRef(false)
   const programmaticScrollRef = useRef(false)
+  // Bump to re-run the scroll-listener effect when the ref attaches
+  const [mounted, setMounted] = useState(0)
 
-  const isNearBottom = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD
+  // Callback to notify when containerRef attaches to the DOM
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+    if (node) setMounted((n) => n + 1)
   }, [])
 
   // Scroll event handler — detect user scrolling up vs. our programmatic scroll
@@ -31,17 +32,14 @@ export function useAutoScroll(isStreaming: boolean) {
       setShowScrollButton(!nearBottom)
 
       if (programmaticScrollRef.current) {
-        // This scroll was caused by us — ignore for user-intent detection
         programmaticScrollRef.current = false
         lastScrollTop = el.scrollTop
         return
       }
 
-      // User scrolled up intentionally
       if (el.scrollTop < lastScrollTop - 2) {
         userScrolledUpRef.current = true
       }
-      // User scrolled back to bottom
       if (nearBottom) {
         userScrolledUpRef.current = false
       }
@@ -50,38 +48,34 @@ export function useAutoScroll(isStreaming: boolean) {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [mounted])
 
-  // Auto-scroll during streaming — runs every 80ms
+  // Auto-scroll during streaming — use anchor element
   useEffect(() => {
     if (!isStreaming) return
-    // Reset: assume user wants to follow the stream when it starts
     userScrolledUpRef.current = false
 
     const interval = setInterval(() => {
-      const el = containerRef.current
-      if (!el || userScrolledUpRef.current) return
+      if (userScrolledUpRef.current) return
+      if (!bottomRef.current) return
       programmaticScrollRef.current = true
-      el.scrollTop = el.scrollHeight
+      bottomRef.current.scrollIntoView({ block: 'end' })
     }, 80)
     return () => clearInterval(interval)
   }, [isStreaming])
 
   const scrollToBottom = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
     userScrolledUpRef.current = false
     programmaticScrollRef.current = true
-    // Double rAF: wait for React render + browser layout
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (containerRef.current) {
+        if (bottomRef.current) {
           programmaticScrollRef.current = true
-          containerRef.current.scrollTop = containerRef.current.scrollHeight
+          bottomRef.current.scrollIntoView({ block: 'end', behavior: 'instant' })
         }
       })
     })
   }, [])
 
-  return { containerRef, showScrollButton, scrollToBottom }
+  return { containerRef: setContainerRef, bottomRef, showScrollButton, scrollToBottom }
 }

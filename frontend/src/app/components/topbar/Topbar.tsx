@@ -2,8 +2,8 @@ import { useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import { useChatStore } from "../../../core/store/chatStore"
-import { personasApi } from "../../../core/api/personas"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
+import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
 
 const SECTION_TITLES: Record<string, string> = {
@@ -66,18 +66,20 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
               {/* Avatar popup on hover */}
               {showAvatar && hasAvatar && chakra && (
                 <div
-                  className="absolute left-0 top-full mt-2 z-50 rounded-xl shadow-2xl overflow-hidden pointer-events-none"
+                  className="absolute left-0 top-full mt-2 z-50 rounded-2xl shadow-2xl overflow-hidden pointer-events-none p-1.5"
                   style={{
                     backgroundColor: '#13101e',
                     border: `1px solid ${chakra.hex}33`,
                     boxShadow: `0 0 20px ${chakra.glow}, 0 8px 32px rgba(0,0,0,0.5)`,
                   }}
                 >
-                  <img
-                    src={personasApi.avatarSrc(persona.id, persona.updated_at)}
+                  <CroppedAvatar
+                    personaId={persona.id}
+                    updatedAt={persona.updated_at}
+                    crop={persona.profile_crop}
+                    size={160}
                     alt={persona.name}
-                    className="block"
-                    style={{ width: 180, height: 180, objectFit: 'cover' }}
+                    className="rounded-xl"
                   />
                 </div>
               )}

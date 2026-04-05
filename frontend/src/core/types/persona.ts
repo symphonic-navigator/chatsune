@@ -1,5 +1,13 @@
 import type { ChakraColour } from "./chakra";
 
+export interface ProfileCrop {
+  x: number;
+  y: number;
+  zoom: number;
+  width: number;
+  height: number;
+}
+
 export interface PersonaDto {
   id: string;
   user_id: string;
@@ -15,6 +23,7 @@ export interface PersonaDto {
   monogram: string;
   pinned: boolean;
   profile_image: string | null;
+  profile_crop: ProfileCrop | null;
   created_at: string;
   updated_at: string;
 }

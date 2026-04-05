@@ -20,6 +20,7 @@ class PersonaDocument(BaseModel):
     monogram: str
     pinned: bool
     profile_image: str | None
+    profile_crop: dict | None = None
     created_at: datetime
     updated_at: datetime
 

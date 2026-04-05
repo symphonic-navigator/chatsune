@@ -105,7 +105,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   return (
     <>
       <div
-        className="absolute inset-0 bg-black/50 z-10"
+        className="fixed inset-0 bg-black/50 z-10"
         onClick={onClose}
         aria-hidden
       />
@@ -211,6 +211,8 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                 onNavigate?.(`/chat/${resolved.id}?incognito=1`)
                 onClose()
               }}
+              chatCount={(sessions ?? []).filter((s) => s.persona_id === resolved.id).length}
+              onGoToHistory={() => onTabChange('history')}
             />
           )}
           {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}
