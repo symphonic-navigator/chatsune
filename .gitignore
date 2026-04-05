@@ -36,3 +36,6 @@ uv.lock
 obsidian/.obsidian/workspace.json
 obsidian/.obsidian/workspace-mobile.json
 obsidian/.obsidian/graph.json
+
+# Data
+data/
