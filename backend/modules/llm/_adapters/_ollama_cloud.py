@@ -217,8 +217,9 @@ class OllamaCloudAdapter(BaseAdapter):
             "stream": True,
         }
 
-        if request.reasoning_enabled:
-            payload["think"] = True
+        # Always set think explicitly — omitting it lets the model default
+        # to thinking on, which ignores the user's toggle.
+        payload["think"] = request.reasoning_enabled
 
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
