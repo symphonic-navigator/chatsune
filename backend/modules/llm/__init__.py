@@ -83,6 +83,28 @@ async def get_model_context_window(provider_id: str, model_slug: str) -> int | N
     return None
 
 
+async def get_api_key(user_id: str, provider_id: str) -> str:
+    """Return the decrypted API key for a user/provider pair.
+
+    Intended for cross-module credential sharing (e.g. websearch reusing
+    an LLM provider key).
+
+    Raises:
+        LlmProviderNotFoundError: provider_id not in registry.
+        LlmCredentialNotFoundError: user has no key for this provider.
+    """
+    if provider_id not in ADAPTER_REGISTRY:
+        raise LlmProviderNotFoundError(f"Unknown provider: {provider_id}")
+
+    repo = CredentialRepository(get_db())
+    cred = await repo.find(user_id, provider_id)
+    if not cred:
+        raise LlmCredentialNotFoundError(
+            f"No API key configured for provider '{provider_id}'"
+        )
+    return repo.get_raw_key(cred)
+
+
 async def get_effective_context_window(
     user_id: str, provider_id: str, model_slug: str,
 ) -> int | None:
@@ -113,6 +135,7 @@ __all__ = [
     "LlmProviderNotFoundError",
     "UserModelConfigRepository",
     "get_model_context_window",
+    "get_api_key",
     "get_effective_context_window",
     "refresh_all_providers",
 ]

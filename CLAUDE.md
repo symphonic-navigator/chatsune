@@ -50,6 +50,12 @@ chatsune/
       llm/                   ← Ollama adapter, embeddings
         __init__.py
         _client.py
+      websearch/             ← pluggable web-search adapters
+        __init__.py
+        _registry.py
+        _adapters/
+          _base.py
+          _ollama_cloud.py
     ws/
       manager.py             ← WebSocket connection manager
       router.py              ← WebSocket event routing
@@ -58,6 +64,7 @@ chatsune/
       auth.py
       chat.py
       persona.py
+      websearch.py
       memory.py
       journal.py
     events/

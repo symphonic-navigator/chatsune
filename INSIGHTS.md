@@ -204,3 +204,42 @@ sidebar) or a persistent status pill in the topbar.
 
 **This was requested by users of a prior prototype.** Do not remove this feature without
 reviewing whether demand still exists.
+
+---
+
+## INS-009 — Web Search Adapter Registry with KEY_SOURCES
+
+**Decision:** Web search is implemented as a separate module (`backend/modules/websearch/`)
+with its own adapter registry, mirroring the LLM adapter pattern (INS-003). A `KEY_SOURCES`
+dictionary declares where each search provider gets its API key from.
+
+**KEY_SOURCES format:**
+```python
+KEY_SOURCES: dict[str, str | None] = {
+    "ollama_cloud": "llm:ollama_cloud",   # reuse LLM inference key
+    # "brave":      None,                  # own credential store
+    # "openrouter": "llm:openrouter",      # reuse OpenRouter inference key
+}
+```
+
+- `"llm:<provider_id>"` — the search provider shares an API key with an LLM
+  inference provider. The websearch module calls `llm.get_api_key()` to resolve it.
+- `None` — the search provider has its own credential, stored in the websearch
+  module's own credential collection (to be added when Brave/Kagi are implemented).
+
+**Why not a single credential store:**
+Ollama Cloud uses the same API key for inference and web search — there is no
+separate search key. Duplicating the key in a second collection creates a sync
+problem (user updates LLM key, search still uses the old one). The `KEY_SOURCES`
+mechanism avoids duplication: the LLM module is the single source of truth for
+keys it owns; the websearch module simply borrows them.
+
+**Why a separate module (not part of LLM):**
+Web search is conceptually a *tool*, not an *inference concern*. Future search
+providers (Brave, Kagi) have no relation to LLM inference at all. The module
+boundary prevents scope creep in the LLM module.
+
+**Cross-module API:**
+The LLM module exposes `get_api_key(user_id, provider_id) -> str` in its public
+API specifically for this use case. The websearch module imports it via the
+`__init__.py` boundary — no internal imports.
