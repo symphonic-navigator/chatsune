@@ -11,6 +11,9 @@ import { MessageList } from './MessageList'
 import { ChatInput, type ChatInputHandle } from './ChatInput'
 import { ToolToggles } from './ToolToggles'
 import { ContextStatusPill } from './ContextStatusPill'
+import { useAttachments } from './useAttachments'
+import { AttachmentStrip } from './AttachmentStrip'
+import { UploadBrowserPanel } from './UploadBrowserPanel'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
 import type { PersonaDto } from '../../core/types/persona'
 
@@ -24,6 +27,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const navigate = useNavigate()
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showUploadBrowser, setShowUploadBrowser] = useState(false)
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
   const resolvingSession = useRef(false)
@@ -79,6 +83,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
   const effectiveReasoning = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
 
+  const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
 
@@ -152,6 +157,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleSend = useCallback(
     (text: string) => {
       if (!sessionId) return
+      const attachmentIds = attachments.getAttachmentIds()
+      const attachmentRefs = attachments.getAttachmentRefs()
       const optimisticMsg: ChatMessageDto = {
         id: `optimistic-${Date.now()}`,
         session_id: sessionId,
@@ -159,6 +166,7 @@ export function ChatView({ persona }: ChatViewProps) {
         content: text,
         thinking: null,
         token_count: 0,
+        attachments: attachmentRefs.length > 0 ? attachmentRefs : null,
         web_search_context: null,
         created_at: new Date().toISOString(),
       }
@@ -168,10 +176,13 @@ export function ChatView({ persona }: ChatViewProps) {
         type: 'chat.send',
         session_id: sessionId,
         content: [{ type: 'text', text }],
+        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
       })
+      attachments.clearAttachments()
+      setShowUploadBrowser(false)
       setTimeout(() => scrollToBottom(), 50)
     },
-    [sessionId, scrollToBottom],
+    [sessionId, scrollToBottom, attachments],
   )
 
   const handleCancel = useCallback(() => {
@@ -247,7 +258,20 @@ export function ChatView({ persona }: ChatViewProps) {
         />
       )}
 
-      <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel} isStreaming={isStreaming} disabled={isLoading}
+      {showUploadBrowser && (
+        <UploadBrowserPanel
+          personaId={personaId}
+          onSelect={(file) => attachments.addExistingFile(file)}
+          onClose={() => setShowUploadBrowser(false)}
+        />
+      )}
+
+      <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
+        onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
+        isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
+        attachmentStrip={attachments.hasAttachments ? (
+          <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
+        ) : undefined}
         toolBar={sessionId ? (
           <ToolToggles
             sessionId={sessionId}

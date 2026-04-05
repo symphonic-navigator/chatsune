@@ -40,6 +40,13 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_SESSION_TITLE_UPDATED: ([], True),
     Topics.CHAT_SESSION_CREATED: ([], True),
     Topics.CHAT_SESSION_DELETED: ([], True),
+    # Storage — target user only
+    Topics.STORAGE_FILE_UPLOADED: ([], True),
+    Topics.STORAGE_FILE_DELETED: ([], True),
+    Topics.STORAGE_FILE_RENAMED: ([], True),
+    Topics.STORAGE_QUOTA_WARNING: ([], True),
+    # Tool group toggles
+    Topics.CHAT_SESSION_TOOLS_UPDATED: ([], True),
     # Background jobs — target user only
     Topics.JOB_STARTED: ([], True),
     Topics.JOB_COMPLETED: ([], True),

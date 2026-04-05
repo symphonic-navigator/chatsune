@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from shared.dtos.storage import AttachmentRefDto
+
 
 class ChatSessionDto(BaseModel):
     id: str
@@ -31,5 +33,6 @@ class ChatMessageDto(BaseModel):
     content: str
     thinking: str | None = None
     token_count: int
+    attachments: list[AttachmentRefDto] | None = None
     web_search_context: list[WebSearchContextItemDto] | None = None
     created_at: datetime

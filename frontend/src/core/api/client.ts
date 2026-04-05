@@ -108,3 +108,7 @@ export const api = {
   delete: <T>(path: string) => apiRequest<T>("DELETE", path),
   postNoAuth: <T>(path: string, body?: unknown) => apiRequest<T>("POST", path, body, true),
 }
+
+export function currentAccessToken(): string | null {
+  return getAccessToken()
+}

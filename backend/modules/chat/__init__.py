@@ -132,18 +132,39 @@ async def _run_inference(
         ))
 
     for doc in selected_history:
-        messages.append(CompletionMessage(
-            role=doc["role"],
-            content=[ContentPart(type="text", text=doc["content"])],
-        ))
+        content_parts_list: list[ContentPart] = [ContentPart(type="text", text=doc["content"])]
+        # Historical attachments get text placeholders instead of binary data
+        refs = doc.get("attachment_refs")
+        if refs:
+            for ref in refs:
+                content_parts_list.append(
+                    ContentPart(type="text", text=f"\n[Attachment: {ref['display_name']}]")
+                )
+        messages.append(CompletionMessage(role=doc["role"], content=content_parts_list))
 
-    # Append the new user message
+    # Append the new user message (with full attachment data if present)
     if history_docs:
         last_msg = history_docs[-1]
-        messages.append(CompletionMessage(
-            role=last_msg["role"],
-            content=[ContentPart(type="text", text=last_msg["content"])],
-        ))
+        last_msg_parts: list[ContentPart] = [ContentPart(type="text", text=last_msg["content"])]
+        attachment_ids = last_msg.get("attachment_ids")
+        if attachment_ids:
+            from backend.modules.storage import get_files_by_ids
+            files = await get_files_by_ids(attachment_ids, user_id)
+            for f in files:
+                if f.get("data") and f["media_type"].startswith("image/"):
+                    import base64
+                    last_msg_parts.append(ContentPart(
+                        type="image",
+                        data=base64.b64encode(f["data"]).decode("ascii"),
+                        media_type=f["media_type"],
+                    ))
+                elif f.get("data"):
+                    text_content = f["data"].decode("utf-8", errors="replace")
+                    last_msg_parts.append(ContentPart(
+                        type="text",
+                        text=f"\n--- {f['display_name']} ---\n{text_content}",
+                    ))
+        messages.append(CompletionMessage(role=last_msg["role"], content=last_msg_parts))
 
     # Get persona settings for temperature/reasoning
     persona = await get_persona(persona_id, user_id) if persona_id else None
@@ -303,8 +324,33 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
         if not text:
             return
 
+        # Resolve attachments if provided
+        attachment_ids = data.get("attachment_ids")
+        attachment_refs = None
+        if attachment_ids:
+            from backend.modules.storage import get_files_by_ids
+            files = await get_files_by_ids(attachment_ids, user_id)
+            attachment_refs = [
+                {
+                    "file_id": f["_id"],
+                    "display_name": f["display_name"],
+                    "media_type": f["media_type"],
+                    "size_bytes": f["size_bytes"],
+                    "thumbnail_b64": f.get("thumbnail_b64"),
+                    "text_preview": f.get("text_preview"),
+                }
+                for f in files
+            ]
+
         token_count = count_tokens(text)
-        await repo.save_message(session_id, role="user", content=text, token_count=token_count)
+        await repo.save_message(
+            session_id,
+            role="user",
+            content=text,
+            token_count=token_count,
+            attachment_ids=attachment_ids,
+            attachment_refs=attachment_refs,
+        )
 
         await _run_inference(user_id, session_id, repo, session)
     except Exception:

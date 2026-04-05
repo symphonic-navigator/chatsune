@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import type { AttachmentRefDto } from '../../core/api/chat'
+import { AttachmentChip } from './AttachmentChip'
 
 interface UserBubbleProps {
   content: string
+  attachments?: AttachmentRefDto[] | null
   onEdit: (newContent: string) => void
   isEditable: boolean
 }
 
-export function UserBubble({ content, onEdit, isEditable }: UserBubbleProps) {
+export function UserBubble({ content, attachments, onEdit, isEditable }: UserBubbleProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(content)
@@ -66,6 +69,13 @@ export function UserBubble({ content, onEdit, isEditable }: UserBubbleProps) {
         )}
         <div className="rounded-2xl rounded-tr-sm bg-white/8 px-4 py-2.5">
           <p className="chat-text whitespace-pre-wrap text-white/90">{content}</p>
+          {attachments && attachments.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {attachments.map((att) => (
+                <AttachmentChip key={att.file_id} attachment={att} />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

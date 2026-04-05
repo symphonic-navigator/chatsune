@@ -61,7 +61,7 @@ export function MessageList({
         {messages.map((msg, i) => {
           if (msg.role === 'user') {
             return (
-              <UserBubble key={msg.id} content={msg.content}
+              <UserBubble key={msg.id} content={msg.content} attachments={msg.attachments}
                 onEdit={(newContent) => onEdit(msg.id, newContent)} isEditable={!isStreaming} />
             )
           }

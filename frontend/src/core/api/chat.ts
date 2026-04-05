@@ -1,4 +1,5 @@
 import { api } from "./client"
+import type { AttachmentRefDto } from "./storage"
 
 interface ChatSessionDto {
   id: string
@@ -27,6 +28,7 @@ interface ChatMessageDto {
   content: string
   thinking: string | null
   token_count: number
+  attachments: AttachmentRefDto[] | null
   web_search_context: WebSearchContextItem[] | null
   created_at: string
 }
@@ -39,7 +41,7 @@ interface ToolGroupDto {
   toggleable: boolean
 }
 
-export type { ChatSessionDto, ChatMessageDto, WebSearchContextItem, ToolGroupDto }
+export type { ChatSessionDto, ChatMessageDto, WebSearchContextItem, ToolGroupDto, AttachmentRefDto }
 
 export const chatApi = {
   createSession: (personaId: string) =>

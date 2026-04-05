@@ -1,0 +1,87 @@
+from datetime import datetime, timezone
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ASCENDING, DESCENDING
+
+from shared.dtos.storage import StorageFileDto
+
+_COLLECTION = "storage_files"
+
+
+class StorageRepository:
+    def __init__(self, db: AsyncIOMotorDatabase) -> None:
+        self._col = db[_COLLECTION]
+
+    async def create_indexes(self) -> None:
+        await self._col.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
+        await self._col.create_index([("user_id", ASCENDING), ("persona_id", ASCENDING)])
+
+    async def create(self, doc: dict) -> dict:
+        await self._col.insert_one(doc)
+        return doc
+
+    async def find_by_id(self, file_id: str, user_id: str) -> dict | None:
+        return await self._col.find_one({"_id": file_id, "user_id": user_id})
+
+    async def find_by_user(
+        self,
+        user_id: str,
+        persona_id: str | None = None,
+        sort_by: str = "date",
+        order: str = "desc",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        query: dict = {"user_id": user_id}
+        if persona_id:
+            query["persona_id"] = persona_id
+
+        sort_field = "created_at" if sort_by == "date" else "size_bytes"
+        sort_dir = DESCENDING if order == "desc" else ASCENDING
+
+        cursor = self._col.find(query).sort(sort_field, sort_dir).skip(offset).limit(limit)
+        return await cursor.to_list(length=limit)
+
+    async def update_display_name(
+        self, file_id: str, user_id: str, display_name: str
+    ) -> dict | None:
+        result = await self._col.find_one_and_update(
+            {"_id": file_id, "user_id": user_id},
+            {"$set": {"display_name": display_name, "updated_at": datetime.now(timezone.utc)}},
+            return_document=True,
+        )
+        return result
+
+    async def delete(self, file_id: str, user_id: str) -> bool:
+        result = await self._col.delete_one({"_id": file_id, "user_id": user_id})
+        return result.deleted_count > 0
+
+    async def get_quota_used(self, user_id: str) -> int:
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$group": {"_id": None, "total": {"$sum": "$size_bytes"}}},
+        ]
+        results = await self._col.aggregate(pipeline).to_list(length=1)
+        if results:
+            return results[0]["total"]
+        return 0
+
+    async def find_by_ids(self, file_ids: list[str], user_id: str) -> list[dict]:
+        cursor = self._col.find({"_id": {"$in": file_ids}, "user_id": user_id})
+        return await cursor.to_list(length=len(file_ids))
+
+    @staticmethod
+    def file_to_dto(doc: dict) -> StorageFileDto:
+        return StorageFileDto(
+            id=doc["_id"],
+            user_id=doc["user_id"],
+            persona_id=doc.get("persona_id"),
+            original_name=doc["original_name"],
+            display_name=doc["display_name"],
+            media_type=doc["media_type"],
+            size_bytes=doc["size_bytes"],
+            thumbnail_b64=doc.get("thumbnail_b64"),
+            text_preview=doc.get("text_preview"),
+            created_at=doc["created_at"],
+            updated_at=doc["updated_at"],
+        )

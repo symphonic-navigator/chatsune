@@ -36,3 +36,4 @@ services:
 volumes:
   mongodb_data:
   redis_data:
+  uploads_data:

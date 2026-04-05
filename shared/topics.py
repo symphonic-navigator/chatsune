@@ -39,6 +39,11 @@ class Topics:
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
     # Tool group toggles
     CHAT_SESSION_TOOLS_UPDATED = "chat.session.tools_updated"
+    # Storage
+    STORAGE_FILE_UPLOADED = "storage.file.uploaded"
+    STORAGE_FILE_DELETED = "storage.file.deleted"
+    STORAGE_FILE_RENAMED = "storage.file.renamed"
+    STORAGE_QUOTA_WARNING = "storage.quota.warning"
     # Background jobs
     JOB_STARTED = "job.started"
     JOB_COMPLETED = "job.completed"

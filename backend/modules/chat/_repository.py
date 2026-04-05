@@ -4,6 +4,7 @@ from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from shared.dtos.chat import ChatMessageDto, ChatSessionDto, WebSearchContextItemDto
+from shared.dtos.storage import AttachmentRefDto
 
 
 class ChatRepository:
@@ -89,6 +90,8 @@ class ChatRepository:
         token_count: int,
         thinking: str | None = None,
         web_search_context: list[dict] | None = None,
+        attachment_ids: list[str] | None = None,
+        attachment_refs: list[dict] | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -102,6 +105,10 @@ class ChatRepository:
         }
         if web_search_context:
             doc["web_search_context"] = web_search_context
+        if attachment_ids:
+            doc["attachment_ids"] = attachment_ids
+        if attachment_refs:
+            doc["attachment_refs"] = attachment_refs
         await self._messages.insert_one(doc)
         return doc
 
@@ -172,6 +179,22 @@ class ChatRepository:
             if raw_ctx
             else None
         )
+        raw_refs = doc.get("attachment_refs")
+        attachments = (
+            [
+                AttachmentRefDto(
+                    file_id=ref.get("file_id", ""),
+                    display_name=ref.get("display_name", ""),
+                    media_type=ref.get("media_type", ""),
+                    size_bytes=ref.get("size_bytes", 0),
+                    thumbnail_b64=ref.get("thumbnail_b64"),
+                    text_preview=ref.get("text_preview"),
+                )
+                for ref in raw_refs
+            ]
+            if raw_refs
+            else None
+        )
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -179,6 +202,7 @@ class ChatRepository:
             content=doc["content"],
             thinking=doc.get("thinking"),
             token_count=doc["token_count"],
+            attachments=attachments,
             web_search_context=ws_ctx,
             created_at=doc["created_at"],
         )
