@@ -95,12 +95,10 @@ export function ChatView({ persona }: ChatViewProps) {
       .getMessages(sessionId)
       .then((msgs: ChatMessageDto[]) => {
         useChatStore.getState().setMessages(msgs)
-        setTimeout(() => scrollToBottom(), 50)
       })
       .catch(() => {})
       .finally(() => {
         setIsLoading(false)
-        setTimeout(() => chatInputRef.current?.focus(), 100)
       })
 
     chatApi
@@ -138,6 +136,16 @@ export function ChatView({ persona }: ChatViewProps) {
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
   }, [])
+
+  // Scroll to bottom + focus input after messages finish loading
+  const prevIsLoadingRef = useRef(false)
+  useEffect(() => {
+    if (prevIsLoadingRef.current && !isLoading && messages.length > 0) {
+      scrollToBottom()
+      chatInputRef.current?.focus()
+    }
+    prevIsLoadingRef.current = isLoading
+  }, [isLoading, messages.length, scrollToBottom])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
