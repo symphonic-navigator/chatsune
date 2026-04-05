@@ -21,7 +21,7 @@ export default function AppLayout() {
   useWebSocket()
   const navigate = useNavigate()
 
-  const { personas: allPersonas, update: updatePersona } = usePersonas()
+  const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()
   const { sessions } = useChatSessions()
   const user = useAuthStore((s) => s.user)
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
@@ -174,6 +174,7 @@ export default function AppLayout() {
         hasApiKeyProblem={hasApiKeyProblem}
         onOpenOverlay={(personaId, tab) => openPersonaOverlay(personaId, (tab as PersonaOverlayTab) ?? "overview")}
         onTogglePin={(personaId, pinned) => updatePersona(personaId, { pinned })}
+        onReorder={reorderPersonas}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} />

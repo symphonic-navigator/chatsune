@@ -1,6 +1,17 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { DndContext, DragOverlay, useDroppable, useDraggable, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core"
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  useDroppable,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
+  pointerWithin,
+} from "@dnd-kit/core"
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useAuthStore } from "../../../core/store/authStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
@@ -26,6 +37,7 @@ interface SidebarProps {
   hasApiKeyProblem: boolean
   onOpenOverlay?: (personaId: string, tab?: string) => void
   onTogglePin?: (personaId: string, pinned: boolean) => void
+  onReorder?: (orderedIds: string[]) => void
 }
 
 function IconBtn({
@@ -66,20 +78,26 @@ function DroppableZone({ id, children }: { id: string; children: React.ReactNode
   )
 }
 
-function DraggablePersonaItem({
+function SortablePersonaItem({
   persona,
   ...rest
 }: Omit<React.ComponentProps<typeof PersonaItem>, "dragRef" | "dragListeners" | "dragAttributes" | "isDragging">) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: persona.id })
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({ id: persona.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
   return (
-    <PersonaItem
-      persona={persona}
-      dragRef={setNodeRef}
-      dragListeners={listeners as unknown as Record<string, Function>}
-      dragAttributes={attributes as Record<string, unknown>}
-      isDragging={isDragging}
-      {...rest}
-    />
+    <div style={style}>
+      <PersonaItem
+        persona={persona}
+        dragRef={setNodeRef}
+        dragListeners={listeners as unknown as Record<string, Function>}
+        dragAttributes={attributes as Record<string, unknown>}
+        isDragging={isDragging}
+        {...rest}
+      />
+    </div>
   )
 }
 
@@ -96,6 +114,7 @@ export function Sidebar({
   hasApiKeyProblem,
   onOpenOverlay,
   onTogglePin,
+  onReorder,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
@@ -131,7 +150,17 @@ export function Sidebar({
 
   const pinnedPersonas = personas.filter((p) => p.pinned)
   const unpinnedPersonas = personas.filter((p) => !p.pinned)
+  const pinnedIds = pinnedPersonas.map((p) => p.id)
+  const unpinnedIds = unpinnedPersonas.map((p) => p.id)
   const dragActivePersona = dragActiveId ? personas.find((p) => p.id === dragActiveId) ?? null : null
+
+  function findZone(id: string): "pinned" | "unpinned" | null {
+    if (id === "pinned-zone") return "pinned"
+    if (id === "unpinned-zone") return "unpinned"
+    if (pinnedPersonas.some((p) => p.id === id)) return "pinned"
+    if (unpinnedPersonas.some((p) => p.id === id)) return "unpinned"
+    return null
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setDragActiveId(event.active.id as string)
@@ -141,15 +170,48 @@ export function Sidebar({
     setDragActiveId(null)
     const { active, over } = event
     if (!over) return
-    const personaId = active.id as string
-    const droppedOn = over.id as string
-    const persona = personas.find((p) => p.id === personaId)
+
+    const activeId = active.id as string
+    const overId = over.id as string
+    const persona = personas.find((p) => p.id === activeId)
     if (!persona) return
 
-    if (droppedOn === "pinned-zone" && !persona.pinned) {
-      onTogglePin?.(personaId, true)
-    } else if (droppedOn === "unpinned-zone" && persona.pinned) {
-      onTogglePin?.(personaId, false)
+    const fromZone = findZone(activeId)
+    const toZone = findZone(overId)
+    if (!fromZone || !toZone) return
+
+    if (fromZone === toZone && activeId !== overId) {
+      // Reorder within the same zone
+      const list = fromZone === "pinned" ? [...pinnedIds] : [...unpinnedIds]
+      const oldIndex = list.indexOf(activeId)
+      const newIndex = list.indexOf(overId)
+      if (oldIndex === -1 || newIndex === -1) return
+      const reordered = arrayMove(list, oldIndex, newIndex)
+      // Combine: reordered zone first (pinned), then the other zone
+      const fullOrder = fromZone === "pinned"
+        ? [...reordered, ...unpinnedIds]
+        : [...pinnedIds, ...reordered]
+      onReorder?.(fullOrder)
+    } else if (fromZone !== toZone) {
+      // Move between zones — toggle pin status and insert at drop position
+      const newPinned = toZone === "pinned"
+      onTogglePin?.(activeId, newPinned)
+
+      const targetList = toZone === "pinned" ? [...pinnedIds] : [...unpinnedIds]
+      const dropIndex = targetList.indexOf(overId)
+      if (dropIndex !== -1) {
+        targetList.splice(dropIndex, 0, activeId)
+      } else {
+        targetList.push(activeId)
+      }
+      const sourceList = fromZone === "pinned"
+        ? pinnedIds.filter((id) => id !== activeId)
+        : unpinnedIds.filter((id) => id !== activeId)
+
+      const fullOrder = toZone === "pinned"
+        ? [...targetList, ...sourceList]
+        : [...sourceList, ...targetList]
+      onReorder?.(fullOrder)
     }
   }
 
@@ -386,26 +448,32 @@ export function Sidebar({
           </button>
         )}
 
-        <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext
+          collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
           {/* Pinned personas */}
           <DroppableZone id="pinned-zone">
-            <div className="mt-0.5">
-              {pinnedPersonas.length > 0 ? pinnedPersonas.map((p) => (
-                <DraggablePersonaItem
-                  key={p.id}
-                  persona={p}
-                  isActive={p.id === activePersonaId}
-                  onSelect={handlePersonaSelect}
-                  onNewChat={handleNewChat}
-                  onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                  onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
-                  onUnpin={(persona) => onTogglePin?.(persona.id, false)}
-                  onOpenOverlay={() => onOpenOverlay?.(p.id)}
-                />
-              )) : (
-                <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
-              )}
-            </div>
+            <SortableContext items={pinnedIds} strategy={verticalListSortingStrategy}>
+              <div className="mt-0.5 min-h-[8px]">
+                {pinnedPersonas.length > 0 ? pinnedPersonas.map((p) => (
+                  <SortablePersonaItem
+                    key={p.id}
+                    persona={p}
+                    isActive={p.id === activePersonaId}
+                    onSelect={handlePersonaSelect}
+                    onNewChat={handleNewChat}
+                    onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                    onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                    onUnpin={(persona) => onTogglePin?.(persona.id, false)}
+                    onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                  />
+                )) : (
+                  <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
+                )}
+              </div>
+            </SortableContext>
           </DroppableZone>
 
           {/* Other personas */}
@@ -422,21 +490,23 @@ export function Sidebar({
               </button>
               {unpinnedOpen && (
                 <DroppableZone id="unpinned-zone">
-                  <div className="mt-0.5">
-                    {unpinnedPersonas.map((p) => (
-                      <DraggablePersonaItem
-                        key={p.id}
-                        persona={p}
-                        isActive={p.id === activePersonaId}
-                        onSelect={handlePersonaSelect}
-                        onNewChat={handleNewChat}
-                        onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                        onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
-                        onPin={(persona) => onTogglePin?.(persona.id, true)}
-                        onOpenOverlay={() => onOpenOverlay?.(p.id)}
-                      />
-                    ))}
-                  </div>
+                  <SortableContext items={unpinnedIds} strategy={verticalListSortingStrategy}>
+                    <div className="mt-0.5 min-h-[8px]">
+                      {unpinnedPersonas.map((p) => (
+                        <SortablePersonaItem
+                          key={p.id}
+                          persona={p}
+                          isActive={p.id === activePersonaId}
+                          onSelect={handlePersonaSelect}
+                          onNewChat={handleNewChat}
+                          onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                          onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                          onPin={(persona) => onTogglePin?.(persona.id, true)}
+                          onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
                 </DroppableZone>
               )}
             </>
