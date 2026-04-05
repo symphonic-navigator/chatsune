@@ -31,21 +31,23 @@ interface MessageListProps {
   onScrollToBottom: () => void
   onEdit: (messageId: string, content: string) => void
   onRegenerate: () => void
+  bookmarkedMessageIds: Set<string>
+  onBookmark: (messageId: string) => void
 }
 
 export function MessageList({
   messages, streamingContent, streamingThinking, streamingWebSearchContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
-  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate,
+  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
   const thinkingExpandedRef = useRef(true)
 
   const scrollbarStyle = `
-    .chat-scroll::-webkit-scrollbar { width: 4px; }
+    .chat-scroll::-webkit-scrollbar { width: 8px; }
     .chat-scroll::-webkit-scrollbar-track { background: transparent; }
-    .chat-scroll::-webkit-scrollbar-thumb { background: ${accentColour}33; border-radius: 2px; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: ${accentColour}33; border-radius: 4px; }
     .chat-scroll::-webkit-scrollbar-thumb:hover { background: ${accentColour}66; }
   `
 
@@ -61,22 +63,29 @@ export function MessageList({
         )}
 
         {messages.map((msg, i) => {
+          const isBm = bookmarkedMessageIds.has(msg.id)
           if (msg.role === 'user') {
             return (
-              <UserBubble key={msg.id} content={msg.content} attachments={msg.attachments}
-                onEdit={(newContent) => onEdit(msg.id, newContent)} isEditable={!isStreaming} />
+              <div key={msg.id}>
+                <div id={`msg-${msg.id}`} />
+                <UserBubble content={msg.content} attachments={msg.attachments}
+                  onEdit={(newContent) => onEdit(msg.id, newContent)} isEditable={!isStreaming}
+                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)} />
+              </div>
             )
           }
           if (msg.role === 'assistant') {
             return (
               <div key={msg.id}>
+                <div id={`msg-${msg.id}`} />
                 {msg.web_search_context && msg.web_search_context.length > 0 && (
                   <WebSearchPills items={msg.web_search_context} />
                 )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   thinkingDefaultExpanded={thinkingExpandedRef.current}
-                  onThinkingToggle={(v) => { thinkingExpandedRef.current = v }} />
+                  onThinkingToggle={(v) => { thinkingExpandedRef.current = v }}
+                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)} />
                 {canRegenerate && i === lastAssistantIdx && (
                   <RegenerateButton onClick={onRegenerate} disabled={isStreaming} />
                 )}

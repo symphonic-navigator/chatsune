@@ -24,6 +24,7 @@ from backend.modules.llm import (
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
+from backend.modules.bookmark import delete_bookmarks_for_message
 from backend.modules.tools import execute_tool, get_active_definitions
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
@@ -492,6 +493,7 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
 
         # Delete the last assistant message
         await repo.delete_message(last_msg["_id"])
+        await delete_bookmarks_for_message(last_msg["_id"])
 
         await event_bus.publish(
             Topics.CHAT_MESSAGE_DELETED,

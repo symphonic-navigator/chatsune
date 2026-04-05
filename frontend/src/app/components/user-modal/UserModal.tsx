@@ -145,7 +145,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
-          {activeTab === 'bookmarks' && <BookmarksTab />}
+          {activeTab === 'bookmarks' && <BookmarksTab onClose={onClose} />}
           {activeTab === 'uploads' && <UploadsTab />}
           {activeTab === 'artefacts' && <ArtefactsTab />}
           {activeTab === 'models' && <ModelsTab />}

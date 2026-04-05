@@ -226,19 +226,21 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         <div className="flex items-center gap-1 text-[10px] text-white/40">
           <span>Ctx:</span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={ctxMin}
-            onChange={(e) => setCtxMin(e.target.value)}
+            onChange={(e) => setCtxMin(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="min"
-            className="w-14 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
+            className="w-20 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
           />
           <span>-</span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             value={ctxMax}
-            onChange={(e) => setCtxMax(e.target.value)}
+            onChange={(e) => setCtxMax(e.target.value.replace(/[^0-9]/g, ''))}
             placeholder="max"
-            className="w-14 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
+            className="w-20 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
           />
           <span className="text-white/20">k</span>
         </div>

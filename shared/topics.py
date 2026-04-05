@@ -45,6 +45,10 @@ class Topics:
     STORAGE_FILE_DELETED = "storage.file.deleted"
     STORAGE_FILE_RENAMED = "storage.file.renamed"
     STORAGE_QUOTA_WARNING = "storage.quota.warning"
+    # Bookmarks
+    BOOKMARK_CREATED = "bookmark.created"
+    BOOKMARK_UPDATED = "bookmark.updated"
+    BOOKMARK_DELETED = "bookmark.deleted"
     # Background jobs
     JOB_STARTED = "job.started"
     JOB_COMPLETED = "job.completed"

@@ -54,6 +54,9 @@ export const Topics = {
   CHAT_WEB_SEARCH_CONTEXT: "chat.web_search.context",
   CHAT_SESSION_TOOLS_UPDATED: "chat.session.tools_updated",
   CHAT_SESSION_PINNED_UPDATED: "chat.session.pinned_updated",
+  BOOKMARK_CREATED: "bookmark.created",
+  BOOKMARK_UPDATED: "bookmark.updated",
+  BOOKMARK_DELETED: "bookmark.deleted",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

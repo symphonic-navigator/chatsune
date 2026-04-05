@@ -7,9 +7,11 @@ interface UserBubbleProps {
   attachments?: AttachmentRefDto[] | null
   onEdit: (newContent: string) => void
   isEditable: boolean
+  isBookmarked?: boolean
+  onBookmark?: () => void
 }
 
-export function UserBubble({ content, attachments, onEdit, isEditable }: UserBubbleProps) {
+export function UserBubble({ content, attachments, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(content)
@@ -60,12 +62,23 @@ export function UserBubble({ content, attachments, onEdit, isEditable }: UserBub
       onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       <div className="relative max-w-[80%]">
         {isHovered && isEditable && (
-          <button type="button" data-testid="edit-button" onClick={startEdit}
-            className="absolute -left-8 top-1 rounded p-1 text-white/20 transition-colors hover:text-white/50" title="Edit message">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M10.5 1.5L12.5 3.5L4 12H2V10L10.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+          <div className="absolute -left-8 top-1 flex flex-col gap-1">
+            <button type="button" data-testid="edit-button" onClick={startEdit}
+              className="rounded p-1 text-white/20 transition-colors hover:text-white/50" title="Edit message">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M10.5 1.5L12.5 3.5L4 12H2V10L10.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {onBookmark && (
+              <button type="button" onClick={onBookmark}
+                className={`rounded p-1 transition-colors ${isBookmarked ? 'text-gold' : 'text-white/20 hover:text-white/50'}`}
+                title={isBookmarked ? 'Bookmarked' : 'Bookmark'}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill={isBookmarked ? 'currentColor' : 'none'}>
+                  <path d="M3 1.5H11V12.5L7 9.5L3 12.5V1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+          </div>
         )}
         <div className="rounded-2xl rounded-tr-sm bg-white/8 px-4 py-2.5">
           <p className="chat-text whitespace-pre-wrap text-white/90">{content}</p>

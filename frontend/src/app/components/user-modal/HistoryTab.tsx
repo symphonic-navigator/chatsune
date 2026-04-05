@@ -125,7 +125,8 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
           value={personaFilter}
           onChange={(e) => setPersonaFilter(e.target.value)}
           aria-label="Filter by persona"
-          className="bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 outline-none focus:border-gold/30 transition-colors font-mono cursor-pointer appearance-none min-w-[140px]"
+          className="bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
+          style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
         >
           <option value="all">All Personas</option>
           {filterPersonas.map((p) => (

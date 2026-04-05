@@ -16,6 +16,10 @@ import { AttachmentStrip } from './AttachmentStrip'
 import { UploadBrowserPanel } from './UploadBrowserPanel'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
 import type { PersonaDto } from '../../core/types/persona'
+import { useBookmarks } from '../../core/hooks/useBookmarks'
+import { bookmarksApi } from '../../core/api/bookmarks'
+import { BookmarkModal } from './BookmarkModal'
+import { ChatBookmarkList } from './ChatBookmarkList'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -91,6 +95,34 @@ export function ChatView({ persona }: ChatViewProps) {
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
+
+  // Scroll to a specific message by ID (used for bookmarks and ?msg= param)
+  const scrollToMessage = useCallback((messageId: string) => {
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`msg-${messageId}`)
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.nextElementSibling?.classList.add('bookmark-flash')
+        setTimeout(() => el.nextElementSibling?.classList.remove('bookmark-flash'), 2000)
+      }
+    })
+  }, [])
+
+  // React to ?msg= param changes when chat is already loaded
+  const msgParam = searchParams.get('msg')
+  const prevMsgParam = useRef<string | null>(null)
+  useEffect(() => {
+    if (msgParam && msgParam !== prevMsgParam.current && !isLoading && messages.length > 0) {
+      scrollToMessage(msgParam)
+    }
+    prevMsgParam.current = msgParam
+  }, [msgParam, isLoading, messages.length, scrollToMessage])
+
+  // Bookmarks
+  const { bookmarks, setBookmarks, addBookmark } = useBookmarks(effectiveSessionId)
+  const bookmarkedMessageIds = new Set(bookmarks.map((b) => b.message_id))
+  const [bookmarkTargetMsgId, setBookmarkTargetMsgId] = useState<string | null>(null)
+  const [bookmarksExpanded, setBookmarksExpanded] = useState(false)
 
   useChatStream(effectiveSessionId ?? null)
 
@@ -174,11 +206,16 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [error, personaId, isIncognito, navigate])
 
-  // Scroll to bottom + focus input after messages finish loading
+  // Scroll to specific message or bottom after loading
   const prevIsLoadingRef = useRef(false)
   useEffect(() => {
     if (prevIsLoadingRef.current && !isLoading && messages.length > 0) {
-      scrollToBottom()
+      const targetMsg = searchParams.get('msg')
+      if (targetMsg) {
+        scrollToMessage(targetMsg)
+      } else {
+        scrollToBottom()
+      }
       chatInputRef.current?.focus()
     }
     prevIsLoadingRef.current = isLoading
@@ -302,7 +339,34 @@ export function ChatView({ persona }: ChatViewProps) {
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
         </div>
-        <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
+        <div className="flex items-center gap-2">
+          {/* Chat-local bookmarks dropdown */}
+          {bookmarks.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setBookmarksExpanded((v) => !v)}
+                className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono transition-colors ${bookmarksExpanded ? 'bg-gold/10 text-gold' : 'text-white/30 hover:text-white/50'}`}
+                title="Bookmarks in this chat"
+              >
+                <svg width="12" height="12" viewBox="0 0 14 14" fill={bookmarksExpanded ? 'currentColor' : 'none'}>
+                  <path d="M3 1.5H11V12.5L7 9.5L3 12.5V1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                </svg>
+                {bookmarks.length}
+              </button>
+              {bookmarksExpanded && (
+                <ChatBookmarkList
+                  bookmarks={bookmarks}
+                  onScrollTo={(msgId) => scrollToMessage(msgId)}
+                  onClose={() => setBookmarksExpanded(false)}
+                  onBookmarksReordered={setBookmarks}
+                  onBookmarkUpdated={(updated) => setBookmarks((prev) => prev.map((b) => b.id === updated.id ? updated : b))}
+                />
+              )}
+            </div>
+          )}
+          <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
+        </div>
       </div>
 
       {error && (
@@ -333,6 +397,8 @@ export function ChatView({ persona }: ChatViewProps) {
           isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
           containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
           onEdit={handleEdit} onRegenerate={handleRegenerate}
+          bookmarkedMessageIds={bookmarkedMessageIds}
+          onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
         />
       )}
 
@@ -363,6 +429,25 @@ export function ChatView({ persona }: ChatViewProps) {
             onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
           />
         ) : undefined}
+      />
+
+      {/* Bookmark creation modal */}
+      <BookmarkModal
+        isOpen={bookmarkTargetMsgId !== null}
+        onClose={() => setBookmarkTargetMsgId(null)}
+        onSave={async (title, scope) => {
+          if (!bookmarkTargetMsgId || !effectiveSessionId || !personaId) return
+          const bm = await bookmarksApi.create({
+            session_id: effectiveSessionId,
+            message_id: bookmarkTargetMsgId,
+            persona_id: personaId,
+            title,
+            scope,
+          })
+          addBookmark(bm)
+          setBookmarkTargetMsgId(null)
+        }}
+        accentColour={accentColour}
       />
     </div>
   )

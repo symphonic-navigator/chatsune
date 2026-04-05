@@ -22,6 +22,23 @@ _log = logging.getLogger(__name__)
 _TIMEOUT = 15.0
 
 
+def _parse_parameter_size(value: str) -> int | None:
+    """Parse a parameter_size string like '7.6B', '405M', '1.2T' into a raw integer."""
+    value = value.strip().upper()
+    suffixes = {"T": 1_000_000_000_000, "B": 1_000_000_000, "M": 1_000_000, "K": 1_000}
+    for suffix, multiplier in suffixes.items():
+        if value.endswith(suffix):
+            try:
+                return int(float(value[:-1]) * multiplier)
+            except (ValueError, TypeError):
+                return None
+    # No suffix — try raw int
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _format_parameter_count(value: int | None) -> str | None:
     """Convert raw parameter count to human-readable form (e.g. 675B, 7.5B, 405M)."""
     if not value:
@@ -268,12 +285,14 @@ class OllamaCloudAdapter(BaseAdapter):
         raw_params = None
         param_str = details.get("parameter_size")
         if param_str is not None:
-            try:
-                raw_params = int(param_str)
-            except (ValueError, TypeError):
-                pass
+            raw_params = _parse_parameter_size(param_str)
         if raw_params is None:
             raw_params = model_info.get("general.parameter_count")
+            if raw_params is not None and not isinstance(raw_params, int):
+                try:
+                    raw_params = int(raw_params)
+                except (ValueError, TypeError):
+                    raw_params = None
 
         return ModelMetaDto(
             provider_id="ollama_cloud",

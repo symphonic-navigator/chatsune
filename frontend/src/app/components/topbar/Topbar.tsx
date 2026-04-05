@@ -49,6 +49,19 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
       <header className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/6 bg-surface px-4">
         {persona && (
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => navigate("/personas")}
+              title="All personas"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[13px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/55"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" />
+              </svg>
+            </button>
             <div
               className="relative"
               onMouseEnter={() => hasAvatar && setShowAvatar(true)}
@@ -84,26 +97,13 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => navigate("/personas")}
-              title="All personas"
-              className="flex h-7 w-7 items-center justify-center rounded-full text-[13px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/55"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="1" y="1" width="6" height="6" rx="1.5" />
-                <rect x="9" y="1" width="6" height="6" rx="1.5" />
-                <rect x="1" y="9" width="6" height="6" rx="1.5" />
-                <rect x="9" y="9" width="6" height="6" rx="1.5" />
-              </svg>
-            </button>
           </div>
         )}
         <span className="text-white/15">/</span>
-        <span className="max-w-[260px] truncate text-[13px] text-white/32">
+        <span className="min-w-0 flex-1 truncate text-[13px] text-white/32">
           {sessionTitle ?? (chatMatch.params.sessionId ? "Continued session" : "New chat")}
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex-shrink-0 flex items-center gap-1.5">
           {persona && (
             <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold">
               {persona.model_unique_id.split(":")[1] ?? persona.model_unique_id}

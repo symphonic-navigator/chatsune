@@ -10,6 +10,7 @@ from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import get_event_bus
+from backend.modules.bookmark import delete_bookmarks_for_session
 from backend.modules.tools import get_all_groups
 from shared.events.chat import (
     ChatSessionCreatedEvent,
@@ -109,6 +110,9 @@ async def delete_session(session_id: str, user: dict = Depends(require_active_se
     deleted = await repo.delete_session(session_id, user["sub"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Cascade: remove all bookmarks for this session
+    await delete_bookmarks_for_session(session_id)
 
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)

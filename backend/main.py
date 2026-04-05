@@ -9,6 +9,7 @@ from backend.modules.llm import router as llm_router, init_indexes as llm_init_i
 from backend.modules.persona import router as persona_router, init_indexes as persona_init_indexes
 from backend.modules.settings import router as settings_router, init_indexes as settings_init_indexes
 from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions
+from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_init_indexes
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     await persona_init_indexes(db)
     await settings_init_indexes(db)
     await chat_init_indexes(db)
+    await bookmark_init_indexes(db)
     await storage_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
@@ -66,6 +68,7 @@ app.include_router(llm_router)
 app.include_router(persona_router)
 app.include_router(settings_router)
 app.include_router(chat_router)
+app.include_router(bookmark_router)
 app.include_router(storage_router)
 app.include_router(ws_router)
 

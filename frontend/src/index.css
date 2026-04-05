@@ -105,6 +105,15 @@ body {
   animation: messageEntrance 0.3s ease-out;
 }
 
+@keyframes bookmarkFlash {
+  0% { outline: 2px solid rgba(200, 164, 78, 0.6); outline-offset: 4px; }
+  100% { outline: 2px solid transparent; outline-offset: 4px; }
+}
+.bookmark-flash {
+  animation: bookmarkFlash 2s ease-out;
+  border-radius: 12px;
+}
+
 .animate-think-pulse {
   animation: thinkPulse 2s ease-in-out infinite;
 }
@@ -213,4 +222,23 @@ body {
 
 .chat-prose a:hover {
   text-decoration-color: rgba(124, 159, 212, 0.7);
+}
+
+/* Global styled scrollbar */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
