@@ -166,6 +166,14 @@ export function ChatView({ persona }: ChatViewProps) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [])
 
+  // Handle session_expired: redirect to a new chat with the same persona
+  useEffect(() => {
+    if (error?.errorCode === 'session_expired' && personaId && !isIncognito) {
+      useChatStore.getState().clearError()
+      navigate(`/chat/${personaId}?new=1`, { replace: true })
+    }
+  }, [error, personaId, isIncognito, navigate])
+
   // Scroll to bottom + focus input after messages finish loading
   const prevIsLoadingRef = useRef(false)
   useEffect(() => {

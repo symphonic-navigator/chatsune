@@ -85,9 +85,12 @@ export function useChatStream(sessionId: string | null) {
           break
         }
         case Topics.CHAT_STREAM_ERROR: {
-          if (event.correlation_id !== store().correlationId) return
+          const errorCode = p.error_code as string
+          // Session-level errors arrive outside a streaming context
+          const isSessionError = errorCode === 'session_expired'
+          if (!isSessionError && event.correlation_id !== store().correlationId) return
           store().setError({
-            errorCode: p.error_code as string,
+            errorCode,
             recoverable: p.recoverable as boolean,
             userMessage: p.user_message as string,
           })

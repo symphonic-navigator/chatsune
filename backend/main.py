@@ -8,7 +8,7 @@ from backend.modules.user import router as user_router, init_indexes as user_ini
 from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
 from backend.modules.persona import router as persona_router, init_indexes as persona_init_indexes
 from backend.modules.settings import router as settings_router, init_indexes as settings_init_indexes
-from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes
+from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
@@ -35,14 +35,27 @@ async def lifespan(app: FastAPI):
     # Start background job consumer
     consumer_task = asyncio.create_task(consumer_loop(redis, event_bus))
 
+    # Start periodic cleanup of stale empty chat sessions (every hour)
+    async def _session_cleanup_loop() -> None:
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                await cleanup_stale_empty_sessions()
+            except Exception:
+                pass  # Non-critical — retry next cycle
+
+    cleanup_task = asyncio.create_task(_session_cleanup_loop())
+
     yield
 
-    # Shut down consumer
+    # Shut down background tasks
+    cleanup_task.cancel()
     consumer_task.cancel()
-    try:
-        await consumer_task
-    except asyncio.CancelledError:
-        pass
+    for task in (cleanup_task, consumer_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     await disconnect_db()
 

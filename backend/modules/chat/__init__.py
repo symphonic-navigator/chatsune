@@ -312,6 +312,20 @@ async def _run_inference(
         _cancel_events.pop(correlation_id, None)
 
 
+async def _emit_session_expired(user_id: str, session_id: str) -> None:
+    """Send a session_expired error event to the user."""
+    now = datetime.now(timezone.utc)
+    correlation_id = str(uuid4())
+    manager = get_manager()
+    await manager.send_to_user(user_id, ChatStreamErrorEvent(
+        correlation_id=correlation_id,
+        error_code="session_expired",
+        recoverable=False,
+        user_message="This chat session no longer exists. A new session will be created.",
+        timestamp=now,
+    ).model_dump(mode="json"))
+
+
 async def handle_chat_send(user_id: str, data: dict) -> None:
     """Handle a chat.send WebSocket message — save user message, run inference."""
     session_id = data.get("session_id")
@@ -325,6 +339,7 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
 
         session = await repo.get_session(session_id, user_id)
         if not session:
+            await _emit_session_expired(user_id, session_id)
             return
 
         if session.get("state") != "idle":
@@ -382,7 +397,10 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
         repo = ChatRepository(db)
 
         session = await repo.get_session(session_id, user_id)
-        if not session or session.get("state") != "idle":
+        if not session:
+            await _emit_session_expired(user_id, session_id)
+            return
+        if session.get("state") != "idle":
             return
 
         # Validate message exists and belongs to this session
@@ -458,7 +476,10 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
         repo = ChatRepository(db)
 
         session = await repo.get_session(session_id, user_id)
-        if not session or session.get("state") != "idle":
+        if not session:
+            await _emit_session_expired(user_id, session_id)
+            return
+        if session.get("state") != "idle":
             return
 
         last_msg = await repo.get_last_message(session_id)
@@ -645,9 +666,19 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)
 
 
+async def cleanup_stale_empty_sessions() -> int:
+    """Delete empty sessions older than 24 hours. Returns count of deleted sessions."""
+    db = get_db()
+    repo = ChatRepository(db)
+    count = await repo.delete_stale_empty_sessions(max_age_minutes=1440)
+    if count > 0:
+        _log.info("Cleaned up %d stale empty sessions", count)
+    return count
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "handle_incognito_send", "update_session_title",
-    "assemble_preview",
+    "cleanup_stale_empty_sessions", "assemble_preview",
 ]

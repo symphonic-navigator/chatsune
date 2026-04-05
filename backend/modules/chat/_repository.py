@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -36,8 +36,22 @@ class ChatRepository:
         return await self._sessions.find_one({"_id": session_id, "user_id": user_id})
 
     async def list_sessions(self, user_id: str) -> list[dict]:
-        cursor = self._sessions.find({"user_id": user_id}).sort("updated_at", -1)
-        return await cursor.to_list(length=200)
+        """Return sessions that have at least one message, sorted by updated_at desc."""
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {"$lookup": {
+                "from": "chat_messages",
+                "localField": "_id",
+                "foreignField": "session_id",
+                "pipeline": [{"$limit": 1}],
+                "as": "_msgs",
+            }},
+            {"$match": {"_msgs": {"$ne": []}}},
+            {"$unset": "_msgs"},
+            {"$sort": {"updated_at": -1}},
+            {"$limit": 200},
+        ]
+        return await self._sessions.aggregate(pipeline).to_list(length=200)
 
     async def update_session_state(self, session_id: str, state: str) -> dict | None:
         now = datetime.now(UTC)
@@ -74,6 +88,28 @@ class ChatRepository:
             {"$set": {"disabled_tool_groups": disabled_tool_groups, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
+
+    async def delete_stale_empty_sessions(self, max_age_minutes: int = 1440) -> int:
+        """Delete sessions older than max_age_minutes that have zero messages."""
+        cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+        pipeline = [
+            {"$match": {"created_at": {"$lt": cutoff}}},
+            {"$lookup": {
+                "from": "chat_messages",
+                "localField": "_id",
+                "foreignField": "session_id",
+                "pipeline": [{"$limit": 1}],
+                "as": "_msgs",
+            }},
+            {"$match": {"_msgs": []}},
+            {"$project": {"_id": 1}},
+        ]
+        stale = await self._sessions.aggregate(pipeline).to_list(length=1000)
+        if not stale:
+            return 0
+        stale_ids = [doc["_id"] for doc in stale]
+        result = await self._sessions.delete_many({"_id": {"$in": stale_ids}})
+        return result.deleted_count
 
     async def delete_session(self, session_id: str, user_id: str) -> bool:
         result = await self._sessions.delete_one({"_id": session_id, "user_id": user_id})
