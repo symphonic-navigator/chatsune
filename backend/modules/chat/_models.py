@@ -12,6 +12,7 @@ class ChatSessionDocument(BaseModel):
     persona_id: str
     model_unique_id: str
     state: Literal["idle", "streaming", "requires_action"] = "idle"
+    pinned: bool = False
     created_at: datetime
     updated_at: datetime
 

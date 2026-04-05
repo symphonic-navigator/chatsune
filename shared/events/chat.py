@@ -134,3 +134,11 @@ class ChatSessionToolsUpdatedEvent(BaseModel):
     disabled_tool_groups: list[str]
     correlation_id: str
     timestamp: datetime
+
+
+class ChatSessionPinnedUpdatedEvent(BaseModel):
+    type: str = "chat.session.pinned_updated"
+    session_id: str
+    pinned: bool
+    correlation_id: str
+    timestamp: datetime

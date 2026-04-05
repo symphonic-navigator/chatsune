@@ -67,7 +67,7 @@ export function PersonaItem({
       onClick={() => onSelect(persona)}
     >
       <span
-        className="cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:text-white/30"
+        className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all"
         {...(dragListeners ?? {})}
         {...(dragAttributes ?? {})}
       >

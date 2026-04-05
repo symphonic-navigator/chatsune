@@ -4,6 +4,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { PersonaDto } from "../../../core/types/persona";
 import type { PersonaOverlayTab } from "../persona-overlay/PersonaOverlay";
 import { CHAKRA_PALETTE } from "../../../core/types/chakra";
+import { personasApi } from "../../../core/api/personas";
 
 interface PersonaCardProps {
   persona: PersonaDto;
@@ -154,7 +155,7 @@ export default function PersonaCard({
         >
           {persona.profile_image ? (
             <img
-              src={persona.profile_image}
+              src={personasApi.avatarSrc(persona.id, persona.updated_at)}
               alt={persona.name}
               className="w-full h-full object-cover rounded-full"
             />

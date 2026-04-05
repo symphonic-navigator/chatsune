@@ -14,6 +14,7 @@ from backend.modules.tools import get_all_groups
 from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
+    ChatSessionPinnedUpdatedEvent,
     ChatSessionTitleUpdatedEvent,
     ChatSessionToolsUpdatedEvent,
 )
@@ -152,6 +153,43 @@ async def update_session(
         ChatSessionTitleUpdatedEvent(
             session_id=session_id,
             title=body.title,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
+
+    doc = await repo.get_session(session_id, user["sub"])
+    return ChatRepository.session_to_dto(doc)
+
+
+class UpdateSessionPinnedRequest(BaseModel):
+    pinned: bool
+
+
+@router.patch("/sessions/{session_id}/pinned")
+async def update_session_pinned(
+    session_id: str,
+    body: UpdateSessionPinnedRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await repo.update_session_pinned(session_id, body.pinned)
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_PINNED_UPDATED,
+        ChatSessionPinnedUpdatedEvent(
+            session_id=session_id,
+            pinned=body.pinned,
             correlation_id=correlation_id,
             timestamp=now,
         ),

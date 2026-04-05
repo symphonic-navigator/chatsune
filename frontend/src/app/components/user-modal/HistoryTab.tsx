@@ -4,6 +4,7 @@ import { chatApi, type ChatSessionDto } from '../../../core/api/chat'
 import { useChatSessions } from '../../../core/hooks/useChatSessions'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 
 interface HistoryTabProps {
   onClose: () => void
@@ -146,14 +147,19 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
             <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/30 font-mono">
               {group}
             </div>
-            {groupSessions.map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                personaName={personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id}
-                onOpen={() => handleOpen(s)}
-              />
-            ))}
+            {groupSessions.map((s) => {
+              const persona = personas.find((p) => p.id === s.persona_id)
+              return (
+                <SessionRow
+                  key={s.id}
+                  session={s}
+                  personaName={persona?.name ?? s.persona_id}
+                  monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                  colourScheme={persona?.colour_scheme}
+                  onOpen={() => handleOpen(s)}
+                />
+              )
+            })}
           </div>
         ))}
       </div>
@@ -165,10 +171,13 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
 interface SessionRowProps {
   session: ChatSessionDto
   personaName: string
+  monogram?: string
+  colourScheme?: ChakraColour
   onOpen: () => void
 }
 
-function SessionRow({ session, personaName, onOpen }: SessionRowProps) {
+function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: SessionRowProps) {
+  const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -246,6 +255,19 @@ function SessionRow({ session, personaName, onOpen }: SessionRowProps) {
   return (
     <div className="group rounded-lg transition-colors hover:bg-white/4">
       <div className="flex items-center gap-3 px-3 py-2.5">
+        {/* Persona monogram */}
+        {chakra && monogram && (
+          <div
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
+            style={{
+              background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
+              color: `${chakra.hex}CC`,
+            }}
+          >
+            {monogram}
+          </div>
+        )}
+
         {/* Main content — clickable to open chat */}
         <button
           type="button"

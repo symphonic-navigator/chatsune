@@ -37,6 +37,7 @@ export function useChatSessions() {
         title: (p.title as string) ?? null,
         disabled_tool_groups: [],
         reasoning_override: null,
+        pinned: false,
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
       }
@@ -58,12 +59,27 @@ export function useChatSessions() {
       )
     })
 
+    const unsubPinned = eventBus.on(Topics.CHAT_SESSION_PINNED_UPDATED, (event: BaseEvent) => {
+      const sessionId = event.payload.session_id as string
+      const pinned = event.payload.pinned as boolean
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, pinned } : s)),
+      )
+    })
+
     return () => {
       unsubCreated()
       unsubDeleted()
       unsubTitle()
+      unsubPinned()
     }
   }, [])
 
-  return { sessions, isLoading, refetch: fetch }
+  const updateSession = useCallback((sessionId: string, patch: Partial<ChatSessionDto>) => {
+    setSessions((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, ...patch } : s)),
+    )
+  }, [])
+
+  return { sessions, isLoading, refetch: fetch, updateSession }
 }

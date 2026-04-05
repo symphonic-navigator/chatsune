@@ -1,6 +1,9 @@
+import { useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import { useChatStore } from "../../../core/store/chatStore"
+import { personasApi } from "../../../core/api/personas"
+import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import type { PersonaDto } from "../../../core/types/persona"
 
 const SECTION_TITLES: Record<string, string> = {
@@ -12,12 +15,14 @@ const SECTION_TITLES: Record<string, string> = {
 
 interface TopbarProps {
   personas: PersonaDto[]
+  onOpenPersonaOverlay?: (personaId: string) => void
 }
 
-export function Topbar({ personas }: TopbarProps) {
+export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
   const location = useLocation()
+  const [showAvatar, setShowAvatar] = useState(false)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
   const sessionTitle = useChatStore((s) => s.sessionTitle)
@@ -37,18 +42,60 @@ export function Topbar({ personas }: TopbarProps) {
   if (chatMatch) {
     const { personaId } = chatMatch.params
     const persona = personas.find((p) => p.id === personaId)
+    const chakra = persona ? CHAKRA_PALETTE[persona.colour_scheme] : null
+    const hasAvatar = !!persona?.profile_image
 
     return (
       <header className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/6 bg-surface px-4">
         {persona && (
-          <button
-            type="button"
-            onClick={() => navigate("/personas")}
-            className="flex items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/8"
-          >
-            <span className="h-2 w-2 rounded-full bg-purple" />
-            {persona.name}
-          </button>
+          <div className="flex items-center gap-1">
+            <div
+              className="relative"
+              onMouseEnter={() => hasAvatar && setShowAvatar(true)}
+              onMouseLeave={() => setShowAvatar(false)}
+            >
+              <button
+                type="button"
+                onClick={() => onOpenPersonaOverlay?.(persona.id)}
+                className="flex items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/8"
+              >
+                <span className="h-2 w-2 rounded-full bg-purple" />
+                {persona.name}
+              </button>
+
+              {/* Avatar popup on hover */}
+              {showAvatar && hasAvatar && chakra && (
+                <div
+                  className="absolute left-0 top-full mt-2 z-50 rounded-xl shadow-2xl overflow-hidden pointer-events-none"
+                  style={{
+                    backgroundColor: '#13101e',
+                    border: `1px solid ${chakra.hex}33`,
+                    boxShadow: `0 0 20px ${chakra.glow}, 0 8px 32px rgba(0,0,0,0.5)`,
+                  }}
+                >
+                  <img
+                    src={personasApi.avatarSrc(persona.id, persona.updated_at)}
+                    alt={persona.name}
+                    className="block"
+                    style={{ width: 180, height: 180, objectFit: 'cover' }}
+                  />
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate("/personas")}
+              title="All personas"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-[13px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/55"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="1" y="1" width="6" height="6" rx="1.5" />
+                <rect x="9" y="1" width="6" height="6" rx="1.5" />
+                <rect x="1" y="9" width="6" height="6" rx="1.5" />
+                <rect x="9" y="9" width="6" height="6" rx="1.5" />
+              </svg>
+            </button>
+          </div>
         )}
         <span className="text-white/15">/</span>
         <span className="max-w-[260px] truncate text-[13px] text-white/32">

@@ -39,6 +39,7 @@ class Topics:
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
     # Tool group toggles
     CHAT_SESSION_TOOLS_UPDATED = "chat.session.tools_updated"
+    CHAT_SESSION_PINNED_UPDATED = "chat.session.pinned_updated"
     # Storage
     STORAGE_FILE_UPLOADED = "storage.file.uploaded"
     STORAGE_FILE_DELETED = "storage.file.deleted"

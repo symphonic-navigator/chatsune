@@ -1,9 +1,14 @@
-import { api } from "./client"
+import { api, currentAccessToken } from "./client"
+import { ApiError } from "./client"
 import type {
   PersonaDto,
   CreatePersonaRequest,
   UpdatePersonaRequest,
 } from "../types/persona"
+
+function baseUrl(): string {
+  return import.meta.env.VITE_API_URL ?? ""
+}
 
 export const personasApi = {
   list: () =>
@@ -30,4 +35,33 @@ export const personasApi = {
 
   getSystemPromptPreview: (personaId: string) =>
     api.get<{ preview: string }>(`/api/personas/${personaId}/system-prompt-preview`),
+
+  uploadAvatar: async (personaId: string, blob: Blob): Promise<PersonaDto> => {
+    const form = new FormData()
+    form.append("file", blob, "avatar.png")
+    const token = currentAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    const res = await fetch(`${baseUrl()}/api/personas/${personaId}/avatar`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: "include",
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new ApiError(res.status, body?.detail ?? res.statusText, body)
+    }
+    return res.json()
+  },
+
+  deleteAvatar: (personaId: string) =>
+    api.delete<PersonaDto>(`/api/personas/${personaId}/avatar`),
+
+  avatarUrl: (personaId: string) =>
+    `${baseUrl()}/api/personas/${personaId}/avatar`,
+
+  /** Build a cacheable avatar URL (appends timestamp to bust caches). */
+  avatarSrc: (personaId: string, updatedAt?: string) =>
+    `${baseUrl()}/api/personas/${personaId}/avatar${updatedAt ? `?t=${new Date(updatedAt).getTime()}` : ''}`,
 }

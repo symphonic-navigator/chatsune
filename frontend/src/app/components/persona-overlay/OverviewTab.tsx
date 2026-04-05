@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
+import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 
 interface OverviewTabProps {
   persona: PersonaDto
@@ -15,6 +16,7 @@ interface OverviewTabProps {
 export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat }: OverviewTabProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
+  const [cropOpen, setCropOpen] = useState(false)
 
   const createdDate = new Date(persona.created_at).toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -34,34 +36,62 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
 
   const hasPreview = preview !== null && preview.trim().length > 0
 
+  const avatarSrc = persona.profile_image
+    ? personasApi.avatarSrc(persona.id, persona.updated_at)
+    : null
+
+  async function handleAvatarSave(blob: Blob) {
+    await personasApi.uploadAvatar(persona.id, blob)
+    setCropOpen(false)
+  }
+
   return (
     <div className="flex flex-col items-center px-6 py-8 gap-6">
-      {/* Avatar */}
-      <div
-        className="flex items-center justify-center rounded-full flex-shrink-0"
+      {/* Avatar — clickable to change */}
+      <button
+        type="button"
+        onClick={() => setCropOpen(true)}
+        className="group relative rounded-full flex-shrink-0 cursor-pointer"
+        title="Change profile picture"
         style={{
           width: 120,
           height: 120,
-          background: persona.profile_image ? undefined : `${chakra.hex}22`,
+          background: avatarSrc ? undefined : `${chakra.hex}22`,
           border: `2px solid ${chakra.hex}55`,
           boxShadow: `0 0 28px ${chakra.glow}`,
         }}
       >
-        {persona.profile_image ? (
+        {avatarSrc ? (
           <img
-            src={persona.profile_image}
+            src={avatarSrc}
             alt={persona.name}
             className="w-full h-full rounded-full object-cover"
           />
         ) : (
           <span
-            className="text-4xl font-bold select-none"
+            className="flex items-center justify-center w-full h-full text-4xl font-bold select-none"
             style={{ color: chakra.hex }}
           >
             {persona.monogram}
           </span>
         )}
-      </div>
+        {/* Hover overlay */}
+        <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Avatar crop modal */}
+      <AvatarCropModal
+        isOpen={cropOpen}
+        onClose={() => setCropOpen(false)}
+        onSave={handleAvatarSave}
+        currentImageUrl={avatarSrc}
+        accentColour={chakra.hex}
+      />
 
       {/* Name + tagline */}
       <div className="flex flex-col items-center gap-1 text-center">

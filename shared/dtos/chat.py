@@ -15,6 +15,7 @@ class ChatSessionDto(BaseModel):
     title: str | None = None
     disabled_tool_groups: list[str] = []
     reasoning_override: bool | None = None
+    pinned: bool = False
     created_at: datetime
     updated_at: datetime
 

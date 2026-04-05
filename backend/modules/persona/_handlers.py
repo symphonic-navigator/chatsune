@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import Response
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.llm import is_valid_provider
+from backend.modules.persona._avatar_store import AvatarStore
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
@@ -15,6 +17,14 @@ from shared.events.persona import (
     PersonaUpdatedEvent,
 )
 from shared.topics import Topics
+
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+_MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 MB
 
 router = APIRouter(prefix="/api/personas")
 
@@ -240,3 +250,120 @@ async def delete_persona(
     )
 
     return {"status": "ok"}
+
+
+def _avatar_store() -> AvatarStore:
+    return AvatarStore()
+
+
+@router.post("/{persona_id}/avatar")
+async def upload_avatar(
+    persona_id: str,
+    file: UploadFile,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    content_type = file.content_type or ""
+    if content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image type: {content_type}. "
+                   f"Allowed: {', '.join(_ALLOWED_IMAGE_TYPES)}",
+        )
+
+    data = await file.read()
+    if len(data) > _MAX_AVATAR_SIZE:
+        raise HTTPException(status_code=400, detail="Avatar must be under 5 MB")
+
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    store = _avatar_store()
+
+    # Delete old avatar if one exists
+    old_image = doc.get("profile_image")
+    if old_image:
+        store.delete(old_image)
+
+    extension = _ALLOWED_IMAGE_TYPES[content_type]
+    filename = store.save(data, extension)
+
+    updated = await repo.update_profile_image(persona_id, user["sub"], filename)
+    dto = PersonaRepository.to_dto(updated)
+
+    await event_bus.publish(
+        Topics.PERSONA_UPDATED,
+        PersonaUpdatedEvent(
+            persona_id=persona_id,
+            user_id=user["sub"],
+            persona=dto,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"persona:{persona_id}",
+        target_user_ids=[user["sub"]],
+    )
+
+    return dto
+
+
+@router.get("/{persona_id}/avatar")
+async def get_avatar(
+    persona_id: str,
+    user: dict = Depends(require_active_session),
+):
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    filename = doc.get("profile_image")
+    if not filename:
+        raise HTTPException(status_code=404, detail="No avatar set")
+
+    store = _avatar_store()
+    data = store.load(filename)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Avatar file not found")
+
+    # Derive content type from file extension
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    ext_to_mime = {v: k for k, v in _ALLOWED_IMAGE_TYPES.items()}
+    media_type = ext_to_mime.get(ext, "application/octet-stream")
+
+    return Response(content=data, media_type=media_type)
+
+
+@router.delete("/{persona_id}/avatar")
+async def delete_avatar(
+    persona_id: str,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    filename = doc.get("profile_image")
+    if filename:
+        store = _avatar_store()
+        store.delete(filename)
+
+    updated = await repo.update_profile_image(persona_id, user["sub"], None)
+    dto = PersonaRepository.to_dto(updated)
+
+    await event_bus.publish(
+        Topics.PERSONA_UPDATED,
+        PersonaUpdatedEvent(
+            persona_id=persona_id,
+            user_id=user["sub"],
+            persona=dto,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"persona:{persona_id}",
+        target_user_ids=[user["sub"]],
+    )
+
+    return dto

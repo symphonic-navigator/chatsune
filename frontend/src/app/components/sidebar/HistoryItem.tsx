@@ -21,9 +21,13 @@ interface HistoryItemProps {
   colourScheme?: ChakraColour
   onClick: (session: ChatSessionDto) => void
   onDelete: (session: ChatSessionDto) => void
+  onTogglePin?: (session: ChatSessionDto, pinned: boolean) => void
+  dragListeners?: Record<string, Function>
+  dragAttributes?: Record<string, unknown>
+  isDragging?: boolean
 }
 
-export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete }: HistoryItemProps) {
+export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete, onTogglePin, dragListeners, dragAttributes, isDragging }: HistoryItemProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -43,10 +47,23 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
 
   return (
     <div
-      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1 text-[12px] transition-colors
-        ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}`}
+      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[12px] transition-colors
+        ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}
+        ${isDragging ? "opacity-40" : ""}`}
       onClick={() => onClick(session)}
     >
+      {/* Drag handle — only visible on hover */}
+      {dragListeners && (
+        <span
+          className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all"
+          {...(dragListeners ?? {})}
+          {...(dragAttributes ?? {})}
+          onClick={(e) => e.stopPropagation()}
+        >
+          ⠿
+        </span>
+      )}
+
       {chakra && monogram && (
         <div
           className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
@@ -58,7 +75,6 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
           {monogram}
         </div>
       )}
-      {isPinned && <span className="flex-shrink-0 text-[11px]">📌</span>}
       <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
         <span className="truncate text-[13px]" title={session.title ?? undefined}>
           {session.title ?? formatSessionDate(session.updated_at)}
@@ -85,6 +101,21 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
           className="absolute right-2 top-8 z-50 w-40 rounded-lg border border-white/10 bg-elevated py-1 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Pin / Unpin */}
+          {onTogglePin && (
+            <button
+              type="button"
+              onClick={() => {
+                onTogglePin(session, !isPinned)
+                setMenuOpen(false)
+              }}
+              className="w-full px-3 py-1.5 text-left text-[13px] text-white/50 transition-colors hover:bg-white/6"
+            >
+              {isPinned ? "Unpin" : "Pin"}
+            </button>
+          )}
+
+          {/* Delete */}
           {confirmDelete ? (
             <button
               type="button"

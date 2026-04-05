@@ -5,6 +5,7 @@ import {
   DragOverlay,
   closestCenter,
   useDroppable,
+  useDraggable,
   type DragEndEvent,
   type DragStartEvent,
   type DragOverEvent,
@@ -20,8 +21,7 @@ import { NavRow } from "./NavRow"
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
-import { chatApi } from "../../../core/api/chat"
-import type { ChatSessionDto } from "../../../core/api/chat"
+import { chatApi, type ChatSessionDto } from "../../../core/api/chat"
 import type { UserModalTab } from "../user-modal/UserModal"
 
 interface SidebarProps {
@@ -38,6 +38,7 @@ interface SidebarProps {
   onOpenOverlay?: (personaId: string, tab?: string) => void
   onTogglePin?: (personaId: string, pinned: boolean) => void
   onReorder?: (orderedIds: string[]) => void
+  onToggleSessionPin?: (sessionId: string, pinned: boolean) => void
 }
 
 function IconBtn({
@@ -101,6 +102,24 @@ function SortablePersonaItem({
   )
 }
 
+function DraggableHistoryItem({
+  session,
+  ...rest
+}: Omit<React.ComponentProps<typeof HistoryItem>, "dragListeners" | "dragAttributes" | "isDragging">) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `session:${session.id}` })
+  return (
+    <div ref={setNodeRef}>
+      <HistoryItem
+        session={session}
+        dragListeners={listeners as unknown as Record<string, Function>}
+        dragAttributes={attributes as Record<string, unknown>}
+        isDragging={isDragging}
+        {...rest}
+      />
+    </div>
+  )
+}
+
 export function Sidebar({
   personas,
   sessions,
@@ -115,6 +134,7 @@ export function Sidebar({
   onOpenOverlay,
   onTogglePin,
   onReorder,
+  onToggleSessionPin,
 }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
@@ -147,6 +167,7 @@ export function Sidebar({
   }
 
   const [dragActiveId, setDragActiveId] = useState<string | null>(null)
+  const [historyDragActiveId, setHistoryDragActiveId] = useState<string | null>(null)
 
   const pinnedPersonas = personas.filter((p) => p.pinned)
   const unpinnedPersonas = personas.filter((p) => !p.pinned)
@@ -235,6 +256,51 @@ export function Sidebar({
     onCloseModal()
     navigate(`/chat/${lastSession.persona_id}/${lastSession.id}`)
   }
+
+  const pinnedSessions = sessions.filter((s) => s.pinned)
+  const unpinnedSessions = sessions.filter((s) => !s.pinned)
+
+  function handleToggleSessionPin(session: ChatSessionDto, pinned: boolean) {
+    onToggleSessionPin?.(session.id, pinned)
+  }
+
+  function handleHistoryDragStart(event: DragStartEvent) {
+    setHistoryDragActiveId(event.active.id as string)
+  }
+
+  function handleHistoryDragEnd(event: DragEndEvent) {
+    setHistoryDragActiveId(null)
+    const { active, over } = event
+    if (!over) return
+
+    const activeId = (active.id as string).replace("session:", "")
+    const overId = over.id as string
+
+    // Determine which zone it was dropped into
+    const session = sessions.find((s) => s.id === activeId)
+    if (!session) return
+
+    if (overId === "pinned-sessions-zone" && !session.pinned) {
+      onToggleSessionPin?.(activeId, true)
+    } else if (overId === "unpinned-sessions-zone" && session.pinned) {
+      onToggleSessionPin?.(activeId, false)
+    }
+    // If dropped on another session item, check which zone that item belongs to
+    else if (overId.startsWith("session:")) {
+      const targetId = overId.replace("session:", "")
+      const targetSession = sessions.find((s) => s.id === targetId)
+      if (targetSession) {
+        const targetPinned = targetSession.pinned
+        if (session.pinned !== targetPinned) {
+          onToggleSessionPin?.(activeId, targetPinned)
+        }
+      }
+    }
+  }
+
+  const historyDragActiveSession = historyDragActiveId
+    ? sessions.find((s) => s.id === historyDragActiveId.replace("session:", ""))
+    : null
 
   async function handleDeleteSession(session: ChatSessionDto) {
     const wasActive = session.id === activeSessionId
@@ -563,26 +629,72 @@ export function Sidebar({
           actions={null}
         />
 
-        <div className="mt-0.5 pb-2">
-          {sessions.map((s) => {
-            const persona = personas.find((p) => p.id === s.persona_id)
-            return (
-              <HistoryItem
-                key={s.id}
-                session={s}
-                isPinned={false}
-                isActive={s.id === activeSessionId}
-                monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                colourScheme={persona?.colour_scheme}
-                onClick={handleSessionClick}
-                onDelete={handleDeleteSession}
-              />
-            )
-          })}
-          {sessions.length === 0 && (
-            <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
-          )}
-        </div>
+        <DndContext
+          collisionDetection={pointerWithin}
+          onDragStart={handleHistoryDragStart}
+          onDragEnd={handleHistoryDragEnd}
+        >
+          <div className="mt-0.5 pb-2">
+            {/* Pinned sessions */}
+            <DroppableZone id="pinned-sessions-zone">
+              <div className="min-h-[4px]">
+                {pinnedSessions.map((s) => {
+                  const persona = personas.find((p) => p.id === s.persona_id)
+                  return (
+                    <DraggableHistoryItem
+                      key={s.id}
+                      session={s}
+                      isPinned={true}
+                      isActive={s.id === activeSessionId}
+                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                      colourScheme={persona?.colour_scheme}
+                      onClick={handleSessionClick}
+                      onDelete={handleDeleteSession}
+                      onTogglePin={handleToggleSessionPin}
+                    />
+                  )
+                })}
+              </div>
+            </DroppableZone>
+
+            {pinnedSessions.length > 0 && <div className="mx-3 my-1 h-px bg-white/4" />}
+
+            {/* Unpinned sessions */}
+            <DroppableZone id="unpinned-sessions-zone">
+              <div className="min-h-[4px]">
+                {unpinnedSessions.map((s) => {
+                  const persona = personas.find((p) => p.id === s.persona_id)
+                  return (
+                    <DraggableHistoryItem
+                      key={s.id}
+                      session={s}
+                      isPinned={false}
+                      isActive={s.id === activeSessionId}
+                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                      colourScheme={persona?.colour_scheme}
+                      onClick={handleSessionClick}
+                      onDelete={handleDeleteSession}
+                      onTogglePin={handleToggleSessionPin}
+                    />
+                  )
+                })}
+              </div>
+            </DroppableZone>
+
+            {sessions.length === 0 && (
+              <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
+            )}
+          </div>
+
+          {/* History drag overlay */}
+          <DragOverlay>
+            {historyDragActiveSession ? (
+              <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
+                {historyDragActiveSession.title ?? 'Untitled session'}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
 
       </div>
 

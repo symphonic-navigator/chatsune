@@ -3,6 +3,7 @@ import { Outlet, useMatch, useNavigate } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
+import { chatApi } from "../../core/api/chat"
 import { useAuthStore } from "../../core/store/authStore"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import { useEventBus } from "../../core/hooks/useEventBus"
@@ -22,7 +23,7 @@ export default function AppLayout() {
   const navigate = useNavigate()
 
   const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()
-  const { sessions } = useChatSessions()
+  const { sessions, updateSession: updateChatSession } = useChatSessions()
   const user = useAuthStore((s) => s.user)
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
 
@@ -57,6 +58,8 @@ export default function AppLayout() {
 
   function closeModal() {
     setModalTab(null)
+    setAdminTab(null)
+    setPersonaOverlay(null)
   }
 
   // Admin modal state
@@ -175,9 +178,13 @@ export default function AppLayout() {
         onOpenOverlay={(personaId, tab) => openPersonaOverlay(personaId, (tab as PersonaOverlayTab) ?? "overview")}
         onTogglePin={(personaId, pinned) => updatePersona(personaId, { pinned })}
         onReorder={reorderPersonas}
+        onToggleSessionPin={async (sessionId, pinned) => {
+          updateChatSession(sessionId, { pinned })
+          try { await chatApi.updateSessionPinned(sessionId, pinned) } catch { /* event-driven */ }
+        }}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <Topbar personas={personas} />
+        <Topbar personas={personas} onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")} />
         <main className="relative flex-1 overflow-auto bg-surface">
           <Outlet context={{ openPersonaOverlay }} />
           {modalTab !== null && (

@@ -48,7 +48,7 @@ class ChatRepository:
             }},
             {"$match": {"_msgs": {"$ne": []}}},
             {"$unset": "_msgs"},
-            {"$sort": {"updated_at": -1}},
+            {"$sort": {"pinned": -1, "updated_at": -1}},
             {"$limit": 200},
         ]
         return await self._sessions.aggregate(pipeline).to_list(length=200)
@@ -66,6 +66,15 @@ class ChatRepository:
         await self._sessions.update_one(
             {"_id": session_id},
             {"$set": {"title": title, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
+    async def update_session_pinned(self, session_id: str, pinned: bool) -> dict | None:
+        """Toggle the pinned status of a chat session."""
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"pinned": pinned, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
 
@@ -195,6 +204,7 @@ class ChatRepository:
             title=doc.get("title"),
             disabled_tool_groups=doc.get("disabled_tool_groups", []),
             reasoning_override=doc.get("reasoning_override"),
+            pinned=doc.get("pinned", False),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

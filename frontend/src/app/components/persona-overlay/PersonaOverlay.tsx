@@ -216,7 +216,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}
           {activeTab === 'knowledge' && !isCreating && <KnowledgeTab persona={resolved} chakra={chakra} />}
           {activeTab === 'memories' && !isCreating && <MemoriesTab persona={resolved} chakra={chakra} />}
-          {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} onClose={onClose} />}
         </div>
       </div>
     </>

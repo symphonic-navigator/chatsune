@@ -72,6 +72,17 @@ class PersonaRepository:
             return None
         return await self.find_by_id(persona_id, user_id)
 
+    async def update_profile_image(
+        self, persona_id: str, user_id: str, profile_image: str | None,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        result = await self._collection.find_one_and_update(
+            {"_id": persona_id, "user_id": user_id},
+            {"$set": {"profile_image": profile_image, "updated_at": now}},
+            return_document=True,
+        )
+        return result
+
     async def delete(self, persona_id: str, user_id: str) -> bool:
         result = await self._collection.delete_one(
             {"_id": persona_id, "user_id": user_id}

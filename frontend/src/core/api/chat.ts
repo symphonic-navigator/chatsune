@@ -10,6 +10,7 @@ interface ChatSessionDto {
   title: string | null
   disabled_tool_groups: string[]
   reasoning_override: boolean | null
+  pinned: boolean
   created_at: string
   updated_at: string
 }
@@ -74,6 +75,9 @@ export const chatApi = {
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/tools`, {
       disabled_tool_groups: disabledToolGroups,
     }),
+
+  updateSessionPinned: (sessionId: string, pinned: boolean) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),
 
   listToolGroups: () =>
     api.get<ToolGroupDto[]>("/api/chat/tools"),
