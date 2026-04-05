@@ -26,16 +26,22 @@ export function useAutoScroll(isStreaming: boolean) {
     if (!isStreaming) return
     const interval = setInterval(() => {
       if (isNearBottomRef.current && containerRef.current) {
-        containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' })
+        containerRef.current.scrollTop = containerRef.current.scrollHeight
       }
     }, 100)
     return () => clearInterval(interval)
   }, [isStreaming])
 
   const scrollToBottom = useCallback(() => {
-    // Use requestAnimationFrame to ensure DOM has rendered before scrolling
+    const el = containerRef.current
+    if (!el) return
+    // Instant snap — smooth scrolling can undershoot when content height
+    // changes during the animation (fonts loading, syntax highlighting).
+    // Double-rAF ensures layout is complete before measuring scrollHeight.
     requestAnimationFrame(() => {
-      containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight, behavior: 'smooth' })
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+      })
     })
   }, [])
 
