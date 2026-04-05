@@ -30,6 +30,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     persona.model_unique_id ? persona.model_unique_id.split(':')[0] : ''
   )
   const [canReason, setCanReason] = useState(persona.model_unique_id !== '')
+  const [canUseTools, setCanUseTools] = useState(true)
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
 
@@ -72,11 +73,13 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     display_name: string
     provider_id: string
     supports_reasoning: boolean
+    supports_tool_calls: boolean
   }) {
     setModelUniqueId(model.unique_id)
     setModelDisplayName(model.display_name)
     setModelProvider(model.provider_id)
     setCanReason(model.supports_reasoning)
+    setCanUseTools(model.supports_tool_calls)
     if (!model.supports_reasoning) {
       setReasoningEnabled(false)
     }
@@ -148,6 +151,23 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
               <span className="text-[13px] text-white/30 italic">Select a model...</span>
             )}
           </button>
+          {modelUniqueId && !canUseTools && (
+            <div
+              className="mt-1.5 flex items-center gap-1.5 rounded px-2 py-1 text-[11px]"
+              style={{
+                background: 'rgba(250, 179, 135, 0.08)',
+                border: '1px solid rgba(250, 179, 135, 0.2)',
+                color: 'rgba(250, 179, 135, 0.85)',
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              This model does not support tool calls (web search, etc.)
+            </div>
+          )}
         </div>
 
         {/* Chakra colour picker */}

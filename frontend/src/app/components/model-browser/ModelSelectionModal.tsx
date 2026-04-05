@@ -13,6 +13,7 @@ interface ModelSelectionModalProps {
     display_name: string
     provider_id: string
     supports_reasoning: boolean
+    supports_tool_calls: boolean
   }) => void
   onClose: () => void
 }
@@ -49,6 +50,7 @@ export function ModelSelectionModal({
       display_name: model.display_name,
       provider_id: model.provider_id,
       supports_reasoning: model.supports_reasoning,
+      supports_tool_calls: model.supports_tool_calls,
     })
   }
 

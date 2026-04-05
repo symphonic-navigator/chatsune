@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
+import { llmApi } from '../../core/api/llm'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
 import { useChatStream } from './useChatStream'
@@ -22,6 +23,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
+  const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const resolvingSession = useRef(false)
 
   useEffect(() => {
@@ -96,6 +98,19 @@ export function ChatView({ persona }: ChatViewProps) {
       .then((session) => {
         useChatStore.getState().setSessionTitle(session.title)
         useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
+
+        // Check if the model supports tool calls
+        const uid = session.model_unique_id
+        if (uid && uid.includes(':')) {
+          const providerId = uid.split(':')[0]
+          const modelSlug = uid.split(':').slice(1).join(':')
+          llmApi.listModels(providerId)
+            .then((models) => {
+              const model = models.find((m) => m.model_id === modelSlug)
+              setModelSupportsTools(model?.supports_tool_calls ?? false)
+            })
+            .catch(() => setModelSupportsTools(true))
+        }
       })
       .catch(() => {})
   }, [sessionId, scrollToBottom])
@@ -203,6 +218,7 @@ export function ChatView({ persona }: ChatViewProps) {
             disabledToolGroups={disabledToolGroups}
             onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
             disabled={isStreaming}
+            modelSupportsTools={modelSupportsTools}
           />
         ) : undefined}
       />
