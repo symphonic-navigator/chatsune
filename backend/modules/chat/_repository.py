@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from shared.dtos.chat import ChatMessageDto, ChatSessionDto
+from shared.dtos.chat import ChatMessageDto, ChatSessionDto, WebSearchContextItemDto
 
 
 class ChatRepository:
@@ -54,6 +54,16 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def update_session_disabled_tool_groups(
+        self, session_id: str, disabled_tool_groups: list[str],
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"disabled_tool_groups": disabled_tool_groups, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
     async def delete_session(self, session_id: str, user_id: str) -> bool:
         result = await self._sessions.delete_one({"_id": session_id, "user_id": user_id})
         if result.deleted_count > 0:
@@ -68,6 +78,7 @@ class ChatRepository:
         content: str,
         token_count: int,
         thinking: str | None = None,
+        web_search_context: list[dict] | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -79,6 +90,8 @@ class ChatRepository:
             "token_count": token_count,
             "created_at": now,
         }
+        if web_search_context:
+            doc["web_search_context"] = web_search_context
         await self._messages.insert_one(doc)
         return doc
 
@@ -127,12 +140,19 @@ class ChatRepository:
             model_unique_id=doc["model_unique_id"],
             state=doc["state"],
             title=doc.get("title"),
+            disabled_tool_groups=doc.get("disabled_tool_groups", []),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
 
     @staticmethod
     def message_to_dto(doc: dict) -> ChatMessageDto:
+        raw_ctx = doc.get("web_search_context")
+        ws_ctx = (
+            [WebSearchContextItemDto(**item) for item in raw_ctx]
+            if raw_ctx
+            else None
+        )
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -140,5 +160,6 @@ class ChatRepository:
             content=doc["content"],
             thinking=doc.get("thinking"),
             token_count=doc["token_count"],
+            web_search_context=ws_ctx,
             created_at=doc["created_at"],
         )

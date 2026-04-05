@@ -56,6 +56,10 @@ chatsune/
         _adapters/
           _base.py
           _ollama_cloud.py
+      tools/                 ← tool registry, group toggling, executor dispatch
+        __init__.py
+        _registry.py
+        _executors.py
     ws/
       manager.py             ← WebSocket connection manager
       router.py              ← WebSocket event routing
@@ -65,6 +69,7 @@ chatsune/
       chat.py
       persona.py
       websearch.py
+      tools.py
       memory.py
       journal.py
     events/

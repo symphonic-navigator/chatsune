@@ -95,3 +95,41 @@ class ChatSessionDeletedEvent(BaseModel):
     session_id: str
     correlation_id: str
     timestamp: datetime
+
+
+class ChatToolCallStartedEvent(BaseModel):
+    type: str = "chat.tool_call.started"
+    correlation_id: str
+    tool_call_id: str
+    tool_name: str
+    arguments: dict
+    timestamp: datetime
+
+
+class ChatToolCallCompletedEvent(BaseModel):
+    type: str = "chat.tool_call.completed"
+    correlation_id: str
+    tool_call_id: str
+    tool_name: str
+    success: bool
+    timestamp: datetime
+
+
+class WebSearchContextItem(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class ChatWebSearchContextEvent(BaseModel):
+    type: str = "chat.web_search.context"
+    correlation_id: str
+    items: list[WebSearchContextItem]
+
+
+class ChatSessionToolsUpdatedEvent(BaseModel):
+    type: str = "chat.session.tools_updated"
+    session_id: str
+    disabled_tool_groups: list[str]
+    correlation_id: str
+    timestamp: datetime

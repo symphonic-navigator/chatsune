@@ -22,6 +22,7 @@ from backend.modules.llm import (
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
+from backend.modules.tools import execute_tool, get_active_definitions
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -147,11 +148,16 @@ async def _run_inference(
     # Get persona settings for temperature/reasoning
     persona = await get_persona(persona_id, user_id) if persona_id else None
 
+    # Resolve active tool definitions based on session toggle state
+    disabled_tool_groups = session.get("disabled_tool_groups", [])
+    active_tools = get_active_definitions(disabled_tool_groups) or None
+
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
         temperature=persona.get("temperature") if persona else None,
         reasoning_enabled=persona.get("reasoning_enabled", False) if persona else False,
+        tools=active_tools,
     )
 
     # Set session state to streaming
@@ -176,10 +182,19 @@ async def _run_inference(
             correlation_id=correlation_id,
         )
 
-    def stream_fn():
-        return llm_stream_completion(user_id, provider_id, request)
+    def stream_fn(extra_messages=None):
+        req = request
+        if extra_messages:
+            extended = list(request.messages) + extra_messages
+            req = request.model_copy(update={"messages": extended})
+        return llm_stream_completion(user_id, provider_id, req)
 
-    async def save_fn(content: str, thinking: str | None, usage: dict | None) -> None:
+    async def save_fn(
+        content: str,
+        thinking: str | None,
+        usage: dict | None,
+        web_search_context: list[dict] | None = None,
+    ) -> None:
         token_count = count_tokens(content)
         await repo.save_message(
             session_id,
@@ -187,6 +202,7 @@ async def _run_inference(
             content=content,
             token_count=token_count,
             thinking=thinking,
+            web_search_context=web_search_context,
         )
         await repo.update_session_state(session_id, "idle")
 
@@ -225,6 +241,7 @@ async def _run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
+            tool_executor_fn=execute_tool if active_tools else None,
         )
     except LlmCredentialNotFoundError:
         now = datetime.now(timezone.utc)

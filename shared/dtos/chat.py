@@ -11,8 +11,15 @@ class ChatSessionDto(BaseModel):
     model_unique_id: str
     state: Literal["idle", "streaming", "requires_action"]
     title: str | None = None
+    disabled_tool_groups: list[str] = []
     created_at: datetime
     updated_at: datetime
+
+
+class WebSearchContextItemDto(BaseModel):
+    title: str
+    url: str
+    snippet: str
 
 
 class ChatMessageDto(BaseModel):
@@ -22,4 +29,5 @@ class ChatMessageDto(BaseModel):
     content: str
     thinking: str | None = None
     token_count: int
+    web_search_context: list[WebSearchContextItemDto] | None = None
     created_at: datetime

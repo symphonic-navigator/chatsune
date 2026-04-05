@@ -10,10 +10,12 @@ from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import get_event_bus
+from backend.modules.tools import get_all_groups
 from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
     ChatSessionTitleUpdatedEvent,
+    ChatSessionToolsUpdatedEvent,
 )
 from shared.topics import Topics
 
@@ -199,3 +201,48 @@ async def generate_title(
     )
 
     return {"status": "submitted"}
+
+
+class UpdateSessionToolsRequest(BaseModel):
+    disabled_tool_groups: list[str] = []
+
+
+@router.patch("/sessions/{session_id}/tools")
+async def update_session_tools(
+    session_id: str,
+    body: UpdateSessionToolsRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await repo.update_session_disabled_tool_groups(
+        session_id, body.disabled_tool_groups,
+    )
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_TOOLS_UPDATED,
+        ChatSessionToolsUpdatedEvent(
+            session_id=session_id,
+            disabled_tool_groups=body.disabled_tool_groups,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
+
+    doc = await repo.get_session(session_id, user["sub"])
+    return ChatRepository.session_to_dto(doc)
+
+
+@router.get("/tools")
+async def list_tool_groups(user: dict = Depends(require_active_session)):
+    """Return all available tool groups for the frontend."""
+    return get_all_groups()

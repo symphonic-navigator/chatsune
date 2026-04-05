@@ -243,3 +243,43 @@ boundary prevents scope creep in the LLM module.
 The LLM module exposes `get_api_key(user_id, provider_id) -> str` in its public
 API specifically for this use case. The websearch module imports it via the
 `__init__.py` boundary — no internal imports.
+
+---
+
+## INS-010 — Tool Registry with Group-Based Session Toggling
+
+**Decision:** Server-side and client-side tools are registered in a central
+`ToolGroup` registry (`backend/modules/tools/`). Each group bundles related tool
+definitions under a single toggle (e.g. "Web Search" controls both `web_search`
+and `web_fetch`). Sessions store `disabled_tool_groups: list[str]` — empty by
+default, meaning all tools start enabled.
+
+**Why group-based:**
+Individual tool toggles would clutter the UI and confuse users. `web_search` and
+`web_fetch` are logically one feature — toggling them independently makes no sense.
+Groups map to user-facing concepts ("Web Search", "Code Execution"), not
+implementation details.
+
+**Why disabled-list (not enabled-list):**
+New tools auto-activate in all existing sessions without migration. When a new
+`ToolGroup` is registered, `disabled_tool_groups` doesn't contain it, so it is
+active by default. This is the desired behaviour: users opt *out*, not in.
+
+**ToolGroup.toggleable flag:**
+Not every tool group should appear in the toggle UI. Some tools are always-on
+(e.g. a future "artefact" tool that the model uses to structure output). The
+`toggleable: bool` flag controls this — non-toggleable groups are always included
+in the tool definitions regardless of the session's disabled list.
+
+**ToolGroup.side flag:**
+`"server"` tools have an executor and are dispatched by the InferenceRunner.
+`"client"` tools have no server-side executor — their definitions are sent to the
+model, but tool calls are forwarded to the frontend for execution (e.g. Pyodide
+code execution in the browser). This distinction is declared at registration time
+so the tool loop knows whether to dispatch locally or forward.
+
+**Tool-call messages are ephemeral:**
+Intermediate tool-call/result messages exist only during the tool loop. They are
+NOT persisted in `chat_messages`. Only the final assistant response is saved,
+alongside lightweight metadata (`web_search_context`) for citation display. This
+prevents context bloat when sessions are reopened — a lesson from Prototype 2.
