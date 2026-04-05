@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; echo \"$f\" | grep -qE '\\.(py)$' && echo \"$f\" | grep -qE '/(backend|shared)/' && uv run python -m py_compile \"$f\" 2>&1 | head -20 || true; }",
+            "timeout": 15,
+            "statusMessage": "Checking Python syntax..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath' | { read -r f; echo \"$f\" | grep -qE '\\.(tsx?|jsx?)$' && echo \"$f\" | grep -q '/frontend/' && cd frontend && pnpm tsc --noEmit 2>&1 | head -20 || true; }",
+            "timeout": 30,
+            "statusMessage": "Checking TypeScript types..."
+          }
+        ]
+      }
+    ]
+  }
+}
