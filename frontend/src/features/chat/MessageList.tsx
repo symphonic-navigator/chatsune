@@ -1,15 +1,26 @@
 import { type RefObject } from 'react'
-import type { ChatMessageDto } from '../../core/api/chat'
+import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import type { Highlighter } from 'shiki'
 import { UserBubble } from './UserBubble'
 import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
 import { RegenerateButton } from './RegenerateButton'
+import { WebSearchPills } from './WebSearchPills'
+import { ToolCallActivity } from './ToolCallActivity'
+
+interface ActiveToolCall {
+  id: string
+  toolName: string
+  arguments: Record<string, unknown>
+  status: 'running' | 'done'
+}
 
 interface MessageListProps {
   messages: ChatMessageDto[]
   streamingContent: string
   streamingThinking: string
+  streamingWebSearchContext: WebSearchContextItem[]
+  activeToolCalls: ActiveToolCall[]
   isStreaming: boolean
   accentColour: string
   highlighter: Highlighter | null
@@ -21,7 +32,8 @@ interface MessageListProps {
 }
 
 export function MessageList({
-  messages, streamingContent, streamingThinking, isStreaming, accentColour, highlighter,
+  messages, streamingContent, streamingThinking, streamingWebSearchContext, activeToolCalls,
+  isStreaming, accentColour, highlighter,
   containerRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
@@ -54,6 +66,9 @@ export function MessageList({
           if (msg.role === 'assistant') {
             return (
               <div key={msg.id}>
+                {msg.web_search_context && msg.web_search_context.length > 0 && (
+                  <WebSearchPills items={msg.web_search_context} />
+                )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter} />
                 {canRegenerate && i === lastAssistantIdx && (
@@ -67,11 +82,17 @@ export function MessageList({
 
         {isStreaming && (
           <div>
+            {activeToolCalls.filter((tc) => tc.status === 'running').map((tc) => (
+              <ToolCallActivity key={tc.id} toolName={tc.toolName} arguments={tc.arguments} />
+            ))}
+            {streamingWebSearchContext.length > 0 && (
+              <WebSearchPills items={streamingWebSearchContext} />
+            )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
                 isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
             ) : (
-              <StreamingIndicator accentColour={accentColour} />
+              activeToolCalls.length === 0 && <StreamingIndicator accentColour={accentColour} />
             )}
           </div>
         )}

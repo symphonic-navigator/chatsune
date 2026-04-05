@@ -29,6 +29,27 @@ export function useChatStream(sessionId: string | null) {
           store().appendStreamingThinking(p.delta as string)
           break
         }
+        case Topics.CHAT_TOOL_CALL_STARTED: {
+          if (event.correlation_id !== store().correlationId) return
+          store().addToolCall({
+            id: p.tool_call_id as string,
+            toolName: p.tool_name as string,
+            arguments: p.arguments as Record<string, unknown>,
+            status: 'running',
+          })
+          break
+        }
+        case Topics.CHAT_TOOL_CALL_COMPLETED: {
+          if (event.correlation_id !== store().correlationId) return
+          store().completeToolCall(p.tool_call_id as string)
+          break
+        }
+        case Topics.CHAT_WEB_SEARCH_CONTEXT: {
+          if (event.correlation_id !== store().correlationId) return
+          const items = p.items as Array<{ title: string; url: string; snippet: string }>
+          store().setStreamingWebSearchContext(items)
+          break
+        }
         case Topics.CHAT_STREAM_ENDED: {
           if (p.session_id !== sessionId) return
           const status = p.status as string
@@ -38,6 +59,7 @@ export function useChatStream(sessionId: string | null) {
           if (status === 'completed') {
             const content = store().streamingContent
             const thinking = store().streamingThinking
+            const webSearchContext = store().streamingWebSearchContext
             if (content) {
               store().finishStreaming(
                 {
@@ -47,6 +69,7 @@ export function useChatStream(sessionId: string | null) {
                   content,
                   thinking: thinking || null,
                   token_count: 0,
+                  web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
                   created_at: new Date().toISOString(),
                 },
                 contextStatus,

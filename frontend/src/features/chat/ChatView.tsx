@@ -61,6 +61,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const correlationId = useChatStore((s) => s.correlationId)
   const streamingContent = useChatStore((s) => s.streamingContent)
   const streamingThinking = useChatStore((s) => s.streamingThinking)
+  const streamingWebSearchContext = useChatStore((s) => s.streamingWebSearchContext)
+  const activeToolCalls = useChatStore((s) => s.activeToolCalls)
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const error = useChatStore((s) => s.error)
@@ -107,6 +109,7 @@ export function ChatView({ persona }: ChatViewProps) {
         content: text,
         thinking: null,
         token_count: 0,
+        web_search_context: null,
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
@@ -183,6 +186,7 @@ export function ChatView({ persona }: ChatViewProps) {
       ) : (
         <MessageList
           messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
+          streamingWebSearchContext={streamingWebSearchContext} activeToolCalls={activeToolCalls}
           isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
           containerRef={containerRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
           onEdit={handleEdit} onRegenerate={handleRegenerate}

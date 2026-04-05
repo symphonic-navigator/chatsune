@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatMessageDto } from '../api/chat'
+import type { ChatMessageDto, WebSearchContextItem } from '../api/chat'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -9,12 +9,21 @@ interface ChatError {
   userMessage: string
 }
 
+interface ActiveToolCall {
+  id: string
+  toolName: string
+  arguments: Record<string, unknown>
+  status: 'running' | 'done'
+}
+
 interface ChatState {
   messages: ChatMessageDto[]
   isStreaming: boolean
   correlationId: string | null
   streamingContent: string
   streamingThinking: string
+  streamingWebSearchContext: WebSearchContextItem[]
+  activeToolCalls: ActiveToolCall[]
   contextStatus: ContextStatus
   contextFillPercentage: number
   error: ChatError | null
@@ -24,6 +33,9 @@ interface ChatState {
   startStreaming: (correlationId: string) => void
   appendStreamingContent: (delta: string) => void
   appendStreamingThinking: (delta: string) => void
+  setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
+  addToolCall: (tc: ActiveToolCall) => void
+  completeToolCall: (toolCallId: string) => void
   finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number) => void
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
@@ -41,6 +53,8 @@ const INITIAL_STATE = {
   correlationId: null as string | null,
   streamingContent: '',
   streamingThinking: '',
+  streamingWebSearchContext: [] as WebSearchContextItem[],
+  activeToolCalls: [] as ActiveToolCall[],
   contextStatus: 'green' as ContextStatus,
   contextFillPercentage: 0,
   error: null as ChatError | null,
@@ -53,18 +67,35 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setMessages: (messages) => set({ messages }),
   appendMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
   startStreaming: (correlationId) =>
-    set({ isStreaming: true, correlationId, streamingContent: '', streamingThinking: '', error: null }),
+    set({
+      isStreaming: true, correlationId, streamingContent: '', streamingThinking: '',
+      streamingWebSearchContext: [], activeToolCalls: [], error: null,
+    }),
   appendStreamingContent: (delta) =>
     set((s) => ({ streamingContent: s.streamingContent + delta })),
   appendStreamingThinking: (delta) =>
     set((s) => ({ streamingThinking: s.streamingThinking + delta })),
+  setStreamingWebSearchContext: (items) =>
+    set({ streamingWebSearchContext: items }),
+  addToolCall: (tc) =>
+    set((s) => ({ activeToolCalls: [...s.activeToolCalls, tc] })),
+  completeToolCall: (toolCallId) =>
+    set((s) => ({
+      activeToolCalls: s.activeToolCalls.map((tc) =>
+        tc.id === toolCallId ? { ...tc, status: 'done' as const } : tc,
+      ),
+    })),
   finishStreaming: (finalMessage, contextStatus, fillPercentage) =>
     set((s) => ({
       isStreaming: false, correlationId: null, streamingContent: '', streamingThinking: '',
+      streamingWebSearchContext: [], activeToolCalls: [],
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
     })),
   cancelStreaming: () =>
-    set({ isStreaming: false, correlationId: null, streamingContent: '', streamingThinking: '' }),
+    set({
+      isStreaming: false, correlationId: null, streamingContent: '', streamingThinking: '',
+      streamingWebSearchContext: [], activeToolCalls: [],
+    }),
   truncateAfter: (messageId) =>
     set((s) => {
       const idx = s.messages.findIndex((m) => m.id === messageId)

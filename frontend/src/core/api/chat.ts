@@ -7,8 +7,15 @@ interface ChatSessionDto {
   model_unique_id: string
   state: "idle" | "streaming" | "requires_action"
   title: string | null
+  disabled_tool_groups: string[]
   created_at: string
   updated_at: string
+}
+
+interface WebSearchContextItem {
+  title: string
+  url: string
+  snippet: string
 }
 
 interface ChatMessageDto {
@@ -18,10 +25,19 @@ interface ChatMessageDto {
   content: string
   thinking: string | null
   token_count: number
+  web_search_context: WebSearchContextItem[] | null
   created_at: string
 }
 
-export type { ChatSessionDto, ChatMessageDto }
+interface ToolGroupDto {
+  id: string
+  display_name: string
+  description: string
+  side: "server" | "client"
+  toggleable: boolean
+}
+
+export type { ChatSessionDto, ChatMessageDto, WebSearchContextItem, ToolGroupDto }
 
 export const chatApi = {
   createSession: (personaId: string) =>
@@ -44,4 +60,12 @@ export const chatApi = {
 
   generateTitle: (sessionId: string) =>
     api.post<{ status: string }>(`/api/chat/sessions/${sessionId}/generate-title`),
+
+  updateSessionTools: (sessionId: string, disabledToolGroups: string[]) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/tools`, {
+      disabled_tool_groups: disabledToolGroups,
+    }),
+
+  listToolGroups: () =>
+    api.get<ToolGroupDto[]>("/api/chat/tools"),
 }
