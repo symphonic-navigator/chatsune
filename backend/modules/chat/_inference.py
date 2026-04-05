@@ -192,27 +192,35 @@ class InferenceRunner:
                         timestamp=datetime.now(timezone.utc),
                     ))
 
-                    # Capture web search context for metadata
-                    if tc.name == "web_search":
+                    # Capture web search/fetch context for metadata + pills
+                    if tc.name in ("web_search", "web_fetch"):
                         try:
                             parsed = json.loads(result_str)
-                            if isinstance(parsed, list):
-                                items = [
-                                    WebSearchContextItem(
-                                        title=r.get("title", ""),
-                                        url=r.get("url", ""),
-                                        snippet=r.get("snippet", ""),
-                                    )
-                                    for r in parsed
-                                ]
-                                web_search_context.extend(
-                                    {"title": i.title, "url": i.url, "snippet": i.snippet}
-                                    for i in items
-                                )
-                                await emit_fn(ChatWebSearchContextEvent(
-                                    correlation_id=correlation_id,
-                                    items=items,
-                                ))
+                            if tc.name == "web_search" and isinstance(parsed, list):
+                                for r in parsed:
+                                    web_search_context.append({
+                                        "title": r.get("title", ""),
+                                        "url": r.get("url", ""),
+                                        "snippet": r.get("snippet", ""),
+                                        "source_type": "search",
+                                    })
+                            elif tc.name == "web_fetch" and isinstance(parsed, dict):
+                                content = parsed.get("content", "")
+                                snippet = (content[:200] + "...") if len(content) > 200 else content
+                                web_search_context.append({
+                                    "title": parsed.get("title") or parsed.get("url", ""),
+                                    "url": parsed.get("url", ""),
+                                    "snippet": snippet,
+                                    "source_type": "fetch",
+                                })
+                            # Emit full accumulated list so frontend stays in sync
+                            await emit_fn(ChatWebSearchContextEvent(
+                                correlation_id=correlation_id,
+                                items=[
+                                    WebSearchContextItem(**ctx)
+                                    for ctx in web_search_context
+                                ],
+                            ))
                         except (json.JSONDecodeError, TypeError):
                             pass
 

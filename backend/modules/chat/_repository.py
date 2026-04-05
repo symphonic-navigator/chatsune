@@ -149,7 +149,15 @@ class ChatRepository:
     def message_to_dto(doc: dict) -> ChatMessageDto:
         raw_ctx = doc.get("web_search_context")
         ws_ctx = (
-            [WebSearchContextItemDto(**item) for item in raw_ctx]
+            [
+                WebSearchContextItemDto(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("snippet", ""),
+                    source_type=item.get("source_type", "search"),
+                )
+                for item in raw_ctx
+            ]
             if raw_ctx
             else None
         )

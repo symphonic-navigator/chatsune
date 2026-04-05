@@ -16,6 +16,7 @@ interface WebSearchContextItem {
   title: string
   url: string
   snippet: string
+  source_type?: "search" | "fetch"
 }
 
 interface ChatMessageDto {

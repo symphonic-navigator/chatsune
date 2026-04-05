@@ -20,6 +20,7 @@ class WebSearchContextItemDto(BaseModel):
     title: str
     url: str
     snippet: str
+    source_type: str = "search"   # "search" or "fetch"
 
 
 class ChatMessageDto(BaseModel):
