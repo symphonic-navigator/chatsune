@@ -4,10 +4,12 @@ interface ThinkingBubbleProps {
   content: string
   isStreaming: boolean
   accentColour: string
+  defaultExpanded?: boolean
+  onToggle?: (expanded: boolean) => void
 }
 
-export function ThinkingBubble({ content, isStreaming, accentColour }: ThinkingBubbleProps) {
-  const [isExpanded, setIsExpanded] = useState(true)
+export function ThinkingBubble({ content, isStreaming, accentColour, defaultExpanded = true, onToggle }: ThinkingBubbleProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const contentRef = useRef<HTMLDivElement>(null)
   const [measuredHeight, setMeasuredHeight] = useState<number>(0)
 
@@ -27,8 +29,14 @@ export function ThinkingBubble({ content, isStreaming, accentColour }: ThinkingB
   }, [])
 
   const toggle = useCallback(() => {
-    if (!isStreaming) setIsExpanded((prev) => !prev)
-  }, [isStreaming])
+    if (!isStreaming) {
+      setIsExpanded((prev) => {
+        const next = !prev
+        onToggle?.(next)
+        return next
+      })
+    }
+  }, [isStreaming, onToggle])
 
   if (!content && !isStreaming) return null
 

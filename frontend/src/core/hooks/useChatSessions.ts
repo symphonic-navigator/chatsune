@@ -36,6 +36,7 @@ export function useChatSessions() {
         state: "idle",
         title: (p.title as string) ?? null,
         disabled_tool_groups: [],
+        reasoning_override: null,
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
       }

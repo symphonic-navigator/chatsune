@@ -203,6 +203,29 @@ async def generate_title(
     return {"status": "submitted"}
 
 
+class UpdateSessionReasoningRequest(BaseModel):
+    reasoning_override: bool | None = None
+
+
+@router.patch("/sessions/{session_id}/reasoning")
+async def update_session_reasoning(
+    session_id: str,
+    body: UpdateSessionReasoningRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await repo.update_session_reasoning_override(
+        session_id, body.reasoning_override,
+    )
+
+    doc = await repo.get_session(session_id, user["sub"])
+    return ChatRepository.session_to_dto(doc)
+
+
 class UpdateSessionToolsRequest(BaseModel):
     disabled_tool_groups: list[str] = []
 

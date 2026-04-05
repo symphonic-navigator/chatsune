@@ -18,6 +18,7 @@ interface ActiveToolCall {
 
 interface ChatState {
   messages: ChatMessageDto[]
+  isWaitingForResponse: boolean
   isStreaming: boolean
   correlationId: string | null
   streamingContent: string
@@ -29,8 +30,10 @@ interface ChatState {
   error: ChatError | null
   sessionTitle: string | null
   disabledToolGroups: string[]
+  reasoningOverride: boolean | null
   setMessages: (messages: ChatMessageDto[]) => void
   appendMessage: (message: ChatMessageDto) => void
+  setWaitingForResponse: (waiting: boolean) => void
   startStreaming: (correlationId: string) => void
   appendStreamingContent: (delta: string) => void
   appendStreamingThinking: (delta: string) => void
@@ -46,11 +49,13 @@ interface ChatState {
   clearError: () => void
   setSessionTitle: (title: string | null) => void
   setDisabledToolGroups: (groups: string[]) => void
+  setReasoningOverride: (override: boolean | null) => void
   reset: () => void
 }
 
 const INITIAL_STATE = {
   messages: [] as ChatMessageDto[],
+  isWaitingForResponse: false,
   isStreaming: false,
   correlationId: null as string | null,
   streamingContent: '',
@@ -62,6 +67,7 @@ const INITIAL_STATE = {
   error: null as ChatError | null,
   sessionTitle: null as string | null,
   disabledToolGroups: [] as string[],
+  reasoningOverride: null as boolean | null,
 }
 
 export const useChatStore = create<ChatState>((set, _get) => ({
@@ -69,9 +75,11 @@ export const useChatStore = create<ChatState>((set, _get) => ({
 
   setMessages: (messages) => set({ messages }),
   appendMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
+  setWaitingForResponse: (waiting) => set({ isWaitingForResponse: waiting }),
   startStreaming: (correlationId) =>
     set({
-      isStreaming: true, correlationId, streamingContent: '', streamingThinking: '',
+      isWaitingForResponse: false, isStreaming: true, correlationId,
+      streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], activeToolCalls: [], error: null,
     }),
   appendStreamingContent: (delta) =>
@@ -90,13 +98,15 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     })),
   finishStreaming: (finalMessage, contextStatus, fillPercentage) =>
     set((s) => ({
-      isStreaming: false, correlationId: null, streamingContent: '', streamingThinking: '',
+      isWaitingForResponse: false, isStreaming: false, correlationId: null,
+      streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], activeToolCalls: [],
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
     })),
   cancelStreaming: () =>
     set({
-      isStreaming: false, correlationId: null, streamingContent: '', streamingThinking: '',
+      isWaitingForResponse: false, isStreaming: false, correlationId: null,
+      streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], activeToolCalls: [],
     }),
   truncateAfter: (messageId) =>
@@ -117,5 +127,6 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   clearError: () => set({ error: null }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
   setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
+  setReasoningOverride: (override) => set({ reasoningOverride: override }),
   reset: () => set({ ...INITIAL_STATE }),
 }))

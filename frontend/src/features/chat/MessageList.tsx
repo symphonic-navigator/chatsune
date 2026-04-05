@@ -1,4 +1,4 @@
-import { type RefObject } from 'react'
+import { type RefObject, useRef } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import type { Highlighter } from 'shiki'
 import { UserBubble } from './UserBubble'
@@ -21,6 +21,7 @@ interface MessageListProps {
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
   activeToolCalls: ActiveToolCall[]
+  isWaitingForResponse: boolean
   isStreaming: boolean
   accentColour: string
   highlighter: Highlighter | null
@@ -33,11 +34,12 @@ interface MessageListProps {
 
 export function MessageList({
   messages, streamingContent, streamingThinking, streamingWebSearchContext, activeToolCalls,
-  isStreaming, accentColour, highlighter,
+  isWaitingForResponse, isStreaming, accentColour, highlighter,
   containerRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
+  const thinkingExpandedRef = useRef(true)
 
   const scrollbarStyle = `
     .chat-scroll::-webkit-scrollbar { width: 4px; }
@@ -50,7 +52,7 @@ export function MessageList({
     <div ref={containerRef} className="chat-scroll flex-1 overflow-y-auto px-4 py-6">
       <style>{scrollbarStyle}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
-        {messages.length === 0 && !isStreaming && (
+        {messages.length === 0 && !isStreaming && !isWaitingForResponse && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-[13px] text-white/20">Start a conversation</p>
           </div>
@@ -70,7 +72,9 @@ export function MessageList({
                   <WebSearchPills items={msg.web_search_context} />
                 )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
-                  isStreaming={false} accentColour={accentColour} highlighter={highlighter} />
+                  isStreaming={false} accentColour={accentColour} highlighter={highlighter}
+                  thinkingDefaultExpanded={thinkingExpandedRef.current}
+                  onThinkingToggle={(v) => { thinkingExpandedRef.current = v }} />
                 {canRegenerate && i === lastAssistantIdx && (
                   <RegenerateButton onClick={onRegenerate} disabled={isStreaming} />
                 )}
@@ -79,6 +83,10 @@ export function MessageList({
           }
           return null
         })}
+
+        {isWaitingForResponse && !isStreaming && (
+          <StreamingIndicator accentColour={accentColour} />
+        )}
 
         {isStreaming && (
           <div>
@@ -90,7 +98,9 @@ export function MessageList({
             )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
-                isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
+                isStreaming={true} accentColour={accentColour} highlighter={highlighter}
+                thinkingDefaultExpanded={thinkingExpandedRef.current}
+                onThinkingToggle={(v) => { thinkingExpandedRef.current = v }} />
             ) : (
               activeToolCalls.length === 0 && <StreamingIndicator accentColour={accentColour} />
             )}

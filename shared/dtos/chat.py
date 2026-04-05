@@ -12,6 +12,7 @@ class ChatSessionDto(BaseModel):
     state: Literal["idle", "streaming", "requires_action"]
     title: str | None = None
     disabled_tool_groups: list[str] = []
+    reasoning_override: bool | None = None
     created_at: datetime
     updated_at: datetime
 

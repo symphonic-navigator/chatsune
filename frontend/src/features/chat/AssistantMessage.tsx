@@ -8,9 +8,10 @@ import type { Highlighter } from 'shiki'
 interface AssistantMessageProps {
   content: string; thinking: string | null; isStreaming: boolean;
   accentColour: string; highlighter: Highlighter | null;
+  thinkingDefaultExpanded?: boolean; onThinkingToggle?: (expanded: boolean) => void;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, thinkingDefaultExpanded, onThinkingToggle }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
 
@@ -26,7 +27,8 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
     <div className="group animate-message-entrance"
       onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       {thinking && (
-        <ThinkingBubble content={thinking} isStreaming={isStreaming && !content} accentColour={accentColour} />
+        <ThinkingBubble content={thinking} isStreaming={isStreaming && !content} accentColour={accentColour}
+          defaultExpanded={thinkingDefaultExpanded} onToggle={onThinkingToggle} />
       )}
       <div className="relative max-w-[85%]">
         {isHovered && !isStreaming && content && (

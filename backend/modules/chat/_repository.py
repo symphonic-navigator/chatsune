@@ -54,6 +54,16 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def update_session_reasoning_override(
+        self, session_id: str, reasoning_override: bool | None,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"reasoning_override": reasoning_override, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
     async def update_session_disabled_tool_groups(
         self, session_id: str, disabled_tool_groups: list[str],
     ) -> dict | None:
@@ -141,6 +151,7 @@ class ChatRepository:
             state=doc["state"],
             title=doc.get("title"),
             disabled_tool_groups=doc.get("disabled_tool_groups", []),
+            reasoning_override=doc.get("reasoning_override"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

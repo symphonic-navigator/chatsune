@@ -152,11 +152,18 @@ async def _run_inference(
     disabled_tool_groups = session.get("disabled_tool_groups", [])
     active_tools = get_active_definitions(disabled_tool_groups) or None
 
+    # Resolve reasoning: session override > persona default
+    reasoning_override = session.get("reasoning_override")
+    if reasoning_override is not None:
+        reasoning_enabled = reasoning_override
+    else:
+        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
+
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
         temperature=persona.get("temperature") if persona else None,
-        reasoning_enabled=persona.get("reasoning_enabled", False) if persona else False,
+        reasoning_enabled=reasoning_enabled,
         tools=active_tools,
     )
 

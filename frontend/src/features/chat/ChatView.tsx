@@ -24,6 +24,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
+  const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
   const resolvingSession = useRef(false)
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [searchParams, personaId, sessionId, navigate])
 
   const messages = useChatStore((s) => s.messages)
+  const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const correlationId = useChatStore((s) => s.correlationId)
   const streamingContent = useChatStore((s) => s.streamingContent)
@@ -71,6 +73,10 @@ export function ChatView({ persona }: ChatViewProps) {
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
+  const reasoningOverride = useChatStore((s) => s.reasoningOverride)
+
+  const personaReasoningDefault = persona?.reasoning_enabled ?? false
+  const effectiveReasoning = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
 
   const highlighter = useHighlighter()
   const { containerRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
@@ -98,6 +104,7 @@ export function ChatView({ persona }: ChatViewProps) {
       .then((session) => {
         useChatStore.getState().setSessionTitle(session.title)
         useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
+        useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
 
         // Check if the model supports tool calls
         const uid = session.model_unique_id
@@ -108,6 +115,7 @@ export function ChatView({ persona }: ChatViewProps) {
             .then((models) => {
               const model = models.find((m) => m.model_id === modelSlug)
               setModelSupportsTools(model?.supports_tool_calls ?? false)
+              setModelSupportsReasoning(model?.supports_reasoning ?? false)
             })
             .catch(() => setModelSupportsTools(true))
         }
@@ -131,6 +139,7 @@ export function ChatView({ persona }: ChatViewProps) {
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
+      useChatStore.getState().setWaitingForResponse(true)
       sendMessage({
         type: 'chat.send',
         session_id: sessionId,
@@ -149,6 +158,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
       if (!sessionId) return
+      useChatStore.getState().setWaitingForResponse(true)
       sendMessage({
         type: 'chat.edit',
         session_id: sessionId,
@@ -161,6 +171,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const handleRegenerate = useCallback(() => {
     if (!sessionId) return
+    useChatStore.getState().setWaitingForResponse(true)
     sendMessage({ type: 'chat.regenerate', session_id: sessionId })
   }, [sessionId])
 
@@ -205,6 +216,7 @@ export function ChatView({ persona }: ChatViewProps) {
         <MessageList
           messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
           streamingWebSearchContext={streamingWebSearchContext} activeToolCalls={activeToolCalls}
+          isWaitingForResponse={isWaitingForResponse}
           isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
           containerRef={containerRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
           onEdit={handleEdit} onRegenerate={handleRegenerate}
@@ -219,6 +231,10 @@ export function ChatView({ persona }: ChatViewProps) {
             onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
             disabled={isStreaming}
             modelSupportsTools={modelSupportsTools}
+            modelSupportsReasoning={modelSupportsReasoning}
+            reasoningOverride={reasoningOverride}
+            personaReasoningDefault={personaReasoningDefault}
+            onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
           />
         ) : undefined}
       />

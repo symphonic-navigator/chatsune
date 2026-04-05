@@ -8,6 +8,7 @@ interface ChatSessionDto {
   state: "idle" | "streaming" | "requires_action"
   title: string | null
   disabled_tool_groups: string[]
+  reasoning_override: boolean | null
   created_at: string
   updated_at: string
 }
@@ -61,6 +62,11 @@ export const chatApi = {
 
   generateTitle: (sessionId: string) =>
     api.post<{ status: string }>(`/api/chat/sessions/${sessionId}/generate-title`),
+
+  updateSessionReasoning: (sessionId: string, reasoningOverride: boolean | null) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/reasoning`, {
+      reasoning_override: reasoningOverride,
+    }),
 
   updateSessionTools: (sessionId: string, disabledToolGroups: string[]) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/tools`, {
