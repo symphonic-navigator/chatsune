@@ -1,0 +1,8 @@
+{
+  "model": "gemma3:4b",
+  "messages": [
+    {"role": "user", "content": "My name is Chris."},
+    {"role": "assistant", "content": "Hello Chris! How can I help you today?"},
+    {"role": "user", "content": "What is my name?"}
+  ]
+}

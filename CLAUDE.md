@@ -26,6 +26,92 @@ The architecture here reflects hard-won lessons — do not shortcut them.
 
 ---
 
+## Debugging
+
+When fixing bugs, always consider the **full causal chain** — do not stop at the first fix.
+Check whether there are multiple root causes or if the fix depends on infrastructure
+(e.g. Docker volumes, environment config, Redis state, MongoDB replica set).
+
+- Before implementing any fix, enumerate **all** possible root causes
+- Check infrastructure and config layers, not just application code
+- After applying a fix, verify it end-to-end — not just the immediate symptom
+- If a fix spans backend and frontend, verify both sides
+
+---
+
+## Build Verification
+
+This is a **TypeScript/JSX frontend + Python backend** project.
+Always ensure clean compilation/build after changes.
+
+- **Frontend:** run `pnpm run build` (or `pnpm tsc --noEmit`) after frontend changes
+- **Backend:** run `uv run python -m py_compile <changed_file>` for syntax checks
+- Do not consider a task complete until the build is clean
+
+---
+
+## LLM Test Harness
+
+Located at `backend/llm_harness/`. A standalone tool for direct LLM calls against
+Ollama Cloud — no DB, no auth, no event bus, no business logic.
+
+**When to use:**
+
+- **Debugging model behaviour** — when a model does not produce expected output
+- **Prompt optimisation** — iterating on system prompts (memory consolidation, summarisation, etc.)
+- **Interface testing** — verifying provider-specific parameters (thinking, temperature, tool calls)
+
+When investigating LLM-related issues, **use the test harness first** before guessing at prompt changes.
+
+**Quick reference:**
+
+```bash
+# Simple prompt
+uv run python -m backend.llm_harness --model llama3.2 \
+  --message '{"role":"user","content":"Hello"}'
+
+# With system prompt and reasoning
+uv run python -m backend.llm_harness --model deepseek-r1 \
+  --system "You are helpful." --reasoning \
+  --message '{"role":"user","content":"Explain X"}'
+
+# Load a reproducible scenario from file
+uv run python -m backend.llm_harness --from tests/llm_scenarios/simple_hello.json
+
+# Multi-turn conversation
+uv run python -m backend.llm_harness --model llama3.2 \
+  --message '{"role":"user","content":"My name is Chris."}' \
+  --message '{"role":"assistant","content":"Hello Chris!"}' \
+  --message '{"role":"user","content":"What is my name?"}'
+```
+
+**API key:** stored in `.llm-test-key` (project root, gitignored, plain text).
+Scenarios live in `tests/llm_scenarios/` as JSON files.
+
+---
+
+## Claude-Oriented Logging
+
+The backend maintains structured logs designed to be useful for Claude Code during debugging.
+These are not just human-readable logs — they are **machine-parseable context** for AI-assisted development.
+
+When debugging issues:
+
+- **Read the logs first** — check backend logs before making assumptions about what went wrong
+- **Log entries include:** correlation IDs, module names, operation context, and timing
+- When adding new functionality, ensure meaningful log lines are emitted at key decision points
+- Log format should be structured (JSON or key=value) so it can be grepped and filtered effectively
+
+---
+
+## Scope Control
+
+Do NOT add unrequested features or expand scope beyond what was asked for.
+If you think something extra would be valuable, **ask first**.
+Finish the current feature, commit, then discuss next steps.
+
+---
+
 ## Repository Layout
 
 ```

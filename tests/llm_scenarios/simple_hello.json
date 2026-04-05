@@ -1,0 +1,7 @@
+{
+  "model": "gemma3:4b",
+  "system": "You are a helpful assistant. Respond concisely.",
+  "messages": [
+    {"role": "user", "content": "Say hello in three languages."}
+  ]
+}

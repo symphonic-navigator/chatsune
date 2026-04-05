@@ -1,0 +1,8 @@
+{
+  "model": "kimi-k2-thinking",
+  "system": "You are a helpful assistant.",
+  "reasoning": true,
+  "messages": [
+    {"role": "user", "content": "What is 15% of 240? Show your reasoning."}
+  ]
+}

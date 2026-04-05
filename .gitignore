@@ -9,6 +9,9 @@ build/
 # Environment
 .env
 
+# LLM test harness API key
+.llm-test-key
+
 # Docker
 docker-compose.override.yml
 

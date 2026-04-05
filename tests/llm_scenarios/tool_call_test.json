@@ -1,0 +1,23 @@
+{
+  "model": "mistral-large-3:675b",
+  "system": "You have access to tools. Use them when appropriate.",
+  "messages": [
+    {"role": "user", "content": "What is the weather in Berlin?"}
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get current weather for a given city.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "The city name."
+          }
+        },
+        "required": ["city"]
+      }
+    }
+  ]
+}
