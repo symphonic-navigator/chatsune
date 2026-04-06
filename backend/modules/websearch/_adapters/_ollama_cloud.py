@@ -4,7 +4,7 @@ from backend.modules.websearch._adapters._base import BaseSearchAdapter
 from shared.dtos.websearch import WebFetchResultDto, WebSearchResultDto
 
 _MAX_FETCH_CONTENT_LENGTH = 8000
-_TIMEOUT = 10.0
+_TIMEOUT = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0)
 
 
 class OllamaCloudSearchAdapter(BaseSearchAdapter):

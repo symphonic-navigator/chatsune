@@ -1,4 +1,8 @@
+import logging
+
 from backend.modules.chat._prompt_sanitiser import sanitise
+
+_log = logging.getLogger(__name__)
 
 
 async def _get_admin_prompt() -> str | None:
@@ -76,7 +80,16 @@ async def assemble(
                 f'<userinfo priority="low">\nWhat the user wants you to know about themselves:\n{cleaned}\n</userinfo>'
             )
 
-    return "\n\n".join(parts)
+    result = "\n\n".join(parts)
+
+    if len(result) > 16000:  # ~4000 tokens rough estimate
+        _log.warning(
+            "Assembled system prompt is very large (%d chars) for user=%s model=%s — "
+            "this may consume a significant portion of the context window",
+            len(result), user_id, model_unique_id,
+        )
+
+    return result
 
 
 async def assemble_preview(

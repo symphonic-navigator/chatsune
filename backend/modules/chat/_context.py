@@ -56,7 +56,7 @@ def select_message_pairs(
     for pair in reversed(pairs):
         pair_tokens = pair[0]["token_count"] + pair[1]["token_count"]
         if total_tokens + pair_tokens > available_tokens:
-            break
+            continue
         selected_pairs.append(pair)
         total_tokens += pair_tokens
 

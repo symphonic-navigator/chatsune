@@ -98,8 +98,8 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
-    async def delete_stale_empty_sessions(self, max_age_minutes: int = 1440) -> int:
-        """Delete sessions older than max_age_minutes that have zero messages."""
+    async def delete_stale_empty_sessions(self, max_age_minutes: int = 1440) -> list[str]:
+        """Delete sessions older than max_age_minutes that have zero messages. Returns list of deleted session IDs."""
         cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
         pipeline = [
             {"$match": {"created_at": {"$lt": cutoff}}},
@@ -115,10 +115,10 @@ class ChatRepository:
         ]
         stale = await self._sessions.aggregate(pipeline).to_list(length=1000)
         if not stale:
-            return 0
+            return []
         stale_ids = [doc["_id"] for doc in stale]
-        result = await self._sessions.delete_many({"_id": {"$in": stale_ids}})
-        return result.deleted_count
+        await self._sessions.delete_many({"_id": {"$in": stale_ids}})
+        return stale_ids
 
     async def delete_session(self, session_id: str, user_id: str) -> bool:
         result = await self._sessions.delete_one({"_id": session_id, "user_id": user_id})
@@ -157,6 +157,10 @@ class ChatRepository:
         await self._messages.insert_one(doc)
         return doc
 
+    async def count_messages(self, session_id: str) -> int:
+        """Return the number of messages in a session."""
+        return await self._messages.count_documents({"session_id": session_id})
+
     async def list_messages(self, session_id: str) -> list[dict]:
         cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
         return await cursor.to_list(length=5000)
@@ -168,7 +172,8 @@ class ChatRepository:
             return False
         await self._messages.delete_many({
             "session_id": session_id,
-            "created_at": {"$gt": target["created_at"]},
+            "_id": {"$ne": message_id},
+            "created_at": {"$gte": target["created_at"]},
         })
         return True
 

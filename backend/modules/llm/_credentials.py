@@ -37,30 +37,26 @@ class CredentialRepository:
     async def upsert(self, user_id: str, provider_id: str, api_key: str) -> dict:
         now = datetime.now(UTC)
         encrypted = encrypt(api_key)
-        existing = await self.find(user_id, provider_id)
-        if existing:
-            await self._collection.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
+        result = await self._collection.find_one_and_update(
+            {"user_id": user_id, "provider_id": provider_id},
+            {
+                "$set": {
                     "api_key_encrypted": encrypted,
                     "test_status": "untested",
                     "last_test_error": None,
                     "updated_at": now,
-                }},
-            )
-            return await self.find(user_id, provider_id)
-        doc = {
-            "_id": str(uuid4()),
-            "user_id": user_id,
-            "provider_id": provider_id,
-            "api_key_encrypted": encrypted,
-            "test_status": "untested",
-            "last_test_error": None,
-            "created_at": now,
-            "updated_at": now,
-        }
-        await self._collection.insert_one(doc)
-        return doc
+                },
+                "$setOnInsert": {
+                    "_id": str(uuid4()),
+                    "user_id": user_id,
+                    "provider_id": provider_id,
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+            return_document=True,
+        )
+        return result
 
     async def update_test_status(
         self, user_id: str, provider_id: str, test_status: str, last_test_error: str | None = None

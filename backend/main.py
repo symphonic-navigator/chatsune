@@ -13,7 +13,7 @@ from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_i
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
-from backend.ws.router import ws_router
+from backend.ws.router import ws_router, get_background_tasks
 from backend.jobs import consumer_loop
 
 
@@ -49,6 +49,14 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 
     yield
+
+    # Cancel in-flight WebSocket tasks
+    ws_tasks = get_background_tasks()
+    for task in ws_tasks:
+        task.cancel()
+    if ws_tasks:
+        await asyncio.gather(*ws_tasks, return_exceptions=True)
+    ws_tasks.clear()
 
     # Shut down background tasks
     cleanup_task.cancel()

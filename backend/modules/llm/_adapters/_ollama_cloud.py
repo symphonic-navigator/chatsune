@@ -19,7 +19,7 @@ from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
 
-_TIMEOUT = 15.0
+_TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 
 
 def _parse_parameter_size(value: str) -> int | None:
@@ -112,41 +112,47 @@ class OllamaCloudAdapter(BaseAdapter):
 
     requires_key_for_listing: bool = False
 
+    def __init__(self, base_url: str) -> None:
+        super().__init__(base_url=base_url)
+        self._client = httpx.AsyncClient(timeout=_TIMEOUT)
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
     async def validate_key(self, api_key: str) -> bool:
         """Validate key via POST /api/me. Returns True on 200, False on 401/403, raises otherwise."""
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/me",
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
+        resp = await self._client.post(
+            f"{self.base_url}/api/me",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
         if resp.status_code == 200:
             return True
         if resp.status_code in (401, 403):
             return False
         resp.raise_for_status()
+        return False  # explicit return for type checkers
 
     async def fetch_models(self) -> list[ModelMetaDto]:
         """Fetch model list from /api/tags, then details from /api/show per model."""
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            tags_resp = await client.get(f"{self.base_url}/api/tags")
-            tags_resp.raise_for_status()
-            tag_entries = tags_resp.json().get("models", [])
+        tags_resp = await self._client.get(f"{self.base_url}/api/tags")
+        tags_resp.raise_for_status()
+        tag_entries = tags_resp.json().get("models", [])
 
-            models: list[ModelMetaDto] = []
-            for entry in tag_entries:
-                name = entry["name"]
-                try:
-                    show_resp = await client.post(
-                        f"{self.base_url}/api/show",
-                        json={"model": name},
-                    )
-                    show_resp.raise_for_status()
-                    detail = show_resp.json()
-                except Exception:
-                    _log.warning("Failed to fetch details for model '%s'; skipping.", name)
-                    continue
+        models: list[ModelMetaDto] = []
+        for entry in tag_entries:
+            name = entry["name"]
+            try:
+                show_resp = await self._client.post(
+                    f"{self.base_url}/api/show",
+                    json={"model": name},
+                )
+                show_resp.raise_for_status()
+                detail = show_resp.json()
+            except Exception:
+                _log.warning("Failed to fetch details for model '%s'; skipping.", name)
+                continue
 
-                models.append(self._map_to_dto(name, detail))
+            models.append(self._map_to_dto(name, detail))
 
         return models
 
@@ -157,15 +163,9 @@ class OllamaCloudAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         payload = self._build_chat_payload(request)
 
-        try:
-            client = httpx.AsyncClient(timeout=_TIMEOUT)
-        except Exception:
-            yield StreamError(error_code="provider_unavailable", message="Failed to create HTTP client")
-            return
-
         seen_done = False
         try:
-            async with client.stream(
+            async with self._client.stream(
                 "POST",
                 f"{self.base_url}/api/chat",
                 json=payload,
@@ -229,8 +229,6 @@ class OllamaCloudAdapter(BaseAdapter):
         except httpx.ConnectError:
             yield StreamError(error_code="provider_unavailable", message="Connection failed")
             return
-        finally:
-            await client.aclose()
 
         if not seen_done:
             yield StreamDone()

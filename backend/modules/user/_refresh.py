@@ -36,14 +36,12 @@ class RefreshTokenStore:
         return json.loads(data)
 
     async def consume(self, token: str) -> dict | None:
-        data = await self.get(token)
+        data = await self._redis.getdel(f"{_KEY_PREFIX}{token}")
         if data is None:
             return None
-        pipe = self._redis.pipeline()
-        pipe.delete(f"{_KEY_PREFIX}{token}")
-        pipe.srem(f"{_USER_INDEX_PREFIX}{data['user_id']}", token)
-        await pipe.execute()
-        return data
+        parsed = json.loads(data)
+        await self._redis.srem(f"{_USER_INDEX_PREFIX}{parsed['user_id']}", token)
+        return parsed
 
     async def revoke_all_for_user(self, user_id: str) -> None:
         index_key = f"{_USER_INDEX_PREFIX}{user_id}"

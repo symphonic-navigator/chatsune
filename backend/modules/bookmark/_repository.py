@@ -62,11 +62,16 @@ class BookmarkRepository:
         return result
 
     async def reorder(self, user_id: str, ordered_ids: list[str]) -> None:
-        for i, bookmark_id in enumerate(ordered_ids):
-            await self._bookmarks.update_one(
-                {"_id": bookmark_id, "user_id": user_id},
+        from pymongo import UpdateOne
+        operations = [
+            UpdateOne(
+                {"_id": bid, "user_id": user_id},
                 {"$set": {"display_order": i}},
             )
+            for i, bid in enumerate(ordered_ids)
+        ]
+        if operations:
+            await self._bookmarks.bulk_write(operations, ordered=False)
 
     async def delete(self, bookmark_id: str, user_id: str) -> bool:
         result = await self._bookmarks.delete_one({"_id": bookmark_id, "user_id": user_id})

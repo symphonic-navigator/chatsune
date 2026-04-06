@@ -20,6 +20,7 @@ from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.modules.llm._metadata import get_models, refresh_all_providers
 from backend.database import get_db, get_redis
 from shared.dtos.inference import CompletionRequest
+from shared.dtos.llm import ModelMetaDto
 
 
 class LlmCredentialNotFoundError(Exception):
@@ -70,8 +71,10 @@ async def stream_completion(
         yield event
 
 
-async def get_model_context_window(provider_id: str, model_slug: str) -> int | None:
-    """Return the context window size for a model, or None if not found."""
+async def get_model_metadata(
+    provider_id: str, model_slug: str,
+) -> ModelMetaDto | None:
+    """Return full metadata for a single model, or None if not found."""
     if provider_id not in ADAPTER_REGISTRY:
         return None
     redis = get_redis()
@@ -79,8 +82,14 @@ async def get_model_context_window(provider_id: str, model_slug: str) -> int | N
     models = await get_models(provider_id, redis, adapter)
     for model in models:
         if model.model_id == model_slug:
-            return model.context_window
+            return model
     return None
+
+
+async def get_model_context_window(provider_id: str, model_slug: str) -> int | None:
+    """Return the context window size for a model, or None if not found."""
+    meta = await get_model_metadata(provider_id, model_slug)
+    return meta.context_window if meta else None
 
 
 async def get_api_key(user_id: str, provider_id: str) -> str:
@@ -107,28 +116,14 @@ async def get_api_key(user_id: str, provider_id: str) -> str:
 
 async def get_model_supports_vision(provider_id: str, model_slug: str) -> bool:
     """Return True if the model supports vision/image input."""
-    if provider_id not in ADAPTER_REGISTRY:
-        return False
-    redis = get_redis()
-    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
-    models = await get_models(provider_id, redis, adapter)
-    for model in models:
-        if model.model_id == model_slug:
-            return model.supports_vision
-    return False
+    meta = await get_model_metadata(provider_id, model_slug)
+    return meta.supports_vision if meta else False
 
 
 async def get_model_supports_reasoning(provider_id: str, model_slug: str) -> bool:
     """Return True if the model supports reasoning/thinking."""
-    if provider_id not in ADAPTER_REGISTRY:
-        return False
-    redis = get_redis()
-    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
-    models = await get_models(provider_id, redis, adapter)
-    for model in models:
-        if model.model_id == model_slug:
-            return model.supports_reasoning
-    return False
+    meta = await get_model_metadata(provider_id, model_slug)
+    return meta.supports_reasoning if meta else False
 
 
 async def get_effective_context_window(
@@ -165,5 +160,7 @@ __all__ = [
     "get_effective_context_window",
     "get_model_supports_vision",
     "get_model_supports_reasoning",
+    "get_model_metadata",
+    "ModelMetaDto",
     "refresh_all_providers",
 ]

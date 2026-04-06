@@ -155,11 +155,14 @@ async def login(body: LoginRequestDto, response: Response):
     repo = _user_repo()
     user = await repo.find_by_username(body.username)
 
-    if not user or not verify_password(body.password, user["password_hash"]):
+    if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account is deactivated")
+
+    if not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
     session_id = generate_session_id()
     access_token = create_access_token(

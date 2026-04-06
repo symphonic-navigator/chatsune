@@ -30,8 +30,16 @@ class LoginRequestDto(BaseModel):
 class CreateUserRequestDto(BaseModel):
     username: str
     email: EmailStr
-    display_name: str
+    display_name: str = Field(max_length=64)
     role: str = "user"
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_and_validate_display_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Display name cannot be blank")
+        return stripped
 
 
 class UpdateUserRequestDto(BaseModel):
@@ -80,7 +88,7 @@ class AuditLogEntryDto(BaseModel):
 
 
 class UpdateAboutMeDto(BaseModel):
-    about_me: str | None = None
+    about_me: str | None = Field(default=None, max_length=4000)
 
 
 class UpdateDisplayNameDto(BaseModel):

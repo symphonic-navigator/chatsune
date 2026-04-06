@@ -32,34 +32,35 @@ class UserModelConfigRepository:
         request (determined via Pydantic ``model_fields_set``).  This allows
         nullable fields to be reset to ``None`` -- a bare ``None`` default
         would be indistinguishable from "not sent".
+
+        Uses atomic find_one_and_update with upsert=True to avoid TOCTOU races.
         """
         now = datetime.now(UTC)
-        existing = await self.find(user_id, model_unique_id)
-
-        if existing:
-            update_fields: dict = {"updated_at": now, **fields}
-            await self._collection.update_one(
-                {"_id": existing["_id"]},
-                {"$set": update_fields},
-            )
-            return await self.find(user_id, model_unique_id)
-
-        doc = {
-            "_id": str(uuid4()),
-            "user_id": user_id,
-            "model_unique_id": model_unique_id,
+        defaults = {
             "is_favourite": False,
             "is_hidden": False,
             "custom_display_name": None,
             "custom_context_window": None,
             "notes": None,
             "system_prompt_addition": None,
-            **fields,
-            "created_at": now,
-            "updated_at": now,
         }
-        await self._collection.insert_one(doc)
-        return doc
+        # Remove keys that are explicitly set in fields from defaults
+        set_on_insert = {k: v for k, v in defaults.items() if k not in fields}
+        set_on_insert["_id"] = str(uuid4())
+        set_on_insert["user_id"] = user_id
+        set_on_insert["model_unique_id"] = model_unique_id
+        set_on_insert["created_at"] = now
+
+        result = await self._collection.find_one_and_update(
+            {"user_id": user_id, "model_unique_id": model_unique_id},
+            {
+                "$set": {"updated_at": now, **fields},
+                "$setOnInsert": set_on_insert,
+            },
+            upsert=True,
+            return_document=True,
+        )
+        return result
 
     async def delete(self, user_id: str, model_unique_id: str) -> bool:
         result = await self._collection.delete_one(

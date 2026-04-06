@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
+import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+_log = logging.getLogger(__name__)
 _bearer_scheme = HTTPBearer()
 
 
@@ -14,7 +18,10 @@ async def get_current_user(
 
     try:
         payload = decode_access_token(credentials.credentials)
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     except Exception:
+        _log.exception("Unexpected error decoding access token")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     return payload

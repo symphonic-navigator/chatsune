@@ -14,6 +14,12 @@ _log = logging.getLogger(__name__)
 
 _background_tasks: set[asyncio.Task] = set()
 
+
+def get_background_tasks() -> set[asyncio.Task]:
+    """Return the set of in-flight WebSocket background tasks."""
+    return _background_tasks
+
+
 ws_router = APIRouter()
 
 

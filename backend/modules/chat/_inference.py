@@ -184,11 +184,17 @@ class InferenceRunner:
                         user_id, tc.name, tc.arguments,
                     )
 
+                    try:
+                        parsed_result = json.loads(result_str)
+                        tool_success = not (isinstance(parsed_result, dict) and "error" in parsed_result)
+                    except (json.JSONDecodeError, TypeError):
+                        tool_success = True
+
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
                         tool_name=tc.name,
-                        success="error" not in result_str[:50].lower(),
+                        success=tool_success,
                         timestamp=datetime.now(timezone.utc),
                     ))
 

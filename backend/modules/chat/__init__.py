@@ -249,8 +249,9 @@ async def _run_inference(
 
         # Trigger title generation after first assistant response
         if not session.get("title"):
-            messages = await repo.list_messages(session_id)
-            if len(messages) >= 2:
+            msg_count = await repo.count_messages(session_id)
+            if msg_count >= 2:
+                messages = await repo.list_messages(session_id)
                 first_user = next((m for m in messages if m["role"] == "user"), None)
                 first_assistant = next((m for m in messages if m["role"] == "assistant"), None)
                 if first_user and first_assistant:
@@ -286,9 +287,6 @@ async def _run_inference(
         )
     except LlmCredentialNotFoundError:
         now = datetime.now(timezone.utc)
-        await emit_fn(ChatStreamStartedEvent(
-            session_id=session_id, correlation_id=correlation_id, timestamp=now,
-        ))
         await emit_fn(ChatStreamErrorEvent(
             correlation_id=correlation_id,
             error_code="credential_not_found",
@@ -643,9 +641,6 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
             )
         except LlmCredentialNotFoundError:
             now = datetime.now(timezone.utc)
-            await emit_fn(ChatStreamStartedEvent(
-                session_id=session_id, correlation_id=correlation_id, timestamp=now,
-            ))
             await emit_fn(ChatStreamErrorEvent(
                 correlation_id=correlation_id,
                 error_code="credential_not_found",
@@ -670,12 +665,15 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
 
 async def cleanup_stale_empty_sessions() -> int:
     """Delete empty sessions older than 24 hours. Returns count of deleted sessions."""
+    from backend.modules.bookmark import delete_bookmarks_for_session
     db = get_db()
     repo = ChatRepository(db)
-    count = await repo.delete_stale_empty_sessions(max_age_minutes=1440)
-    if count > 0:
-        _log.info("Cleaned up %d stale empty sessions", count)
-    return count
+    stale_ids = await repo.delete_stale_empty_sessions(max_age_minutes=1440)
+    if stale_ids:
+        for sid in stale_ids:
+            await delete_bookmarks_for_session(sid)
+        _log.info("Cleaned up %d stale empty sessions", len(stale_ids))
+    return len(stale_ids)
 
 
 __all__ = [

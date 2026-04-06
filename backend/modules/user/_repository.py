@@ -13,6 +13,11 @@ class UserRepository:
     async def create_indexes(self) -> None:
         await self._collection.create_index("username", unique=True)
         await self._collection.create_index("email", unique=True)
+        await self._collection.create_index(
+            "role",
+            unique=True,
+            partialFilterExpression={"role": "master_admin"},
+        )
 
     async def find_by_username(self, username: str) -> dict | None:
         return await self._collection.find_one({"username": username})
@@ -58,7 +63,7 @@ class UserRepository:
     async def list_users(
         self, skip: int = 0, limit: int = 50
     ) -> list[dict]:
-        cursor = self._collection.find().skip(skip).limit(limit)
+        cursor = self._collection.find().sort("created_at", 1).skip(skip).limit(limit)
         return await cursor.to_list(length=limit)
 
     async def count(self) -> int:

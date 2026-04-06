@@ -30,33 +30,26 @@ class CurationRepository:
         admin_user_id: str,
     ) -> dict:
         now = datetime.now(UTC)
-        existing = await self.find(provider_id, model_slug)
-        if existing:
-            await self._collection.update_one(
-                {"_id": existing["_id"]},
-                {
-                    "$set": {
-                        "overall_rating": overall_rating,
-                        "hidden": hidden,
-                        "admin_description": admin_description,
-                        "last_curated_at": now,
-                        "last_curated_by": admin_user_id,
-                    }
+        result = await self._collection.find_one_and_update(
+            {"provider_id": provider_id, "model_slug": model_slug},
+            {
+                "$set": {
+                    "overall_rating": overall_rating,
+                    "hidden": hidden,
+                    "admin_description": admin_description,
+                    "last_curated_at": now,
+                    "last_curated_by": admin_user_id,
                 },
-            )
-            return await self.find(provider_id, model_slug)
-        doc = {
-            "_id": str(uuid4()),
-            "provider_id": provider_id,
-            "model_slug": model_slug,
-            "overall_rating": overall_rating,
-            "hidden": hidden,
-            "admin_description": admin_description,
-            "last_curated_at": now,
-            "last_curated_by": admin_user_id,
-        }
-        await self._collection.insert_one(doc)
-        return doc
+                "$setOnInsert": {
+                    "_id": str(uuid4()),
+                    "provider_id": provider_id,
+                    "model_slug": model_slug,
+                },
+            },
+            upsert=True,
+            return_document=True,
+        )
+        return result
 
     async def delete(self, provider_id: str, model_slug: str) -> bool:
         result = await self._collection.delete_one(

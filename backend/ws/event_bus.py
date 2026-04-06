@@ -29,6 +29,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_USER_MODEL_CONFIG_UPDATED: ([], True),
     Topics.SETTING_UPDATED: (["admin", "master_admin"], False),
     Topics.SETTING_DELETED: (["admin", "master_admin"], False),
+    Topics.SETTING_SYSTEM_PROMPT_UPDATED: (["admin", "master_admin"], False),
     Topics.CHAT_STREAM_STARTED: ([], True),
     Topics.CHAT_CONTENT_DELTA: ([], True),
     Topics.CHAT_THINKING_DELTA: ([], True),
@@ -40,6 +41,15 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_SESSION_TITLE_UPDATED: ([], True),
     Topics.CHAT_SESSION_CREATED: ([], True),
     Topics.CHAT_SESSION_DELETED: ([], True),
+    Topics.CHAT_SESSION_PINNED_UPDATED: ([], True),
+    # Bookmarks — target user only
+    Topics.BOOKMARK_CREATED: ([], True),
+    Topics.BOOKMARK_UPDATED: ([], True),
+    Topics.BOOKMARK_DELETED: ([], True),
+    # Tool call progress — target user only
+    Topics.CHAT_TOOL_CALL_STARTED: ([], True),
+    Topics.CHAT_TOOL_CALL_COMPLETED: ([], True),
+    Topics.CHAT_WEB_SEARCH_CONTEXT: ([], True),
     # Storage — target user only
     Topics.STORAGE_FILE_UPLOADED: ([], True),
     Topics.STORAGE_FILE_DELETED: ([], True),
@@ -53,6 +63,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.JOB_FAILED: ([], True),
     Topics.JOB_RETRY: ([], True),
     Topics.JOB_EXPIRED: ([], True),
+    # LLM model fetch progress — target user only
+    Topics.LLM_MODELS_FETCH_STARTED: ([], True),
+    Topics.LLM_MODELS_FETCH_COMPLETED: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {
@@ -65,6 +78,9 @@ _BROADCAST_ALL: set[str] = {
 _SKIP_PERSISTENCE: set[str] = {
     Topics.CHAT_CONTENT_DELTA,
     Topics.CHAT_THINKING_DELTA,
+    Topics.CHAT_TOOL_CALL_STARTED,
+    Topics.CHAT_TOOL_CALL_COMPLETED,
+    Topics.CHAT_WEB_SEARCH_CONTEXT,
 }
 
 _bus: "EventBus | None" = None

@@ -8,7 +8,7 @@ from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
-from backend.modules.persona._repository import PersonaRepository
+from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import get_event_bus
 from backend.modules.bookmark import delete_bookmarks_for_session
 from backend.modules.tools import get_all_groups
@@ -28,10 +28,6 @@ def _chat_repo() -> ChatRepository:
     return ChatRepository(get_db())
 
 
-def _persona_repo() -> PersonaRepository:
-    return PersonaRepository(get_db())
-
-
 class CreateSessionRequest(BaseModel):
     persona_id: str
 
@@ -41,8 +37,7 @@ async def create_session(
     body: CreateSessionRequest,
     user: dict = Depends(require_active_session),
 ):
-    persona_repo = _persona_repo()
-    persona = await persona_repo.find_by_id(body.persona_id, user["sub"])
+    persona = await get_persona_fn(body.persona_id, user["sub"])
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
 

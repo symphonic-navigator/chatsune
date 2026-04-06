@@ -94,6 +94,19 @@ class PersonaRepository:
         )
         return result
 
+    async def bulk_reorder(self, user_id: str, ordered_ids: list[str]) -> None:
+        """Reorder personas using a single bulk_write operation."""
+        from pymongo import UpdateOne
+        operations = [
+            UpdateOne(
+                {"_id": pid, "user_id": user_id},
+                {"$set": {"display_order": i, "updated_at": datetime.now(UTC)}},
+            )
+            for i, pid in enumerate(ordered_ids)
+        ]
+        if operations:
+            await self._collection.bulk_write(operations, ordered=False)
+
     async def delete(self, persona_id: str, user_id: str) -> bool:
         result = await self._collection.delete_one(
             {"_id": persona_id, "user_id": user_id}

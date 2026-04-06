@@ -27,7 +27,7 @@ async def _optional_user(request: Request) -> dict | None:
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         return None
-    from backend.modules.user._auth import decode_access_token
+    from backend.modules.user import decode_access_token
     try:
         return decode_access_token(auth.removeprefix("Bearer "))
     except Exception:
@@ -122,8 +122,7 @@ async def reorder_personas(
 ):
     repo = _persona_repo()
     ordered_ids: list[str] = body.get("ordered_ids", [])
-    for index, persona_id in enumerate(ordered_ids):
-        await repo.update(persona_id, user["sub"], {"display_order": index})
+    await repo.bulk_reorder(user["sub"], ordered_ids)
     return {"status": "ok"}
 
 
@@ -344,7 +343,7 @@ async def get_avatar(
 ):
     # Allow auth via query param (for <img src>) or via header
     if user is None and token:
-        from backend.modules.user._auth import decode_access_token
+        from backend.modules.user import decode_access_token
         try:
             user = decode_access_token(token)
         except Exception:
