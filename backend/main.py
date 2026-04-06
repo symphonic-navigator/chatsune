@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -15,6 +16,7 @@ from backend.modules.chat import router as chat_router, init_indexes as chat_ini
 from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_init_indexes
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.modules.memory import router as memory_router, init_indexes as memory_init_indexes
+from backend.modules.embedding import router as embedding_router, startup as embedding_startup, shutdown as embedding_shutdown
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -38,6 +40,11 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
+
+    # Load embedding model and start worker (blocking on first download)
+    embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")
+    embedding_batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "8"))
+    await embedding_startup(event_bus, embedding_model_dir, embedding_batch_size)
 
     # Start background job consumer
     consumer_task = asyncio.create_task(consumer_loop(redis, event_bus))
@@ -294,6 +301,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    await embedding_shutdown()
     await disconnect_db()
 
 
@@ -306,6 +314,7 @@ app.include_router(chat_router)
 app.include_router(bookmark_router)
 app.include_router(storage_router)
 app.include_router(memory_router)
+app.include_router(embedding_router)
 app.include_router(ws_router)
 
 
