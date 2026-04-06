@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     master_admin_pin: str
     jwt_secret: str
     encryption_key: str  # Fernet key for encrypting API keys at rest
-    mongodb_uri: str = "mongodb://mongodb:27017/chatsune?replicaSet=rs0"
+    mongodb_uri: str = "mongodb://mongodb:27017/chatsune?directConnection=true"
     redis_uri: str = "redis://redis:6379/0"
     upload_root: str = "/data/uploads"
     avatar_root: str = "/data/avatars"

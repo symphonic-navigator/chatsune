@@ -1,8 +1,13 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import logging
+
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
+from pymongo.errors import OperationFailure
+
+_log = logging.getLogger(__name__)
 
 from shared.dtos.knowledge import (
     KnowledgeDocumentDetailDto,
@@ -28,6 +33,39 @@ class KnowledgeRepository:
         await self._chunks.create_index("user_id")
         await self._chunks.create_index([("user_id", 1), ("document_id", 1)])
         await self._chunks.create_index([("user_id", 1), ("library_id", 1)])
+
+        # Vector Search index — requires mongodb-atlas-local image with mongot.
+        # Ensure collection exists before creating search index.
+        db = self._chunks.database
+        existing = await db.list_collection_names()
+        if "knowledge_chunks" not in existing:
+            await db.create_collection("knowledge_chunks")
+
+        try:
+            await self._chunks.create_search_index(
+                {
+                    "definition": {
+                        "fields": [
+                            {
+                                "type": "vector",
+                                "path": "vector",
+                                "numDimensions": 768,
+                                "similarity": "cosine",
+                            },
+                            {"type": "filter", "path": "user_id"},
+                            {"type": "filter", "path": "library_id"},
+                        ],
+                    },
+                    "name": "knowledge_vector_index",
+                    "type": "vectorSearch",
+                }
+            )
+            _log.info("Created knowledge vector search index")
+        except OperationFailure as exc:
+            if "already exists" in str(exc):
+                _log.debug("Knowledge vector search index already exists")
+            else:
+                raise
 
     # ------------------------------------------------------------------
     # Libraries
