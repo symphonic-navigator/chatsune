@@ -12,6 +12,11 @@ export function useWebSocket() {
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
+    if (pingRef.current) {
+      clearInterval(pingRef.current)
+      pingRef.current = null
+    }
+
     if (isAuthenticated) {
       connect()
       pingRef.current = setInterval(sendPing, PING_INTERVAL)
