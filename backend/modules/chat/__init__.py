@@ -404,7 +404,11 @@ async def _track_extraction_trigger(
         now_iso = datetime.now(timezone.utc).isoformat()
 
         await redis.hincrby(tracking_key, "messages_since_extraction", 1)
-        await redis.hset(tracking_key, "last_message_at", now_iso)
+        await redis.hset(tracking_key, mapping={
+            "last_message_at": now_iso,
+            "session_id": session_id,
+            "model_unique_id": model_unique_id,
+        })
 
         # Cancel any existing idle timer for this user+persona pair
         task_key = f"{user_id}:{persona_id}"
@@ -423,6 +427,79 @@ async def _track_extraction_trigger(
         _log.exception(
             "Error tracking extraction trigger for user %s, persona %s",
             user_id, persona_id,
+        )
+
+
+async def trigger_disconnect_extraction(user_id: str) -> None:
+    """Submit memory extraction for all personas with pending messages when a user disconnects.
+
+    Cancels any in-flight idle extraction timers for this user, then checks Redis
+    tracking keys for personas with messages_since_extraction > 0 and submits
+    extraction jobs immediately.
+    """
+    try:
+        # Cancel all idle extraction timers for this user
+        keys_to_cancel = [k for k in _idle_extraction_tasks if k.startswith(f"{user_id}:")]
+        for task_key in keys_to_cancel:
+            task = _idle_extraction_tasks.pop(task_key, None)
+            if task and not task.done():
+                task.cancel()
+
+        redis = get_redis()
+
+        # Scan for all tracking keys belonging to this user
+        prefix = f"memory:extraction:{user_id}:"
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(cursor, match=f"{prefix}*", count=100)
+            for key in keys:
+                tracking = await redis.hgetall(key)
+                count_str = tracking.get("messages_since_extraction", "0")
+                if int(count_str) <= 0:
+                    continue
+
+                session_id = tracking.get("session_id")
+                model_unique_id = tracking.get("model_unique_id")
+                if not session_id or not model_unique_id:
+                    continue
+
+                # Extract persona_id from the key
+                persona_id = key.removeprefix(prefix)
+
+                # Fetch recent user messages for extraction
+                db = get_db()
+                repo = ChatRepository(db)
+                messages = await repo.list_messages(session_id)
+                user_messages = [
+                    m["content"] for m in messages
+                    if m["role"] == "user"
+                ]
+
+                if not user_messages:
+                    continue
+
+                recent = user_messages[-20:]
+
+                await submit(
+                    job_type=JobType.MEMORY_EXTRACTION,
+                    user_id=user_id,
+                    model_unique_id=model_unique_id,
+                    payload={
+                        "persona_id": persona_id,
+                        "session_id": session_id,
+                        "messages": recent,
+                    },
+                )
+                _log.info(
+                    "Submitted disconnect-triggered memory extraction for user %s, persona %s, session %s",
+                    user_id, persona_id, session_id,
+                )
+
+            if cursor == 0:
+                break
+    except Exception:
+        _log.exception(
+            "Error triggering disconnect extraction for user %s", user_id,
         )
 
 
@@ -810,5 +887,6 @@ __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "handle_incognito_send", "update_session_title",
+    "trigger_disconnect_extraction",
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
 ]

@@ -11,6 +11,7 @@ from backend.jobs._models import JobConfig, JobEntry
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.memory import (
+    MemoryEntriesDiscardedEvent,
     MemoryEntryCreatedEvent,
     MemoryExtractionCompletedEvent,
     MemoryExtractionFailedEvent,
@@ -191,6 +192,23 @@ async def handle_memory_extraction(
             _log.info(
                 "Discarded %d oldest uncommitted entries for persona %s (cap enforcement)",
                 discarded, persona_id,
+            )
+            await event_bus.publish(
+                Topics.MEMORY_ENTRIES_DISCARDED,
+                MemoryEntriesDiscardedEvent(
+                    persona_id=persona_id,
+                    discarded_count=discarded,
+                    user_message=(
+                        f"{discarded} oldest journal entries for this persona were "
+                        "discarded to stay within the 50-entry limit. "
+                        "Please review your uncommitted entries."
+                    ),
+                    correlation_id=job.correlation_id,
+                    timestamp=datetime.now(UTC),
+                ),
+                scope=f"persona:{persona_id}",
+                target_user_ids=[job.user_id],
+                correlation_id=job.correlation_id,
             )
 
         # Update Redis tracking state.

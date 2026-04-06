@@ -68,4 +68,5 @@ class Topics:
     MEMORY_DREAM_STARTED = "memory.dream.started"
     MEMORY_DREAM_COMPLETED = "memory.dream.completed"
     MEMORY_DREAM_FAILED = "memory.dream.failed"
+    MEMORY_ENTRIES_DISCARDED = "memory.entries.discarded"
     MEMORY_BODY_ROLLBACK = "memory.body.rollback"

@@ -66,6 +66,15 @@ class MemoryEntryAutoCommittedEvent(BaseModel):
     timestamp: datetime
 
 
+class MemoryEntriesDiscardedEvent(BaseModel):
+    type: str = "memory.entries.discarded"
+    persona_id: str
+    discarded_count: int
+    user_message: str
+    correlation_id: str
+    timestamp: datetime
+
+
 class MemoryDreamStartedEvent(BaseModel):
     type: str = "memory.dream.started"
     persona_id: str

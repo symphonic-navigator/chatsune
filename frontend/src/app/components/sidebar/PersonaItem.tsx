@@ -2,6 +2,17 @@ import { useState, useRef, useEffect } from "react"
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { PersonaDto } from "../../../core/types/persona"
 import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
+import { useMemoryStore } from "../../../core/store/memoryStore"
+import type { JournalEntryDto } from "../../../core/api/memory"
+
+const EMPTY_ENTRIES: JournalEntryDto[] = []
+
+/** Dot colour matching JournalBadge thresholds */
+function memoryDotColour(count: number): string {
+  if (count <= 20) return "bg-green-500"
+  if (count <= 35) return "bg-yellow-400"
+  return "bg-red-500"
+}
 
 interface PersonaItemProps {
   persona: PersonaDto
@@ -36,6 +47,9 @@ export function PersonaItem({
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const uncommitted = useMemoryStore((s) => s.uncommittedEntries[persona.id] ?? EMPTY_ENTRIES)
+  const uncommittedCount = uncommitted.length
 
   const chakra = CHAKRA_PALETTE[persona.colour_scheme as ChakraColour] ?? CHAKRA_PALETTE.solar
 
@@ -91,6 +105,13 @@ export function PersonaItem({
       >
         {persona.name}
       </span>
+
+      {uncommittedCount > 0 && (
+        <span
+          className={`h-2 w-2 flex-shrink-0 rounded-full ${memoryDotColour(uncommittedCount)}`}
+          title={`${uncommittedCount} uncommitted memory entries`}
+        />
+      )}
 
       <button
         type="button"

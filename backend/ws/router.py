@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from backend.database import get_redis
-from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate, handle_incognito_send
+from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate, handle_incognito_send, trigger_disconnect_extraction
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
 
@@ -109,4 +109,9 @@ async def websocket_endpoint(
     finally:
         if expiry_task is not None:
             expiry_task.cancel()
+        # Trigger memory extraction for any sessions with pending messages
+        try:
+            await trigger_disconnect_extraction(user_id)
+        except Exception as e:
+            _log.error("Error triggering disconnect extraction for user %s: %s", user_id, e)
         await manager.disconnect(user_id, ws)

@@ -63,6 +63,7 @@ export const Topics = {
   MEMORY_ENTRY_UPDATED: "memory.entry.updated",
   MEMORY_ENTRY_DELETED: "memory.entry.deleted",
   MEMORY_ENTRY_AUTO_COMMITTED: "memory.entry.auto_committed",
+  MEMORY_ENTRIES_DISCARDED: "memory.entries.discarded",
   MEMORY_DREAM_STARTED: "memory.dream.started",
   MEMORY_DREAM_COMPLETED: "memory.dream.completed",
   MEMORY_DREAM_FAILED: "memory.dream.failed",

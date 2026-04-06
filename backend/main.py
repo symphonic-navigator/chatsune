@@ -184,6 +184,90 @@ async def lifespan(app: FastAPI):
 
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 
+    _extraction_log = logging.getLogger("chatsune.extraction")
+
+    # Periodic fallback memory extraction (every 15 minutes)
+    async def _periodic_extraction_loop() -> None:
+        while True:
+            await asyncio.sleep(900)
+            try:
+                from backend.modules.chat._repository import ChatRepository as _ExtRepo
+                from backend.jobs._submit import submit as _ext_submit
+                from backend.jobs._models import JobType as _ExtJobType
+
+                ext_redis = get_redis()
+                ext_db = get_db()
+                ext_repo = _ExtRepo(ext_db)
+
+                # Scan for all extraction tracking keys
+                cursor = b"0"
+                while True:
+                    cursor, keys = await ext_redis.scan(
+                        cursor=cursor, match="memory:extraction:*", count=100,
+                    )
+                    for key in keys:
+                        try:
+                            data = await ext_redis.hgetall(key)
+                            msg_count_str = data.get("messages_since_extraction", "0")
+                            msg_count = int(msg_count_str)
+                            if msg_count <= 0:
+                                continue
+
+                            # Parse user_id and persona_id from key
+                            # Format: memory:extraction:{user_id}:{persona_id}
+                            parts = key.split(":")
+                            if len(parts) != 4:
+                                continue
+                            uid = parts[2]
+                            pid = parts[3]
+
+                            # Find the most recent session for this user+persona
+                            session = await ext_db["chat_sessions"].find_one(
+                                {"user_id": uid, "persona_id": pid, "deleted_at": None},
+                                sort=[("updated_at", -1)],
+                            )
+                            if not session or not session.get("model_unique_id"):
+                                continue
+
+                            session_id = session["_id"]
+                            model_unique_id = session["model_unique_id"]
+
+                            # Fetch recent user messages for extraction
+                            messages = await ext_repo.list_messages(session_id)
+                            user_messages = [
+                                m["content"] for m in messages if m["role"] == "user"
+                            ]
+                            if not user_messages:
+                                continue
+
+                            recent = user_messages[-20:]
+
+                            await _ext_submit(
+                                job_type=_ExtJobType.MEMORY_EXTRACTION,
+                                user_id=uid,
+                                model_unique_id=model_unique_id,
+                                payload={
+                                    "persona_id": pid,
+                                    "session_id": session_id,
+                                    "messages": recent,
+                                },
+                            )
+                            _extraction_log.info(
+                                "Submitted periodic fallback extraction for user %s, persona %s, session %s",
+                                uid, pid, session_id,
+                            )
+                        except Exception:
+                            _extraction_log.exception(
+                                "Failed to process extraction key %s", key,
+                            )
+
+                    if cursor == b"0" or cursor == 0:
+                        break
+            except Exception:
+                _extraction_log.exception("Periodic extraction loop failed")
+
+    extraction_task = asyncio.create_task(_periodic_extraction_loop())
+
     yield
 
     # Cancel in-flight WebSocket tasks
@@ -198,7 +282,8 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     consumer_task.cancel()
     trim_task.cancel()
-    for task in (cleanup_task, consumer_task, trim_task):
+    extraction_task.cancel()
+    for task in (cleanup_task, consumer_task, trim_task, extraction_task):
         try:
             await task
         except asyncio.CancelledError:
