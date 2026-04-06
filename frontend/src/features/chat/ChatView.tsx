@@ -119,7 +119,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [msgParam, isLoading, messages.length, scrollToMessage])
 
   // Bookmarks
-  const { bookmarks, setBookmarks, addBookmark } = useBookmarks(effectiveSessionId)
+  const { bookmarks, setBookmarks } = useBookmarks(effectiveSessionId)
   const bookmarkedMessageIds = new Set(bookmarks.map((b) => b.message_id))
   const [bookmarkTargetMsgId, setBookmarkTargetMsgId] = useState<string | null>(null)
   const [bookmarksExpanded, setBookmarksExpanded] = useState(false)
@@ -437,14 +437,13 @@ export function ChatView({ persona }: ChatViewProps) {
         onClose={() => setBookmarkTargetMsgId(null)}
         onSave={async (title, scope) => {
           if (!bookmarkTargetMsgId || !effectiveSessionId || !personaId) return
-          const bm = await bookmarksApi.create({
+          await bookmarksApi.create({
             session_id: effectiveSessionId,
             message_id: bookmarkTargetMsgId,
             persona_id: personaId,
             title,
             scope,
           })
-          addBookmark(bm)
           setBookmarkTargetMsgId(null)
         }}
         accentColour={accentColour}
