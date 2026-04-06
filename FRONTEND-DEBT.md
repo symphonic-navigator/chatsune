@@ -274,7 +274,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-028] Token refresh race: `handleTokenRefresh` can fire twice simultaneously**
+**[FD-028] ~FIXED~ Token refresh race: `handleTokenRefresh` can fire twice simultaneously**
 
 - File: `frontend/src/core/websocket/connection.ts:128-139`
 - Problem: `handleTokenRefresh` is called from two separate paths: (1) `socket.onmessage` when `type === "token.expiring_soon"`, and (2) `socket.onclose` when `ev.code === 4001`. Both calls hit `authApi.refresh()` concurrently, potentially resulting in two new tokens.

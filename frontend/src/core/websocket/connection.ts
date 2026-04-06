@@ -11,6 +11,7 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectDelay = INITIAL_RECONNECT_DELAY
 let intentionalClose = false
+let isRefreshing = false
 
 function wsUrl(): string {
   const env = import.meta.env.VITE_WS_URL
@@ -126,6 +127,8 @@ function scheduleReconnect() {
 }
 
 async function handleTokenRefresh() {
+  if (isRefreshing) return
+  isRefreshing = true
   try {
     const res = await authApi.refresh()
     useAuthStore.getState().setToken(res.access_token)
@@ -135,5 +138,7 @@ async function handleTokenRefresh() {
     connect()
   } catch {
     useAuthStore.getState().clear()
+  } finally {
+    isRefreshing = false
   }
 }

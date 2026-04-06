@@ -584,7 +584,13 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
             ))
 
         supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
-        active_tools = get_active_definitions([]) or None
+
+        # Respect session-level tool group toggles (BD-038)
+        db = get_db()
+        repo = ChatRepository(db)
+        session = await repo.get_session(session_id, user_id)
+        disabled_tool_groups = session.get("disabled_tool_groups", []) if session else []
+        active_tools = get_active_definitions(disabled_tool_groups) or None
 
         request = CompletionRequest(
             model=model_slug,

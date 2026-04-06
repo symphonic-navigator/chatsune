@@ -349,7 +349,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-038] `handle_incognito_send` always enables all tool groups -- no session-level toggle respected**
+**[BD-038] ~~`handle_incognito_send` always enables all tool groups -- no session-level toggle respected~~ FIXED**
 
 - File: `backend/modules/chat/__init__.py:587`
 - Problem: `active_tools = get_active_definitions([]) or None` -- incognito send always passes an empty `disabled_groups` list, enabling all tools regardless of what the client passed.
