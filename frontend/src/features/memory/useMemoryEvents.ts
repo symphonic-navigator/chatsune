@@ -8,6 +8,10 @@ import type { JournalEntryDto } from '../../core/api/memory'
 
 const TOAST_THRESHOLD = 50
 
+// Module-level dedup: prevents duplicate toasts when multiple useMemoryEvents
+// hooks are active simultaneously (e.g. ChatView + MemoriesTab).
+const _toastedCorrelations = new Set<string>()
+
 export function useMemoryEvents(personaId: string | null) {
   useEffect(() => {
     if (!personaId) return
@@ -62,20 +66,27 @@ export function useMemoryEvents(personaId: string | null) {
         }
         case Topics.MEMORY_DREAM_COMPLETED: {
           store().setDreaming(personaId, false)
-          notify().addNotification({
-            level: 'success',
-            title: 'Dream completed',
-            message: 'Memory consolidation finished successfully.',
-          })
+          store().setCommittedEntries(personaId, [])
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'success',
+              title: 'Dream completed',
+              message: 'Memory consolidation finished successfully.',
+            })
+          }
           break
         }
         case Topics.MEMORY_DREAM_FAILED: {
           store().setDreaming(personaId, false)
-          notify().addNotification({
-            level: 'error',
-            title: 'Dream failed',
-            message: (p.error as string | undefined) ?? 'Memory consolidation encountered an error.',
-          })
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'error',
+              title: 'Dream failed',
+              message: (p.error as string | undefined) ?? 'Memory consolidation encountered an error.',
+            })
+          }
           break
         }
         case Topics.MEMORY_EXTRACTION_STARTED: {
@@ -91,11 +102,14 @@ export function useMemoryEvents(personaId: string | null) {
           break
         }
         case Topics.MEMORY_BODY_ROLLBACK: {
-          notify().addNotification({
-            level: 'info',
-            title: 'Memory rolled back',
-            message: `Memory body restored to version ${p.rolled_back_to_version as number ?? 'previous'}.`,
-          })
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'info',
+              title: 'Memory rolled back',
+              message: `Memory body restored to version ${p.rolled_back_to_version as number ?? 'previous'}.`,
+            })
+          }
           break
         }
       }
