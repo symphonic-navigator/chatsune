@@ -15,4 +15,5 @@ export interface ArtefactSummary {
 
 export interface ArtefactDetail extends ArtefactSummary {
   content: string
+  max_version: number
 }

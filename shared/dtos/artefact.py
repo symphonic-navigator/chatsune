@@ -23,3 +23,4 @@ class ArtefactSummaryDto(BaseModel):
 
 class ArtefactDetailDto(ArtefactSummaryDto):
     content: str
+    max_version: int = 1

@@ -59,6 +59,7 @@ def _to_detail(doc: dict) -> ArtefactDetailDto:
         language=doc.get("language"),
         size_bytes=doc["size_bytes"],
         version=doc["version"],
+        max_version=doc.get("max_version", doc["version"]),
         created_at=doc["created_at"],
         updated_at=doc["updated_at"],
         content=doc["content"],

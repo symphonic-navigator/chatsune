@@ -103,10 +103,11 @@ export function ArtefactOverlay() {
   const rgb = artefact ? (TYPE_COLOURS[artefact.type] ?? '180,180,180') : '180,180,180'
   const isDirty = artefact ? editContent !== artefact.content : false
   const undoDisabled = !artefact || artefact.version <= 1
+  const redoDisabled = !artefact || artefact.version >= artefact.max_version
 
   return (
-    <div className="absolute inset-0 z-30 flex items-stretch bg-black/40">
-      <div className="m-2 flex flex-1 flex-col overflow-hidden rounded border border-white/10 bg-elevated shadow-2xl">
+    <div className="absolute inset-0 z-30 flex items-stretch bg-black/40" onClick={closeOverlay}>
+      <div className="m-2 flex flex-1 flex-col overflow-hidden rounded border border-white/10 bg-elevated shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Toolbar */}
         <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2">
           {/* Left: title + badges */}
@@ -183,7 +184,7 @@ export function ArtefactOverlay() {
             <button
               type="button"
               onClick={handleRedo}
-              disabled={!artefact}
+              disabled={redoDisabled}
               className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`}
               title="Redo"
             >
@@ -206,19 +207,17 @@ export function ArtefactOverlay() {
         {/* Content area */}
         <div className="relative flex min-h-0 flex-1 flex-col">
           {loading && (
-            <div className="flex h-full items-center justify-center">
+            <div className="absolute inset-0 flex items-center justify-center">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
             </div>
           )}
 
           {!loading && artefact && mode === 'preview' && (
-            <div className="relative flex-1 min-h-0">
-              <ArtefactPreview
-                content={artefact.content}
-                type={artefact.type}
-                language={artefact.language}
-              />
-            </div>
+            <ArtefactPreview
+              content={artefact.content}
+              type={artefact.type}
+              language={artefact.language}
+            />
           )}
 
           {!loading && artefact && mode === 'edit' && (
