@@ -283,3 +283,51 @@ Intermediate tool-call/result messages exist only during the tool loop. They are
 NOT persisted in `chat_messages`. Only the final assistant response is saved,
 alongside lightweight metadata (`web_search_context`) for citation display. This
 prevents context bloat when sessions are reopened — a lesson from Prototype 2.
+
+---
+
+## INS-011 — Event Bus Fan-Out Table Must Be Updated for New Topics
+
+**Decision:** Every new event topic that should be delivered via WebSocket MUST be
+added to the `_FANOUT` dict in `backend/ws/event_bus.py`. Without an entry, the
+event is persisted to Redis Streams but silently NOT delivered to any client. The
+event bus logs a warning (`"no fan-out rule for topic — event persisted but not
+delivered"`) but this is easy to miss.
+
+**Why this matters:**
+When adding `CHAT_SESSION_RESTORED`, the topic was added to `shared/topics.py`,
+the event was published from the handler, and the frontend subscribed to it — but
+the session didn't reappear in the UI. Root cause: missing `_FANOUT` entry. The
+event was stored in Redis but never sent over the WebSocket.
+
+**Checklist for new events:**
+1. Define event model in `shared/events/`
+2. Add topic constant to `shared/topics.py`
+3. Add topic to frontend `core/types/events.ts`
+4. **Add topic to `_FANOUT` in `backend/ws/event_bus.py`** ← easy to forget
+5. Subscribe in frontend
+
+---
+
+## INS-012 — CSS Zoom Breaks @dnd-kit Coordinate Calculations
+
+**Decision:** When using CSS `body { zoom: X }` with @dnd-kit, a custom modifier
+must be applied to all `<DragOverlay>` components to compensate for the coordinate
+space mismatch between `getBoundingClientRect()` (zoomed) and pointer events
+(unzoomed).
+
+**The modifier** (`frontend/src/core/utils/dndZoomModifier.ts`):
+- Divides the pointer delta by the zoom factor (fixes proportional drift)
+- Applies a position offset based on `activeNodeRect` (fixes constant shift)
+- Formula: `x = transform.x / zoom + activeNodeRect.left * (1/zoom - 1)`
+
+**Why DragOverlay, not DndContext:**
+Applying the modifier on both DndContext AND DragOverlay causes double
+compensation (overlay moves in the wrong direction). The modifier belongs ONLY
+on `<DragOverlay modifiers={zoomModifiers}>`.
+
+**This bug persisted across two prototypes** because CSS zoom coordinate
+mismatches are browser-specific and poorly documented. The key insight: the
+error is proportional to the element's distance from the viewport origin, which
+is why it was most visible horizontally (cards offset by sidebar + centering)
+and barely noticeable vertically (cards near the top).
