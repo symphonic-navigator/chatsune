@@ -3,8 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from shared.dtos.chat import ChatSessionDto
-
 
 class ChatStreamStartedEvent(BaseModel):
     type: str = "chat.stream.started"
