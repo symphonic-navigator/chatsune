@@ -21,7 +21,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-002] `useChatStream` constructs final message with a fake client-side ID**
+**[FD-002] ~FIXED~ `useChatStream` constructs final message with a fake client-side ID**
 
 - File: `frontend/src/features/chat/useChatStream.ts:66`
 - Problem: When `CHAT_STREAM_ENDED` fires, the assistant message is stored with a timestamp-based ID. The real server-assigned message ID is not extracted from the event payload. All subsequent operations keyed by message ID -- `truncateAfter`, `deleteMessage`, `updateMessage`, bookmark lookup via `bookmarkedMessageIds` -- will silently fail for this message because none will find a match on the fake ID.
@@ -243,7 +243,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-025] `CHAT_STREAM_ENDED` event must include the real server-assigned message ID**
+**[FD-025] ~~`CHAT_STREAM_ENDED` event must include the real server-assigned message ID~~ FIXED**
 
 - Files: `frontend/src/features/chat/useChatStream.ts:66`, backend `chat` module
 - Problem: The frontend constructs the final assistant message with a fake ID (see FD-002). The backend has already persisted the message with a real MongoDB ObjectId. The `CHAT_STREAM_ENDED` event payload needs to include `message_id`.
@@ -253,7 +253,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-026] Avatar images served as authenticated resources require JWT in the URL -- token leakage risk**
+**[FD-026] ~~Avatar images served as authenticated resources require JWT in the URL -- token leakage risk~~ FIXED**
 
 - Files: `frontend/src/core/api/personas.ts:70-75`, `frontend/src/core/api/storage.ts:81`
 - Problem: `avatarSrc` appends the JWT access token as a query parameter. This is necessary because `<img src>` cannot send custom headers. However, JWTs in URLs appear in server access logs, browser history, and HTTP referrer headers.
@@ -265,7 +265,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-027] `usePersonas` event payload is not used -- events from other users are ignored**
+**[FD-027] ~~`usePersonas` event payload is not used -- events from other users are ignored~~ FIXED**
 
 - File: `frontend/src/core/hooks/usePersonas.ts:29-31`
 - The backend already sends the persona DTO in persona events per the event-first architecture. The frontend simply does not use it. Both a frontend fix (use the payload) and a verification that the backend payload structure matches `PersonaDto`.
@@ -286,7 +286,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-029] `bookmarksApi.list` does not URL-encode the `session_id` parameter**
+**[FD-029] ~~`bookmarksApi.list` does not URL-encode the `session_id` parameter~~ FIXED**
 
 - File: `frontend/src/core/api/bookmarks.ts:9`
 - Problem: The query string does not URL-encode `sessionId`. MongoDB ObjectIds are alphanumeric so this is not currently exploitable, but it is inconsistent.

@@ -235,9 +235,9 @@ async def _run_inference(
         thinking: str | None,
         usage: dict | None,
         web_search_context: list[dict] | None = None,
-    ) -> None:
+    ) -> str | None:
         token_count = count_tokens(content)
-        await repo.save_message(
+        doc = await repo.save_message(
             session_id,
             role="assistant",
             content=content,
@@ -268,6 +268,8 @@ async def _run_inference(
                         },
                         correlation_id=correlation_id,
                     )
+
+        return doc["_id"]
 
     # Calculate ampel status for the response
     context_status = get_ampel_status(fill_ratio)
@@ -303,11 +305,12 @@ async def _run_inference(
             context_fill_percentage=0.0,
             timestamp=now,
         ))
-        await repo.update_session_state(session_id, "idle")
     except Exception as e:
         _log.error("Unexpected error in _run_inference for session %s: %s", session_id, e)
-        await repo.update_session_state(session_id, "idle")
     finally:
+        # Always reset to idle — covers success (idempotent), cancel, error,
+        # and disconnect scenarios where the stream ends without exception.
+        await repo.update_session_state(session_id, "idle")
         _cancel_events.pop(correlation_id, None)
 
 

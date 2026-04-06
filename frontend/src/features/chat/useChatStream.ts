@@ -63,12 +63,13 @@ export function useChatStream(sessionId: string | null) {
             if (content) {
               store().finishStreaming(
                 {
-                  id: `streaming-${Date.now()}`,
+                  id: (p.message_id as string) ?? `streaming-${Date.now()}`,
                   session_id: sessionId,
                   role: 'assistant',
                   content,
                   thinking: thinking || null,
                   token_count: 0,
+                  attachments: null,
                   web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
                   created_at: new Date().toISOString(),
                 },

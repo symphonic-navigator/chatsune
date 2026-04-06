@@ -320,7 +320,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-035] Session `state` is not reset to `"idle"` when WebSocket client disconnects during streaming**
+**[BD-035] ~~Session `state` is not reset to `"idle"` when WebSocket client disconnects during streaming~~ FIXED**
 
 - File: `backend/ws/router.py:99-106` and `backend/modules/chat/__init__.py:204-205`
 - Problem: When a user disconnects, any in-flight inference task continues running. If the task errors out in a way that skips `save_fn`, the session is permanently stuck as `"streaming"`.
@@ -333,7 +333,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Low Effort
 
-**[BD-036] `ChatSessionPinnedUpdatedEvent` is published but never delivered (duplicate of BD-002)**
+**[BD-036] ~~`ChatSessionPinnedUpdatedEvent` is published but never delivered (duplicate of BD-002)~~ FIXED**
 
 - The frontend relies on this event to update the pinned state in the session list without refetching. Its absence means pinning/unpinning appears to fail from the user's perspective.
 
@@ -341,7 +341,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Medium Effort
 
-**[BD-037] `chat.session.created` event carries ISO string dates rather than datetime objects**
+**[BD-037] ~~`chat.session.created` event carries ISO string dates rather than datetime objects~~ FIXED**
 
 - File: `shared/events/chat.py:81-91`
 - Problem: `ChatSessionCreatedEvent.created_at` and `updated_at` are typed as `str` and set using `.isoformat()`. Every other event uses `datetime` fields. The frontend must parse these fields differently.

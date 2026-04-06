@@ -27,6 +27,7 @@ class ChatStreamEndedEvent(BaseModel):
     type: str = "chat.stream.ended"
     correlation_id: str
     session_id: str
+    message_id: str | None = None
     status: Literal["completed", "cancelled", "error"]
     usage: dict | None = None
     context_status: Literal["green", "yellow", "orange", "red"]
@@ -84,8 +85,8 @@ class ChatSessionCreatedEvent(BaseModel):
     persona_id: str
     model_unique_id: str
     title: str | None = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
     correlation_id: str
     timestamp: datetime
 

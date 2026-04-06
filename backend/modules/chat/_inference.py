@@ -248,8 +248,9 @@ class InferenceRunner:
                 timestamp=datetime.now(timezone.utc),
             ))
 
+        message_id = None
         if status == "completed" and full_content:
-            await save_fn(
+            message_id = await save_fn(
                 content=full_content,
                 thinking=full_thinking or None,
                 usage=usage,
@@ -259,6 +260,7 @@ class InferenceRunner:
         await emit_fn(ChatStreamEndedEvent(
             correlation_id=correlation_id,
             session_id=session_id,
+            message_id=message_id,
             status=status,
             usage=usage,
             context_status=context_status,

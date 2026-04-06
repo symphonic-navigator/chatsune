@@ -6,7 +6,7 @@ export const bookmarksApi = {
     api.post<BookmarkDto>("/api/bookmarks", data),
 
   list: (sessionId?: string) => {
-    const qs = sessionId ? `?session_id=${sessionId}` : ""
+    const qs = sessionId ? `?${new URLSearchParams({ session_id: sessionId })}` : ""
     return api.get<BookmarkDto[]>(`/api/bookmarks${qs}`)
   },
 
