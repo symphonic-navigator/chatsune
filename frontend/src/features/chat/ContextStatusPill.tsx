@@ -14,7 +14,6 @@ interface ContextStatusPillProps {
 }
 
 export function ContextStatusPill({ status, fillPercentage }: ContextStatusPillProps) {
-  const showPercentage = status !== 'green'
   const pct = Math.round(fillPercentage * 100)
 
   return (
@@ -23,7 +22,7 @@ export function ContextStatusPill({ status, fillPercentage }: ContextStatusPillP
       title={`Context window: ${pct}% used`}
     >
       <span data-testid="context-dot" className={`h-1.5 w-1.5 rounded-full ${DOT_COLOURS[status]}`} />
-      {showPercentage && <span>{pct}%</span>}
+      <span>{status === 'green' ? 'CTX' : `CTX ${pct}%`}</span>
     </span>
   )
 }
