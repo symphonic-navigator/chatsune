@@ -10,9 +10,10 @@ interface AssistantMessageProps {
   accentColour: string; highlighter: Highlighter | null;
   thinkingDefaultExpanded?: boolean; onThinkingToggle?: (expanded: boolean) => void;
   isBookmarked?: boolean; onBookmark?: () => void;
+  canRegenerate?: boolean; onRegenerate?: () => void;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, thinkingDefaultExpanded, onThinkingToggle, isBookmarked, onBookmark }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, thinkingDefaultExpanded, onThinkingToggle, isBookmarked, onBookmark, canRegenerate, onRegenerate }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(() => {
@@ -60,6 +61,17 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
                   <path d="M3 1.5H11V12.5L7 9.5L3 12.5V1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
                 </svg>
                 {isBookmarked ? 'Bookmarked' : 'Bookmark'}
+              </button>
+            )}
+            {canRegenerate && onRegenerate && (
+              <button type="button" onClick={onRegenerate}
+                className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50"
+                title="Regenerate response">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                  <path d="M1.5 7C1.5 4 4 1.5 7 1.5C10 1.5 12.5 4 12.5 7C12.5 10 10 12.5 7 12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <path d="M1.5 7L3.5 5M1.5 7L3.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Regenerate
               </button>
             )}
           </div>

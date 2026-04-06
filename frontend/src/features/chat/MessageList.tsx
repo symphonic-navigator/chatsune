@@ -4,7 +4,6 @@ import type { Highlighter } from 'shiki'
 import { UserBubble } from './UserBubble'
 import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
-import { RegenerateButton } from './RegenerateButton'
 import { WebSearchPills } from './WebSearchPills'
 import { KnowledgePills } from './KnowledgePills'
 import { ToolCallActivity } from './ToolCallActivity'
@@ -88,10 +87,8 @@ export function MessageList({
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   thinkingDefaultExpanded={thinkingExpandedRef.current}
                   onThinkingToggle={(v) => { thinkingExpandedRef.current = v }}
-                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)} />
-                {canRegenerate && i === lastAssistantIdx && (
-                  <RegenerateButton onClick={onRegenerate} disabled={isStreaming} />
-                )}
+                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
+                  canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate} />
               </div>
             )
           }

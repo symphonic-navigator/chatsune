@@ -49,7 +49,8 @@ export function UserBubble({ content, attachments, onEdit, isEditable, isBookmar
             <button type="button" data-testid="edit-cancel" onClick={cancelEdit}
               className="rounded px-2.5 py-1 text-[12px] text-white/40 transition-colors hover:text-white/60">Cancel</button>
             <button type="button" data-testid="edit-submit" onClick={submitEdit}
-              className="rounded bg-white/10 px-2.5 py-1 text-[12px] text-white/70 transition-colors hover:bg-white/15">Save & resend</button>
+              disabled={editText.trim() === content || !editText.trim()}
+              className="rounded bg-white/10 px-2.5 py-1 text-[12px] text-white/70 transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed">Save & resend</button>
           </div>
         </div>
       </div>
