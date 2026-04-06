@@ -53,20 +53,46 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
   const { sessions, isLoading } = useChatSessions()
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
+  const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
 
-  const filtered = useMemo(() => {
-    let result = sessions.filter((s) => s.persona_id === persona.id)
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
 
-    if (search.trim()) {
-      const term = search.toLowerCase()
-      result = result.filter((s) => {
-        const title = s.title ?? ''
-        return title.toLowerCase().includes(term) || s.id.toLowerCase().includes(term)
-      })
+    const trimmed = search.trim()
+    if (!trimmed) {
+      setSearchResults(null)
+      setIsSearching(false)
+      return
     }
 
-    return result
-  }, [sessions, search, persona.id])
+    setIsSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const results = await chatApi.searchSessions({
+          q: trimmed,
+          persona_id: persona.id,
+        })
+        setSearchResults(results)
+      } catch {
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300)
+
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current)
+    }
+  }, [search, persona.id])
+
+  const filtered = useMemo(() => {
+    if (searchResults !== null) {
+      return searchResults
+    }
+    return sessions.filter((s) => s.persona_id === persona.id)
+  }, [sessions, searchResults, persona.id])
 
   const grouped = useMemo(() => groupSessions(filtered), [filtered])
 
@@ -92,8 +118,10 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
-        {isLoading && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">Loading...</p>
+        {(isLoading || isSearching) && (
+          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">
+            {isSearching ? 'Searching...' : 'Loading...'}
+          </p>
         )}
         {!isLoading && filtered.length === 0 && (
           <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No sessions found.</p>
