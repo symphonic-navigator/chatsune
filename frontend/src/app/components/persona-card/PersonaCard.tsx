@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { PersonaDto } from "../../../core/types/persona";
@@ -54,10 +55,38 @@ export default function PersonaCard({
     animation: `card-entrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) ${index * 0.1}s both`,
   };
 
-  const menuButtons: { label: string; tab: PersonaOverlayTab }[] = [
-    { label: "Overview", tab: "overview" },
-    { label: "Edit", tab: "edit" },
-    { label: "History", tab: "history" },
+  const menuButtons: { title: string; tab: PersonaOverlayTab; icon: React.ReactNode }[] = [
+    {
+      title: "Overview",
+      tab: "overview",
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 16v-4" />
+          <path d="M12 8h.01" />
+        </svg>
+      ),
+    },
+    {
+      title: "Edit",
+      tab: "edit",
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+          <path d="m15 5 4 4" />
+        </svg>
+      ),
+    },
+    {
+      title: "History",
+      tab: "history",
+      icon: (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -202,16 +231,15 @@ export default function PersonaCard({
         className="flex h-12 relative z-[3]"
         style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
       >
-        {menuButtons.map((btn, i) => (
+        {menuButtons.map((btn) => (
           <button
             key={btn.tab}
-            className="flex-1 flex items-center justify-center text-[10px] font-medium uppercase tracking-[1px] transition-colors duration-200 bg-transparent border-none cursor-pointer"
+            className="flex-1 flex items-center justify-center transition-colors duration-200 bg-transparent border-none cursor-pointer"
             style={{
               color: "rgba(255,255,255,0.35)",
-              borderRight: i < menuButtons.length - 1
-                ? "1px solid rgba(255,255,255,0.04)"
-                : "none",
+              borderRight: "1px solid rgba(255,255,255,0.04)",
             }}
+            title={btn.title}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onOpenOverlay(persona.id, btn.tab)}
             onMouseEnter={(e) => {
@@ -223,9 +251,31 @@ export default function PersonaCard({
               e.currentTarget.style.background = "transparent";
             }}
           >
-            {btn.label}
+            {btn.icon}
           </button>
         ))}
+
+        {/* New Chat button */}
+        <button
+          className="flex-1 flex items-center justify-center transition-colors duration-200 bg-transparent border-none cursor-pointer"
+          style={{ color: chakra.hex + "b3" }}
+          title="New Chat"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onNewChat(persona.id)}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = chakra.hex;
+            e.currentTarget.style.background = chakra.hex + "0f";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = chakra.hex + "b3";
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" />
+            <path d="M12 5v14" />
+          </svg>
+        </button>
       </div>
     </div>
   );
