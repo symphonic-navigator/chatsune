@@ -24,7 +24,6 @@ export default function PersonaCard({
   onTogglePin,
 }: PersonaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
-  const [hoveredZone, setHoveredZone] = useState<"continue" | "new" | null>(null);
 
   const {
     attributes,
@@ -67,10 +66,7 @@ export default function PersonaCard({
       style={cardStyle}
       className="relative flex flex-col rounded-xl overflow-hidden select-none"
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        setHoveredZone(null);
-      }}
+      onMouseLeave={() => setIsHovered(false)}
       {...attributes}
     >
       {/* Chakra gradient overlay */}
@@ -128,13 +124,16 @@ export default function PersonaCard({
         )}
       </div>
 
-      {/* Card content — CSS Grid: name / avatar / tagline */}
-      <div
-        className="flex-1 grid items-center justify-items-center px-3"
+      {/* Card content — clickable for Continue */}
+      <button
+        type="button"
+        className="flex-1 grid items-center justify-items-center px-3 bg-transparent border-none cursor-pointer w-full"
         style={{
-          gridTemplateRows: "auto 1fr auto",
+          gridTemplateRows: "auto 1fr auto auto",
           paddingBottom: "28px",
         }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={() => onContinue(persona.id)}
       >
         {/* Name */}
         <p
@@ -185,64 +184,18 @@ export default function PersonaCard({
         >
           {persona.tagline}
         </p>
-      </div>
 
-      {/* Chat zones — absolute overlay above menu bar */}
-      <div className="absolute top-0 left-0 right-0 bottom-[48px] flex">
-        {/* Continue zone — left 2/3 */}
-        <button
-          className="flex-[2] flex items-end justify-center pb-2 bg-transparent border-none cursor-pointer"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onContinue(persona.id)}
-          onMouseEnter={() => setHoveredZone("continue")}
-          onMouseLeave={() => setHoveredZone(null)}
-        >
-          <span
-            className="text-[10px] font-semibold uppercase tracking-[1.5px] transition-all duration-250"
-            style={{
-              color: hoveredZone === "continue"
-                ? chakra.hex + "b3"
-                : chakra.hex + "26",
-              textShadow: hoveredZone === "continue"
-                ? `0 0 12px ${chakra.glow}`
-                : "none",
-            }}
-          >
-            Continue
-          </span>
-        </button>
-
-        {/* Divider line */}
-        <div
-          className="w-px transition-colors duration-300 self-stretch my-[15%]"
+        {/* Continue hint — visible on hover */}
+        <span
+          className="text-[9px] font-semibold uppercase tracking-[1.5px] transition-opacity duration-200 self-end"
           style={{
-            background: isHovered ? chakra.hex + "26" : "transparent",
+            color: chakra.hex + "80",
+            opacity: isHovered ? 1 : 0,
           }}
-        />
-
-        {/* New zone — right 1/3 */}
-        <button
-          className="flex-[1] flex items-end justify-center pb-2 bg-transparent border-none cursor-pointer"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onNewChat(persona.id)}
-          onMouseEnter={() => setHoveredZone("new")}
-          onMouseLeave={() => setHoveredZone(null)}
         >
-          <span
-            className="text-[10px] font-semibold uppercase tracking-[1.5px] transition-all duration-250"
-            style={{
-              color: hoveredZone === "new"
-                ? chakra.hex + "b3"
-                : chakra.hex + "26",
-              textShadow: hoveredZone === "new"
-                ? `0 0 12px ${chakra.glow}`
-                : "none",
-            }}
-          >
-            New
-          </span>
-        </button>
-      </div>
+          ▸ Continue
+        </span>
+      </button>
 
       {/* Menu bar — bottom */}
       <div
