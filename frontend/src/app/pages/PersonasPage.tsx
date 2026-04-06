@@ -98,7 +98,7 @@ export default function PersonasPage() {
             <AddPersonaCard onClick={handleAddPersona} index={filtered.length} />
           </div>
         </SortableContext>
-        <DragOverlay>
+        <DragOverlay modifiers={zoomModifiers}>
           {activePersona ? (
             <div style={{ transform: "scale(1.05)", opacity: 0.9, pointerEvents: "none" }}>
               <PersonaCard

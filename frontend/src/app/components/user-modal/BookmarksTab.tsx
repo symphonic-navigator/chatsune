@@ -185,7 +185,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
               </div>
             ))}
           </SortableContext>
-          <DragOverlay>
+          <DragOverlay modifiers={zoomModifiers}>
             {dragActive ? (
               <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
                 {dragActive.title}

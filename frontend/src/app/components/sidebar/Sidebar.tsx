@@ -605,7 +605,7 @@ export function Sidebar({
           )}
 
           {/* Drag overlay */}
-          <DragOverlay>
+          <DragOverlay modifiers={zoomModifiers}>
             {dragActivePersona ? (
               <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
                 {dragActivePersona.name}
@@ -714,7 +714,7 @@ export function Sidebar({
           </div>
 
           {/* History drag overlay */}
-          <DragOverlay>
+          <DragOverlay modifiers={zoomModifiers}>
             {historyDragActiveSession ? (
               <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
                 {historyDragActiveSession.title ?? 'Untitled session'}

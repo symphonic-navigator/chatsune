@@ -74,7 +74,7 @@ export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksRe
             ))}
           </div>
         </SortableContext>
-        <DragOverlay>
+        <DragOverlay modifiers={zoomModifiers}>
           {dragActive ? (
             <div className="rounded border border-white/10 bg-elevated px-3 py-1.5 text-[12px] text-white/60 shadow-xl">
               {dragActive.title}
