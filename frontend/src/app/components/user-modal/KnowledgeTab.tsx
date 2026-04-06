@@ -53,12 +53,6 @@ export function KnowledgeTab() {
     fetchLibraries,
     fetchDocuments,
     toggleExpanded,
-    onLibraryCreated,
-    onLibraryUpdated,
-    onLibraryDeleted,
-    onDocumentCreated,
-    onDocumentUpdated,
-    onDocumentDeleted,
   } = useKnowledgeStore()
 
   const { isSanitised } = useSanitisedMode()
@@ -77,18 +71,15 @@ export function KnowledgeTab() {
 
   async function handleSaveLibrary(data: { name: string; description: string; nsfw: boolean }) {
     if (libraryModal.mode === 'create') {
-      const created = await knowledgeApi.createLibrary(data)
-      onLibraryCreated(created)
+      await knowledgeApi.createLibrary(data)
     } else if (libraryModal.mode === 'edit') {
-      const updated = await knowledgeApi.updateLibrary(libraryModal.library.id, data)
-      onLibraryUpdated(updated)
+      await knowledgeApi.updateLibrary(libraryModal.library.id, data)
     }
   }
 
   async function handleDeleteLibrary() {
     if (libraryModal.mode !== 'edit') return
     await knowledgeApi.deleteLibrary(libraryModal.library.id)
-    onLibraryDeleted(libraryModal.library.id)
   }
 
   async function handleOpenDocument(libraryId: string, doc: KnowledgeDocumentDto) {
@@ -103,20 +94,16 @@ export function KnowledgeTab() {
 
   async function handleSaveDocument(data: { title: string; content: string; media_type: 'text/markdown' | 'text/plain' }) {
     if (documentModal.mode === 'create') {
-      const created = await knowledgeApi.createDocument(documentModal.libraryId, data)
-      onDocumentCreated(created)
-      // Refresh library list to update document_count
+      await knowledgeApi.createDocument(documentModal.libraryId, data)
       fetchLibraries()
     } else if (documentModal.mode === 'edit') {
-      const updated = await knowledgeApi.updateDocument(documentModal.libraryId, documentModal.doc.id, data)
-      onDocumentUpdated(updated)
+      await knowledgeApi.updateDocument(documentModal.libraryId, documentModal.doc.id, data)
     }
   }
 
   async function handleDeleteDocument() {
     if (documentModal.mode !== 'edit') return
     await knowledgeApi.deleteDocument(documentModal.libraryId, documentModal.doc.id)
-    onDocumentDeleted(documentModal.libraryId, documentModal.doc.id)
     fetchLibraries()
   }
 
