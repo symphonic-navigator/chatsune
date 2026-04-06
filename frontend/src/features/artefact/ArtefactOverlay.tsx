@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
@@ -38,23 +37,6 @@ export function ArtefactOverlay() {
   const [editContent, setEditContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [contentH, setContentH] = useState(0)
-
-  const toolbarRef = useRef<HTMLDivElement>(null)
-  const panelRef = useRef<HTMLDivElement>(null)
-
-  // Measure content area = panel height - toolbar height
-  useEffect(() => {
-    function measure() {
-      if (!panelRef.current || !toolbarRef.current) return
-      const ph = panelRef.current.getBoundingClientRect().height
-      const th = toolbarRef.current.getBoundingClientRect().height
-      setContentH(Math.max(0, ph - th))
-    }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [artefact, loading])
 
   useEffect(() => {
     setMode('preview')
@@ -119,31 +101,18 @@ export function ArtefactOverlay() {
   const undoDisabled = !artefact || artefact.version <= 1
   const redoDisabled = !artefact || artefact.version >= artefact.max_version
 
-  return createPortal(
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={closeOverlay}
-      data-testid="artefact-overlay-backdrop"
-    >
+  return (
+    <>
+      {/* Backdrop — same pattern as PersonaOverlay / UserModal */}
+      <div className="fixed inset-0 bg-black/50 z-10" onClick={closeOverlay} />
+
+      {/* Panel — absolute inside nearest relative ancestor */}
       <div
-        ref={panelRef}
-        style={{
-          width: 'calc(100vw - 120px)', maxWidth: 1200,
-          height: 'calc(100vh - 80px)',
-          borderRadius: 10,
-          border: '1px solid rgba(255,255,255,0.1)',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-          overflow: 'hidden',
-        }}
-        className="bg-elevated"
+        className="absolute inset-4 z-20 flex flex-col bg-elevated border border-white/10 rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div ref={toolbarRef} className="flex items-center gap-2 border-b border-white/8 px-3 py-2">
+        <div className="flex shrink-0 items-center gap-2 border-b border-white/8 px-3 py-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-[13px] text-white/80" title={artefact?.title ?? ''}>
               {artefact?.title ?? '...'}
@@ -178,42 +147,38 @@ export function ArtefactOverlay() {
           </div>
         </div>
 
-        {/* Content — explicit pixel height, no CSS percentage chains */}
-        {contentH > 0 && (
-          <div style={{ width: '100%', height: contentH, overflow: 'hidden' }}>
-            {loading && (
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
-              </div>
-            )}
+        {/* Content area */}
+        <div className="relative min-h-0 flex-1">
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
+            </div>
+          )}
 
-            {!loading && artefact && mode === 'preview' && (
-              <ArtefactPreview content={artefact.content} type={artefact.type} language={artefact.language} />
-            )}
+          {!loading && artefact && mode === 'preview' && (
+            <ArtefactPreview content={artefact.content} type={artefact.type} language={artefact.language} />
+          )}
 
-            {!loading && artefact && mode === 'edit' && (
-              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <textarea
-                  className="resize-none bg-transparent p-4 font-mono text-[12px] text-white/80 outline-none"
-                  style={{ flex: 1, minHeight: 0 }}
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  spellCheck={false}
-                />
-                {isDirty && (
-                  <div className="flex items-center justify-end gap-2 border-t border-white/8 px-3 py-2">
-                    <button type="button" onClick={() => setEditContent(artefact.content)}
-                      className={`${BTN_BASE} ${BTN_INACTIVE}`}>Discard</button>
-                    <button type="button" onClick={handleSave} disabled={saving}
-                      className={`${BTN_BASE} ${BTN_ACTIVE} disabled:opacity-50`}>{saving ? 'Saving...' : 'Save'}</button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+          {!loading && artefact && mode === 'edit' && (
+            <div className="flex h-full flex-col">
+              <textarea
+                className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-[12px] text-white/80 outline-none"
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                spellCheck={false}
+              />
+              {isDirty && (
+                <div className="flex shrink-0 items-center justify-end gap-2 border-t border-white/8 px-3 py-2">
+                  <button type="button" onClick={() => setEditContent(artefact.content)}
+                    className={`${BTN_BASE} ${BTN_INACTIVE}`}>Discard</button>
+                  <button type="button" onClick={handleSave} disabled={saving}
+                    className={`${BTN_BASE} ${BTN_ACTIVE} disabled:opacity-50`}>{saving ? 'Saving...' : 'Save'}</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>,
-    document.body,
+    </>
   )
 }
