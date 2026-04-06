@@ -6,11 +6,17 @@ interface MemoriesTabProps {
   chakra: ChakraPaletteEntry
 }
 
-export function MemoriesTab({ persona: _persona, chakra: _chakra }: MemoriesTabProps) {
+export function MemoriesTab({ persona: _persona, chakra }: MemoriesTabProps) {
   return (
-    <div className="flex flex-1 items-center justify-center h-full py-20">
-      <p className="font-mono text-[12px] text-white/20 text-center">
-        memory entries — coming with the memory module
+    <div className="flex flex-1 flex-col items-center justify-center h-full py-20 gap-3">
+      <div
+        className="flex h-10 w-10 items-center justify-center rounded-full text-lg"
+        style={{ background: `${chakra.hex}15`, color: `${chakra.hex}80` }}
+      >
+        &#x2726;
+      </div>
+      <p className="text-[13px] text-white/30 text-center">
+        This feature is coming soon.
       </p>
     </div>
   )

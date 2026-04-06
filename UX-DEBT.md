@@ -12,12 +12,13 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[UX-001] Login fields labelled "Omen" and "Incantation" instead of "Username" and "Password"**
+**[UX-001] Login fields labelled "Omen" and "Incantation" instead of "Username" and "Password"** — PARTIALLY FIXED
 
 - File: `frontend/src/app/pages/LoginPage.tsx:51-66`
 - Problem: The label texts for the login fields are "Omen" (username) and "Incantation" (password). A new user will not understand what to enter. There are no `placeholder` texts, no `autocomplete` attributes, and no semantically recognisable purpose.
 - Why it matters: New users will be stuck at the first login. Missing `autocomplete="username"` and `autocomplete="current-password"` also means browser password managers will not work.
 - Fix: Change labels to "Username" and "Password". Creative names can appear as subtitle under the logo, but not as field labels. Add `autocomplete` attributes.
+- **Status:** `autocomplete` attributes added to all form fields (login + setup). Labels "Omen" and "Incantation" are **intentional by design** and must not be changed.
 
 ---
 
@@ -30,11 +31,12 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[UX-003] Context menu in HistoryItem does not close when navigating to another session**
+**[UX-003] Context menu in HistoryItem does not close when navigating to another session** — FIXED
 
 - File: `frontend/src/app/components/sidebar/HistoryItem.tsx:36-46`
 - Problem: The dropdown menu only closes on outside click (mousedown handler). If navigation happens via keyboard or programmatically, the menu stays open and can block interactions.
 - Fix: Call `setMenuOpen(false)` on route change (`useEffect` with `location`).
+- **Status:** Fixed — useEffect with useLocation closes menu and confirm state on route change.
 
 ---
 
@@ -47,12 +49,13 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[UX-005] UserModal tab bar is not scrollable -- tabs get cut off on narrow viewports**
+**[UX-005] UserModal tab bar is not scrollable -- tabs get cut off on narrow viewports** — FIXED
 
 - File: `frontend/src/app/components/user-modal/UserModal.tsx:121-139`
 - Problem: The tab bar has `flex` and `px-4`, but no `overflow-x-auto`. With 10 tabs ("About me", "Projects", "History", "Knowledge", "Bookmarks", "Uploads", "Artefacts", "Models", "Settings", "API-Keys"), on smaller screens or with the sidebar open, the rightmost tabs are invisibly cut off.
 - Why it matters: The "API-Keys" tab with the red error indicator is often the last tab and may be unreachable on smaller window widths.
 - Fix: Add `overflow-x-auto` to the tab bar. Or: wrap tabs into two rows or use a dropdown for overflow tabs.
+- **Status:** Fixed — `overflow-x-auto` added to tab bar container.
 
 ---
 
@@ -114,20 +117,22 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[UX-012] Missing `aria-label` attributes on toggle elements in EditTab**
+**[UX-012] Missing `aria-label` attributes on toggle elements in EditTab** — FIXED
 
 - File: `frontend/src/app/components/persona-overlay/EditTab.tsx:403-449`
 - Problem: The `Toggle` component is a `div` with `onClick`, but has no `role="switch"`, no `aria-checked`, and no `aria-label`. The visual toggle switch itself is a non-interactive `div`.
 - Why it matters: Screen reader users cannot read the toggle states. Keyboard navigation is not possible.
 - Fix: Add `role="switch"`, `aria-checked={value}`, `aria-label={label}` to the outer `div` and add `tabIndex={0}` + `onKeyDown` handler.
+- **Status:** Fixed — role, aria-checked, aria-label, tabIndex, and onKeyDown added.
 
 ---
 
-**[UX-013] Date formatting in HistoryTab uses "de-DE" locale in an English-language UI**
+**[UX-013] Date formatting in HistoryTab uses "de-DE" locale in an English-language UI** — FIXED
 
 - File: `frontend/src/app/components/sidebar/HistoryItem.tsx:6-13`, `frontend/src/app/components/user-modal/HistoryTab.tsx:39-44`, `frontend/src/app/components/persona-overlay/HistoryTab.tsx:39-44`
 - Problem: The `formatSessionDate` function uses `"de-DE"` as locale, producing German date formats (e.g. "12. Apr, 14:30"). The rest of the UI is in English. Inconsistent for non-German users.
 - Fix: Use `undefined` as locale (browser default) or derive from user settings. Alternatively use a consistent format like "12 Apr 14:30".
+- **Status:** Fixed — all three files now use `undefined` (browser default locale).
 
 ---
 
@@ -190,19 +195,21 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[UX-020] Model name in Topbar is split by ":" -- only the part after the first colon is shown**
+**[UX-020] Model name in Topbar is split by ":" -- only the part after the first colon is shown** — ALREADY FIXED
 
 - File: `frontend/src/app/components/topbar/Topbar.tsx:109`
 - Problem: `.split(":")[1]` -- if the model ID has multiple colons (e.g. `ollama_cloud:deepseek-r1:70b`), only `deepseek-r1` is shown, not `deepseek-r1:70b`.
 - Fix: Use `.split(":").slice(1).join(":")`, consistent with the pattern used in `EditTab.tsx:32`.
+- **Status:** Already fixed — Topbar.tsx already uses `.split(":").slice(1).join(":")`.
 
 ---
 
-**[UX-021] "Sanitised" toggle in the sidebar has no label in collapsed mode**
+**[UX-021] "Sanitised" toggle in the sidebar has no label in collapsed mode** — FIXED
 
 - File: `frontend/src/app/components/sidebar/Sidebar.tsx:424-431`
 - Problem: In collapsed mode, the sanitised toggle is only a lock emoji. The `title` attribute says "Sanitised mode on" or "Sanitised mode off" -- describing the current state, not the action.
 - Fix: Change `title` to "Turn sanitised mode on/off" or "Sanitised mode: on/off (click to toggle)".
+- **Status:** Fixed — title now describes the action ("Click to turn sanitised mode on/off").
 
 ---
 
@@ -225,11 +232,12 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[UX-024] PersonaCard in DragOverlay shows the full card with real onClick handlers**
+**[UX-024] PersonaCard in DragOverlay shows the full card with real onClick handlers** — FIXED
 
 - File: `frontend/src/app/pages/PersonasPage.tsx:99-111`
 - Problem: During a drag operation, the `DragOverlay` shows a real `PersonaCard` instance (not just a ghost) with `onContinue={() => {}}` and `onNewChat={() => {}}` as empty functions. The card is interactive, but the actions do nothing.
 - Fix: Use a dedicated, lightweight drag ghost component, or add `pointer-events: none` to the DragOverlay content.
+- **Status:** Fixed — `pointerEvents: "none"` added to DragOverlay wrapper.
 
 ---
 
@@ -290,16 +298,18 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[UX-030] Memory tokens and pending journal in OverviewTab always show a dash**
+**[UX-030] Memory tokens and pending journal in OverviewTab always show a dash** — FIXED
 
 - File: `frontend/src/app/components/persona-overlay/OverviewTab.tsx:127-145`
 - Problem: The stats grid shows "Memory tokens" and "Pending journal" with hard-coded dash values. The memory module is not yet implemented, but the placeholders are styled as real data points, giving the impression that data is loading or missing.
 - Fix: Hide these stats fields until the memory module is implemented, or replace with a clear "Coming soon" label.
+- **Status:** Fixed — removed "Memory tokens" and "Pending journal" stats, only "Chats" remains.
 
 ---
 
-**[UX-031] MemoriesTab shows "memory entries -- coming with the memory module" -- inconsistent placeholder style**
+**[UX-031] MemoriesTab shows "memory entries -- coming with the memory module" -- inconsistent placeholder style** — FIXED
 
 - File: `frontend/src/app/components/persona-overlay/MemoriesTab.tsx:9-17`
 - Problem: The placeholder text is in lowercase monospace, looking like debug text. The tab itself is visible in the tab bar with the mystical "anahata" subtitle.
 - Fix: Introduce a consistent placeholder style for all unfinished features -- e.g. an icon plus "This feature is coming soon." in consistent styling.
+- **Status:** Fixed — consistent placeholder with chakra-coloured icon and "This feature is coming soon." text.

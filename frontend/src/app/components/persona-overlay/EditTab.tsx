@@ -403,6 +403,10 @@ function Toggle({ label, description, value, onChange, chakraHex, disabled }: To
   return (
     <div
       className="flex items-center justify-between py-2 px-3 rounded-lg"
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
+      tabIndex={disabled ? -1 : 0}
       style={{
         background: 'rgba(255,255,255,0.02)',
         border: '1px solid rgba(255,255,255,0.05)',
@@ -411,6 +415,12 @@ function Toggle({ label, description, value, onChange, chakraHex, disabled }: To
       }}
       title={disabled ? description : undefined}
       onClick={() => !disabled && onChange(!value)}
+      onKeyDown={(e) => {
+        if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault()
+          onChange(!value)
+        }
+      }}
     >
       <div className="flex flex-col gap-0.5">
         <span className="text-[13px] text-white/75">{label}</span>

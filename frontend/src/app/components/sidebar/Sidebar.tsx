@@ -424,7 +424,7 @@ export function Sidebar({
         <button
           type="button"
           onClick={toggleSanitised}
-          title={isSanitised ? "Sanitised mode on" : "Sanitised mode off"}
+          title={isSanitised ? "Click to turn sanitised mode off" : "Click to turn sanitised mode on"}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8"
         >
           <span className={isSanitised ? "opacity-100" : "opacity-25 grayscale"}>🔒</span>

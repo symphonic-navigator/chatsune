@@ -98,7 +98,7 @@ export default function PersonasPage() {
         </SortableContext>
         <DragOverlay>
           {activePersona ? (
-            <div style={{ transform: "scale(1.05)", opacity: 0.9 }}>
+            <div style={{ transform: "scale(1.05)", opacity: 0.9, pointerEvents: "none" }}>
               <PersonaCard
                 persona={activePersona}
                 index={0}

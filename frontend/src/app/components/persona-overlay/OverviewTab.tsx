@@ -118,29 +118,19 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         )}
       </div>
 
-      {/* Stats grid */}
+      {/* Stats */}
       <div
-        className="grid grid-cols-3 w-full max-w-sm rounded-xl overflow-hidden"
+        className="w-full max-w-sm rounded-xl overflow-hidden cursor-pointer hover:brightness-125 transition-all"
         style={{ border: `1px solid ${chakra.hex}22` }}
+        onClick={onGoToHistory}
       >
-        {[
-          { label: 'Chats', value: String(chatCount), onClick: onGoToHistory },
-          { label: 'Memory tokens', value: '\u2014' },
-          { label: 'Pending journal', value: '\u2014' },
-        ].map((stat, i) => (
-          <div
-            key={stat.label}
-            className={`flex flex-col items-center gap-1 py-4 px-2${stat.onClick ? ' cursor-pointer hover:brightness-125 transition-all' : ''}`}
-            style={{
-              background: `${chakra.hex}08`,
-              borderRight: i < 2 ? `1px solid ${chakra.hex}22` : undefined,
-            }}
-            onClick={stat.onClick}
-          >
-            <span className="text-[18px] font-semibold text-white/70">{stat.value}</span>
-            <span className="text-[10px] text-white/35 text-center leading-tight">{stat.label}</span>
-          </div>
-        ))}
+        <div
+          className="flex flex-col items-center gap-1 py-4 px-2"
+          style={{ background: `${chakra.hex}08` }}
+        >
+          <span className="text-[18px] font-semibold text-white/70">{String(chatCount)}</span>
+          <span className="text-[10px] text-white/35 text-center leading-tight">Chats</span>
+        </div>
       </div>
 
       {/* Action buttons */}

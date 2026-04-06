@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { useLocation } from "react-router-dom"
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { ChatSessionDto } from "../../../core/api/chat"
 import type { ChakraColour } from "../../../core/types/chakra"
@@ -33,6 +34,13 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const location = useLocation()
+
+  // Close menu on route change
+  useEffect(() => {
+    setMenuOpen(false)
+    setConfirmDelete(false)
+  }, [location])
 
   useEffect(() => {
     if (!menuOpen) return

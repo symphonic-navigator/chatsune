@@ -118,7 +118,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
         </div>
 
         {/* Tab bar */}
-        <div className="flex border-b border-white/6 px-4 flex-shrink-0">
+        <div className="flex overflow-x-auto border-b border-white/6 px-4 flex-shrink-0">
           {TABS.map((tab) => (
             <button
               key={tab.id}
