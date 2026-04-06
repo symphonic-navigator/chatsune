@@ -180,7 +180,11 @@ export default function AppLayout() {
         onReorder={reorderPersonas}
         onToggleSessionPin={async (sessionId, pinned) => {
           updateChatSession(sessionId, { pinned })
-          try { await chatApi.updateSessionPinned(sessionId, pinned) } catch { /* event-driven */ }
+          try {
+            await chatApi.updateSessionPinned(sessionId, pinned)
+          } catch {
+            updateChatSession(sessionId, { pinned: !pinned })
+          }
         }}
       />
       <div className="relative flex min-w-0 flex-1 flex-col">
