@@ -183,6 +183,7 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
   const [editValue, setEditValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [genSuccess, setGenSuccess] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const deleteTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -196,6 +197,22 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
       if (deleteTimer.current) clearTimeout(deleteTimer.current)
     }
   }, [])
+
+  // Reset GEN button when title arrives
+  useEffect(() => {
+    if (!generating) return
+    setGenerating(false)
+    setGenSuccess(true)
+    const t = setTimeout(() => setGenSuccess(false), 1000)
+    return () => clearTimeout(t)
+  }, [session.title])
+
+  // Fallback: reset after 10s if no title event arrives
+  useEffect(() => {
+    if (!generating) return
+    const t = setTimeout(() => setGenerating(false), 10000)
+    return () => clearTimeout(t)
+  }, [generating])
 
   const startEdit = useCallback(() => {
     setEditValue(session.title ?? '')
@@ -232,9 +249,6 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
       await chatApi.generateTitle(session.id)
     } catch {
       // Title arrives via event
-    } finally {
-      // Keep generating state for a short time to show feedback
-      setTimeout(() => setGenerating(false), 2000)
     }
   }, [session.id])
 
@@ -319,9 +333,9 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
             onClick={handleGenerateTitle}
             disabled={generating}
             title="Generate title"
-            className={`${BTN_NEUTRAL} ${generating ? 'opacity-30 cursor-not-allowed' : ''}`}
+            className={`${BTN_NEUTRAL} ${generating ? 'opacity-30 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
           >
-            {generating ? '...' : 'GEN'}
+            {generating ? '...' : genSuccess ? 'OK' : 'GEN'}
           </button>
           {confirmDelete ? (
             <button type="button" onClick={handleDelete} className={BTN_RED}>
