@@ -9,6 +9,7 @@ import ChatPage from "./app/pages/ChatPage"
 import ProjectsPage from "./app/pages/ProjectsPage"
 import HistoryPage from "./app/pages/HistoryPage"
 import KnowledgePage from "./app/pages/KnowledgePage"
+import MemoryPage from "./features/memory/MemoryPage"
 
 /** Persists current /chat/... route to localStorage for bootstrap redirect */
 function LastRouteTracker() {
@@ -53,6 +54,7 @@ function AppRoutes() {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/memory/:personaId" element={<MemoryPage />} />
           <Route path="/admin/*" element={<Navigate to="/personas" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/personas" replace />} />
