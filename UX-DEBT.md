@@ -61,12 +61,13 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[UX-006] PersonaCard has invisible click zones -- no visual hint for "Continue" vs. "New"**
+**[UX-006] PersonaCard has invisible click zones -- no visual hint for "Continue" vs. "New"** — FIXED
 
 - File: `frontend/src/app/components/persona-card/PersonaCard.tsx:191-245`
 - Problem: The card has two invisible click zones (left 2/3 for "Continue", right 1/3 for "New"), only visible on hover with very faint text. A user clicking without hovering first has no idea what will happen. The divider line is also only visible on hover.
 - Why it matters: Violates the principle of predictability. A click on the left side and a click on the right side have completely different effects, without this being apparent.
 - Fix: Make the split permanently more visible -- e.g. a subtle vertical divider always visible, or move the actions to the menu bar at the bottom (which already contains "Overview / Edit / History").
+- **Status:** Fixed — entire card body is now a single "Continue" click target with hover hint. "New Chat" is an explicit icon button in the menu bar. Menu bar uses SVG icons instead of text. Model name displayed below tagline.
 
 ---
 
