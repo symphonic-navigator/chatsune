@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useOutletContext } from 'react-router-dom'
 import { memoryApi, type JournalEntryDto } from '../../core/api/memory'
 import { useMemoryStore } from '../../core/store/memoryStore'
 
@@ -21,7 +21,9 @@ function relativeTime(isoString: string): string {
 }
 
 export function JournalDropdown({ personaId, entries, canTriggerExtraction, onClose }: JournalDropdownProps) {
-  const navigate = useNavigate()
+  const { openPersonaOverlay } = useOutletContext<{
+    openPersonaOverlay: (personaId: string | null, tab?: string) => void
+  }>()
   const store = useMemoryStore.getState
 
   const visibleEntries = entries.slice(0, 10)
@@ -113,10 +115,10 @@ export function JournalDropdown({ personaId, entries, canTriggerExtraction, onCl
           )}
           <button
             type="button"
-            onClick={() => { navigate(`/memory/${personaId}`); onClose() }}
+            onClick={() => { openPersonaOverlay(personaId, 'memories'); onClose() }}
             className="ml-auto text-[11px] text-white/30 hover:text-white/50 transition-colors"
           >
-            Open Memory Page →
+            Open Memories →
           </button>
         </div>
       </div>

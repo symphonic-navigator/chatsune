@@ -31,11 +31,7 @@ export function useMemoryEvents(personaId: string | null) {
             notify().addNotification({
               level: 'info',
               title: 'Memory entries accumulating',
-              message: `${counter} uncommitted memory entries for this persona.`,
-              action: {
-                label: 'Review',
-                onClick: () => { window.location.href = `/memory/${personaId}` },
-              },
+              message: `${counter} uncommitted memory entries for this persona. Open the Memories tab to review.`,
             })
           }
           break
