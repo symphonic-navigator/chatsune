@@ -11,6 +11,7 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { bookmarksApi } from '../../../core/api/bookmarks'
 import { useBookmarks } from '../../../core/hooks/useBookmarks'
 import { usePersonas } from '../../../core/hooks/usePersonas'
@@ -160,7 +161,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
         {!isLoading && filtered.length === 0 && (
           <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No bookmarks found.</p>
         )}
-        <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext collisionDetection={closestCenter} modifiers={zoomModifiers} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map((b) => b.id)} strategy={verticalListSortingStrategy}>
             {grouped.map(([group, groupBookmarks]) => (
               <div key={group}>
