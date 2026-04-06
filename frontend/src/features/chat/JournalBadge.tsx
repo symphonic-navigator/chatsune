@@ -8,18 +8,21 @@ interface JournalBadgeProps {
 }
 
 function badgeColour(count: number): string {
+  if (count === 0) return 'bg-white/20'
   if (count <= 20) return 'bg-green-500'
   if (count <= 35) return 'bg-yellow-400'
   return 'bg-red-500'
 }
 
 function badgeBorderColour(count: number): string {
+  if (count === 0) return 'border-white/8'
   if (count <= 20) return 'border-green-500/20'
   if (count <= 35) return 'border-yellow-400/20'
   return 'border-red-500/20'
 }
 
 function badgeTextColour(count: number): string {
+  if (count === 0) return 'text-white/30'
   if (count <= 20) return 'text-green-400'
   if (count <= 35) return 'text-yellow-300'
   return 'text-red-400'
@@ -67,7 +70,6 @@ export function JournalBadge({ personaId }: JournalBadgeProps) {
   }, [])
 
   const count = entries.length
-  if (count === 0) return null
 
   return (
     <div className="relative">
