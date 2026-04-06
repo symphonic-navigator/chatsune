@@ -185,18 +185,23 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
   const [generating, setGenerating] = useState(false)
   const [genSuccess, setGenSuccess] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const deleteTimer = useRef<ReturnType<typeof setTimeout>>()
+  const sureRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (editing) inputRef.current?.focus()
   }, [editing])
 
-  // Auto-dismiss delete confirmation
+  // Dismiss delete confirmation on outside click
   useEffect(() => {
-    return () => {
-      if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    if (!confirmDelete) return
+    const handleMouseDown = (e: MouseEvent) => {
+      if (sureRef.current && !sureRef.current.contains(e.target as Node)) {
+        setConfirmDelete(false)
+      }
     }
-  }, [])
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [confirmDelete])
 
   // Reset GEN button when title arrives
   useEffect(() => {
@@ -262,9 +267,7 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
   }, [session.id])
 
   const startDeleteConfirm = useCallback(() => {
-    if (deleteTimer.current) clearTimeout(deleteTimer.current)
     setConfirmDelete(true)
-    deleteTimer.current = setTimeout(() => setConfirmDelete(false), 3000)
   }, [])
 
   return (
@@ -338,7 +341,7 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
             {generating ? '...' : genSuccess ? 'OK' : 'GEN'}
           </button>
           {confirmDelete ? (
-            <button type="button" onClick={handleDelete} className={BTN_RED}>
+            <button ref={sureRef} type="button" onClick={handleDelete} className={BTN_RED}>
               SURE?
             </button>
           ) : (
