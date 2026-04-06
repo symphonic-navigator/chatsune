@@ -18,6 +18,7 @@ import { useNotificationStore } from "../../../core/store/notificationStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
 import { useAuth } from "../../../core/hooks/useAuth"
+import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { NavRow } from "./NavRow"
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
@@ -540,6 +541,7 @@ export function Sidebar({
 
         <DndContext
           collisionDetection={pointerWithin}
+          modifiers={zoomModifiers}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
@@ -655,6 +657,7 @@ export function Sidebar({
 
         <DndContext
           collisionDetection={pointerWithin}
+          modifiers={zoomModifiers}
           onDragStart={handleHistoryDragStart}
           onDragEnd={handleHistoryDragEnd}
         >
