@@ -104,6 +104,12 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.KNOWLEDGE_DOCUMENT_EMBEDDED: ([], True),
     Topics.KNOWLEDGE_DOCUMENT_EMBED_FAILED: ([], True),
     Topics.KNOWLEDGE_SEARCH_COMPLETED: ([], True),
+    # Artefacts — target user only
+    Topics.ARTEFACT_CREATED: ([], True),
+    Topics.ARTEFACT_UPDATED: ([], True),
+    Topics.ARTEFACT_DELETED: ([], True),
+    Topics.ARTEFACT_UNDO: ([], True),
+    Topics.ARTEFACT_REDO: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {

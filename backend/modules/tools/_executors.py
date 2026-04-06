@@ -178,6 +178,7 @@ class ArtefactToolExecutor:
                     Topics.ARTEFACT_CREATED,
                     ArtefactCreatedEvent(
                         session_id=session_id,
+                        artefact_id=artefact_id,
                         handle=handle,
                         title=title,
                         artefact_type=artefact_type,

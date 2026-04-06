@@ -66,8 +66,18 @@ def _to_detail(doc: dict) -> ArtefactDetailDto:
 
 
 async def _get_owned_artefact(repo: ArtefactRepository, session_id: str, artefact_id: str, user_id: str) -> dict:
-    """Fetch artefact and verify it belongs to the session and user."""
-    doc = await repo.get_by_id(artefact_id)
+    """Fetch artefact by ID or handle and verify it belongs to the session and user."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    doc = None
+    try:
+        ObjectId(artefact_id)
+        doc = await repo.get_by_id(artefact_id)
+    except (InvalidId, Exception):
+        # Not a valid ObjectId — try handle-based lookup
+        doc = await repo.get_by_handle(session_id, artefact_id)
+
     if not doc or doc.get("session_id") != session_id or doc.get("user_id") != user_id:
         raise HTTPException(status_code=404, detail="Artefact not found")
     return doc

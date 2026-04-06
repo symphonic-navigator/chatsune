@@ -9,6 +9,7 @@ class ArtefactCreatedEvent(BaseModel):
     """An artefact has been created in a chat session."""
     type: str = "artefact.created"
     session_id: str
+    artefact_id: str
     handle: str
     title: str
     artefact_type: str

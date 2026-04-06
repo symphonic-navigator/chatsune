@@ -18,7 +18,7 @@ export function useArtefactEvents(sessionId: string | null) {
       switch (event.type) {
         case Topics.ARTEFACT_CREATED: {
           store().addArtefact({
-            id: '',
+            id: (p.artefact_id as string) ?? '',
             session_id: sessionId,
             handle: p.handle as string,
             title: p.title as string,

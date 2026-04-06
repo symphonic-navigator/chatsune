@@ -131,7 +131,7 @@ export function MessageList({
                 thinkingDefaultExpanded={thinkingExpandedRef.current}
                 onThinkingToggle={(v) => { thinkingExpandedRef.current = v }} />
             ) : (
-              activeToolCalls.length === 0 && <StreamingIndicator accentColour={accentColour} />
+              activeToolCalls.filter((tc) => tc.status === 'running').length === 0 && <StreamingIndicator accentColour={accentColour} />
             )}
           </div>
         )}
