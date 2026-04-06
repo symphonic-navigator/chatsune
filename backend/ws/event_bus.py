@@ -74,6 +74,19 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # LLM model fetch progress — target user only
     Topics.LLM_MODELS_FETCH_STARTED: ([], True),
     Topics.LLM_MODELS_FETCH_COMPLETED: ([], True),
+    # Memory — target user only
+    Topics.MEMORY_EXTRACTION_STARTED: ([], True),
+    Topics.MEMORY_EXTRACTION_COMPLETED: ([], True),
+    Topics.MEMORY_EXTRACTION_FAILED: ([], True),
+    Topics.MEMORY_ENTRY_CREATED: ([], True),
+    Topics.MEMORY_ENTRY_COMMITTED: ([], True),
+    Topics.MEMORY_ENTRY_UPDATED: ([], True),
+    Topics.MEMORY_ENTRY_DELETED: ([], True),
+    Topics.MEMORY_ENTRY_AUTO_COMMITTED: ([], True),
+    Topics.MEMORY_DREAM_STARTED: ([], True),
+    Topics.MEMORY_DREAM_COMPLETED: ([], True),
+    Topics.MEMORY_DREAM_FAILED: ([], True),
+    Topics.MEMORY_BODY_ROLLBACK: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {

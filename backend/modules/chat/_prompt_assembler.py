@@ -72,6 +72,12 @@ async def assemble(
         if cleaned:
             parts.append(f'<you priority="normal">\n{cleaned}\n</you>')
 
+    # Layer: User memory (if available)
+    from backend.modules.memory import get_memory_context
+    memory_xml = await get_memory_context(user_id, persona_id) if persona_id else None
+    if memory_xml:
+        parts.append(memory_xml)
+
     # Layer 4: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():
         cleaned = sanitise(user_about_me.strip())

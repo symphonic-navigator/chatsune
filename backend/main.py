@@ -1,5 +1,8 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import FastAPI
 
@@ -11,6 +14,7 @@ from backend.modules.settings import router as settings_router, init_indexes as 
 from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions, cleanup_soft_deleted_sessions
 from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_init_indexes
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
+from backend.modules.memory import router as memory_router, init_indexes as memory_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -29,6 +33,7 @@ async def lifespan(app: FastAPI):
     await chat_init_indexes(db)
     await bookmark_init_indexes(db)
     await storage_init_indexes(db)
+    await memory_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
@@ -39,6 +44,8 @@ async def lifespan(app: FastAPI):
 
     # Start periodic Redis Stream trimming (BD-024)
     trim_task = await event_bus.start_periodic_trim()
+
+    _cleanup_log = logging.getLogger("chatsune.cleanup")
 
     # Start periodic session cleanup (every 10 minutes)
     async def _session_cleanup_loop() -> None:
@@ -52,6 +59,50 @@ async def lifespan(app: FastAPI):
                 await cleanup_soft_deleted_sessions()
             except Exception:
                 pass
+            # Auto-commit memory journal entries older than 48h
+            try:
+                from backend.modules.memory._repository import MemoryRepository
+                from shared.events.memory import MemoryEntryAutoCommittedEvent
+                from shared.dtos.memory import JournalEntryDto
+                from shared.topics import Topics
+
+                repo = MemoryRepository(get_db())
+                auto_committed = await repo.auto_commit_old_entries(max_age_hours=48)
+                for entry in auto_committed:
+                    try:
+                        entry_dto = JournalEntryDto(
+                            id=entry["id"],
+                            persona_id=entry["persona_id"],
+                            content=entry["content"],
+                            category=entry.get("category"),
+                            state=entry["state"],
+                            is_correction=entry.get("is_correction", False),
+                            created_at=entry["created_at"],
+                            committed_at=entry.get("committed_at"),
+                            auto_committed=entry.get("auto_committed", True),
+                        )
+                        evt = MemoryEntryAutoCommittedEvent(
+                            entry=entry_dto,
+                            correlation_id=str(uuid4()),
+                            timestamp=datetime.now(timezone.utc),
+                        )
+                        await event_bus.publish(
+                            Topics.MEMORY_ENTRY_AUTO_COMMITTED,
+                            evt,
+                            scope=f"persona:{entry['persona_id']}",
+                            target_user_ids=[entry["user_id"]],
+                        )
+                    except Exception:
+                        _cleanup_log.exception(
+                            "Failed to publish auto-commit event for entry %s",
+                            entry.get("id"),
+                        )
+                if auto_committed:
+                    _cleanup_log.info(
+                        "Auto-committed %d memory journal entries", len(auto_committed),
+                    )
+            except Exception:
+                _cleanup_log.exception("Memory auto-commit cleanup failed")
 
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 
@@ -86,6 +137,7 @@ app.include_router(settings_router)
 app.include_router(chat_router)
 app.include_router(bookmark_router)
 app.include_router(storage_router)
+app.include_router(memory_router)
 app.include_router(ws_router)
 
 
