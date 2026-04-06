@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
@@ -114,7 +115,7 @@ export function ArtefactOverlay() {
   const undoDisabled = !artefact || artefact.version <= 1
   const redoDisabled = !artefact || artefact.version >= artefact.max_version
 
-  return (
+  return createPortal(
     /* Backdrop — fixed, covers entire viewport */
     <div
       style={{
@@ -229,6 +230,7 @@ export function ArtefactOverlay() {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
