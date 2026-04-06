@@ -231,7 +231,12 @@ interface ArtefactPreviewProps {
 export function ArtefactPreview({ content, type, language }: ArtefactPreviewProps) {
   const highlighter = useHighlighter()
 
-  switch (type) {
+  // LLMs sometimes set type:"code" + language:"jsx" instead of type:"jsx"
+  const effectiveType = type === 'code' && (language === 'jsx' || language === 'tsx')
+    ? 'jsx'
+    : type
+
+  switch (effectiveType) {
     case 'markdown':
       return <MarkdownPreview content={content} highlighter={highlighter} />
     case 'code':
