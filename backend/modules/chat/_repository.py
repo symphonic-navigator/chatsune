@@ -451,5 +451,6 @@ class ChatRepository:
             token_count=doc["token_count"],
             attachments=attachments,
             web_search_context=ws_ctx,
+            knowledge_context=doc.get("knowledge_context"),
             created_at=doc["created_at"],
         )

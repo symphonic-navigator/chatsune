@@ -36,4 +36,5 @@ class ChatMessageDto(BaseModel):
     token_count: int
     attachments: list[AttachmentRefDto] | None = None
     web_search_context: list[WebSearchContextItemDto] | None = None
+    knowledge_context: list[dict] | None = None
     created_at: datetime
