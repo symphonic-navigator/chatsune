@@ -176,6 +176,13 @@ export default function UncommittedSection({ personaId, entries }: Props) {
                         <span className="text-[11px] text-white/30">
                           {new Date(entry.created_at).toLocaleString()}
                         </span>
+                        <span className="text-[11px] text-white/20">
+                          {(() => {
+                            const hoursRemaining = 48 - (Date.now() - new Date(entry.created_at).getTime()) / 3_600_000
+                            if (hoursRemaining <= 0) return 'Auto-commit soon'
+                            return `Auto-commit in ${Math.ceil(hoursRemaining)}h`
+                          })()}
+                        </span>
                         {entry.category && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 text-white/40">
                             {entry.category}

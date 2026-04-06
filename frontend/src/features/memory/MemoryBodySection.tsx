@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMemoryStore } from '../../core/store/memoryStore'
 import { memoryApi } from '../../core/api/memory'
 import type { MemoryBodyDto, MemoryBodyVersionDto } from '../../core/api/memory'
@@ -21,29 +21,39 @@ export default function MemoryBodySection({ personaId }: Props) {
   const [busy, setBusy] = useState(false)
   const [loadingVersion, setLoadingVersion] = useState<number | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const [bodyResult, versionsResult] = await Promise.all([
-          memoryApi.getMemoryBody(personaId),
-          memoryApi.listBodyVersions(personaId),
-        ])
-        if (!cancelled) {
-          setBody(bodyResult)
-          setMemoryBody(personaId, bodyResult)
-          setVersions(versionsResult)
-          setBodyVersions(personaId, versionsResult)
-        }
-      } catch {
-        // body may not exist yet — treat as empty
+  const loadBodyAndVersions = async (cancelled: { value: boolean }) => {
+    try {
+      const [bodyResult, versionsResult] = await Promise.all([
+        memoryApi.getMemoryBody(personaId),
+        memoryApi.listBodyVersions(personaId),
+      ])
+      if (!cancelled.value) {
+        setBody(bodyResult)
+        setMemoryBody(personaId, bodyResult)
+        setVersions(versionsResult)
+        setBodyVersions(personaId, versionsResult)
       }
+    } catch {
+      // body may not exist yet — treat as empty
     }
+  }
 
-    load()
-    return () => { cancelled = true }
+  useEffect(() => {
+    const cancelled = { value: false }
+    loadBodyAndVersions(cancelled)
+    return () => { cancelled.value = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [personaId, setMemoryBody, setBodyVersions])
+
+  const prevIsDreaming = useRef(isDreaming)
+  useEffect(() => {
+    if (prevIsDreaming.current && !isDreaming) {
+      const cancelled = { value: false }
+      loadBodyAndVersions(cancelled)
+    }
+    prevIsDreaming.current = isDreaming
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDreaming])
 
   const handleDream = async () => {
     if (busy || isDreaming || committedEntries.length === 0) return
