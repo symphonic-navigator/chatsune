@@ -158,7 +158,7 @@ export default function PersonaCard({
         type="button"
         className="flex-1 grid items-center justify-items-center px-3 bg-transparent border-none cursor-pointer w-full"
         style={{
-          gridTemplateRows: "auto 1fr auto auto",
+          gridTemplateRows: "auto 1fr auto auto auto",
           paddingBottom: "28px",
         }}
         onPointerDown={(e) => e.stopPropagation()}
@@ -212,6 +212,17 @@ export default function PersonaCard({
           }}
         >
           {persona.tagline}
+        </p>
+
+        {/* Model name */}
+        <p
+          className="font-mono text-[9px] text-center self-end w-full"
+          style={{
+            color: chakra.hex + "4d",
+            letterSpacing: "0.5px",
+          }}
+        >
+          {persona.model_unique_id.split(":").slice(1).join(":")}
         </p>
 
         {/* Continue hint — visible on hover */}
