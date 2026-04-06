@@ -3,19 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMemoryStore } from '../../core/store/memoryStore'
 import { memoryApi } from '../../core/api/memory'
 import { useMemoryEvents } from './useMemoryEvents'
+import type { JournalEntryDto } from '../../core/api/memory'
 import UncommittedSection from './UncommittedSection'
 import CommittedSection from './CommittedSection'
 import MemoryBodySection from './MemoryBodySection'
+
+const EMPTY_ENTRIES: JournalEntryDto[] = []
 
 export default function MemoryPage() {
   const { personaId } = useParams<{ personaId: string }>()
   const navigate = useNavigate()
 
   const uncommittedEntries = useMemoryStore((s) =>
-    personaId ? (s.uncommittedEntries[personaId] ?? []) : []
+    personaId ? (s.uncommittedEntries[personaId] ?? EMPTY_ENTRIES) : EMPTY_ENTRIES
   )
   const committedEntries = useMemoryStore((s) =>
-    personaId ? (s.committedEntries[personaId] ?? []) : []
+    personaId ? (s.committedEntries[personaId] ?? EMPTY_ENTRIES) : EMPTY_ENTRIES
   )
   const setUncommittedEntries = useMemoryStore((s) => s.setUncommittedEntries)
   const setCommittedEntries = useMemoryStore((s) => s.setCommittedEntries)

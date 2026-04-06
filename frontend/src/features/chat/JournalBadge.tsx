@@ -25,13 +25,15 @@ function badgeTextColour(count: number): string {
   return 'text-red-400'
 }
 
+const EMPTY_ENTRIES: import('../../core/api/memory').JournalEntryDto[] = []
+
 export function JournalBadge({ personaId }: JournalBadgeProps) {
   const [open, setOpen] = useState(false)
   const [isPulsing, setIsPulsing] = useState(false)
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevCountRef = useRef<number>(0)
 
-  const entries = useMemoryStore((s) => s.uncommittedEntries[personaId] ?? [])
+  const entries = useMemoryStore((s) => s.uncommittedEntries[personaId] ?? EMPTY_ENTRIES)
   const context = useMemoryStore((s) => s.context[personaId] ?? null)
   const store = useMemoryStore.getState
 

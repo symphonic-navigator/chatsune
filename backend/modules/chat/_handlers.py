@@ -42,6 +42,12 @@ async def create_session(
         raise HTTPException(status_code=404, detail="Persona not found")
 
     repo = _chat_repo()
+
+    # Clean up previous empty sessions for the same user+persona
+    stale_ids = await repo.find_empty_sessions(
+        user_id=user["sub"], persona_id=persona["_id"],
+    )
+
     doc = await repo.create_session(
         user_id=user["sub"],
         persona_id=persona["_id"],
@@ -52,6 +58,23 @@ async def create_session(
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
     event_bus = get_event_bus()
+
+    # Emit delete events for cleaned-up empty sessions
+    if stale_ids:
+        await repo.delete_sessions_by_ids(stale_ids)
+        for stale_id in stale_ids:
+            await event_bus.publish(
+                Topics.CHAT_SESSION_DELETED,
+                ChatSessionDeletedEvent(
+                    session_id=stale_id,
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"session:{stale_id}",
+                target_user_ids=[user["sub"]],
+                correlation_id=correlation_id,
+            )
+
     await event_bus.publish(
         Topics.CHAT_SESSION_CREATED,
         ChatSessionCreatedEvent(

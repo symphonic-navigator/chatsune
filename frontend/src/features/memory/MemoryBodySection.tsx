@@ -4,6 +4,7 @@ import { memoryApi } from '../../core/api/memory'
 import type { MemoryBodyDto, MemoryBodyVersionDto } from '../../core/api/memory'
 
 const TOKEN_LIMIT = 3000
+const EMPTY_ENTRIES: import('../../core/api/memory').JournalEntryDto[] = []
 
 interface Props {
   personaId: string
@@ -11,7 +12,7 @@ interface Props {
 
 export default function MemoryBodySection({ personaId }: Props) {
   const isDreaming = useMemoryStore((s) => s.isDreaming[personaId] ?? false)
-  const committedEntries = useMemoryStore((s) => s.committedEntries[personaId] ?? [])
+  const committedEntries = useMemoryStore((s) => s.committedEntries[personaId] ?? EMPTY_ENTRIES)
   const setMemoryBody = useMemoryStore((s) => s.setMemoryBody)
   const setBodyVersions = useMemoryStore((s) => s.setBodyVersions)
 

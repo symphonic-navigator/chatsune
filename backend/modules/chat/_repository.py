@@ -168,6 +168,38 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def find_empty_sessions(
+        self, user_id: str, persona_id: str, exclude_session_id: str | None = None,
+    ) -> list[str]:
+        """Find session IDs with zero messages for a given user+persona."""
+        session_filter: dict = {
+            "user_id": user_id,
+            "persona_id": persona_id,
+            "deleted_at": None,
+        }
+        if exclude_session_id:
+            session_filter["_id"] = {"$ne": exclude_session_id}
+        pipeline = [
+            {"$match": session_filter},
+            {"$lookup": {
+                "from": "chat_messages",
+                "localField": "_id",
+                "foreignField": "session_id",
+                "pipeline": [{"$limit": 1}],
+                "as": "_msgs",
+            }},
+            {"$match": {"_msgs": []}},
+            {"$project": {"_id": 1}},
+        ]
+        docs = await self._sessions.aggregate(pipeline).to_list(length=100)
+        return [doc["_id"] for doc in docs]
+
+    async def delete_sessions_by_ids(self, session_ids: list[str]) -> None:
+        """Hard-delete sessions by their IDs."""
+        if not session_ids:
+            return
+        await self._sessions.delete_many({"_id": {"$in": session_ids}})
+
     async def delete_stale_empty_sessions(self, max_age_minutes: int = 1440) -> list[str]:
         """Delete sessions older than max_age_minutes that have zero messages. Returns list of deleted session IDs."""
         cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
