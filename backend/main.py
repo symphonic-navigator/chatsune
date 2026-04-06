@@ -23,6 +23,7 @@ from backend.modules.knowledge import (
     handle_embedding_completed,
     handle_embedding_error,
 )
+from backend.modules.artefact import router as artefact_router, init_indexes as artefact_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     await storage_init_indexes(db)
     await memory_init_indexes(db)
     await knowledge_init_indexes(db)
+    await artefact_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
@@ -328,6 +330,7 @@ app.include_router(storage_router)
 app.include_router(memory_router)
 app.include_router(embedding_router)
 app.include_router(knowledge_router)
+app.include_router(artefact_router)
 app.include_router(ws_router)
 
 
