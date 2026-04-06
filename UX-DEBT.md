@@ -144,11 +144,12 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[UX-015] Reasoning toggle: no visual difference between "not supported" and "manually off"**
+**[UX-015] Reasoning toggle: no visual difference between "not supported" and "manually off"** — ALREADY FIXED
 
 - File: `frontend/src/features/chat/ToolToggles.tsx:57-77`
 - Problem: When `modelSupportsReasoning` is false, the button is disabled (`disabled:opacity-40`). When reasoning is manually turned off at a supported model, the button looks identical. The tooltip differs, but only on hover.
 - Fix: Clear visual distinction -- e.g. for unsupported models use strikethrough text or a lock icon, rather than just `opacity-40`.
+- **Status:** Already fixed — the reasoning button is only rendered when `modelSupportsReasoning` is true. When the model doesn't support reasoning, the button is not shown at all.
 
 ---
 
