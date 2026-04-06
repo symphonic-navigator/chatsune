@@ -41,7 +41,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-004] `usePersonas` and `useSettings` re-fetch full lists on every event -- violates event-first principle**
+**[FD-004] ~FIXED~ `usePersonas` and `useSettings` re-fetch full lists on every event -- violates event-first principle**
 
 - Files: `frontend/src/core/hooks/usePersonas.ts:29-31`, `frontend/src/core/hooks/useSettings.ts:29-30`
 - Problem: Every `PERSONA_CREATED`, `PERSONA_UPDATED`, `PERSONA_DELETED`, `SETTING_UPDATED`, and `SETTING_DELETED` event triggers a full API re-fetch instead of applying the event payload directly. CLAUDE.md states: "Events carry DTOs -- the frontend never makes a follow-up REST call to learn what changed."
@@ -88,7 +88,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-009] `useWebSocket` double ping interval during rapid auth state toggling**
+**[FD-009] ~FIXED~ `useWebSocket` double ping interval during rapid auth state toggling**
 
 - File: `frontend/src/core/hooks/useWebSocket.ts:14-28`
 - Problem: If `isAuthenticated` transitions `false -> true -> false` faster than React batching (e.g. during token refresh), a ping interval from the first `true` state may not be cleaned up before a new one is started.
@@ -150,7 +150,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-016] `Sidebar.tsx` uses inline async handlers with no error rollback for toggle-pin/session-pin**
+**[FD-016] ~FIXED~ `Sidebar.tsx` uses inline async handlers with no error rollback for toggle-pin/session-pin**
 
 - File: `frontend/src/app/layouts/AppLayout.tsx:181-184`
 - Problem: The `onToggleSessionPin` handler calls `updateChatSession` (optimistic) then the API in a fire-and-forget fashion. If the API call fails, the optimistic update is never rolled back.
@@ -178,7 +178,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### High Effort
 
-**[FD-019] `chatStore` is a single global singleton -- second open ChatView tab corrupts state**
+**[FD-019] ~FIXED~ `chatStore` is a single global singleton -- second open ChatView tab corrupts state**
 
 - File: `frontend/src/core/store/chatStore.ts`
 - Problem: `useChatStore` is a module-level Zustand singleton with no session scoping. If a user opens two browser tabs both pointing to different chat sessions, they share one global `useChatStore`. `reset()` runs on every session navigation and clears all chat state globally, including the other tab.
@@ -217,7 +217,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-023] `useBookmarks` double-fetch pattern: initial fetch + event-driven insert**
+**[FD-023] ~FIXED~ `useBookmarks` double-fetch pattern: initial fetch + event-driven insert**
 
 - File: `frontend/src/core/hooks/useBookmarks.ts:32`
 - Problem: The deduplication guard is correct, but two insertion paths (REST response in `ChatView.tsx` and event handler) exist. The `addBookmark` call in `ChatView.tsx` is architecturally redundant -- it exists because the REST call returns the DTO before the event arrives. Design smell that should be documented or simplified.
