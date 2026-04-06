@@ -8,7 +8,7 @@ from backend.modules.user import router as user_router, init_indexes as user_ini
 from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
 from backend.modules.persona import router as persona_router, init_indexes as persona_init_indexes
 from backend.modules.settings import router as settings_router, init_indexes as settings_init_indexes
-from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions
+from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions, cleanup_soft_deleted_sessions
 from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_init_indexes
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
@@ -40,14 +40,18 @@ async def lifespan(app: FastAPI):
     # Start periodic Redis Stream trimming (BD-024)
     trim_task = await event_bus.start_periodic_trim()
 
-    # Start periodic cleanup of stale empty chat sessions (every hour)
+    # Start periodic session cleanup (every 10 minutes)
     async def _session_cleanup_loop() -> None:
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(600)
             try:
                 await cleanup_stale_empty_sessions()
             except Exception:
-                pass  # Non-critical — retry next cycle
+                pass
+            try:
+                await cleanup_soft_deleted_sessions()
+            except Exception:
+                pass
 
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 

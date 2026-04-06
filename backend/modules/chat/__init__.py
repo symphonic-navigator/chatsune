@@ -684,9 +684,22 @@ async def cleanup_stale_empty_sessions() -> int:
     return len(stale_ids)
 
 
+async def cleanup_soft_deleted_sessions() -> int:
+    """Hard-delete sessions that were soft-deleted more than 1 hour ago. Returns count."""
+    from backend.modules.bookmark import delete_bookmarks_for_session
+    db = get_db()
+    repo = ChatRepository(db)
+    deleted_ids = await repo.hard_delete_expired_sessions(max_age_minutes=60)
+    if deleted_ids:
+        for sid in deleted_ids:
+            await delete_bookmarks_for_session(sid)
+        _log.info("Hard-deleted %d soft-deleted sessions", len(deleted_ids))
+    return len(deleted_ids)
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "handle_incognito_send", "update_session_title",
-    "cleanup_stale_empty_sessions", "assemble_preview",
+    "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
 ]
