@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from shared.dtos.chat import ChatSessionDto
+
 
 class ChatStreamStartedEvent(BaseModel):
     type: str = "chat.stream.started"
@@ -94,6 +96,14 @@ class ChatSessionCreatedEvent(BaseModel):
 class ChatSessionDeletedEvent(BaseModel):
     type: str = "chat.session.deleted"
     session_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class ChatSessionRestoredEvent(BaseModel):
+    type: str = "chat.session.restored"
+    session_id: str
+    session: dict
     correlation_id: str
     timestamp: datetime
 
