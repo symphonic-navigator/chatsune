@@ -88,6 +88,11 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.MEMORY_DREAM_COMPLETED: ([], True),
     Topics.MEMORY_DREAM_FAILED: ([], True),
     Topics.MEMORY_BODY_ROLLBACK: ([], True),
+    # Embedding — internal, no WebSocket delivery needed but suppresses warning
+    Topics.EMBEDDING_MODEL_LOADING: ([], False),
+    Topics.EMBEDDING_MODEL_READY: ([], False),
+    Topics.EMBEDDING_BATCH_COMPLETED: ([], False),
+    Topics.EMBEDDING_ERROR: ([], False),
     # Knowledge — target user only
     Topics.KNOWLEDGE_LIBRARY_CREATED: ([], True),
     Topics.KNOWLEDGE_LIBRARY_UPDATED: ([], True),

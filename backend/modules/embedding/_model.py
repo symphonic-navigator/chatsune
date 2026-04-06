@@ -107,8 +107,9 @@ class EmbeddingModel:
         _log.info("Download complete")
 
     def infer(self, texts: list[str]) -> list[list[float]]:
-        """Tokenise, run ONNX inference, mean-pool, L2-normalise.
+        """Tokenise, run ONNX inference, L2-normalise.
 
+        Uses the model's built-in sentence_embedding output (already pooled).
         Returns a list of 768-dimensional unit vectors.
         """
         encoded = self._tokenizer(
@@ -123,24 +124,18 @@ class EmbeddingModel:
         attention_mask = encoded["attention_mask"]
 
         outputs = self._session.run(
-            ["last_hidden_state"],
+            ["sentence_embedding"],
             {
                 "input_ids": input_ids,
                 "attention_mask": attention_mask,
             },
         )
 
-        hidden_states = outputs[0]  # (batch, seq_len, hidden_dim)
-
-        # Mean pooling: average hidden states weighted by attention mask
-        mask_expanded = np.expand_dims(attention_mask, axis=-1).astype(np.float32)
-        sum_hidden = np.sum(hidden_states * mask_expanded, axis=1)
-        sum_mask = np.clip(np.sum(mask_expanded, axis=1), a_min=1e-9, a_max=None)
-        pooled = sum_hidden / sum_mask  # (batch, hidden_dim)
+        embeddings = outputs[0]  # (batch, hidden_dim) — already pooled
 
         # L2 normalisation
-        norms = np.linalg.norm(pooled, axis=1, keepdims=True)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
         norms = np.clip(norms, a_min=1e-9, a_max=None)
-        normalised = pooled / norms
+        normalised = embeddings / norms
 
         return normalised.tolist()
