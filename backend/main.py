@@ -17,6 +17,12 @@ from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_i
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
 from backend.modules.memory import router as memory_router, init_indexes as memory_init_indexes
 from backend.modules.embedding import router as embedding_router, startup as embedding_startup, shutdown as embedding_shutdown
+from backend.modules.knowledge import (
+    knowledge_router,
+    init_indexes as knowledge_init_indexes,
+    handle_embedding_completed,
+    handle_embedding_error,
+)
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -36,6 +42,7 @@ async def lifespan(app: FastAPI):
     await bookmark_init_indexes(db)
     await storage_init_indexes(db)
     await memory_init_indexes(db)
+    await knowledge_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
@@ -45,6 +52,11 @@ async def lifespan(app: FastAPI):
     embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")
     embedding_batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "8"))
     await embedding_startup(event_bus, embedding_model_dir, embedding_batch_size)
+
+    # Subscribe knowledge module to embedding completion events
+    from shared.topics import Topics
+    event_bus.subscribe(Topics.EMBEDDING_BATCH_COMPLETED, handle_embedding_completed)
+    event_bus.subscribe(Topics.EMBEDDING_ERROR, handle_embedding_error)
 
     # Start background job consumer
     consumer_task = asyncio.create_task(consumer_loop(redis, event_bus))
@@ -315,6 +327,7 @@ app.include_router(bookmark_router)
 app.include_router(storage_router)
 app.include_router(memory_router)
 app.include_router(embedding_router)
+app.include_router(knowledge_router)
 app.include_router(ws_router)
 
 

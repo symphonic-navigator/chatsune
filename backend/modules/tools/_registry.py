@@ -31,10 +31,28 @@ class ToolGroup:
 
 def _build_groups() -> dict[str, ToolGroup]:
     """Build the tool group registry. Imported lazily to avoid circular imports."""
-    from backend.modules.tools._executors import WebSearchExecutor
+    from backend.modules.tools._executors import KnowledgeSearchExecutor, WebSearchExecutor
     from backend.modules.websearch import get_tool_definitions as ws_definitions
+    from shared.dtos.inference import ToolDefinition
 
     ws_defs = ws_definitions()
+
+    knowledge_defs = [
+        ToolDefinition(
+            name="knowledge_search",
+            description="Search the user's knowledge base for relevant information. Use this when the user's question might relate to documents in their knowledge libraries.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to find relevant knowledge chunks",
+                    },
+                },
+                "required": ["query"],
+            },
+        ),
+    ]
 
     return {
         "web_search": ToolGroup(
@@ -46,6 +64,16 @@ def _build_groups() -> dict[str, ToolGroup]:
             tool_names=[d.name for d in ws_defs],
             definitions=ws_defs,
             executor=WebSearchExecutor(),
+        ),
+        "knowledge_search": ToolGroup(
+            id="knowledge_search",
+            display_name="Knowledge",
+            description="Search your knowledge libraries",
+            side="server",
+            toggleable=True,
+            tool_names=["knowledge_search"],
+            definitions=knowledge_defs,
+            executor=KnowledgeSearchExecutor(),
         ),
     }
 

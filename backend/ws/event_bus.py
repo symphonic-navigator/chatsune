@@ -88,6 +88,17 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.MEMORY_DREAM_COMPLETED: ([], True),
     Topics.MEMORY_DREAM_FAILED: ([], True),
     Topics.MEMORY_BODY_ROLLBACK: ([], True),
+    # Knowledge — target user only
+    Topics.KNOWLEDGE_LIBRARY_CREATED: ([], True),
+    Topics.KNOWLEDGE_LIBRARY_UPDATED: ([], True),
+    Topics.KNOWLEDGE_LIBRARY_DELETED: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_CREATED: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_UPDATED: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_DELETED: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_EMBEDDING: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_EMBEDDED: ([], True),
+    Topics.KNOWLEDGE_DOCUMENT_EMBED_FAILED: ([], True),
+    Topics.KNOWLEDGE_SEARCH_COMPLETED: ([], True),
 }
 
 _BROADCAST_ALL: set[str] = {
@@ -112,6 +123,15 @@ class EventBus:
     def __init__(self, redis: Redis, manager: ConnectionManager) -> None:
         self._redis = redis
         self._manager = manager
+        self._internal_subscribers: dict[str, list] = {}
+
+    def subscribe(self, topic: str, callback) -> None:
+        """Register an internal async callback for a topic.
+
+        The callback receives the raw event payload dict and is called
+        after fan-out delivery. Used for server-side module coordination.
+        """
+        self._internal_subscribers.setdefault(topic, []).append(callback)
 
     async def publish(
         self,
@@ -148,6 +168,13 @@ class EventBus:
         await self._fan_out(
             topic, envelope.model_dump(mode="json"), target_user_ids or []
         )
+
+        # Notify internal subscribers (server-side module coordination)
+        for callback in self._internal_subscribers.get(topic, []):
+            try:
+                await callback(envelope.payload)
+            except Exception:
+                _log.exception("Internal subscriber failed for topic %r", topic)
 
     async def start_periodic_trim(self) -> asyncio.Task:
         """Start a background task that trims all event streams every 10 minutes."""

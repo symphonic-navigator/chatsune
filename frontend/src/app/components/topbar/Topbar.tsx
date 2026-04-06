@@ -5,6 +5,7 @@ import { useChatStore } from "../../../core/store/chatStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
+import { KnowledgeDropdown } from "../../../features/chat/KnowledgeDropdown"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -35,6 +36,7 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [showAvatar, setShowAvatar] = useState(false)
+  const [showKnowledge, setShowKnowledge] = useState(false)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
   const sessionTitle = useChatStore((s) => s.sessionTitle)
@@ -106,6 +108,26 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
           {sessionTitle ?? (chatMatch.params.sessionId ? "Continued session" : "New chat")}
         </span>
         <div className="flex-shrink-0 flex items-center gap-1.5">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowKnowledge(!showKnowledge)}
+              className="flex items-center justify-center w-7 h-7 rounded text-[15px] transition-colors"
+              style={{ background: 'rgba(140,118,215,0.1)' }}
+              title="Ad-hoc Knowledge"
+            >
+              🎓
+            </button>
+            {persona && chatMatch.params.sessionId && (
+              <KnowledgeDropdown
+                personaId={persona.id}
+                personaName={persona.name}
+                sessionId={chatMatch.params.sessionId}
+                isOpen={showKnowledge}
+                onClose={() => setShowKnowledge(false)}
+              />
+            )}
+          </div>
           {persona && (
             <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold">
               {persona.model_unique_id.split(":").slice(1).join(":") || persona.model_unique_id}

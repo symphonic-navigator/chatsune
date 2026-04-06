@@ -168,6 +168,16 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def update_session_knowledge_library_ids(
+        self, session_id: str, library_ids: list[str],
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"knowledge_library_ids": library_ids, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
     async def find_empty_sessions(
         self, user_id: str, persona_id: str, exclude_session_id: str | None = None,
     ) -> list[str]:
