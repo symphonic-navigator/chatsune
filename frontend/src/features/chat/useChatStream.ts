@@ -60,6 +60,7 @@ export function useChatStream(sessionId: string | null) {
             const content = store().streamingContent
             const thinking = store().streamingThinking
             const webSearchContext = store().streamingWebSearchContext
+            const knowledgeContext = store().streamingKnowledgeContext
             if (content) {
               store().finishStreaming(
                 {
@@ -71,6 +72,7 @@ export function useChatStream(sessionId: string | null) {
                   token_count: 0,
                   attachments: null,
                   web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
+                  knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
                   created_at: new Date().toISOString(),
                 },
                 contextStatus,
