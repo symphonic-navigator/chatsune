@@ -12,7 +12,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Low Effort
 
-**[BD-001] Module boundary violation: `chat/_handlers.py` imports `PersonaRepository` directly**
+**[BD-001] ~~Module boundary violation: `chat/_handlers.py` imports `PersonaRepository` directly~~ FIXED**
 
 - File: `backend/modules/chat/_handlers.py:11`
 - Problem: `from backend.modules.persona._repository import PersonaRepository` is a hard CLAUDE.md violation. The `create_session` endpoint uses `PersonaRepository` directly to validate that a persona exists before creating a session.
@@ -21,7 +21,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-002] Multiple critical topics missing from `_FANOUT` table -- events published but silently dropped**
+**[BD-002] ~~Multiple critical topics missing from `_FANOUT` table -- events published but silently dropped~~ FIXED**
 
 - File: `backend/ws/event_bus.py:17-56`
 - Problem: The following topics are published by handlers but are absent from `_FANOUT` and `_BROADCAST_ALL`, so `_fan_out()` logs a warning and does NOT deliver them to any WebSocket:
@@ -36,7 +36,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-003] Refresh token `consume()` has a TOCTOU race condition**
+**[BD-003] ~~Refresh token `consume()` has a TOCTOU race condition~~ FIXED**
 
 - File: `backend/modules/user/_refresh.py:38-46`
 - Problem: `consume()` does `GET` then a pipelined `DELETE`. Between the `GET` and `DELETE`, a second concurrent request with the same token can also read the token (it still exists), pass validation, and generate a new access token. This is a classic check-then-act race on a security token.
@@ -45,7 +45,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-004] `_user_locks` dict grows forever -- memory leak per unique user**
+**[BD-004] ~~`_user_locks` dict grows forever -- memory leak per unique user~~ FIXED**
 
 - File: `backend/jobs/_lock.py:3-14`
 - Problem: `_user_locks` is a plain dict that creates an `asyncio.Lock` for every user who ever triggers inference or a job. Locks are never removed. In a system with many users this will accumulate indefinitely.
@@ -54,7 +54,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-005] `setup` endpoint has a TOCTOU race -- two master admins possible**
+**[BD-005] ~~`setup` endpoint has a TOCTOU race -- two master admins possible~~ FIXED**
 
 - File: `backend/modules/user/_handlers.py:99-101`
 - Problem: The `setup` endpoint does `find_by_role("master_admin")` and then `repo.create(...)` as two separate operations. If two simultaneous setup requests arrive (e.g. from a misconfigured load balancer retry), both could pass the existence check before either insert completes.
@@ -63,7 +63,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-006] `OllamaCloudAdapter.stream_completion` has a 15-second timeout for the entire stream**
+**[BD-006] ~~`OllamaCloudAdapter.stream_completion` has a 15-second timeout for the entire stream~~ FIXED**
 
 - File: `backend/modules/llm/_adapters/_ollama_cloud.py:22` (`_TIMEOUT = 15.0`)
 - Problem: The `httpx.AsyncClient` is created with `timeout=_TIMEOUT` (15s). This is the connect + read timeout combined. A large model generating a long response will hit the read timeout mid-stream.
@@ -74,7 +74,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Medium Effort
 
-**[BD-007] `_run_inference` sends `ChatStreamStartedEvent` before acquiring the user lock**
+**[BD-007] ~~`_run_inference` sends `ChatStreamStartedEvent` before acquiring the user lock~~ FIXED**
 
 - File: `backend/modules/chat/__init__.py:288-291`
 - Problem: In the `LlmCredentialNotFoundError` catch block, `emit_fn` sends `ChatStreamStartedEvent` after `_runner.run()` has already been called. But `_runner.run()` itself also emits `ChatStreamStartedEvent` inside the lock. In the credential-not-found error path, two `chat.stream.started` events are emitted for the same error flow, confusing the frontend state machine.
@@ -82,7 +82,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-008] `delete_messages_after` uses timestamp comparison -- susceptible to same-millisecond collision**
+**[BD-008] ~~`delete_messages_after` uses timestamp comparison -- susceptible to same-millisecond collision~~ FIXED**
 
 - File: `backend/modules/chat/_repository.py:164-173`
 - Problem: The method deletes messages where `created_at > target["created_at"]`. If two messages are saved within the same millisecond (MongoDB datetime resolution), the truncation logic in `handle_chat_edit` would leave stale messages.
@@ -90,7 +90,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-009] `select_message_pairs` breaks at first pair that doesn't fit -- skips all older history**
+**[BD-009] ~~`select_message_pairs` breaks at first pair that doesn't fit -- skips all older history~~ FIXED**
 
 - File: `backend/modules/chat/_context.py:56-60`
 - Problem: The pair selection loop breaks on the *first* pair that exceeds the budget. A single large pair can cause the model to lose relevant older context that would otherwise fit.
@@ -98,7 +98,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-010] `list_messages` has a hardcoded limit of 5000 -- unindexed for performance at scale**
+**[BD-010] ~~`list_messages` has a hardcoded limit of 5000 -- unindexed for performance at scale~~ FIXED**
 
 - File: `backend/modules/chat/_repository.py:161-162`
 - Problem: `list_messages` returns up to 5000 messages per session. Each call to `_run_inference` issues `list_messages` (for history), `list_messages` again in `save_fn` (for title generation check). For busy sessions, this is multiple large fetches per inference.
@@ -106,7 +106,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-011] `reorder_personas` issues N individual MongoDB updates -- no atomicity, no event published**
+**[BD-011] ~~`reorder_personas` issues N individual MongoDB updates -- no atomicity, no event published~~ FIXED**
 
 - File: `backend/modules/persona/_handlers.py:118-127`
 - Problem: The reorder endpoint issues one `update_one` per persona in a Python loop. No transaction. If interrupted mid-loop, the order will be partially updated. No event is published for the reorder operation.
@@ -114,7 +114,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-012] `reorder_bookmarks` has the same N-query and missing-event problems**
+**[BD-012] ~~`reorder_bookmarks` has the same N-query and missing-event problems~~ FIXED**
 
 - File: `backend/modules/bookmark/_handlers.py:73-84` and `_repository.py:64-69`
 - Problem: Identical issue to BD-011: N sequential `update_one` calls per bookmark, no atomicity, no WebSocket event published.
@@ -124,7 +124,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### High Effort
 
-**[BD-013] `get_model_context_window`, `get_model_supports_vision`, `get_model_supports_reasoning` each independently query the model cache**
+**[BD-013] ~~`get_model_context_window`, `get_model_supports_vision`, `get_model_supports_reasoning` each independently query the model cache~~ FIXED**
 
 - File: `backend/modules/llm/__init__.py:73-131`
 - Problem: Each of these three functions calls `get_models(provider_id, redis, adapter)` independently. `_run_inference` calls all three in sequence. Each call creates a new adapter instance and does a Redis `GET`. On cache miss, it triggers three separate `fetch_models()` calls.
@@ -136,7 +136,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Low Effort
 
-**[BD-014] `list_users` returns unsorted results -- pagination is not stable**
+**[BD-014] ~~`list_users` returns unsorted results -- pagination is not stable~~ FIXED**
 
 - File: `backend/modules/user/_repository.py:58-62`
 - Problem: `list_users` does `find().skip(skip).limit(limit)` with no sort. MongoDB does not guarantee document order without an explicit sort.
@@ -144,7 +144,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-015] `login` checks inactive status after verifying the password**
+**[BD-015] ~~`login` checks inactive status after verifying the password~~ FIXED**
 
 - File: `backend/modules/user/_handlers.py:158-161`
 - Problem: The login handler first verifies the password (expensive bcrypt comparison), then checks `is_active`. Wastes bcrypt cycles on known-invalid logins.
@@ -152,7 +152,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-016] `_TIMEOUT = 15.0` in websearch adapter is a flat timeout**
+**[BD-016] ~~`_TIMEOUT = 15.0` in websearch adapter is a flat timeout~~ FIXED**
 
 - File: `backend/modules/websearch/_adapters/_ollama_cloud.py:7`
 - Problem: Same class of issue as BD-006. The websearch adapter uses a flat timeout.
@@ -160,7 +160,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-017] `_background_tasks` module-level set in `ws/router.py` is never cleaned up on shutdown**
+**[BD-017] ~~`_background_tasks` module-level set in `ws/router.py` is never cleaned up on shutdown~~ FIXED**
 
 - File: `backend/ws/router.py:15`
 - Problem: `_background_tasks` is a module-level `set[asyncio.Task]`. On application shutdown, any in-flight tasks are not explicitly cancelled or awaited. In-flight inference during shutdown will produce partial writes to MongoDB.
@@ -168,7 +168,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-018] `get_current_user` uses a bare `except Exception` -- swallows all JWT errors identically**
+**[BD-018] ~~`get_current_user` uses a bare `except Exception` -- swallows all JWT errors identically~~ FIXED**
 
 - File: `backend/dependencies.py:16-18`
 - Problem: Any exception from `decode_access_token` returns the same 401. Obscures important errors like `jwt.exceptions.InvalidAlgorithmError` that might indicate misconfiguration.
@@ -176,7 +176,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-019] `tool_success` heuristic in `_inference.py` is unreliable**
+**[BD-019] ~~`tool_success` heuristic in `_inference.py` is unreliable~~ FIXED**
 
 - File: `backend/modules/chat/_inference.py:191`
 - Problem: `success="error" not in result_str[:50].lower()` -- determines tool call success by checking if the first 50 characters contain the word "error". A web search result whose URL or title contains "error" would be incorrectly flagged as failed.
@@ -194,7 +194,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Medium Effort
 
-**[BD-021] `delete_stale_empty_sessions` does not cascade delete bookmarks**
+**[BD-021] ~~`delete_stale_empty_sessions` does not cascade delete bookmarks~~ FIXED**
 
 - File: `backend/modules/chat/_repository.py:101-121`
 - Problem: The stale session cleanup deletes sessions directly from MongoDB using `delete_many`. Unlike `delete_session` (which calls `delete_bookmarks_for_session`), the cleanup path does NOT cascade to bookmarks.
@@ -202,7 +202,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-022] `OllamaCloudAdapter.stream_completion` creates a new `httpx.AsyncClient` for each call**
+**[BD-022] ~~`OllamaCloudAdapter.stream_completion` creates a new `httpx.AsyncClient` for each call~~ FIXED**
 
 - File: `backend/modules/llm/_adapters/_ollama_cloud.py:128-161`
 - Problem: Every streaming inference call creates and destroys an httpx client, bypassing connection pooling. TCP connection establishment overhead per inference call.
@@ -230,7 +230,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-025] `validate_key` in `OllamaCloudAdapter` can return `None` implicitly on non-200/401/403 status**
+**[BD-025] ~~`validate_key` in `OllamaCloudAdapter` can return `None` implicitly on non-200/401/403 status~~ FIXED**
 
 - File: `backend/modules/llm/_adapters/_ollama_cloud.py:115-127`
 - Problem: The method calls `resp.raise_for_status()` on unexpected status codes. Python's type checker will flag the implicit `None` return path.
@@ -238,7 +238,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-026] `CreateUserRequestDto.display_name` lacks validation but `UpdateDisplayNameDto` has it**
+**[BD-026] ~~`CreateUserRequestDto.display_name` lacks validation but `UpdateDisplayNameDto` has it~~ FIXED**
 
 - File: `shared/dtos/auth.py:31-34` vs `shared/dtos/auth.py:86-94`
 - Problem: `UpdateDisplayNameDto` has `max_length=64` and a non-blank validator. `CreateUserRequestDto.display_name` has no such constraints.
@@ -246,7 +246,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-027] `about_me` field has no length limit**
+**[BD-027] ~~`about_me` field has no length limit~~ FIXED**
 
 - File: `shared/dtos/auth.py:82-83`
 - Problem: `UpdateAboutMeDto.about_me` is typed as `str | None` with no length constraint. A user could submit an arbitrarily large string that is assembled into the system prompt on every inference call.
@@ -270,7 +270,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-030] `system_prompt` (persona + admin + model instructions + about_me) has no combined length cap**
+**[BD-030] ~~`system_prompt` (persona + admin + model instructions + about_me) has no combined length cap~~ FIXED**
 
 - File: `backend/modules/chat/_prompt_assembler.py:38-79`
 - Problem: The assembler concatenates all four layers without checking the combined length against the context window. If it exceeds `max_context_tokens`, `calculate_budget` returns `available_for_chat = 0`.
@@ -288,7 +288,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-032] `persona/_handlers.py` imports `decode_access_token` directly from `_auth` module**
+**[BD-032] ~~`persona/_handlers.py` imports `decode_access_token` directly from `_auth` module~~ FIXED**
 
 - File: `backend/modules/persona/_handlers.py:30` and `:347`
 - Problem: `from backend.modules.user._auth import decode_access_token` -- cross-module internal import (forbidden per CLAUDE.md). `decode_access_token` is already exported via `backend.modules.user.__init__`.
@@ -296,7 +296,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-033] `UserModelConfigRepository.upsert` has a find-then-insert race condition**
+**[BD-033] ~~`UserModelConfigRepository.upsert` has a find-then-insert race condition~~ FIXED**
 
 - File: `backend/modules/llm/_user_config.py:37-62`
 - Problem: `upsert` calls `find()` then either `update_one` or `insert_one`. Two concurrent upsert calls can both find no existing document and both try to insert, raising an unhandled `DuplicateKeyError`. Same pattern in `CredentialRepository.upsert` and `CurationRepository.upsert`.
@@ -312,7 +312,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Low Effort
 
-**[BD-034] Ephemeral tool/search events should be in `_SKIP_PERSISTENCE` once added to `_FANOUT`**
+**[BD-034] ~~Ephemeral tool/search events should be in `_SKIP_PERSISTENCE` once added to `_FANOUT`~~ FIXED**
 
 - File: `backend/ws/event_bus.py:65-68`
 - Problem: `CHAT_TOOL_CALL_STARTED`, `CHAT_TOOL_CALL_COMPLETED`, and `CHAT_WEB_SEARCH_CONTEXT` are not in `_SKIP_PERSISTENCE`. Once added to `_FANOUT` (see BD-002), they would be persisted to Redis Streams. These are ephemeral in-flight events meaningless on reconnect.
