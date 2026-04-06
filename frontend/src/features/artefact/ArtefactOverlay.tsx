@@ -208,28 +208,27 @@ export function ArtefactOverlay() {
           </div>
         </div>
 
-        {/* Content area */}
-        <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
+        {/* Content area — grid so children fill the cell without height chain issues */}
+        <div style={{ flex: '1 1 0%', minHeight: 0, display: 'grid', gridTemplate: '1fr / 1fr', overflow: 'hidden' }}>
           {loading && (
-            <div className="flex flex-1 items-center justify-center">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
             </div>
           )}
 
           {!loading && artefact && mode === 'preview' && (
-            <div className="relative flex-1 min-h-0">
-              <ArtefactPreview
-                content={artefact.content}
-                type={artefact.type}
-                language={artefact.language}
-              />
-            </div>
+            <ArtefactPreview
+              content={artefact.content}
+              type={artefact.type}
+              language={artefact.language}
+            />
           )}
 
           {!loading && artefact && mode === 'edit' && (
-            <>
+            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <textarea
-                className="flex-1 resize-none bg-transparent p-4 font-mono text-[12px] text-white/80 outline-none placeholder:text-white/20"
+                className="resize-none bg-transparent p-4 font-mono text-[12px] text-white/80 outline-none placeholder:text-white/20"
+                style={{ flex: '1 1 0%', minHeight: 0 }}
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
                 spellCheck={false}
@@ -253,7 +252,7 @@ export function ArtefactOverlay() {
                   </button>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
