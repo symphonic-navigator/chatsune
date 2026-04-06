@@ -88,6 +88,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: Copy and bookmark buttons only appear in hover state and position themselves absolutely outside the message bubble (`-right-8` and `-left-8`). On touch devices there is no hover state. On narrow screens these buttons may be outside the visible area.
 - Why it matters: On touch devices the actions are completely unreachable.
 - Fix: Position actions inside the message bubble and show on tap/hover, or build a permanently visible action strip under each message.
+- **Status:** Fixed — hover-only buttons replaced with permanent inline action bar (icon + label) inside each message bubble.
 
 ---
 
@@ -98,6 +99,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/sidebar/Sidebar.tsx:375-419` (collapsed), `frontend/src/app/components/sidebar/Sidebar.tsx:598-733` (expanded)
 - Problem: In expanded sidebar mode, "Projects" and "History" are shown as collapsible sections directly in the sidebar. In collapsed mode, the same actions open the `UserModal`. These are two fundamentally different interaction patterns for the same function.
 - Fix: Choose a consistent model -- either always modal, or always sidebar section. The expanded sidebar variant (inline sections) is the better UX.
+- **Status:** Fixed — collapsed sidebar now opens flyout panels for Projects/History instead of UserModal. "Open full view" button in flyout navigates to UserModal.
 
 ---
 
