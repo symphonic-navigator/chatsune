@@ -18,6 +18,7 @@ import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
 import type { PersonaDto } from '../../core/types/persona'
 import { useBookmarks } from '../../core/hooks/useBookmarks'
 import { bookmarksApi } from '../../core/api/bookmarks'
+import { useNotificationStore } from '../../core/store/notificationStore'
 import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
 
@@ -198,13 +199,28 @@ export function ChatView({ persona }: ChatViewProps) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [])
 
-  // Handle session_expired: redirect to a new chat with the same persona
+  // Handle session_expired: notify user and redirect to a new chat with the same persona
   useEffect(() => {
     if (error?.errorCode === 'session_expired' && personaId && !isIncognito) {
+      const previousSessionUrl = sessionId ? `/chat/${personaId}/${sessionId}` : undefined
       useChatStore.getState().clearError()
+      useNotificationStore.getState().addNotification({
+        level: 'info',
+        title: 'Session expired',
+        message: 'Your session has expired. Starting a new chat.',
+        duration: 8000,
+        ...(previousSessionUrl
+          ? {
+              action: {
+                label: 'View previous chat',
+                onClick: () => navigate(previousSessionUrl),
+              },
+            }
+          : {}),
+      })
       navigate(`/chat/${personaId}?new=1`, { replace: true })
     }
-  }, [error, personaId, isIncognito, navigate])
+  }, [error, personaId, sessionId, isIncognito, navigate])
 
   // Scroll to specific message or bottom after loading
   const prevIsLoadingRef = useRef(false)
@@ -377,10 +393,15 @@ export function ChatView({ persona }: ChatViewProps) {
       {error && (
         <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-[13px]">
           <span className="text-red-400">{error.userMessage}</span>
-          {error.recoverable && (
+          {error.recoverable ? (
             <button type="button" onClick={handleRegenerate}
               className="ml-3 rounded border border-red-500/30 px-2 py-0.5 text-[12px] text-red-300 hover:bg-red-500/10">
               Retry
+            </button>
+          ) : (
+            <button type="button" onClick={() => navigate(`/chat/${personaId}?new=1`)}
+              className="ml-3 rounded border border-red-500/30 px-2 py-0.5 text-[12px] text-red-300 hover:bg-red-500/10">
+              Start new chat
             </button>
           )}
           <button type="button" onClick={() => useChatStore.getState().clearError()}

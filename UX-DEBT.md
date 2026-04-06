@@ -274,6 +274,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/features/chat/ChatView.tsx:372-386`
 - Problem: When `error.recoverable === false`, the UI shows the error message with only a "Dismiss" button. There is no way to return to the last working state or start a new session, other than manual navigation.
 - Fix (frontend): Add a "Start new chat" button for the `recoverable: false` case. Fix (backend): Ensure the error event provides enough context for the frontend to offer recovery options.
+- **Status:** Fixed — "Start new chat" button added for non-recoverable errors, navigates to `/chat/{personaId}?new=1`.
 
 ---
 
@@ -282,6 +283,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/features/chat/ChatView.tsx:201-207`
 - Problem: When a `session_expired` error event arrives, the user is silently redirected to a new chat. The previous chat history is still in the database, but the user has no idea what just happened and why they are suddenly in an empty chat.
 - Fix: Before navigation, show a toast: "Your session has expired. Starting a new chat." and link to the old chat ("View previous chat").
+- **Status:** Fixed — toast notification with "View previous chat" action button shown before redirect.
 
 ---
 
