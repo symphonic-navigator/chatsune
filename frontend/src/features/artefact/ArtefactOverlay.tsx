@@ -108,8 +108,14 @@ export function ArtefactOverlay() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeOverlay}>
       <div
-        className="flex flex-col overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
-        style={{ width: 'calc(100vw - 120px)', height: 'calc(100vh - 80px)', maxWidth: '1200px' }}
+        className="overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
+        style={{
+          width: 'calc(100vw - 120px)',
+          height: 'calc(100vh - 80px)',
+          maxWidth: '1200px',
+          display: 'grid',
+          gridTemplateRows: 'auto 1fr',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
@@ -208,10 +214,10 @@ export function ArtefactOverlay() {
           </div>
         </div>
 
-        {/* Content area — grid so children fill the cell without height chain issues */}
-        <div style={{ flex: '1 1 0%', minHeight: 0, display: 'grid', gridTemplate: '1fr / 1fr', overflow: 'hidden' }}>
+        {/* Content area — second grid row (1fr), children fill automatically */}
+        <div style={{ overflow: 'hidden', position: 'relative' }}>
           {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
             </div>
           )}
@@ -225,7 +231,7 @@ export function ArtefactOverlay() {
           )}
 
           {!loading && artefact && mode === 'edit' && (
-            <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
               <textarea
                 className="resize-none bg-transparent p-4 font-mono text-[12px] text-white/80 outline-none placeholder:text-white/20"
                 style={{ flex: '1 1 0%', minHeight: 0 }}
