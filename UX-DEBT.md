@@ -189,6 +189,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: When the user pastes text with more than 500 characters, it is automatically added as a `pasted-text.txt` file and removed from the input field. The user may intend to use the text directly in the chat.
 - Why it matters: This significantly violates the Principle of Least Astonishment. The pasted text "disappears" from the input field and appears as an attachment -- completely unexpected behaviour.
 - Fix: Show a notification/confirmation: "This text is long. Attach as file or include directly?" Or: show a clear hint with a button "Convert to text file", rather than doing it automatically.
+- **Status:** Fixed — inline confirmation dialog above textarea with character count, "Keep as text" and "Attach as file" buttons. Auto-dismisses on typing or sending.
 
 ---
 
@@ -240,6 +241,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/user-modal/SettingsTab.tsx:92-108`
 - Problem: The settings for Chat Font, Font Size and Line Spacing have no live preview area. Changes affect the chat in the background, but the user cannot see the effect directly in the settings modal.
 - Fix: Add a small preview text block under the settings that is formatted with the selected values.
+- **Status:** Fixed — live preview block below font settings, styled with current font, size, line spacing and White Script setting.
 
 ---
 
@@ -307,6 +309,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: The scope selection has a short explanation, but "local" bookmarks appear neither in the global bookmark list nor in the sidebar -- they are only visible in this chat and completely disappear when switching chats.
 - Why it matters: A user who chooses "Local" and later searches for the bookmark cannot find it in the global bookmark list.
 - Fix: Default to "Global" (the more useful behaviour). Or: make the explanation more concrete: "Local: only visible in this chat. Cannot be found via Bookmarks sidebar."
+- **Status:** Fixed — default scope changed to Global, explanation texts improved for both scopes.
 
 ---
 

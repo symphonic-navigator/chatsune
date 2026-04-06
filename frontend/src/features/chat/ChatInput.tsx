@@ -1,4 +1,6 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+
+const LONG_PASTE_THRESHOLD = 500
 
 interface ChatInputProps {
   onSend: (text: string) => void
@@ -20,6 +22,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip }, ref,
 ) {
   const [text, setText] = useState('')
+  const [pendingPaste, setPendingPaste] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -41,6 +44,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
     if (!trimmed || isStreaming || disabled || hasPendingUploads) return
+    setPendingPaste(null)
     onSend(trimmed)
     setText('')
   }, [text, isStreaming, disabled, hasPendingUploads, onSend])
@@ -54,15 +58,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         return
       }
       const pastedText = e.clipboardData.getData('text')
-      if (pastedText.length >= 500) {
-        e.preventDefault()
-        const blob = new Blob([pastedText], { type: 'text/plain' })
-        const file = new File([blob], 'pasted-text.txt', { type: 'text/plain' })
-        onFilesSelected([file])
+      if (pastedText.length >= LONG_PASTE_THRESHOLD) {
+        setPendingPaste(pastedText)
       }
     },
     [onFilesSelected],
   )
+
+  const handleKeepAsText = useCallback(() => {
+    setPendingPaste(null)
+  }, [])
+
+  const handleAttachAsFile = useCallback(() => {
+    if (!pendingPaste) return
+    // Remove the pasted text from the input — it was already inserted by the browser
+    setText((prev) => {
+      const idx = prev.lastIndexOf(pendingPaste)
+      if (idx === -1) return prev
+      return prev.slice(0, idx) + prev.slice(idx + pendingPaste.length)
+    })
+    const blob = new Blob([pendingPaste], { type: 'text/plain' })
+    const file = new File([blob], 'pasted-text.txt', { type: 'text/plain' })
+    onFilesSelected([file])
+    setPendingPaste(null)
+  }, [pendingPaste, onFilesSelected])
+
+  const handleTextChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    setText(e.target.value)
+    // Dismiss the paste confirmation if the user continues typing
+    if (pendingPaste) setPendingPaste(null)
+  }, [pendingPaste])
 
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -97,6 +122,29 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
       {attachmentStrip && (
         <div className="mx-auto mb-2 max-w-3xl">{attachmentStrip}</div>
       )}
+      {pendingPaste && (
+        <div className="mx-auto mb-2 max-w-3xl rounded-lg border border-white/8 bg-white/5 px-3 py-2">
+          <p className="mb-2 text-sm text-white/60">
+            Pasted text is quite long ({pendingPaste.length.toLocaleString()} characters). What would you like to do?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleKeepAsText}
+              className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
+            >
+              Keep as text
+            </button>
+            <button
+              type="button"
+              onClick={handleAttachAsFile}
+              className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
+            >
+              Attach as file
+            </button>
+          </div>
+        </div>
+      )}
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <button
           type="button"
@@ -123,7 +171,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="Type a message..."

@@ -9,7 +9,7 @@ interface BookmarkModalProps {
 
 export function BookmarkModal({ isOpen, onClose, onSave, accentColour }: BookmarkModalProps) {
   const [title, setTitle] = useState('')
-  const [scope, setScope] = useState<'global' | 'local'>('local')
+  const [scope, setScope] = useState<'global' | 'local'>('global')
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -32,7 +32,7 @@ export function BookmarkModal({ isOpen, onClose, onSave, accentColour }: Bookmar
   useEffect(() => {
     if (isOpen) {
       setTitle('')
-      setScope('local')
+      setScope('global')
       setSaving(false)
       // Defer focus to next frame so the element is mounted
       requestAnimationFrame(() => inputRef.current?.focus())
@@ -47,7 +47,7 @@ export function BookmarkModal({ isOpen, onClose, onSave, accentColour }: Bookmar
     try {
       await onSave(title.trim(), scope)
       setTitle('')
-      setScope('local')
+      setScope('global')
     } finally {
       setSaving(false)
     }
@@ -136,8 +136,8 @@ export function BookmarkModal({ isOpen, onClose, onSave, accentColour }: Bookmar
             </div>
             <p className="font-mono text-[11px] text-white/30 leading-relaxed mt-0.5">
               {scope === 'local'
-                ? 'Only visible within this chat session.'
-                : 'Visible in your bookmarks list across all sessions.'}
+                ? 'Only visible in this chat session. Will not appear in your Bookmarks sidebar or other chats.'
+                : 'Saved to your bookmarks — accessible from any chat and the Bookmarks sidebar.'}
             </p>
           </div>
         </div>

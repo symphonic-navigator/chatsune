@@ -1,5 +1,10 @@
 import { useDisplaySettings } from '../../../core/store/displaySettingsStore'
-import { UI_SCALE_OPTIONS } from '../../../core/types/displaySettings'
+import {
+  UI_SCALE_OPTIONS,
+  FONT_FAMILY_VALUES,
+  FONT_SIZE_VALUES,
+  LINE_HEIGHT_VALUES,
+} from '../../../core/types/displaySettings'
 import type { DisplaySettings } from '../../../core/types/displaySettings'
 
 const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 font-mono"
@@ -77,6 +82,21 @@ export function SettingsTab() {
           selected={settings.chatLineHeight}
           onChange={(v) => update({ chatLineHeight: v })}
         />
+      </div>
+
+      {/* Live preview of font settings */}
+      <div
+        className="rounded-lg border border-white/8 bg-white/[0.03] px-4 py-3"
+        style={{
+          fontFamily: FONT_FAMILY_VALUES[settings.chatFontFamily],
+          fontSize: FONT_SIZE_VALUES[settings.chatFontSize],
+          lineHeight: LINE_HEIGHT_VALUES[settings.chatLineHeight],
+        }}
+      >
+        <p className={settings.whiteScript ? 'text-white/90' : 'text-white/60'}>
+          The quick brown fox jumps over the lazy dog. This is how your chat
+          messages will look.
+        </p>
       </div>
 
       <div>
