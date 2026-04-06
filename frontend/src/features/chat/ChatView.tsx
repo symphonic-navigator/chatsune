@@ -21,6 +21,8 @@ import { bookmarksApi } from '../../core/api/bookmarks'
 import { useNotificationStore } from '../../core/store/notificationStore'
 import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
+import { JournalBadge } from './JournalBadge'
+import { useMemoryEvents } from '../memory/useMemoryEvents'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -132,6 +134,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [isIncognito, effectiveSessionId])
 
   useChatStream(effectiveSessionId ?? null)
+  useMemoryEvents(persona?.id ?? null)
 
   useEffect(() => {
     const store = useChatStore.getState()
@@ -392,6 +395,7 @@ export function ChatView({ persona }: ChatViewProps) {
               )}
             </div>
           )}
+          {persona && <JournalBadge personaId={persona.id} />}
           <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
         </div>
       </div>
