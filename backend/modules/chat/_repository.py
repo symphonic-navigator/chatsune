@@ -20,7 +20,7 @@ class ChatRepository:
         await self._messages.create_index([("session_id", 1), ("created_at", 1)])
         await self._messages.create_index(
             [("content", "text")],
-            default_language="english",
+            default_language="none",
             name="content_text",
         )
 
@@ -75,12 +75,8 @@ class ChatRepository:
         session_filter: dict = {"user_id": user_id, "deleted_at": None}
         if persona_id:
             session_filter["persona_id"] = persona_id
-        if exclude_persona_ids:
-            session_filter.setdefault("persona_id", {})
-            if isinstance(session_filter["persona_id"], str):
-                pass
-            else:
-                session_filter["persona_id"] = {"$nin": exclude_persona_ids}
+        if exclude_persona_ids and not persona_id:
+            session_filter["persona_id"] = {"$nin": exclude_persona_ids}
 
         # Step 2: Get candidate session IDs for this user
         candidate_docs = await self._sessions.find(
