@@ -84,7 +84,50 @@ function SvgPreview({ content }: { content: string }) {
 
 // ─── JSX ────────────────────────────────────────────────────────────────────
 
-const JSX_SANDBOX_HTML = (userCode: string) => `<!DOCTYPE html>
+/**
+ * Preprocess JSX code for browser execution:
+ * - Strip `export default` (no module system in <script>)
+ * - Detect the component name to render
+ */
+function preprocessJsx(code: string): { code: string; componentName: string } {
+  let processed = code
+  let componentName = 'App'
+
+  // export default function Name() { ... }
+  const funcMatch = processed.match(/export\s+default\s+function\s+(\w+)/)
+  if (funcMatch) {
+    componentName = funcMatch[1]
+    processed = processed.replace(/export\s+default\s+function\s+/, 'function ')
+    return { code: processed, componentName }
+  }
+
+  // export default class Name { ... }
+  const classMatch = processed.match(/export\s+default\s+class\s+(\w+)/)
+  if (classMatch) {
+    componentName = classMatch[1]
+    processed = processed.replace(/export\s+default\s+class\s+/, 'class ')
+    return { code: processed, componentName }
+  }
+
+  // export default Name (reference to existing variable, typically last line)
+  const refMatch = processed.match(/export\s+default\s+(\w+)\s*;?\s*$/)
+  if (refMatch) {
+    componentName = refMatch[1]
+    processed = processed.replace(/export\s+default\s+\w+\s*;?\s*$/, '')
+    return { code: processed, componentName }
+  }
+
+  // export default () => ... (anonymous arrow)
+  if (/export\s+default\s+/.test(processed)) {
+    processed = processed.replace(/export\s+default\s+/, 'const _DefaultComponent = ')
+    componentName = '_DefaultComponent'
+    return { code: processed, componentName }
+  }
+
+  return { code: processed, componentName }
+}
+
+const JSX_SANDBOX_HTML = (userCode: string, componentName: string) => `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8" />
@@ -99,15 +142,20 @@ const JSX_SANDBOX_HTML = (userCode: string) => `<!DOCTYPE html>
 ${userCode}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App));
+try {
+  root.render(React.createElement(${componentName}));
+} catch(e) {
+  root.render(React.createElement('pre', {style:{color:'red',padding:'1em'}}, e.message));
+}
   </script>
 </body>
 </html>`
 
 function JsxPreview({ content }: { content: string }) {
+  const { code, componentName } = preprocessJsx(content)
   return (
     <iframe
-      srcDoc={JSX_SANDBOX_HTML(content)}
+      srcDoc={JSX_SANDBOX_HTML(code, componentName)}
       sandbox="allow-scripts"
       className="absolute inset-0 border-0 bg-white rounded"
       title="JSX preview"
