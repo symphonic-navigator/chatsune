@@ -67,11 +67,22 @@ export function useChatSessions() {
       )
     })
 
+    const unsubRestored = eventBus.on(Topics.CHAT_SESSION_RESTORED, (event: BaseEvent) => {
+      const session = event.payload.session as ChatSessionDto
+      if (!session) return
+      setSessions((prev) =>
+        prev.some((s) => s.id === session.id)
+          ? prev
+          : [...prev, session].sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+      )
+    })
+
     return () => {
       unsubCreated()
       unsubDeleted()
       unsubTitle()
       unsubPinned()
+      unsubRestored()
     }
   }, [])
 

@@ -60,6 +60,9 @@ export const chatApi = {
   deleteSession: (sessionId: string) =>
     api.delete<{ status: string }>(`/api/chat/sessions/${sessionId}`),
 
+  restoreSession: (sessionId: string) =>
+    api.post<{ status: string }>(`/api/chat/sessions/${sessionId}/restore`),
+
   updateSession: (sessionId: string, body: { title: string }) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}`, body),
 
