@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
@@ -38,18 +38,27 @@ export function ArtefactOverlay() {
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Reset mode and edit content when the artefact handle/version changes
+  // Measure content area for preview sizing
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [contentHeight, setContentHeight] = useState(0)
+
+  useEffect(() => {
+    if (!contentRef.current) return
+    const obs = new ResizeObserver(([entry]) => {
+      setContentHeight(entry.contentRect.height)
+    })
+    obs.observe(contentRef.current)
+    return () => obs.disconnect()
+  }, [artefact, loading])
+
   useEffect(() => {
     setMode('preview')
     setEditContent(artefact?.content ?? '')
   }, [artefact?.handle, artefact?.version])
 
-  // Close on Escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        closeOverlay()
-      }
+      if (e.key === 'Escape') closeOverlay()
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
@@ -106,24 +115,41 @@ export function ArtefactOverlay() {
   const redoDisabled = !artefact || artefact.version >= artefact.max_version
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeOverlay}>
+    /* Backdrop — fixed, covers entire viewport */
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+      }}
+      onClick={closeOverlay}
+    >
+      {/* Panel */}
       <div
-        className="overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
         style={{
           width: 'calc(100vw - 120px)',
+          maxWidth: 1200,
           height: 'calc(100vh - 80px)',
-          maxWidth: '1200px',
-          display: 'grid',
-          gridTemplateRows: 'auto 1fr',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          borderRadius: 10,
+          border: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
         }}
+        className="bg-elevated"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2" style={{ flexShrink: 0 }}>
           {/* Left: title + badges */}
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <span className="truncate text-[13px] text-white/80" title={artefact?.title ?? ''}>
-              {artefact?.title ?? '…'}
+              {artefact?.title ?? '...'}
             </span>
             {artefact && (
               <span
@@ -146,88 +172,40 @@ export function ArtefactOverlay() {
 
           {/* Right: action buttons */}
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => { setMode('preview') }}
-              className={`${BTN_BASE} ${mode === 'preview' ? BTN_ACTIVE : BTN_INACTIVE}`}
-            >
-              Preview
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('edit'); setEditContent(artefact?.content ?? '') }}
-              className={`${BTN_BASE} ${mode === 'edit' ? BTN_ACTIVE : BTN_INACTIVE}`}
-            >
-              Edit
-            </button>
-
+            <button type="button" onClick={() => setMode('preview')}
+              className={`${BTN_BASE} ${mode === 'preview' ? BTN_ACTIVE : BTN_INACTIVE}`}>Preview</button>
+            <button type="button" onClick={() => { setMode('edit'); setEditContent(artefact?.content ?? '') }}
+              className={`${BTN_BASE} ${mode === 'edit' ? BTN_ACTIVE : BTN_INACTIVE}`}>Edit</button>
             <span className="mx-1 h-4 w-px bg-white/10" />
-
-            <button
-              type="button"
-              onClick={handleCopy}
-              className={BTN_ICON}
-              title="Copy to clipboard"
-            >
-              {copied ? 'Copied' : 'Copy'}
-            </button>
-            <button
-              type="button"
-              onClick={handleDownload}
-              className={BTN_ICON}
-              title="Download file"
-            >
-              Download
-            </button>
-
+            <button type="button" onClick={handleCopy} className={BTN_ICON} title="Copy to clipboard">
+              {copied ? 'Copied' : 'Copy'}</button>
+            <button type="button" onClick={handleDownload} className={BTN_ICON} title="Download file">Download</button>
             <span className="mx-1 h-4 w-px bg-white/10" />
-
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={undoDisabled}
-              className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`}
-              title="Undo"
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={handleRedo}
-              disabled={redoDisabled}
-              className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`}
-              title="Redo"
-            >
-              Redo
-            </button>
-
+            <button type="button" onClick={handleUndo} disabled={undoDisabled}
+              className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`} title="Undo">Undo</button>
+            <button type="button" onClick={handleRedo} disabled={redoDisabled}
+              className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`} title="Redo">Redo</button>
             <span className="mx-1 h-4 w-px bg-white/10" />
-
-            <button
-              type="button"
-              onClick={closeOverlay}
-              className={BTN_ICON}
-              title="Close (Escape)"
-            >
-              ✕
-            </button>
+            <button type="button" onClick={closeOverlay} className={BTN_ICON} title="Close (Escape)">&#10005;</button>
           </div>
         </div>
 
-        {/* Content area — second grid row (1fr), children fill automatically */}
-        <div style={{ overflow: 'hidden', position: 'relative' }}>
+        {/* Content area — takes remaining height, measured via ResizeObserver */}
+        <div ref={contentRef} style={{ flex: '1 1 0%', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
           {loading && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
             </div>
           )}
 
-          {!loading && artefact && mode === 'preview' && (
-            <ArtefactPreview
-              content={artefact.content}
-              type={artefact.type}
-              language={artefact.language}
-            />
+          {!loading && artefact && mode === 'preview' && contentHeight > 0 && (
+            <div style={{ width: '100%', height: contentHeight, overflow: 'hidden' }}>
+              <ArtefactPreview
+                content={artefact.content}
+                type={artefact.type}
+                language={artefact.language}
+              />
+            </div>
           )}
 
           {!loading && artefact && mode === 'edit' && (
@@ -241,21 +219,10 @@ export function ArtefactOverlay() {
               />
               {isDirty && (
                 <div className="flex items-center justify-end gap-2 border-t border-white/8 px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditContent(artefact.content)}
-                    className={`${BTN_BASE} ${BTN_INACTIVE}`}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={saving}
-                    className={`${BTN_BASE} ${BTN_ACTIVE} disabled:opacity-50`}
-                  >
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
+                  <button type="button" onClick={() => setEditContent(artefact.content)}
+                    className={`${BTN_BASE} ${BTN_INACTIVE}`}>Discard</button>
+                  <button type="button" onClick={handleSave} disabled={saving}
+                    className={`${BTN_BASE} ${BTN_ACTIVE} disabled:opacity-50`}>{saving ? 'Saving...' : 'Save'}</button>
                 </div>
               )}
             </div>
