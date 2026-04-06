@@ -128,7 +128,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   useEffect(() => {
     const store = useChatStore.getState()
-    store.reset()
+    store.reset(effectiveSessionId)
 
     if (isIncognito) {
       // Load model capabilities from persona

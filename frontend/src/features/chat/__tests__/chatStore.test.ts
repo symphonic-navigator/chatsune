@@ -114,4 +114,15 @@ describe('chatStore', () => {
     useChatStore.getState().clearError()
     expect(useChatStore.getState().error).toBeNull()
   })
+
+  it('reset stores activeSessionId', () => {
+    useChatStore.getState().reset('session-abc')
+    expect(useChatStore.getState().activeSessionId).toBe('session-abc')
+  })
+
+  it('reset without sessionId clears activeSessionId', () => {
+    useChatStore.getState().reset('session-abc')
+    useChatStore.getState().reset()
+    expect(useChatStore.getState().activeSessionId).toBeNull()
+  })
 })

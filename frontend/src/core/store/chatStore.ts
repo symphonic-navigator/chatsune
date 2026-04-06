@@ -52,7 +52,8 @@ interface ChatState {
   setContextStatus: (status: ContextStatus) => void
   setContextFillPercentage: (percentage: number) => void
   setReasoningOverride: (override: boolean | null) => void
-  reset: () => void
+  activeSessionId: string | null
+  reset: (sessionId?: string) => void
 }
 
 const INITIAL_STATE = {
@@ -70,6 +71,7 @@ const INITIAL_STATE = {
   sessionTitle: null as string | null,
   disabledToolGroups: [] as string[],
   reasoningOverride: null as boolean | null,
+  activeSessionId: null as string | null,
 }
 
 export const useChatStore = create<ChatState>((set, _get) => ({
@@ -132,5 +134,5 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setContextStatus: (status) => set({ contextStatus: status }),
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
-  reset: () => set({ ...INITIAL_STATE }),
+  reset: (sessionId) => set({ ...INITIAL_STATE, activeSessionId: sessionId ?? null }),
 }))
