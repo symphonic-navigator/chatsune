@@ -47,8 +47,16 @@ export function ArtefactOverlay() {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') closeOverlay()
     }
+    // Escape from iframe previews (they postMessage since keydown doesn't cross iframe boundary)
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type === 'artefact-escape') closeOverlay()
+    }
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    window.addEventListener('message', handleMessage)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      window.removeEventListener('message', handleMessage)
+    }
   }, [closeOverlay])
 
   const handleCopy = useCallback(() => {

@@ -63,10 +63,17 @@ function CodePreview({ content, language, highlighter }: { content: string; lang
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
+const HTML_SCROLLBAR_CSS = `<style>*::-webkit-scrollbar{width:6px;height:6px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:3px}*::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25)}*{scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}</style>`
+const HTML_ESCAPE_SCRIPT = `<script>window.addEventListener('keydown',function(e){if(e.key==='Escape')window.parent.postMessage({type:'artefact-escape'},'*')})</script>`
+
 function HtmlPreview({ content }: { content: string }) {
+  // Inject scrollbar CSS and escape handler into the HTML content
+  const enhanced = content.replace('</head>', `${HTML_SCROLLBAR_CSS}${HTML_ESCAPE_SCRIPT}</head>`)
+  const srcDoc = enhanced === content ? `${HTML_SCROLLBAR_CSS}${HTML_ESCAPE_SCRIPT}${content}` : enhanced
+
   return (
     <iframe
-      srcDoc={content}
+      srcDoc={srcDoc}
       sandbox="allow-scripts"
       style={{ width: '100%', height: '100%', border: 'none' }}
       className="bg-white rounded"
@@ -139,7 +146,15 @@ const JSX_SANDBOX_HTML = (userCode: string, componentName: string) => `<!DOCTYPE
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <style>body { margin: 0; font-family: sans-serif; }</style>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+    * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
+  </style>
+  <script>window.addEventListener('keydown',function(e){if(e.key==='Escape')window.parent.postMessage({type:'artefact-escape'},'*')})</script>
 </head>
 <body>
   <div id="root"></div>
