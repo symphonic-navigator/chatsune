@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -17,6 +18,11 @@ class ChatRepository:
         await self._sessions.create_index([("user_id", 1), ("updated_at", -1)])
         await self._messages.create_index("session_id")
         await self._messages.create_index([("session_id", 1), ("created_at", 1)])
+        await self._messages.create_index(
+            [("content", "text")],
+            default_language="english",
+            name="content_text",
+        )
 
     async def create_session(self, user_id: str, persona_id: str, model_unique_id: str) -> dict:
         now = datetime.now(UTC)
@@ -48,6 +54,74 @@ class ChatRepository:
             }},
             {"$match": {"_msgs": {"$ne": []}}},
             {"$unset": "_msgs"},
+            {"$sort": {"pinned": -1, "updated_at": -1}},
+            {"$limit": 200},
+        ]
+        return await self._sessions.aggregate(pipeline).to_list(length=200)
+
+    async def search_sessions(
+        self,
+        user_id: str,
+        query: str,
+        persona_id: str | None = None,
+        exclude_persona_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Search sessions by message content ($text) and session title (regex).
+
+        Returns sessions sorted by pinned desc, updated_at desc.
+        Only user and assistant messages are searched (not tool messages).
+        """
+        # Step 1: Build session filter
+        session_filter: dict = {"user_id": user_id, "deleted_at": None}
+        if persona_id:
+            session_filter["persona_id"] = persona_id
+        if exclude_persona_ids:
+            session_filter.setdefault("persona_id", {})
+            if isinstance(session_filter["persona_id"], str):
+                pass
+            else:
+                session_filter["persona_id"] = {"$nin": exclude_persona_ids}
+
+        # Step 2: Get candidate session IDs for this user
+        candidate_docs = await self._sessions.find(
+            session_filter, {"_id": 1},
+        ).to_list(length=500)
+        candidate_ids = [doc["_id"] for doc in candidate_docs]
+        if not candidate_ids:
+            return []
+
+        # Step 3: Text search on messages (user + assistant only)
+        message_hits = await self._messages.find(
+            {
+                "$text": {"$search": query},
+                "session_id": {"$in": candidate_ids},
+                "role": {"$in": ["user", "assistant"]},
+            },
+            {"session_id": 1},
+        ).to_list(length=5000)
+        message_session_ids = {doc["session_id"] for doc in message_hits}
+
+        # Step 4: Regex search on session titles
+        terms = query.strip().split()
+        title_filter = dict(session_filter)
+        title_filter["_id"] = {"$in": candidate_ids}
+        if terms:
+            title_filter["$and"] = [
+                {"title": {"$regex": re.escape(term), "$options": "i"}}
+                for term in terms
+            ]
+        title_hits = await self._sessions.find(
+            title_filter, {"_id": 1},
+        ).to_list(length=500)
+        title_session_ids = {doc["_id"] for doc in title_hits}
+
+        # Step 5: Union and fetch full session docs
+        matching_ids = list(message_session_ids | title_session_ids)
+        if not matching_ids:
+            return []
+
+        pipeline = [
+            {"$match": {"_id": {"$in": matching_ids}}},
             {"$sort": {"pinned": -1, "updated_at": -1}},
             {"$limit": 200},
         ]
