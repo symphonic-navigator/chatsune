@@ -183,10 +183,18 @@ export function Sidebar({
     localStorage.setItem("chatsune_unpinned_open", String(next))
   }
 
+  const [historySearch, setHistorySearch] = useState("")
+
   const [flyoutTab, setFlyoutTab] = useState<'projects' | 'history' | null>(null)
 
   function toggleFlyout(tab: 'projects' | 'history') {
-    setFlyoutTab((prev) => (prev === tab ? null : tab))
+    setFlyoutTab((prev) => {
+      if (prev === tab) {
+        setHistorySearch("")
+        return null
+      }
+      return tab
+    })
   }
 
   function openFullViewFromFlyout(tab: 'projects' | 'history') {
@@ -285,8 +293,21 @@ export function Sidebar({
     navigate(`/chat/${lastSession.persona_id}/${lastSession.id}`)
   }
 
-  const pinnedSessions = sessions.filter((s) => s.pinned)
-  const unpinnedSessions = sessions.filter((s) => !s.pinned)
+  const historyTerm = historySearch.trim().toLowerCase()
+
+  function matchesHistorySearch(s: ChatSessionDto): boolean {
+    if (!historyTerm) return true
+    const personaName = personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id
+    const title = s.title ?? ''
+    return (
+      personaName.toLowerCase().includes(historyTerm) ||
+      title.toLowerCase().includes(historyTerm) ||
+      s.id.toLowerCase().includes(historyTerm)
+    )
+  }
+
+  const pinnedSessions = sessions.filter((s) => s.pinned && matchesHistorySearch(s))
+  const unpinnedSessions = sessions.filter((s) => !s.pinned && matchesHistorySearch(s))
 
   function handleToggleSessionPin(session: ChatSessionDto, pinned: boolean) {
     onToggleSessionPin?.(session.id, pinned)
@@ -379,7 +400,7 @@ export function Sidebar({
         {/* Logo — expand */}
         <button
           type="button"
-          onClick={() => { setFlyoutTab(null); toggleCollapsed() }}
+          onClick={() => { setFlyoutTab(null); setHistorySearch(""); toggleCollapsed() }}
           title="Expand sidebar"
           className="group flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
         >
@@ -516,6 +537,17 @@ export function Sidebar({
             onClose={() => setFlyoutTab(null)}
             onOpenFullView={() => openFullViewFromFlyout('history')}
           >
+            {sessions.length > 0 && (
+              <div className="mx-2 mt-1 mb-0.5">
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Filter sessions..."
+                  className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/25 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
+                />
+              </div>
+            )}
             <div className="mt-0.5 pb-2">
               {pinnedSessions.length > 0 && (
                 <>
@@ -561,6 +593,9 @@ export function Sidebar({
               {sessions.length === 0 && (
                 <p className="px-4 py-3 text-center text-[12px] text-white/20">No history yet</p>
               )}
+              {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
+                <p className="px-4 py-3 text-center text-[12px] text-white/20">No matching sessions</p>
+              )}
             </div>
           </SidebarFlyout>
         )}
@@ -593,7 +628,7 @@ export function Sidebar({
         <span className="flex-1 text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
         <button
           type="button"
-          onClick={toggleCollapsed}
+          onClick={() => { setHistorySearch(""); toggleCollapsed() }}
           title="Collapse sidebar"
           className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-white/25 transition-colors hover:bg-white/8 hover:text-white/55"
         >
@@ -750,6 +785,18 @@ export function Sidebar({
           actions={null}
         />
 
+        {sessions.length > 0 && (
+          <div className="mx-2 mt-0.5 mb-1">
+            <input
+              type="text"
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              placeholder="Filter sessions..."
+              className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/25 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
+            />
+          </div>
+        )}
+
         <DndContext
           collisionDetection={pointerWithin}
           onDragStart={handleHistoryDragStart}
@@ -804,6 +851,9 @@ export function Sidebar({
 
             {sessions.length === 0 && (
               <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
+            )}
+            {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
+              <p className="px-4 py-1 text-[12px] text-white/30">No matching sessions</p>
             )}
           </div>
 

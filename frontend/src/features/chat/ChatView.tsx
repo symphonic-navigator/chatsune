@@ -36,6 +36,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
+  const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
 
   const isIncognito = searchParams.get('incognito') === '1'
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
@@ -124,6 +125,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const bookmarkedMessageIds = new Set(bookmarks.map((b) => b.message_id))
   const [bookmarkTargetMsgId, setBookmarkTargetMsgId] = useState<string | null>(null)
   const [bookmarksExpanded, setBookmarksExpanded] = useState(false)
+
+  // Show incognito notice once per incognito session
+  useEffect(() => {
+    setShowIncognitoNotice(isIncognito)
+  }, [isIncognito, effectiveSessionId])
 
   useChatStream(effectiveSessionId ?? null)
 
@@ -407,6 +413,22 @@ export function ChatView({ persona }: ChatViewProps) {
           <button type="button" onClick={() => useChatStore.getState().clearError()}
             className="ml-2 text-[12px] text-white/30 hover:text-white/50">
             Dismiss
+          </button>
+        </div>
+      )}
+
+      {showIncognitoNotice && (
+        <div className="flex items-center justify-between border-b border-white/6 bg-white/5 px-4 py-1.5 text-[12px] text-white/40">
+          <span>This conversation will not be saved. A new session starts each time you open this chat.</span>
+          <button
+            type="button"
+            onClick={() => setShowIncognitoNotice(false)}
+            className="ml-3 shrink-0 text-white/25 hover:text-white/50 transition-colors"
+            aria-label="Dismiss notice"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" />
+            </svg>
           </button>
         </div>
       )}

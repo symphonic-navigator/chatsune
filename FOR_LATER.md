@@ -111,3 +111,35 @@ to these events and creates toasts/entries automatically.
 **Why deferred:** There are no background jobs yet that would produce
 notifications. When the memory consolidation pipeline or other async processes
 are added, this becomes relevant.
+
+---
+
+## Full-Text Search in Chat Messages
+
+**Priority:** High
+**Scope:** Backend + Frontend
+
+Currently, History search is client-side only and filters by session title and persona name.
+Chat message content is not searchable at all.
+
+**What we want:**
+
+- Fuzzy, case-insensitive full-text search across all chat message content
+- Should feel instant for the user — search-as-you-type with debounce
+- Results should show which message matched, with a snippet/highlight
+
+**Backend work needed:**
+
+- MongoDB text index on `chat_messages.content`
+- New API endpoint: `GET /api/chat/search?q=term&user_id=...`
+- Consider: `$text` with `$meta: "textScore"` for relevance ranking
+- Consider: whether to also index `chat_sessions.title` in the same query
+
+**Frontend work needed:**
+
+- Integrate search into both History tab (UserModal) and Sidebar history
+- Show message snippets in search results, not just session titles
+- Navigate to the specific message within a session on click
+
+**Note:** This may tie into the Memory System — search across memories and chat history
+could share infrastructure.

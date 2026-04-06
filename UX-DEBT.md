@@ -201,6 +201,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: The sidebar shows a simple session list with Pin/Unpin/Delete. The UserModal "History" tab shows the same with additional search field, persona filter, Rename (REN), Generate Title (GEN) and more. The duplication is confusing.
 - Why it matters: Users must learn that the "real" history management is in the modal, not in the sidebar. This is not intuitive.
 - Fix: Establish consistency -- either all history actions in the sidebar, or all in the modal with the sidebar showing only a preview with an "Open full history" link.
+- **Status:** Partially fixed — sidebar History now has client-side search/filter (matching modal behaviour). Flyout (UX-009) provides "Open full view" bridge to modal. Full-text message search deferred to FOR_LATER.md.
 
 ---
 
@@ -300,6 +301,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/features/chat/ChatView.tsx:39-41`, `frontend/src/features/chat/ChatView.tsx:332-337`
 - Problem: The `incognitoIdRef` generates a new ID on each navigation. But if the user uses two different personas in incognito mode, there is no distinction -- only the "INCOGNITO" badge in the header. The chat ID is invisible to the user.
 - Fix: More clearly communicate in incognito mode: "This conversation will not be saved. A new session starts each time." on first open.
+- **Status:** Fixed — dismissible notice banner shown once per incognito session above the message list.
 
 ---
 
