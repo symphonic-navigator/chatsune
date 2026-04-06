@@ -93,8 +93,8 @@ function SortablePersonaItem({
       <PersonaItem
         persona={persona}
         dragRef={setNodeRef}
-        dragListeners={listeners as unknown as Record<string, Function>}
-        dragAttributes={attributes as Record<string, unknown>}
+        dragListeners={listeners}
+        dragAttributes={attributes}
         isDragging={isDragging}
         {...rest}
       />
@@ -111,8 +111,8 @@ function DraggableHistoryItem({
     <div ref={setNodeRef}>
       <HistoryItem
         session={session}
-        dragListeners={listeners as unknown as Record<string, Function>}
-        dragAttributes={attributes as Record<string, unknown>}
+        dragListeners={listeners}
+        dragAttributes={attributes}
         isDragging={isDragging}
         {...rest}
       />

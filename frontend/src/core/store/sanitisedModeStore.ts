@@ -8,10 +8,10 @@ interface SanitisedModeState {
 }
 
 export const useSanitisedMode = create<SanitisedModeState>((set, get) => ({
-  isSanitised: localStorage.getItem(STORAGE_KEY) === 'true',
+  isSanitised: typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY) === 'true',
   toggle: () => {
     const next = !get().isSanitised
-    localStorage.setItem(STORAGE_KEY, String(next))
+    if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, String(next))
     set({ isSanitised: next })
   },
 }))

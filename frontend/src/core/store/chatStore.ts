@@ -49,6 +49,8 @@ interface ChatState {
   clearError: () => void
   setSessionTitle: (title: string | null) => void
   setDisabledToolGroups: (groups: string[]) => void
+  setContextStatus: (status: ContextStatus) => void
+  setContextFillPercentage: (percentage: number) => void
   setReasoningOverride: (override: boolean | null) => void
   reset: () => void
 }
@@ -127,6 +129,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   clearError: () => set({ error: null }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
   setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
+  setContextStatus: (status) => set({ contextStatus: status }),
+  setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
   reset: () => set({ ...INITIAL_STATE }),
 }))

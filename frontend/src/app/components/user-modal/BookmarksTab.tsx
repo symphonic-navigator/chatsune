@@ -4,6 +4,8 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
@@ -201,7 +203,7 @@ function SortableBookmarkRow(props: BookmarkRowProps) {
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
     <div ref={setNodeRef} style={style}>
-      <BookmarkRow {...props} dragListeners={listeners as unknown as Record<string, Function>} dragAttributes={attributes as Record<string, unknown>} onUpdated={props.onUpdated} />
+      <BookmarkRow {...props} dragListeners={listeners} dragAttributes={attributes} onUpdated={props.onUpdated} />
     </div>
   )
 }
@@ -212,8 +214,8 @@ interface BookmarkRowProps {
   monogram?: string
   colourScheme?: ChakraColour
   onOpen: () => void
-  dragListeners?: Record<string, Function>
-  dragAttributes?: Record<string, unknown>
+  dragListeners?: DraggableSyntheticListeners
+  dragAttributes?: DraggableAttributes
   onUpdated?: (updated: BookmarkDto) => void
 }
 

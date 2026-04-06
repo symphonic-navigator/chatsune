@@ -7,7 +7,7 @@ export function useAutoScroll(isStreaming: boolean) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const userScrolledUpRef = useRef(false)
-  const programmaticScrollRef = useRef(false)
+  const programmaticScrollCountRef = useRef(0)
   // Bump to re-run the scroll-listener effect when the ref attaches
   const [mounted, setMounted] = useState(0)
 
@@ -31,8 +31,8 @@ export function useAutoScroll(isStreaming: boolean) {
       const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD
       setShowScrollButton(!nearBottom)
 
-      if (programmaticScrollRef.current) {
-        programmaticScrollRef.current = false
+      if (programmaticScrollCountRef.current > 0) {
+        programmaticScrollCountRef.current--
         lastScrollTop = el.scrollTop
         return
       }
@@ -58,7 +58,7 @@ export function useAutoScroll(isStreaming: boolean) {
     const interval = setInterval(() => {
       if (userScrolledUpRef.current) return
       if (!bottomRef.current) return
-      programmaticScrollRef.current = true
+      programmaticScrollCountRef.current++
       bottomRef.current.scrollIntoView({ block: 'end' })
     }, 80)
     return () => clearInterval(interval)
@@ -66,11 +66,11 @@ export function useAutoScroll(isStreaming: boolean) {
 
   const scrollToBottom = useCallback(() => {
     userScrolledUpRef.current = false
-    programmaticScrollRef.current = true
+    programmaticScrollCountRef.current++
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (bottomRef.current) {
-          programmaticScrollRef.current = true
+          programmaticScrollCountRef.current++
           bottomRef.current.scrollIntoView({ block: 'end', behavior: 'instant' })
         }
       })

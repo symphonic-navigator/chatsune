@@ -81,7 +81,8 @@ export function useChatStream(sessionId: string | null) {
           } else {
             store().cancelStreaming()
           }
-          useChatStore.setState({ contextStatus, contextFillPercentage: fillPercentage })
+          store().setContextStatus(contextStatus)
+          store().setContextFillPercentage(fillPercentage)
           break
         }
         case Topics.CHAT_STREAM_ERROR: {

@@ -45,5 +45,5 @@ export function useBootstrap() {
     }
 
     bootstrap()
-  }, [])
+  }, [setToken, setUser, setSetupComplete, setInitialised])
 }

@@ -11,6 +11,7 @@ const STORAGE_KEY = 'chatsune_display_settings'
 
 export function loadDisplaySettings(): DisplaySettings {
   try {
+    if (typeof localStorage === 'undefined') return { ...DEFAULT_DISPLAY_SETTINGS }
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return { ...DEFAULT_DISPLAY_SETTINGS }
     return { ...DEFAULT_DISPLAY_SETTINGS, ...JSON.parse(raw) }
@@ -20,7 +21,7 @@ export function loadDisplaySettings(): DisplaySettings {
 }
 
 export function saveDisplaySettings(settings: DisplaySettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+  if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   applyCssVars(settings)
 }
 

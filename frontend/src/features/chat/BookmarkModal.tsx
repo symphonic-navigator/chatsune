@@ -13,12 +13,19 @@ export function BookmarkModal({ isOpen, onClose, onSave, accentColour }: Bookmar
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Escape key closes modal
+  // Escape key closes modal; save/restore focus
+  const previousFocusRef = useRef<Element | null>(null)
   useEffect(() => {
     if (!isOpen) return
+    previousFocusRef.current = document.activeElement
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus()
+      }
+    }
   }, [isOpen, onClose])
 
   // Auto-focus title input when modal opens

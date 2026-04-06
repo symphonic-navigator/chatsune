@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react"
+import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { ChatSessionDto } from "../../../core/api/chat"
 import type { ChakraColour } from "../../../core/types/chakra"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 
 function formatSessionDate(isoString: string): string {
   const d = new Date(isoString)
-  return d.toLocaleDateString("de-DE", {
+  return d.toLocaleDateString(undefined, {
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -22,8 +23,8 @@ interface HistoryItemProps {
   onClick: (session: ChatSessionDto) => void
   onDelete: (session: ChatSessionDto) => void
   onTogglePin?: (session: ChatSessionDto, pinned: boolean) => void
-  dragListeners?: Record<string, Function>
-  dragAttributes?: Record<string, unknown>
+  dragListeners?: DraggableSyntheticListeners
+  dragAttributes?: DraggableAttributes
   isDragging?: boolean
 }
 

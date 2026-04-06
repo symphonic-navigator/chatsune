@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { PersonaDto } from "../../../core/types/persona"
 import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 
@@ -13,8 +14,8 @@ interface PersonaItemProps {
   onUnpin?: (persona: PersonaDto) => void
   onOpenOverlay?: () => void
   dragRef?: (node: HTMLElement | null) => void
-  dragListeners?: Record<string, Function>
-  dragAttributes?: Record<string, unknown>
+  dragListeners?: DraggableSyntheticListeners
+  dragAttributes?: DraggableAttributes
   isDragging?: boolean
 }
 

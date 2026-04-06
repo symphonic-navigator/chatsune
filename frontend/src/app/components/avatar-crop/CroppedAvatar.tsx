@@ -38,7 +38,7 @@ export function CroppedAvatar({ personaId, updatedAt, crop, size, alt, className
         style={{
           width: size,
           height: size,
-          backgroundImage: `url(${CSS.escape ? `"${src}"` : `url("${src}")`})`.replace('url(url(', 'url(').replace('))', ')'),
+          backgroundImage: `url("${src}")`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}

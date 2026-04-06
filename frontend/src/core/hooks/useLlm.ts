@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { llmApi } from "../api/llm"
 import { eventBus } from "../websocket/eventBus"
 import { Topics } from "../types/events"
@@ -17,6 +17,8 @@ export function useLlm() {
   const [userConfigs, setUserConfigs] = useState<UserModelConfigDto[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const modelsRef = useRef(models)
+  modelsRef.current = models
 
   const fetchProviders = useCallback(async () => {
     setIsLoading(true)
@@ -57,11 +59,10 @@ export function useLlm() {
       eventBus.on(Topics.LLM_CREDENTIAL_SET, () => fetchProviders()),
       eventBus.on(Topics.LLM_CREDENTIAL_REMOVED, () => fetchProviders()),
       eventBus.on(Topics.LLM_MODEL_CURATED, () => {
-        // Refetch models for all loaded providers
-        models.forEach((_, pid) => fetchModels(pid))
+        modelsRef.current.forEach((_, pid) => fetchModels(pid))
       }),
       eventBus.on(Topics.LLM_MODELS_REFRESHED, () => {
-        models.forEach((_, pid) => fetchModels(pid))
+        modelsRef.current.forEach((_, pid) => fetchModels(pid))
       }),
       eventBus.on(Topics.LLM_USER_MODEL_CONFIG_UPDATED, () => fetchUserConfigs()),
     ]

@@ -3,8 +3,6 @@ import { useUploadStore, toAttachmentRefs, type PendingAttachment } from '../../
 import { uploadFile } from '../../core/api/storage'
 import type { AttachmentRefDto } from '../../core/api/storage'
 
-let localIdCounter = 0
-
 export function useAttachments(personaId?: string) {
   const pendingAttachments = useUploadStore((s) => s.pendingAttachments)
   const addPending = useUploadStore((s) => s.addPending)
@@ -18,7 +16,7 @@ export function useAttachments(personaId?: string) {
       const existing = useUploadStore.getState().pendingAttachments
       if (existing.some((a) => a.file.name === file.name && a.file.size === file.size)) return
 
-      const localId = `pending-${++localIdCounter}`
+      const localId = `pending-${crypto.randomUUID()}`
       const localPreviewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
 
       const pending: PendingAttachment = {
@@ -49,7 +47,7 @@ export function useAttachments(personaId?: string) {
       const existing = useUploadStore.getState().pendingAttachments
       if (existing.some((a) => a.fileId === dto.id)) return
 
-      const localId = `existing-${++localIdCounter}`
+      const localId = `existing-${crypto.randomUUID()}`
       addPending({
         localId,
         file: new File([], dto.display_name), // placeholder

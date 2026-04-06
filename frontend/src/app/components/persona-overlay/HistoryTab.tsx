@@ -37,7 +37,7 @@ function groupSessions(sessions: ChatSessionDto[]): [string, ChatSessionDto[]][]
 }
 
 function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString('de-DE', {
+  return new Date(isoString).toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',

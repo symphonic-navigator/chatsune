@@ -227,7 +227,7 @@ export function ChatView({ persona }: ChatViewProps) {
     (text: string) => {
       if (!effectiveSessionId) return
       const optimisticMsg: ChatMessageDto = {
-        id: `optimistic-${Date.now()}`,
+        id: `optimistic-${crypto.randomUUID()}`,
         session_id: effectiveSessionId,
         role: 'user',
         content: text,

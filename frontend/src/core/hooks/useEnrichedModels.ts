@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { llmApi } from "../api/llm"
+import { eventBus } from "../websocket/eventBus"
+import { Topics } from "../types/events"
 import type {
   EnrichedModelDto,
   UserModelConfigDto,
@@ -49,6 +51,13 @@ export function useEnrichedModels() {
 
   useEffect(() => {
     fetch()
+
+    const unsubs = [
+      eventBus.on(Topics.LLM_MODEL_CURATED, () => fetch()),
+      eventBus.on(Topics.LLM_MODELS_REFRESHED, () => fetch()),
+      eventBus.on(Topics.LLM_USER_MODEL_CONFIG_UPDATED, () => fetch()),
+    ]
+    return () => unsubs.forEach((u) => u())
   }, [fetch])
 
   /** Update a single model in the local list. */

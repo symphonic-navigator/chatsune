@@ -2,7 +2,7 @@ import { useCallback, useState } from "react"
 import { useAuthStore } from "../store/authStore"
 import { authApi } from "../api/auth"
 import { meApi } from "../api/meApi"
-import { connect, disconnect } from "../websocket/connection"
+import { disconnect } from "../websocket/connection"
 import type {
   LoginRequest,
   SetupRequest,
@@ -27,7 +27,6 @@ export function useAuth() {
       } catch {
         // getMe failed — user stays authenticated with fallback display name
       }
-      connect()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
       throw err
@@ -43,7 +42,6 @@ export function useAuth() {
       const res = await authApi.setup(data)
       setToken(res.access_token)
       setUser(res.user)
-      connect()
       return res
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed")
@@ -59,8 +57,6 @@ export function useAuth() {
     try {
       const res = await authApi.changePassword(data)
       setToken(res.access_token)
-      disconnect()
-      connect()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Password change failed")
       throw err

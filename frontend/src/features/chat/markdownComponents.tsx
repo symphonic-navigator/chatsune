@@ -85,7 +85,12 @@ export function createMarkdownComponents(highlighter: Highlighter | null): Compo
             theme: "github-dark-dimmed",
           })
         } catch {
-          html = `<pre><code>${codeStr}</code></pre>`
+          const escaped = codeStr
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+          html = `<pre><code>${escaped}</code></pre>`
         }
 
         return (

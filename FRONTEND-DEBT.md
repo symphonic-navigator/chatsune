@@ -12,7 +12,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-001] `useLlm` stale closure -- model refresh events never trigger re-fetches**
+**[FD-001] ~FIXED~ `useLlm` stale closure -- model refresh events never trigger re-fetches**
 
 - File: `frontend/src/core/hooks/useLlm.ts:59-65`
 - Problem: The `LLM_MODEL_CURATED` and `LLM_MODELS_REFRESHED` event handlers close over the initial `models` state (an empty `Map`). `models` is not in the `useEffect` dependency array, so after real model data is loaded, the handlers still iterate an empty map. Curating a model or triggering a model refresh silently does nothing to the in-memory model list.
@@ -30,7 +30,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-003] `CroppedAvatar` broken `backgroundImage` in the no-crop branch**
+**[FD-003] ~FIXED~ `CroppedAvatar` broken `backgroundImage` in the no-crop branch**
 
 - File: `frontend/src/app/components/avatar-crop/CroppedAvatar.tsx:40-42`
 - Problem: The no-crop branch constructs `backgroundImage` with double `url()` nesting. The two `.replace()` calls attempt to fix this but only handle one level of nesting. The crop branch at line 83 correctly uses a single `url()` wrapper directly.
@@ -50,7 +50,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-005] `Topbar.tsx` component `LivePill` defined inside render scope**
+**[FD-005] ~FIXED~ `Topbar.tsx` component `LivePill` defined inside render scope**
 
 - File: `frontend/src/app/components/topbar/Topbar.tsx:32`
 - Problem: `const LivePill = () => (...)` is declared inside `Topbar`, creating a new function component type on every render. React treats it as a completely new component type each time and unmounts/remounts it, destroying local state and causing unnecessary DOM churn.
@@ -60,7 +60,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### High Effort
 
-**[FD-006] `Record<string, Function>` used throughout DnD plumbing -- implicit `any`-equivalent**
+**[FD-006] ~FIXED~ `Record<string, Function>` used throughout DnD plumbing -- implicit `any`-equivalent**
 
 - Files: `frontend/src/app/components/sidebar/PersonaItem.tsx:16`, `frontend/src/app/components/sidebar/HistoryItem.tsx:25`, `frontend/src/app/components/sidebar/Sidebar.tsx:96,114`, `frontend/src/app/components/user-modal/BookmarksTab.tsx:204,215`
 - Problem: dnd-kit listener types are cast to `Record<string, Function>` throughout the drag-and-drop wiring. `Function` is a catch-all type with no parameter or return type safety -- functionally equivalent to `any`. CLAUDE.md explicitly prohibits `any` in TypeScript.
@@ -72,7 +72,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-007] `markdownComponents.tsx` XSS risk in Shiki error fallback**
+**[FD-007] ~FIXED~ `markdownComponents.tsx` XSS risk in Shiki error fallback**
 
 - File: `frontend/src/features/chat/markdownComponents.tsx:87-88`
 - Problem: When `highlighter.codeToHtml` throws, the catch block falls back to inserting raw unescaped code string via innerHTML. If the code string contains malicious HTML tags, this is an XSS vector. The content should be sanitised with DOMPurify or escaped before insertion.
@@ -80,7 +80,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-008] `useAutoScroll` programmatic scroll flag consumed by the wrong scroll event**
+**[FD-008] ~FIXED~ `useAutoScroll` programmatic scroll flag consumed by the wrong scroll event**
 
 - File: `frontend/src/features/chat/useAutoScroll.ts:34-38`
 - Problem: A boolean ref is set synchronously before `scrollIntoView`, but the resulting scroll event fires asynchronously. During rapid streaming, multiple `scrollIntoView` calls queue up. The flag is cleared on the *first* scroll event, so subsequent programmatic scrolls are mis-identified as user scrolls and stop auto-scroll mid-stream.
@@ -96,7 +96,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-010] `useBootstrap` missing dependency declarations**
+**[FD-010] ~FIXED~ `useBootstrap` missing dependency declarations**
 
 - File: `frontend/src/core/hooks/useBootstrap.ts:48`
 - Problem: `useEffect(() => {...}, [])` uses `setToken`, `setUser`, `setSetupComplete`, `setInitialised` from the outer scope but does not list them in deps. The `hasRun.current` guard prevents actual re-runs, but the pattern is fragile.
@@ -106,7 +106,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-011] `EditTab.tsx` model capability check does not re-run when persona changes**
+**[FD-011] ~FIXED~ `EditTab.tsx` model capability check does not re-run when persona changes**
 
 - File: `frontend/src/app/components/persona-overlay/EditTab.tsx:48-66`
 - Problem: The `useEffect` that loads model capabilities has an empty deps array with eslint-disable. If the `PersonaOverlay` is navigated from one persona to another without unmounting, the displayed capabilities remain from the previous persona.
@@ -114,7 +114,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-012] `ChatView.tsx` optimistic message uses non-unique `Date.now()` ID**
+**[FD-012] ~FIXED~ `ChatView.tsx` optimistic message uses non-unique `Date.now()` ID**
 
 - File: `frontend/src/features/chat/ChatView.tsx:229`
 - Problem: Each optimistic user message gets a timestamp-based ID. Two messages sent within the same millisecond produce duplicate IDs, causing React key collisions.
@@ -122,7 +122,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-013] `localIdCounter` in `useAttachments` is a module-level singleton**
+**[FD-013] ~FIXED~ `localIdCounter` in `useAttachments` is a module-level singleton**
 
 - File: `frontend/src/features/chat/useAttachments.ts:6`
 - Problem: `let localIdCounter = 0` is at module scope. It is never reset between sessions or chat navigations. If pending attachment state is ever persisted, stale IDs could collide.
@@ -134,7 +134,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-014] `HistoryItem.tsx` date locale is hard-coded to `de-DE`**
+**[FD-014] ~FIXED~ `HistoryItem.tsx` date locale is hard-coded to `de-DE`**
 
 - File: `frontend/src/app/components/sidebar/HistoryItem.tsx:7`
 - Problem: `toLocaleDateString("de-DE", ...)` hard-codes German locale formatting for all users. Similarly in `frontend/src/app/components/persona-overlay/HistoryTab.tsx:41`.
@@ -142,7 +142,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-015] `BookmarkModal` does not restore focus on close**
+**[FD-015] ~FIXED~ `BookmarkModal` does not restore focus on close**
 
 - File: `frontend/src/features/chat/BookmarkModal.tsx`
 - Problem: `UserModal` and `PersonaOverlay` both save `document.activeElement` and restore focus on cleanup. `BookmarkModal` does not.
@@ -160,7 +160,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Medium Effort
 
-**[FD-017] `useEnrichedModels` does not react to LLM events -- stale after curation changes**
+**[FD-017] ~FIXED~ `useEnrichedModels` does not react to LLM events -- stale after curation changes**
 
 - File: `frontend/src/core/hooks/useEnrichedModels.ts`
 - Problem: Unlike `useLlm`, `useEnrichedModels` has no WebSocket event subscriptions. Model browser shows stale curation ratings until the user closes and reopens the modal.
@@ -168,7 +168,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-018] `Topbar` model display strips only the first segment when splitting on `:`**
+**[FD-018] ~FIXED~ `Topbar` model display strips only the first segment when splitting on `:`**
 
 - File: `frontend/src/app/components/topbar/Topbar.tsx:109`
 - Problem: `.split(":")[1]` only takes the second segment. For compound model slugs (e.g. `ollama_cloud:qwen2.5:72b`), this shows only `qwen2.5` instead of `qwen2.5:72b`.
@@ -191,7 +191,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[FD-020] `useAuth.login` calls `connect()` redundantly -- `useWebSocket` already reacts to `isAuthenticated`**
+**[FD-020] ~FIXED~ `useAuth.login` calls `connect()` redundantly -- `useWebSocket` already reacts to `isAuthenticated`**
 
 - File: `frontend/src/core/hooks/useAuth.ts:30`
 - Problem: After a successful login, `useAuth.login` explicitly calls `connect()`. Simultaneously, `setToken()` sets `isAuthenticated: true`, which triggers `useWebSocket`'s effect (which also calls `connect()`). Causes unnecessary socket churn on every login.
@@ -199,7 +199,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-021] `useAuth.changePassword` calls `disconnect()`/`connect()` duplicating `useWebSocket` logic**
+**[FD-021] ~FIXED~ `useAuth.changePassword` calls `disconnect()`/`connect()` duplicating `useWebSocket` logic**
 
 - File: `frontend/src/core/hooks/useAuth.ts:63-64`
 - Problem: Same pattern as above. The token change via `setToken` will trigger `useWebSocket`'s effect anyway.
@@ -207,7 +207,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 ---
 
-**[FD-022] `displaySettingsStore` calls `localStorage.getItem` during module initialisation**
+**[FD-022] ~FIXED~ `displaySettingsStore` calls `localStorage.getItem` during module initialisation**
 
 - File: `frontend/src/core/store/displaySettingsStore.ts:11,53`
 - Problem: `localStorage` access runs synchronously when the module is first imported. In SSR or test environments without a DOM, `localStorage` is undefined. Same issue in `sanitisedModeStore.ts:10` and `sidebarStore.ts:10`.
@@ -227,7 +227,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### High Effort
 
-**[FD-024] `chatStore` `finishStreaming` -- `useChatStream.ts:84` uses `setState` directly bypassing store setters**
+**[FD-024] ~FIXED~ `chatStore` `finishStreaming` -- `useChatStream.ts:84` uses `setState` directly bypassing store setters**
 
 - File: `frontend/src/core/store/chatStore.ts:99-105`
 - Problem: `useChatStream.ts:84` calls `useChatStore.setState({ contextStatus, contextFillPercentage })` directly, bypassing the store's setter functions -- an internal encapsulation violation.

@@ -63,7 +63,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         setCanReason(false)
         setCanUseTools(true)
       })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [persona.model_unique_id])
 
   const isDirty = isCreating ||
     name !== persona.name ||

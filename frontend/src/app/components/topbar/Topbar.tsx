@@ -13,6 +13,18 @@ const SECTION_TITLES: Record<string, string> = {
   "/knowledge": "Knowledge",
 }
 
+function LivePill({ isLive, wsStatus }: { isLive: boolean; wsStatus: string }) {
+  return (
+    <span
+      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px]
+        ${isLive ? "border-white/7 bg-white/4 text-white/35" : "border-white/5 bg-white/2 text-white/20"}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${isLive ? "bg-live" : "bg-white/20"}`} />
+      {wsStatus}
+    </span>
+  )
+}
+
 interface TopbarProps {
   personas: PersonaDto[]
   onOpenPersonaOverlay?: (personaId: string) => void
@@ -28,16 +40,6 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
   const sessionTitle = useChatStore((s) => s.sessionTitle)
 
   const isLive = wsStatus === "connected"
-
-  const LivePill = () => (
-    <span
-      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px]
-        ${isLive ? "border-white/7 bg-white/4 text-white/35" : "border-white/5 bg-white/2 text-white/20"}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${isLive ? "bg-live" : "bg-white/20"}`} />
-      {wsStatus}
-    </span>
-  )
 
   if (chatMatch) {
     const { personaId } = chatMatch.params
@@ -106,10 +108,10 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
         <div className="flex-shrink-0 flex items-center gap-1.5">
           {persona && (
             <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold">
-              {persona.model_unique_id.split(":")[1] ?? persona.model_unique_id}
+              {persona.model_unique_id.split(":").slice(1).join(":") || persona.model_unique_id}
             </span>
           )}
-          <LivePill />
+          <LivePill isLive={isLive} wsStatus={wsStatus} />
         </div>
       </header>
     )
@@ -122,7 +124,7 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
     <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
       <span className="text-[13px] font-semibold text-white/60">{title}</span>
       <div className="ml-auto">
-        <LivePill />
+        <LivePill isLive={isLive} wsStatus={wsStatus} />
       </div>
     </header>
   )
