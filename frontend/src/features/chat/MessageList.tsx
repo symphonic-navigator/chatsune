@@ -7,6 +7,7 @@ import { StreamingIndicator } from './StreamingIndicator'
 import { WebSearchPills } from './WebSearchPills'
 import { KnowledgePills } from './KnowledgePills'
 import { ToolCallActivity } from './ToolCallActivity'
+import { ArtefactCard } from '../artefact/ArtefactCard'
 import type { RetrievedChunkDto } from '../../core/types/knowledge'
 
 interface ActiveToolCall {
@@ -17,6 +18,7 @@ interface ActiveToolCall {
 }
 
 interface MessageListProps {
+  sessionId: string | null
   messages: ChatMessageDto[]
   streamingContent: string
   streamingThinking: string
@@ -38,7 +40,7 @@ interface MessageListProps {
 }
 
 export function MessageList({
-  messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
+  sessionId, messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark,
 }: MessageListProps) {
@@ -106,6 +108,16 @@ export function MessageList({
           <div>
             {activeToolCalls.filter((tc) => tc.status === 'running').map((tc) => (
               <ToolCallActivity key={tc.id} toolName={tc.toolName} arguments={tc.arguments} />
+            ))}
+            {activeToolCalls.filter((tc) => tc.status === 'done' && (tc.toolName === 'create_artefact' || tc.toolName === 'update_artefact')).map((tc) => (
+              <ArtefactCard
+                key={tc.id}
+                handle={(tc.arguments.handle as string) ?? ''}
+                title={(tc.arguments.title as string) ?? (tc.arguments.handle as string) ?? ''}
+                artefactType={(tc.arguments.type as string) ?? 'code'}
+                isUpdate={tc.toolName === 'update_artefact'}
+                sessionId={sessionId ?? ''}
+              />
             ))}
             {streamingWebSearchContext.length > 0 && (
               <WebSearchPills items={streamingWebSearchContext} />

@@ -11,13 +11,18 @@ const TOOL_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
     return `Fetching ${display}`
   },
   knowledge_search: (args) => `Searching knowledge for "${args.query ?? '...'}"`,
+  create_artefact: (args) => `Creating artefact "${args.title ?? args.handle ?? '...'}"`,
+  update_artefact: (args) => `Updating artefact "${args.handle ?? '...'}"`,
+  read_artefact: (args) => `Reading artefact "${args.handle ?? '...'}"`,
+  list_artefacts: () => 'Listing artefacts',
 }
 
 export function ToolCallActivity({ toolName, arguments: args }: ToolCallActivityProps) {
   const labelFn = TOOL_LABELS[toolName]
   const label = labelFn ? labelFn(args) : `Running ${toolName}...`
   const isKnowledge = toolName === 'knowledge_search'
-  const colour = isKnowledge ? '140,118,215' : '137,180,250'
+  const isArtefact = toolName.includes('artefact')
+  const colour = isKnowledge ? '140,118,215' : isArtefact ? '201,169,110' : '137,180,250'
 
   return (
     <div

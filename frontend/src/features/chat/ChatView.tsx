@@ -23,6 +23,12 @@ import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
+import { ArtefactRail } from '../artefact/ArtefactRail'
+import { ArtefactSidebar } from '../artefact/ArtefactSidebar'
+import { ArtefactOverlay } from '../artefact/ArtefactOverlay'
+import { useArtefactEvents } from '../artefact/useArtefactEvents'
+import { useArtefactStore } from '../../core/store/artefactStore'
+import { artefactApi } from '../../core/api/artefact'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -136,10 +142,14 @@ export function ChatView({ persona }: ChatViewProps) {
 
   useChatStream(effectiveSessionId ?? null)
   useMemoryEvents(persona?.id ?? null)
+  useArtefactEvents(effectiveSessionId ?? null)
+  const artefactSidebarOpen = useArtefactStore((s) => s.sidebarOpen)
+  const artefactCount = useArtefactStore((s) => s.artefacts.length)
 
   useEffect(() => {
     const store = useChatStore.getState()
     store.reset(effectiveSessionId)
+    useArtefactStore.getState().reset()
 
     if (isIncognito) {
       // Load model capabilities from persona
@@ -172,6 +182,10 @@ export function ChatView({ persona }: ChatViewProps) {
       .finally(() => {
         setIsLoading(false)
       })
+
+    artefactApi.list(sessionId).then((arts) => {
+      useArtefactStore.getState().setArtefacts(arts)
+    }).catch(() => {})
 
     chatApi
       .getSession(sessionId)
@@ -438,51 +452,62 @@ export function ChatView({ persona }: ChatViewProps) {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <span className="text-[13px] text-white/20">Loading messages...</span>
-        </div>
-      ) : (
-        <MessageList
-          messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
-          streamingWebSearchContext={streamingWebSearchContext} streamingKnowledgeContext={streamingKnowledgeContext} activeToolCalls={activeToolCalls}
-          isWaitingForResponse={isWaitingForResponse}
-          isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
-          containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
-          onEdit={handleEdit} onRegenerate={handleRegenerate}
-          bookmarkedMessageIds={bookmarkedMessageIds}
-          onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
-        />
-      )}
+      <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 flex-col min-w-0 relative">
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <span className="text-[13px] text-white/20">Loading messages...</span>
+            </div>
+          ) : (
+            <MessageList
+              sessionId={effectiveSessionId ?? null}
+              messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
+              streamingWebSearchContext={streamingWebSearchContext} streamingKnowledgeContext={streamingKnowledgeContext} activeToolCalls={activeToolCalls}
+              isWaitingForResponse={isWaitingForResponse}
+              isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
+              containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
+              onEdit={handleEdit} onRegenerate={handleRegenerate}
+              bookmarkedMessageIds={bookmarkedMessageIds}
+              onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
+            />
+          )}
 
-      {showUploadBrowser && (
-        <UploadBrowserPanel
-          personaId={personaId}
-          onSelect={(file) => attachments.addExistingFile(file)}
-          onClose={() => setShowUploadBrowser(false)}
-        />
-      )}
+          {showUploadBrowser && (
+            <UploadBrowserPanel
+              personaId={personaId}
+              onSelect={(file) => attachments.addExistingFile(file)}
+              onClose={() => setShowUploadBrowser(false)}
+            />
+          )}
 
-      <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
-        onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
-        isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
-        attachmentStrip={attachments.hasAttachments ? (
-          <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
-        ) : undefined}
-        toolBar={effectiveSessionId ? (
-          <ToolToggles
-            sessionId={effectiveSessionId}
-            disabledToolGroups={disabledToolGroups}
-            onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
-            disabled={isStreaming}
-            modelSupportsTools={modelSupportsTools}
-            modelSupportsReasoning={modelSupportsReasoning}
-            reasoningOverride={reasoningOverride}
-            personaReasoningDefault={personaReasoningDefault}
-            onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+          <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
+            onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
+            isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
+            attachmentStrip={attachments.hasAttachments ? (
+              <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
+            ) : undefined}
+            toolBar={effectiveSessionId ? (
+              <ToolToggles
+                sessionId={effectiveSessionId}
+                disabledToolGroups={disabledToolGroups}
+                onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                disabled={isStreaming}
+                modelSupportsTools={modelSupportsTools}
+                modelSupportsReasoning={modelSupportsReasoning}
+                reasoningOverride={reasoningOverride}
+                personaReasoningDefault={personaReasoningDefault}
+                onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+              />
+            ) : undefined}
           />
-        ) : undefined}
-      />
+          <ArtefactOverlay />
+        </div>
+        {artefactSidebarOpen ? (
+          <ArtefactSidebar sessionId={effectiveSessionId!} />
+        ) : (
+          artefactCount > 0 && <ArtefactRail />
+        )}
+      </div>
 
       {/* Bookmark creation modal */}
       <BookmarkModal
