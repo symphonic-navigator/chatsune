@@ -71,6 +71,16 @@ export const Topics = {
   MEMORY_EXTRACTION_COMPLETED: "memory.extraction.completed",
   MEMORY_EXTRACTION_FAILED: "memory.extraction.failed",
   MEMORY_BODY_ROLLBACK: "memory.body.rollback",
+  KNOWLEDGE_LIBRARY_CREATED: "knowledge.library.created",
+  KNOWLEDGE_LIBRARY_UPDATED: "knowledge.library.updated",
+  KNOWLEDGE_LIBRARY_DELETED: "knowledge.library.deleted",
+  KNOWLEDGE_DOCUMENT_CREATED: "knowledge.document.created",
+  KNOWLEDGE_DOCUMENT_UPDATED: "knowledge.document.updated",
+  KNOWLEDGE_DOCUMENT_DELETED: "knowledge.document.deleted",
+  KNOWLEDGE_DOCUMENT_EMBEDDING: "knowledge.document.embedding",
+  KNOWLEDGE_DOCUMENT_EMBEDDED: "knowledge.document.embedded",
+  KNOWLEDGE_DOCUMENT_EMBED_FAILED: "knowledge.document.embed_failed",
+  KNOWLEDGE_SEARCH_COMPLETED: "knowledge.search.completed",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

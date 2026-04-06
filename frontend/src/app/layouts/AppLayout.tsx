@@ -3,6 +3,7 @@ import { Outlet, useMatch, useNavigate } from "react-router-dom"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
+import { useKnowledgeEvents } from "../../features/knowledge/useKnowledgeEvents"
 import { chatApi } from "../../core/api/chat"
 import { useAuthStore } from "../../core/store/authStore"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
@@ -21,6 +22,7 @@ import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/type
 
 export default function AppLayout() {
   useWebSocket()
+  useKnowledgeEvents()
   const navigate = useNavigate()
 
   const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()
