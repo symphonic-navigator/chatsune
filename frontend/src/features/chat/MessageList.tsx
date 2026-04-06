@@ -6,7 +6,9 @@ import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
 import { RegenerateButton } from './RegenerateButton'
 import { WebSearchPills } from './WebSearchPills'
+import { KnowledgePills } from './KnowledgePills'
 import { ToolCallActivity } from './ToolCallActivity'
+import type { RetrievedChunkDto } from '../../core/types/knowledge'
 
 interface ActiveToolCall {
   id: string
@@ -20,6 +22,7 @@ interface MessageListProps {
   streamingContent: string
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
+  streamingKnowledgeContext: RetrievedChunkDto[]
   activeToolCalls: ActiveToolCall[]
   isWaitingForResponse: boolean
   isStreaming: boolean
@@ -36,7 +39,7 @@ interface MessageListProps {
 }
 
 export function MessageList({
-  messages, streamingContent, streamingThinking, streamingWebSearchContext, activeToolCalls,
+  messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark,
 }: MessageListProps) {
@@ -106,6 +109,9 @@ export function MessageList({
             ))}
             {streamingWebSearchContext.length > 0 && (
               <WebSearchPills items={streamingWebSearchContext} />
+            )}
+            {streamingKnowledgeContext.length > 0 && (
+              <KnowledgePills items={streamingKnowledgeContext} />
             )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}

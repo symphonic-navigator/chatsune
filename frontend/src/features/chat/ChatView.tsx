@@ -85,6 +85,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const streamingContent = useChatStore((s) => s.streamingContent)
   const streamingThinking = useChatStore((s) => s.streamingThinking)
   const streamingWebSearchContext = useChatStore((s) => s.streamingWebSearchContext)
+  const streamingKnowledgeContext = useChatStore((s) => s.streamingKnowledgeContext)
   const activeToolCalls = useChatStore((s) => s.activeToolCalls)
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
@@ -444,7 +445,7 @@ export function ChatView({ persona }: ChatViewProps) {
       ) : (
         <MessageList
           messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
-          streamingWebSearchContext={streamingWebSearchContext} activeToolCalls={activeToolCalls}
+          streamingWebSearchContext={streamingWebSearchContext} streamingKnowledgeContext={streamingKnowledgeContext} activeToolCalls={activeToolCalls}
           isWaitingForResponse={isWaitingForResponse}
           isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
           containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}

@@ -77,6 +77,7 @@ def _make_tool_executor(session: dict, persona: dict | None):
             args["_persona_library_ids"] = persona_lib_ids
             args["_session_library_ids"] = session_lib_ids
             args["_sanitised"] = sanitised
+            args["_session_id"] = session.get("_id", "")
             arguments_json = _json.dumps(args)
 
         return await execute_tool(user_id, tool_name, arguments_json)

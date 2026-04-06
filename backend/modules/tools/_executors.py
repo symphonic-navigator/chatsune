@@ -69,6 +69,8 @@ class KnowledgeSearchExecutor:
             session_library_ids = arguments.get("_session_library_ids", [])
             sanitised = arguments.get("_sanitised", False)
 
+            session_id = arguments.get("_session_id", "")
+
             results = await search(
                 user_id=user_id,
                 query=query,
@@ -76,6 +78,29 @@ class KnowledgeSearchExecutor:
                 session_library_ids=session_library_ids,
                 sanitised=sanitised,
             )
+
+            # Publish event for frontend pills
+            if results:
+                from datetime import datetime, timezone
+                from uuid import uuid4
+                from backend.ws.event_bus import get_event_bus
+                from shared.events.knowledge import KnowledgeSearchCompletedEvent
+                from shared.topics import Topics
+
+                event_bus = get_event_bus()
+                correlation_id = str(uuid4())
+                await event_bus.publish(
+                    Topics.KNOWLEDGE_SEARCH_COMPLETED,
+                    KnowledgeSearchCompletedEvent(
+                        session_id=session_id,
+                        results=results,
+                        correlation_id=correlation_id,
+                        timestamp=datetime.now(timezone.utc),
+                    ),
+                    scope=f"user:{user_id}",
+                    target_user_ids=[user_id],
+                    correlation_id=correlation_id,
+                )
 
             if not results:
                 return json.dumps({"results": [], "message": "No relevant knowledge found."})
