@@ -17,7 +17,7 @@ async def get_memory_context(user_id: str, persona_id: str) -> str | None:
 
     repo = MemoryRepository(get_db())
     body_doc = await repo.get_current_memory_body(user_id, persona_id)
-    memory_body = body_doc["body"] if body_doc else None
+    memory_body = body_doc["content"] if body_doc else None
     committed = await repo.list_journal_entries(user_id, persona_id, state="committed")
     uncommitted = await repo.list_journal_entries(user_id, persona_id, state="uncommitted")
 
@@ -31,4 +31,4 @@ async def get_memory_context(user_id: str, persona_id: str) -> str | None:
     )
 
 
-__all__ = ["router", "init_indexes", "get_memory_context"]
+__all__ = ["router", "init_indexes", "get_memory_context", "MemoryRepository"]

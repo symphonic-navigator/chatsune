@@ -1,4 +1,4 @@
-from backend.modules.chat._token_counter import count_tokens
+from backend.token_counter import count_tokens
 
 
 def test_count_tokens_empty_string():

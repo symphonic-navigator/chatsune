@@ -11,7 +11,7 @@ from uuid import uuid4
 from backend.modules.chat._handlers import router
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._repository import ChatRepository
-from backend.modules.chat._token_counter import count_tokens
+from backend.token_counter import count_tokens
 from backend.modules.chat._prompt_assembler import assemble, assemble_preview
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
 from backend.jobs import submit, JobType
@@ -479,10 +479,13 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
             attachment_refs=attachment_refs,
         )
 
-        # Track extraction trigger (non-incognito sessions only)
+        # Track extraction trigger — skip for incognito sessions
         persona_id = session.get("persona_id")
         model_unique_id = session.get("model_unique_id", "")
-        if persona_id and model_unique_id:
+        is_incognito = session.get("incognito", False) or (
+            session_id and session_id.startswith("incognito-")
+        )
+        if persona_id and model_unique_id and not is_incognito:
             await _track_extraction_trigger(
                 user_id, persona_id, session_id, model_unique_id,
             )

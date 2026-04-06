@@ -98,7 +98,7 @@ export function useMemoryEvents(personaId: string | null) {
           notify().addNotification({
             level: 'info',
             title: 'Memory rolled back',
-            message: `Memory body restored to version ${p.to_version as number ?? 'previous'}.`,
+            message: `Memory body restored to version ${p.rolled_back_to_version as number ?? 'previous'}.`,
           })
           break
         }

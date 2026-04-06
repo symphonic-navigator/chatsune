@@ -134,6 +134,29 @@ class MemoryRepository:
         result = await self._entries.delete_many({"_id": {"$in": ids}})
         return result.deleted_count
 
+    async def get_committed_entry_counts(self) -> list[dict]:
+        """Aggregate (user_id, persona_id) pairs with committed entry counts.
+
+        Returns a list of dicts with keys: user_id, persona_id, count.
+        """
+        pipeline = [
+            {"$match": {"state": "committed"}},
+            {"$group": {
+                "_id": {"user_id": "$user_id", "persona_id": "$persona_id"},
+                "count": {"$sum": 1},
+            }},
+        ]
+        cursor = self._entries.aggregate(pipeline)
+        raw = await cursor.to_list(length=1000)
+        return [
+            {
+                "user_id": pair["_id"]["user_id"],
+                "persona_id": pair["_id"]["persona_id"],
+                "count": pair["count"],
+            }
+            for pair in raw
+        ]
+
     async def archive_entries(self, user_id: str, persona_id: str, *, dream_id: str) -> int:
         """Archive all committed entries for a persona under a dream run. Returns count archived."""
         result = await self._entries.update_many(

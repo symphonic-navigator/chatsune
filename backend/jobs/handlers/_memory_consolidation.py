@@ -37,7 +37,7 @@ async def handle_memory_consolidation(
         validate_memory_body,
     )
     from backend.modules.memory._repository import MemoryRepository
-    from backend.modules.chat._token_counter import count_tokens
+    from backend.token_counter import count_tokens
 
     persona_id = job.payload["persona_id"]
     provider_id, model_slug = job.model_unique_id.split(":", 1)

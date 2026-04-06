@@ -410,10 +410,7 @@ async def trigger_extraction(
         payload={
             "persona_id": persona_id,
             "session_id": latest_session["_id"],
-            "messages": [
-                {"role": m["role"], "content": m["content"]}
-                for m in recent_user_messages
-            ],
+            "messages": [m["content"] for m in recent_user_messages],
         },
         correlation_id=correlation_id,
     )

@@ -1,4 +1,4 @@
-from backend.modules.chat._token_counter import count_tokens
+from backend.token_counter import count_tokens
 
 
 def build_consolidation_prompt(*, existing_body: str | None, entries: list[dict]) -> str:

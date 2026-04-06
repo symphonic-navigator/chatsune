@@ -61,13 +61,14 @@ async def lifespan(app: FastAPI):
                 pass
             # Auto-commit memory journal entries older than 48h
             try:
-                from backend.modules.memory._repository import MemoryRepository
+                from backend.modules.memory import MemoryRepository
                 from shared.events.memory import MemoryEntryAutoCommittedEvent
                 from shared.dtos.memory import JournalEntryDto
                 from shared.topics import Topics
 
                 repo = MemoryRepository(get_db())
                 auto_committed = await repo.auto_commit_old_entries(max_age_hours=48)
+                batch_correlation_id = str(uuid4())
                 for entry in auto_committed:
                     try:
                         entry_dto = JournalEntryDto(
@@ -83,7 +84,7 @@ async def lifespan(app: FastAPI):
                         )
                         evt = MemoryEntryAutoCommittedEvent(
                             entry=entry_dto,
-                            correlation_id=str(uuid4()),
+                            correlation_id=batch_correlation_id,
                             timestamp=datetime.now(timezone.utc),
                         )
                         await event_bus.publish(
@@ -106,7 +107,7 @@ async def lifespan(app: FastAPI):
 
             # Dreaming auto-trigger: consolidate committed journal entries
             try:
-                from backend.modules.memory._repository import MemoryRepository as _DreamRepo
+                from backend.modules.memory import MemoryRepository as _DreamRepo
                 from backend.modules.persona import get_persona as _get_persona
                 from backend.jobs._submit import submit as _dream_submit
                 from backend.jobs._models import JobType as _DreamJobType
@@ -115,20 +116,12 @@ async def lifespan(app: FastAPI):
                 dream_redis = get_redis()
 
                 # Aggregate (user_id, persona_id) pairs with committed entry counts
-                pipeline = [
-                    {"$match": {"state": "committed"}},
-                    {"$group": {
-                        "_id": {"user_id": "$user_id", "persona_id": "$persona_id"},
-                        "count": {"$sum": 1},
-                    }},
-                ]
-                cursor = dream_repo._entries.aggregate(pipeline)
-                pairs = await cursor.to_list(length=1000)
+                pairs = await dream_repo.get_committed_entry_counts()
 
                 now = datetime.now(timezone.utc)
                 for pair in pairs:
-                    uid = pair["_id"]["user_id"]
-                    pid = pair["_id"]["persona_id"]
+                    uid = pair["user_id"]
+                    pid = pair["persona_id"]
                     count = pair["count"]
 
                     try:
