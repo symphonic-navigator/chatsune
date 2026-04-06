@@ -28,9 +28,13 @@ def build_consolidation_prompt(*, existing_body: str | None, entries: list[dict]
         "1. Integrate all new entries into the existing memory body.\n"
         "2. Entries marked [CORRECTION] override any conflicting information in the existing body.\n"
         "3. Organise the result freely — group related facts, remove redundancy.\n"
-        "4. If content approaches the token limit, prioritise newer information; summarise rather than delete.\n"
-        "5. Keep the output under 3000 tokens.\n"
-        "6. Output ONLY the new memory body text — no preamble, no explanation, no metadata."
+        "4. Drop any entry that is transient, ephemeral, or not meaningful long-term. "
+        "Only lasting facts, stable preferences, relationships, biographical details, "
+        "and recurring habits belong in the memory body. Momentary states, current tasks, "
+        "or one-off activities do not.\n"
+        "5. If content approaches the token limit, prioritise newer information; summarise rather than delete.\n"
+        "6. Keep the output under 3000 tokens.\n"
+        "7. Output ONLY the new memory body text — no preamble, no explanation, no metadata."
     )
 
     return f"{existing_section}\n\n{entries_section}\n\n{instructions}"

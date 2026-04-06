@@ -151,9 +151,42 @@ async def handle_memory_extraction(
             len(parsed_entries), persona_id, session_id,
         )
 
+        # Deduplicate against existing journal entries and memory body.
+        # Normalise for comparison: lowercase, strip, collapse whitespace.
+        def _normalise(text: str) -> str:
+            return " ".join(text.lower().split())
+
+        existing_normalised = {_normalise(c) for c in journal_contents}
+        if memory_body:
+            memory_lower = memory_body.lower()
+        else:
+            memory_lower = ""
+
+        deduped_entries = []
+        for entry_data in parsed_entries:
+            norm = _normalise(entry_data["content"])
+            if norm in existing_normalised:
+                _log.debug(
+                    "Skipping duplicate journal entry: %s", entry_data["content"],
+                )
+                continue
+            # Also skip if the memory body already contains this fact verbatim.
+            if memory_lower and norm in memory_lower:
+                _log.debug(
+                    "Skipping entry already in memory body: %s", entry_data["content"],
+                )
+                continue
+            existing_normalised.add(norm)
+            deduped_entries.append(entry_data)
+
+        _log.info(
+            "After dedup: %d entries remaining (was %d) for persona %s",
+            len(deduped_entries), len(parsed_entries), persona_id,
+        )
+
         # Create journal entries in DB.
         entries_created = 0
-        for entry_data in parsed_entries:
+        for entry_data in deduped_entries:
             entry_id = await repo.create_journal_entry(
                 user_id=job.user_id,
                 persona_id=persona_id,

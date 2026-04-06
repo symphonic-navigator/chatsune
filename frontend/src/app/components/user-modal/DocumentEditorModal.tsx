@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { createMarkdownComponents } from '../../../features/chat/markdownComponents'
+import { useHighlighter } from '../../../features/chat/useMarkdown'
 
 interface DocumentEditorModalProps {
   libraryId: string
@@ -9,6 +13,7 @@ interface DocumentEditorModalProps {
 }
 
 export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, onDelete, onClose }: DocumentEditorModalProps) {
+  const highlighter = useHighlighter()
   const [title, setTitle] = useState(initial?.title ?? '')
   const [content, setContent] = useState(initial?.content ?? '')
   const [mediaType, setMediaType] = useState<'text/markdown' | 'text/plain'>(initial?.media_type ?? 'text/markdown')
@@ -195,9 +200,11 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
 
           {/* Preview */}
           {preview && isMarkdown && (
-            <div className="chat-prose w-1/2 overflow-y-auto px-5 py-4 text-[13px]">
+            <div className="markdown-preview w-1/2 overflow-y-auto px-5 py-4">
               {content ? (
-                <pre className="whitespace-pre-wrap font-sans text-white/70">{content}</pre>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={createMarkdownComponents(highlighter)}>
+                  {content}
+                </ReactMarkdown>
               ) : (
                 <p className="text-white/20 font-mono text-[12px]">Nothing to preview</p>
               )}
