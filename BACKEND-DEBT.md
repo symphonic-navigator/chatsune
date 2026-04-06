@@ -184,7 +184,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-020] `_user_role` index in `ConnectionManager` does not handle role changes for connected users**
+**[BD-020] ~~`_user_role` index in `ConnectionManager` does not handle role changes for connected users~~ FIXED**
 
 - File: `backend/ws/manager.py:16`
 - Problem: `_user_roles[user_id] = role` uses last-write-wins. If a user has their role changed by an admin, the stale role remains in `_user_roles` until they reconnect. `broadcast_to_roles` and `user_ids_by_role` will use the stale role.
@@ -210,7 +210,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-023] `delete_messages_after` + `update_message_content` in `handle_chat_edit` are not atomic**
+**[BD-023] ~~`delete_messages_after` + `update_message_content` in `handle_chat_edit` are not atomic~~ FIXED**
 
 - File: `backend/modules/chat/__init__.py:429-446`
 - Problem: The edit handler does two separate MongoDB operations with no transaction. If the process crashes between them, the session is left with messages deleted but the target message not yet updated.
@@ -222,7 +222,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Low Effort
 
-**[BD-024] `_TWENTY_FOUR_HOURS_MS` trim in `event_bus.py` only triggers on publish**
+**[BD-024] ~~`_TWENTY_FOUR_HOURS_MS` trim in `event_bus.py` only triggers on publish~~ FIXED**
 
 - File: `backend/ws/event_bus.py:103-108`
 - Problem: `xtrim` with `minid` is only applied *after* each publish, not proactively. High-traffic streams will accumulate entries between trims.
@@ -254,7 +254,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-028] No rate limiting or brute-force protection on `/api/auth/login`**
+**[BD-028] ~~No rate limiting or brute-force protection on `/api/auth/login`~~ FIXED**
 
 - File: `backend/modules/user/_handlers.py:153-180`
 - Problem: The login endpoint has no rate limiting. A single IP can attempt unlimited password guesses.
@@ -262,7 +262,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 ---
 
-**[BD-029] `get_avatar` endpoint accepts a `token` query parameter -- token in URL is logged by every proxy/CDN**
+**[BD-029] ~~`get_avatar` endpoint accepts a `token` query parameter -- token in URL is logged by every proxy/CDN~~ FIXED**
 
 - File: `backend/modules/persona/_handlers.py:339-374`
 - Problem: The avatar endpoint accepts JWT via `?token=...` query parameter to support `<img src>` tags. JWT tokens in URLs appear in server logs, CDN access logs, browser history, and `Referer` headers.
@@ -280,7 +280,7 @@ Generated: 2026-04-05. Covers all files under `backend/` and `shared/`.
 
 #### Medium Effort
 
-**[BD-031] `_FANOUT` admin events broadcast to ALL admins, no resource-level scoping**
+**[BD-031] ~~`_FANOUT` admin events broadcast to ALL admins, no resource-level scoping~~ FIXED**
 
 - File: `backend/ws/event_bus.py:17-22`
 - Problem: `Topics.USER_CREATED` broadcasts to all `"admin"` and `"master_admin"` connected users. `USER_UPDATED` and `USER_DEACTIVATED` send changed fields to all admins, which may include sensitive fields.

@@ -1,4 +1,4 @@
-import { personasApi } from '../../../core/api/personas'
+import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import type { ProfileCrop } from '../../../core/types/persona'
 
 /** Crop-circle diameter used in the AvatarCropModal canvas. Must match the modal constant. */
@@ -27,7 +27,16 @@ interface CroppedAvatarProps {
  * background-size and background-position for the target display size.
  */
 export function CroppedAvatar({ personaId, updatedAt, crop, size, alt, className = '' }: CroppedAvatarProps) {
-  const src = personasApi.avatarSrc(personaId, updatedAt)
+  const src = useAvatarSrc(personaId, true, updatedAt)
+
+  if (!src) {
+    return (
+      <div
+        className={`rounded-full flex-shrink-0 ${className}`}
+        style={{ width: size, height: size, background: '#1a1a2e' }}
+      />
+    )
+  }
 
   if (!crop || (crop.width === 0 && crop.height === 0)) {
     return (

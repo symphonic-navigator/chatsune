@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
+import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { ProfileCrop } from '../../../core/types/persona'
@@ -40,9 +41,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
 
   const hasPreview = preview !== null && preview.trim().length > 0
 
-  const avatarSrc = persona.profile_image
-    ? personasApi.avatarSrc(persona.id, persona.updated_at)
-    : null
+  const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
   async function handleAvatarSave(blob: Blob | null, crop: ProfileCrop) {
     if (blob) {

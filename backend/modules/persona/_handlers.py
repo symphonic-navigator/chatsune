@@ -338,16 +338,17 @@ async def upload_avatar(
 @router.get("/{persona_id}/avatar")
 async def get_avatar(
     persona_id: str,
-    token: str | None = None,
+    expires: str | None = None,
+    uid: str | None = None,
+    sig: str | None = None,
     user: dict | None = Depends(_optional_user),
 ):
-    # Allow auth via query param (for <img src>) or via header
-    if user is None and token:
-        from backend.modules.user import decode_access_token
-        try:
-            user = decode_access_token(token)
-        except Exception:
-            raise HTTPException(status_code=401, detail="Invalid token")
+    # Prefer header auth; fall back to signed URL for <img src>
+    if user is None and expires and uid and sig:
+        from backend.modules.persona._avatar_url import verify_avatar_signature
+        if not verify_avatar_signature(persona_id, uid, expires, sig):
+            raise HTTPException(status_code=401, detail="Invalid or expired signature")
+        user = {"sub": uid}
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
 
@@ -371,6 +372,16 @@ async def get_avatar(
     media_type = ext_to_mime.get(ext, "application/octet-stream")
 
     return Response(content=data, media_type=media_type)
+
+
+@router.get("/{persona_id}/avatar-url")
+async def get_avatar_url(persona_id: str, user: dict = Depends(require_active_session)):
+    """Return a short-lived signed URL for embedding the avatar in <img src>."""
+    from backend.modules.persona._avatar_url import sign_avatar_url
+    params = sign_avatar_url(persona_id, user["sub"])
+    return {
+        "url": f"/api/personas/{persona_id}/avatar?expires={params['expires']}&uid={params['uid']}&sig={params['sig']}"
+    }
 
 
 class UpdateAvatarCropRequest(BaseModel):

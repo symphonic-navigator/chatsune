@@ -37,6 +37,9 @@ async def lifespan(app: FastAPI):
     # Start background job consumer
     consumer_task = asyncio.create_task(consumer_loop(redis, event_bus))
 
+    # Start periodic Redis Stream trimming (BD-024)
+    trim_task = await event_bus.start_periodic_trim()
+
     # Start periodic cleanup of stale empty chat sessions (every hour)
     async def _session_cleanup_loop() -> None:
         while True:
@@ -61,7 +64,8 @@ async def lifespan(app: FastAPI):
     # Shut down background tasks
     cleanup_task.cancel()
     consumer_task.cancel()
-    for task in (cleanup_task, consumer_task):
+    trim_task.cancel()
+    for task in (cleanup_task, consumer_task, trim_task):
         try:
             await task
         except asyncio.CancelledError:

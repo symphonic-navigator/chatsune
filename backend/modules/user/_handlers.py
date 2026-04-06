@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 
 from backend.config import settings
 from backend.database import get_db, get_redis
@@ -15,6 +15,7 @@ from backend.modules.user._auth import (
     verify_password,
 )
 from backend.modules.user._audit import AuditRepository
+from backend.modules.user._rate_limit import check_login_rate_limit
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from shared.dtos.auth import (
@@ -151,7 +152,11 @@ async def setup(
 
 
 @router.post("/auth/login")
-async def login(body: LoginRequestDto, response: Response):
+async def login(body: LoginRequestDto, response: Response, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not await check_login_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
+
     repo = _user_repo()
     user = await repo.find_by_username(body.username)
 

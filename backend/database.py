@@ -25,5 +25,9 @@ def get_db() -> AsyncIOMotorDatabase:
     return _mongo_client.get_database()
 
 
+def get_client() -> AsyncIOMotorClient:
+    return _mongo_client
+
+
 def get_redis() -> Redis:
     return _redis_client

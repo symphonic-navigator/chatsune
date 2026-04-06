@@ -198,6 +198,38 @@ class ChatRepository:
         result = await self._messages.delete_one({"_id": message_id})
         return result.deleted_count > 0
 
+    async def edit_message_atomic(
+        self, session_id: str, message_id: str, new_content: str, token_count: int,
+    ) -> bool:
+        """Delete messages after target and update target content atomically in a transaction."""
+        from backend.database import get_client
+        client = get_client()
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                target = await self._messages.find_one(
+                    {"_id": message_id, "session_id": session_id}, session=session,
+                )
+                if target is None:
+                    return False
+                await self._messages.delete_many(
+                    {
+                        "session_id": session_id,
+                        "_id": {"$ne": message_id},
+                        "created_at": {"$gte": target["created_at"]},
+                    },
+                    session=session,
+                )
+                await self._messages.update_one(
+                    {"_id": message_id},
+                    {"$set": {
+                        "content": new_content,
+                        "token_count": token_count,
+                        "updated_at": datetime.now(UTC),
+                    }},
+                    session=session,
+                )
+        return True
+
     @staticmethod
     def session_to_dto(doc: dict) -> ChatSessionDto:
         return ChatSessionDto(

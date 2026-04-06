@@ -3,6 +3,7 @@
 Public API: import only from this file.
 """
 
+from backend.modules.persona._avatar_url import sign_avatar_url
 from backend.modules.persona._handlers import router
 from backend.modules.persona._repository import PersonaRepository
 from backend.database import get_db
@@ -20,4 +21,4 @@ async def get_persona(persona_id: str, user_id: str) -> dict | None:
     return await repo.find_by_id(persona_id, user_id)
 
 
-__all__ = ["router", "init_indexes", "get_persona"]
+__all__ = ["router", "init_indexes", "get_persona", "sign_avatar_url"]

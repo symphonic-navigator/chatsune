@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
 import { personasApi } from '../../../core/api/personas'
+import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { ProfileCrop } from '../../../core/types/persona'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
@@ -40,9 +41,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
 
-  const avatarSrc = persona.profile_image
-    ? personasApi.avatarSrc(persona.id, persona.updated_at)
-    : null
+  const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
   // Load actual model capabilities when editing an existing persona
   useEffect(() => {

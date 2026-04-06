@@ -65,13 +65,9 @@ export const personasApi = {
   avatarUrl: (personaId: string) =>
     `${baseUrl()}/api/personas/${personaId}/avatar`,
 
-  /** Build a cacheable avatar URL with auth token for <img src> usage. */
-  avatarSrc: (personaId: string, updatedAt?: string) => {
-    const token = currentAccessToken()
-    const params = new URLSearchParams()
-    if (token) params.set('token', token)
-    if (updatedAt) params.set('t', String(new Date(updatedAt).getTime()))
-    const qs = params.toString()
-    return `${baseUrl()}/api/personas/${personaId}/avatar${qs ? `?${qs}` : ''}`
+  /** Fetch a short-lived signed avatar URL from the backend for <img src> usage. */
+  avatarSrc: async (personaId: string, _updatedAt?: string): Promise<string> => {
+    const res = await api.get<{ url: string }>(`/api/personas/${personaId}/avatar-url`)
+    return `${baseUrl()}${res.url}`
   },
 }

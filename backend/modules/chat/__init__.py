@@ -423,8 +423,11 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
         now = datetime.now(timezone.utc)
         event_bus = get_event_bus()
 
-        # Truncate messages after the target
-        await repo.delete_messages_after(session_id, message_id)
+        # Atomically truncate messages after the target and update its content
+        token_count = count_tokens(text)
+        ok = await repo.edit_message_atomic(session_id, message_id, text, token_count)
+        if not ok:
+            return
 
         await event_bus.publish(
             Topics.CHAT_MESSAGES_TRUNCATED,
@@ -438,10 +441,6 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
             target_user_ids=[user_id],
             correlation_id=correlation_id,
         )
-
-        # Update the target message
-        token_count = count_tokens(text)
-        await repo.update_message_content(message_id, text, token_count)
 
         await event_bus.publish(
             Topics.CHAT_MESSAGE_UPDATED,

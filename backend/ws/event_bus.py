@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -13,7 +14,13 @@ from shared.topics import Topics
 
 _TWENTY_FOUR_HOURS_MS = 86_400_000
 
-# (roles_to_broadcast, also_send_to_target_user_ids)
+# Fan-out rules: (roles_to_broadcast, also_send_to_target_user_ids)
+#
+# KNOWN LIMITATION (BD-031): Admin events broadcast to ALL connected admins
+# without resource-level scoping. Every admin sees every USER_CREATED,
+# USER_UPDATED, etc. event regardless of whether they manage that user.
+# Sensitive fields in USER_UPDATED payloads are visible to all admins.
+# Revisit if per-admin scoping or field-level filtering is needed.
 _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.USER_CREATED: (["admin", "master_admin"], False),
     Topics.USER_UPDATED: (["admin", "master_admin"], True),
@@ -127,6 +134,25 @@ class EventBus:
             topic, envelope.model_dump(mode="json"), target_user_ids or []
         )
 
+    async def start_periodic_trim(self) -> asyncio.Task:
+        """Start a background task that trims all event streams every 10 minutes."""
+
+        async def _trim_loop() -> None:
+            while True:
+                await asyncio.sleep(600)  # 10 minutes
+                try:
+                    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+                    min_id = str(now_ms - _TWENTY_FOUR_HOURS_MS)
+                    async for key in self._redis.scan_iter(match="events:*"):
+                        try:
+                            await self._redis.xtrim(key, minid=min_id)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass  # Non-critical — retry next cycle
+
+        return asyncio.create_task(_trim_loop())
+
     async def _fan_out(
         self, topic: str, event_dict: dict, target_user_ids: list[str]
     ) -> None:
@@ -145,9 +171,18 @@ class EventBus:
             return
 
         roles, send_to_targets = _FANOUT[topic]
+        # BD-031: broadcasts to ALL connected users with matching roles —
+        # no resource-level filtering (see comment on _FANOUT).
         await self._manager.broadcast_to_roles(roles, event_dict)
         if send_to_targets and target_user_ids:
             await self._manager.send_to_users(target_user_ids, event_dict)
+
+        # BD-020: sync cached role when an admin changes a user's role
+        if topic == Topics.USER_UPDATED:
+            new_role = event_dict.get("payload", {}).get("changes", {}).get("role")
+            if new_role:
+                for uid in target_user_ids:
+                    self._manager.update_role(uid, new_role)
 
     async def _fan_out_audit(self, event_dict: dict) -> None:
         actor_id = event_dict.get("payload", {}).get("actor_id", "")

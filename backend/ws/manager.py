@@ -13,7 +13,7 @@ class ConnectionManager:
         if user_id not in self._connections:
             self._connections[user_id] = set()
         self._connections[user_id].add(ws)
-        self._user_roles[user_id] = role  # last-write-wins across sessions; role is immutable per user in practice
+        self._user_roles[user_id] = role
 
     async def disconnect(self, user_id: str, ws: WebSocket) -> None:
         if user_id not in self._connections:
@@ -41,6 +41,11 @@ class ConnectionManager:
 
     def user_ids_by_role(self, role: str) -> list[str]:
         return [uid for uid, r in self._user_roles.items() if r == role]
+
+    def update_role(self, user_id: str, role: str) -> None:
+        """Update the cached role for a connected user (no-op if not connected)."""
+        if user_id in self._connections:
+            self._user_roles[user_id] = role
 
     async def broadcast_to_all(self, event: dict) -> None:
         """Send an event to every connected user."""
