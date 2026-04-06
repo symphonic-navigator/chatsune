@@ -225,17 +225,23 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
   const [editValue, setEditValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const deleteTimer = useRef<ReturnType<typeof setTimeout>>()
+  const sureRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (editing) inputRef.current?.focus()
   }, [editing])
 
+  // Dismiss delete confirmation on outside click
   useEffect(() => {
-    return () => {
-      if (deleteTimer.current) clearTimeout(deleteTimer.current)
+    if (!confirmDelete) return
+    const handleMouseDown = (e: MouseEvent) => {
+      if (sureRef.current && !sureRef.current.contains(e.target as Node)) {
+        setConfirmDelete(false)
+      }
     }
-  }, [])
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [confirmDelete])
 
   const startEdit = useCallback(() => {
     setEditValue(bookmark.title)
@@ -277,9 +283,7 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
   }, [bookmark.id])
 
   const startDeleteConfirm = useCallback(() => {
-    if (deleteTimer.current) clearTimeout(deleteTimer.current)
     setConfirmDelete(true)
-    deleteTimer.current = setTimeout(() => setConfirmDelete(false), 3000)
   }, [])
 
   return (
@@ -346,7 +350,7 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
             EDIT
           </button>
           {confirmDelete ? (
-            <button type="button" onClick={handleDelete} className={BTN_RED}>
+            <button ref={sureRef} type="button" onClick={handleDelete} className={BTN_RED}>
               SURE?
             </button>
           ) : (
