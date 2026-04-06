@@ -58,6 +58,18 @@ export const Topics = {
   BOOKMARK_CREATED: "bookmark.created",
   BOOKMARK_UPDATED: "bookmark.updated",
   BOOKMARK_DELETED: "bookmark.deleted",
+  MEMORY_ENTRY_CREATED: "memory.entry.created",
+  MEMORY_ENTRY_COMMITTED: "memory.entry.committed",
+  MEMORY_ENTRY_UPDATED: "memory.entry.updated",
+  MEMORY_ENTRY_DELETED: "memory.entry.deleted",
+  MEMORY_ENTRY_AUTO_COMMITTED: "memory.entry.auto_committed",
+  MEMORY_DREAM_STARTED: "memory.dream.started",
+  MEMORY_DREAM_COMPLETED: "memory.dream.completed",
+  MEMORY_DREAM_FAILED: "memory.dream.failed",
+  MEMORY_EXTRACTION_STARTED: "memory.extraction.started",
+  MEMORY_EXTRACTION_COMPLETED: "memory.extraction.completed",
+  MEMORY_EXTRACTION_FAILED: "memory.extraction.failed",
+  MEMORY_BODY_ROLLBACK: "memory.body.rollback",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]
