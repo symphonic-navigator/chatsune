@@ -33,12 +33,12 @@ class ChatRepository:
         return doc
 
     async def get_session(self, session_id: str, user_id: str) -> dict | None:
-        return await self._sessions.find_one({"_id": session_id, "user_id": user_id})
+        return await self._sessions.find_one({"_id": session_id, "user_id": user_id, "deleted_at": None})
 
     async def list_sessions(self, user_id: str) -> list[dict]:
         """Return sessions that have at least one message, sorted by updated_at desc."""
         pipeline = [
-            {"$match": {"user_id": user_id}},
+            {"$match": {"user_id": user_id, "deleted_at": None}},
             {"$lookup": {
                 "from": "chat_messages",
                 "localField": "_id",
@@ -102,7 +102,7 @@ class ChatRepository:
         """Delete sessions older than max_age_minutes that have zero messages. Returns list of deleted session IDs."""
         cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
         pipeline = [
-            {"$match": {"created_at": {"$lt": cutoff}}},
+            {"$match": {"created_at": {"$lt": cutoff}, "deleted_at": None}},
             {"$lookup": {
                 "from": "chat_messages",
                 "localField": "_id",
@@ -120,12 +120,36 @@ class ChatRepository:
         await self._sessions.delete_many({"_id": {"$in": stale_ids}})
         return stale_ids
 
-    async def delete_session(self, session_id: str, user_id: str) -> bool:
-        result = await self._sessions.delete_one({"_id": session_id, "user_id": user_id})
-        if result.deleted_count > 0:
-            await self._messages.delete_many({"session_id": session_id})
-            return True
-        return False
+    async def soft_delete_session(self, session_id: str, user_id: str) -> bool:
+        result = await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id, "deleted_at": None},
+            {"$set": {"deleted_at": datetime.now(UTC)}},
+        )
+        return result.modified_count > 0
+
+    async def restore_session(self, session_id: str, user_id: str) -> dict | None:
+        result = await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id, "deleted_at": {"$ne": None}},
+            {"$set": {"deleted_at": None}},
+        )
+        if result.modified_count == 0:
+            return None
+        return await self._sessions.find_one({"_id": session_id})
+
+    async def hard_delete_expired_sessions(self, max_age_minutes: int = 60) -> list[str]:
+        """Hard-delete sessions where deleted_at is older than max_age_minutes. Returns list of deleted IDs."""
+        cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+        cursor = self._sessions.find(
+            {"deleted_at": {"$ne": None, "$lt": cutoff}},
+            {"_id": 1},
+        )
+        docs = await cursor.to_list(length=1000)
+        if not docs:
+            return []
+        ids = [doc["_id"] for doc in docs]
+        await self._sessions.delete_many({"_id": {"$in": ids}})
+        await self._messages.delete_many({"session_id": {"$in": ids}})
+        return ids
 
     async def save_message(
         self,
