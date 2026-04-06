@@ -12,7 +12,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 
 #### Low Effort
 
-**[UX-001] Login fields labelled "Omen" and "Incantation" instead of "Username" and "Password"** — PARTIALLY FIXED
+**[UX-001] Login fields labelled "Omen" and "Incantation" instead of "Username" and "Password"** — FIXED
 
 - File: `frontend/src/app/pages/LoginPage.tsx:51-66`
 - Problem: The label texts for the login fields are "Omen" (username) and "Incantation" (password). A new user will not understand what to enter. There are no `placeholder` texts, no `autocomplete` attributes, and no semantically recognisable purpose.
