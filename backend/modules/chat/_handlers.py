@@ -10,12 +10,12 @@ from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import get_event_bus
-from backend.modules.bookmark import delete_bookmarks_for_session
 from backend.modules.tools import get_all_groups
 from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
     ChatSessionPinnedUpdatedEvent,
+    ChatSessionRestoredEvent,
     ChatSessionTitleUpdatedEvent,
     ChatSessionToolsUpdatedEvent,
 )
@@ -102,12 +102,9 @@ async def list_messages(session_id: str, user: dict = Depends(require_active_ses
 @router.delete("/sessions/{session_id}")
 async def delete_session(session_id: str, user: dict = Depends(require_active_session)):
     repo = _chat_repo()
-    deleted = await repo.delete_session(session_id, user["sub"])
+    deleted = await repo.soft_delete_session(session_id, user["sub"])
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
-
-    # Cascade: remove all bookmarks for this session
-    await delete_bookmarks_for_session(session_id)
 
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
@@ -120,6 +117,34 @@ async def delete_session(session_id: str, user: dict = Depends(require_active_se
             timestamp=now,
         ),
         scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
+
+    return {"status": "ok"}
+
+
+@router.post("/sessions/{session_id}/restore")
+async def restore_session(session_id: str, user: dict = Depends(require_active_session)):
+    repo = _chat_repo()
+    doc = await repo.restore_session(session_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Session not found or not deleted")
+
+    dto = ChatRepository.session_to_dto(doc)
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_RESTORED,
+        ChatSessionRestoredEvent(
+            session_id=dto.id,
+            session=dto.model_dump(mode="json"),
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"session:{dto.id}",
         target_user_ids=[user["sub"]],
         correlation_id=correlation_id,
     )
