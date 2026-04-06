@@ -12,6 +12,7 @@ from backend.modules.persona._avatar_store import AvatarStore
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
+from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from shared.dtos.persona import CreatePersonaDto, PersonaDto, UpdatePersonaDto
 from shared.events.persona import (
     PersonaCreatedEvent,
@@ -136,6 +137,33 @@ async def get_persona(
     if not doc:
         raise HTTPException(status_code=404, detail="Persona not found")
     return PersonaRepository.to_dto(doc)
+
+
+@router.get("/{persona_id}/knowledge")
+async def get_persona_knowledge(
+    persona_id: str,
+    user: dict = Depends(require_active_session),
+):
+    repo = _persona_repo()
+    doc = await repo.find_by_id(persona_id, user["sub"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return {"library_ids": doc.get("knowledge_library_ids", [])}
+
+
+@router.put("/{persona_id}/knowledge")
+async def set_persona_knowledge(
+    persona_id: str,
+    body: SetKnowledgeLibrariesRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _persona_repo()
+    updated = await repo.update(
+        persona_id, user["sub"], {"knowledge_library_ids": body.library_ids},
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return {"status": "ok"}
 
 
 @router.get("/{persona_id}/system-prompt-preview")

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
+from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.persona import get_persona as get_persona_fn
@@ -142,6 +143,32 @@ async def list_messages(session_id: str, user: dict = Depends(require_active_ses
         raise HTTPException(status_code=404, detail="Session not found")
     messages = await repo.list_messages(session_id)
     return [ChatRepository.message_to_dto(m) for m in messages]
+
+
+@router.get("/sessions/{session_id}/knowledge")
+async def get_session_knowledge(
+    session_id: str,
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"library_ids": session.get("knowledge_library_ids", [])}
+
+
+@router.put("/sessions/{session_id}/knowledge")
+async def set_session_knowledge(
+    session_id: str,
+    body: SetKnowledgeLibrariesRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    await repo.update_session_knowledge_library_ids(session_id, body.library_ids)
+    return {"status": "ok"}
 
 
 @router.delete("/sessions/{session_id}")
