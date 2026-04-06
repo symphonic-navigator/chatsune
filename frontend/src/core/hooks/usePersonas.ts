@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { personasApi } from "../api/personas"
 import { eventBus } from "../websocket/eventBus"
 import { Topics } from "../types/events"
+import type { BaseEvent } from "../types/events"
 import type { PersonaDto, CreatePersonaRequest, UpdatePersonaRequest } from "../types/persona"
 
 export function usePersonas() {
@@ -26,9 +27,25 @@ export function usePersonas() {
     fetch()
 
     const unsubs = [
-      eventBus.on(Topics.PERSONA_CREATED, () => fetch()),
-      eventBus.on(Topics.PERSONA_UPDATED, () => fetch()),
-      eventBus.on(Topics.PERSONA_DELETED, () => fetch()),
+      eventBus.on(Topics.PERSONA_CREATED, (event: BaseEvent) => {
+        const persona = event.payload.persona as unknown as PersonaDto
+        if (!persona) return
+        setPersonas((prev) =>
+          prev.some((p) => p.id === persona.id) ? prev : [...prev, persona],
+        )
+      }),
+      eventBus.on(Topics.PERSONA_UPDATED, (event: BaseEvent) => {
+        const persona = event.payload.persona as unknown as PersonaDto
+        if (!persona) return
+        setPersonas((prev) =>
+          prev.map((p) => (p.id === persona.id ? persona : p)),
+        )
+      }),
+      eventBus.on(Topics.PERSONA_DELETED, (event: BaseEvent) => {
+        const personaId = event.payload.persona_id as string
+        if (!personaId) return
+        setPersonas((prev) => prev.filter((p) => p.id !== personaId))
+      }),
     ]
 
     return () => unsubs.forEach((u) => u())
