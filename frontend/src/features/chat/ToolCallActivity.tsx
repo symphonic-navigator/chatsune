@@ -10,19 +10,22 @@ const TOOL_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
     const display = url.length > 40 ? url.slice(0, 40) + '...' : url
     return `Fetching ${display}`
   },
+  knowledge_search: (args) => `Searching knowledge for "${args.query ?? '...'}"`,
 }
 
 export function ToolCallActivity({ toolName, arguments: args }: ToolCallActivityProps) {
   const labelFn = TOOL_LABELS[toolName]
   const label = labelFn ? labelFn(args) : `Running ${toolName}...`
+  const isKnowledge = toolName === 'knowledge_search'
+  const colour = isKnowledge ? '140,118,215' : '137,180,250'
 
   return (
     <div
       className="mb-2 flex items-center gap-2 rounded-full px-3 py-1 text-[11px]"
       style={{
-        background: 'rgba(137,180,250,0.08)',
-        border: '1px solid rgba(137,180,250,0.15)',
-        color: 'rgba(137,180,250,0.8)',
+        background: `rgba(${colour},0.08)`,
+        border: `1px solid rgba(${colour},0.15)`,
+        color: `rgba(${colour},0.8)`,
         fontFamily: "'Courier New', monospace",
       }}
     >

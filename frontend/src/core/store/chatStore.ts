@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessageDto, WebSearchContextItem } from '../api/chat'
+import type { RetrievedChunkDto } from '../types/knowledge'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -24,6 +25,7 @@ interface ChatState {
   streamingContent: string
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
+  streamingKnowledgeContext: RetrievedChunkDto[]
   activeToolCalls: ActiveToolCall[]
   contextStatus: ContextStatus
   contextFillPercentage: number
@@ -38,6 +40,7 @@ interface ChatState {
   appendStreamingContent: (delta: string) => void
   appendStreamingThinking: (delta: string) => void
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
+  setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
   finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number) => void
@@ -64,6 +67,7 @@ const INITIAL_STATE = {
   streamingContent: '',
   streamingThinking: '',
   streamingWebSearchContext: [] as WebSearchContextItem[],
+  streamingKnowledgeContext: [] as RetrievedChunkDto[],
   activeToolCalls: [] as ActiveToolCall[],
   contextStatus: 'green' as ContextStatus,
   contextFillPercentage: 0,
@@ -84,7 +88,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], activeToolCalls: [], error: null,
+      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], error: null,
     }),
   appendStreamingContent: (delta) =>
     set((s) => ({ streamingContent: s.streamingContent + delta })),
@@ -92,6 +96,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((s) => ({ streamingThinking: s.streamingThinking + delta })),
   setStreamingWebSearchContext: (items) =>
     set({ streamingWebSearchContext: items }),
+  setStreamingKnowledgeContext: (items) =>
+    set({ streamingKnowledgeContext: items }),
   addToolCall: (tc) =>
     set((s) => ({ activeToolCalls: [...s.activeToolCalls, tc] })),
   completeToolCall: (toolCallId) =>
@@ -104,14 +110,14 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((s) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], activeToolCalls: [],
+      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
     })),
   cancelStreaming: () =>
     set({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], activeToolCalls: [],
+      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
     }),
   truncateAfter: (messageId) =>
     set((s) => {
