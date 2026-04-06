@@ -48,6 +48,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_SESSION_TITLE_UPDATED: ([], True),
     Topics.CHAT_SESSION_CREATED: ([], True),
     Topics.CHAT_SESSION_DELETED: ([], True),
+    Topics.CHAT_SESSION_RESTORED: ([], True),
     Topics.CHAT_SESSION_PINNED_UPDATED: ([], True),
     # Bookmarks — target user only
     Topics.BOOKMARK_CREATED: ([], True),
