@@ -81,6 +81,11 @@ export const Topics = {
   KNOWLEDGE_DOCUMENT_EMBEDDED: "knowledge.document.embedded",
   KNOWLEDGE_DOCUMENT_EMBED_FAILED: "knowledge.document.embed_failed",
   KNOWLEDGE_SEARCH_COMPLETED: "knowledge.search.completed",
+  ARTEFACT_CREATED: "artefact.created",
+  ARTEFACT_UPDATED: "artefact.updated",
+  ARTEFACT_DELETED: "artefact.deleted",
+  ARTEFACT_UNDO: "artefact.undo",
+  ARTEFACT_REDO: "artefact.redo",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]
