@@ -14,6 +14,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useAuthStore } from "../../../core/store/authStore"
+import { useNotificationStore } from "../../../core/store/notificationStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
 import { useAuth } from "../../../core/hooks/useAuth"
@@ -141,6 +142,7 @@ export function Sidebar({
   const { isCollapsed, toggle: toggleCollapsed } = useSidebarStore()
   const { logout } = useAuth()
   const navigate = useNavigate()
+  const addNotification = useNotificationStore((s) => s.addNotification)
 
   const isAdmin = user?.role === "admin" || user?.role === "master_admin"
   const isInChat = !!activePersonaId
@@ -307,8 +309,30 @@ export function Sidebar({
     try {
       await chatApi.deleteSession(session.id)
       if (wasActive) navigate('/personas')
+      addNotification({
+        level: "success",
+        title: "Session deleted",
+        message: session.title || "Untitled session",
+        duration: 8000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            chatApi.restoreSession(session.id).catch(() => {
+              addNotification({
+                level: "error",
+                title: "Restore failed",
+                message: "Could not restore the session.",
+              })
+            })
+          },
+        },
+      })
     } catch {
-      // Event-driven removal handles the UI update; error is non-critical
+      addNotification({
+        level: "error",
+        title: "Delete failed",
+        message: "Could not delete the session.",
+      })
     }
   }
 
