@@ -5,6 +5,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core"
+import { zoomModifiers } from "../../core/utils/dndZoomModifier"
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable"
 import { useState } from "react"
 import { useNavigate, useOutletContext } from "react-router-dom"
@@ -74,6 +75,7 @@ export default function PersonasPage() {
     <div className="h-full overflow-y-auto p-10">
       <DndContext
         collisionDetection={closestCenter}
+        modifiers={zoomModifiers}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
