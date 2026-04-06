@@ -63,8 +63,8 @@ async def init_indexes(db) -> None:
     await ChatRepository(db).create_indexes()
 
 
-def _make_tool_executor(session: dict, persona: dict | None):
-    """Wrap execute_tool to inject knowledge library IDs for knowledge_search."""
+def _make_tool_executor(session: dict, persona: dict | None, correlation_id: str = ""):
+    """Wrap execute_tool to inject knowledge library IDs for knowledge_search and session context for artefact tools."""
     persona_lib_ids = (persona or {}).get("knowledge_library_ids", [])
     session_lib_ids = session.get("knowledge_library_ids", [])
     sanitised = session.get("sanitised", False)
@@ -78,6 +78,13 @@ def _make_tool_executor(session: dict, persona: dict | None):
             args["_session_library_ids"] = session_lib_ids
             args["_sanitised"] = sanitised
             args["_session_id"] = session.get("_id", "")
+            arguments_json = _json.dumps(args)
+
+        artefact_tools = {"create_artefact", "update_artefact", "read_artefact", "list_artefacts"}
+        if tool_name in artefact_tools:
+            args = _json.loads(arguments_json)
+            args["_session_id"] = session.get("_id", "")
+            args["_correlation_id"] = correlation_id
             arguments_json = _json.dumps(args)
 
         return await execute_tool(user_id, tool_name, arguments_json)
@@ -313,7 +320,7 @@ async def _run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
-            tool_executor_fn=_make_tool_executor(session, persona) if active_tools else None,
+            tool_executor_fn=_make_tool_executor(session, persona, correlation_id) if active_tools else None,
         )
     except LlmCredentialNotFoundError:
         now = datetime.now(timezone.utc)
@@ -859,7 +866,7 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
                 cancel_event=cancel_event,
                 context_status="green",
                 context_fill_percentage=0.0,
-                tool_executor_fn=_make_tool_executor(session, persona) if active_tools else None,
+                tool_executor_fn=_make_tool_executor(session, persona, correlation_id) if active_tools else None,
             )
         except LlmCredentialNotFoundError:
             now = datetime.now(timezone.utc)

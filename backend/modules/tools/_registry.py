@@ -31,7 +31,7 @@ class ToolGroup:
 
 def _build_groups() -> dict[str, ToolGroup]:
     """Build the tool group registry. Imported lazily to avoid circular imports."""
-    from backend.modules.tools._executors import KnowledgeSearchExecutor, WebSearchExecutor
+    from backend.modules.tools._executors import ArtefactToolExecutor, KnowledgeSearchExecutor, WebSearchExecutor
     from backend.modules.websearch import get_tool_definitions as ws_definitions
     from shared.dtos.inference import ToolDefinition
 
@@ -74,6 +74,93 @@ def _build_groups() -> dict[str, ToolGroup]:
             tool_names=["knowledge_search"],
             definitions=knowledge_defs,
             executor=KnowledgeSearchExecutor(),
+        ),
+        "artefacts": ToolGroup(
+            id="artefacts",
+            display_name="Artefacts",
+            description="Create and manage artefacts (code, documents, diagrams) within the chat session",
+            side="server",
+            toggleable=True,
+            tool_names=["create_artefact", "update_artefact", "read_artefact", "list_artefacts"],
+            definitions=[
+                ToolDefinition(
+                    name="create_artefact",
+                    description="Create a new artefact in the current chat session. Use for code files, documents, diagrams, or any substantial content that the user may want to view, copy, or iterate on.",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "handle": {
+                                "type": "string",
+                                "description": "Unique identifier for the artefact within this session. Lowercase letters, digits, and hyphens only. E.g. 'main-py' or 'readme'.",
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Human-readable title shown in the UI. E.g. 'main.py' or 'README'.",
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["code", "document", "diagram", "html", "svg", "markdown"],
+                                "description": "The type of artefact.",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The full text content of the artefact.",
+                            },
+                            "language": {
+                                "type": "string",
+                                "description": "Programming or markup language for syntax highlighting. E.g. 'python', 'typescript'. Only relevant for type='code'.",
+                            },
+                        },
+                        "required": ["handle", "title", "type", "content"],
+                    },
+                ),
+                ToolDefinition(
+                    name="update_artefact",
+                    description="Update the content (and optionally the title) of an existing artefact. The previous version is saved so the user can undo.",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "handle": {
+                                "type": "string",
+                                "description": "The handle of the artefact to update.",
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "The new full text content of the artefact.",
+                            },
+                            "title": {
+                                "type": "string",
+                                "description": "Optional new title. Omit to keep the existing title.",
+                            },
+                        },
+                        "required": ["handle", "content"],
+                    },
+                ),
+                ToolDefinition(
+                    name="read_artefact",
+                    description="Read the full content and metadata of an artefact by its handle.",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "handle": {
+                                "type": "string",
+                                "description": "The handle of the artefact to read.",
+                            },
+                        },
+                        "required": ["handle"],
+                    },
+                ),
+                ToolDefinition(
+                    name="list_artefacts",
+                    description="List all artefacts in the current chat session with their handles, titles, types, and sizes.",
+                    parameters={
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                    },
+                ),
+            ],
+            executor=ArtefactToolExecutor(),
         ),
     }
 
