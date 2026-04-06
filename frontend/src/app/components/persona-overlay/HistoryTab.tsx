@@ -55,7 +55,7 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
   const navigate = useNavigate()
   const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)

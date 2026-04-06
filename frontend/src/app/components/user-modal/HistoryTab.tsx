@@ -56,7 +56,7 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
   const [personaFilter, setPersonaFilter] = useState<string>('all')
   const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
 
   // Sanitised mode: build set of NSFW persona IDs
