@@ -108,6 +108,7 @@ export function KnowledgeTab() {
   }
 
   async function handleRetryEmbedding(libraryId: string, docId: string) {
+    useKnowledgeStore.getState().onDocumentEmbeddingStatus(docId, 'processing')
     await knowledgeApi.retryEmbedding(libraryId, docId)
   }
 
