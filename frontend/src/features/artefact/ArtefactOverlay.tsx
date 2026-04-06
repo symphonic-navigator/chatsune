@@ -212,7 +212,7 @@ export function ArtefactOverlay() {
           )}
 
           {!loading && artefact && mode === 'preview' && (
-            <div className="flex-1 overflow-auto p-4">
+            <div className="flex-1 min-h-0">
               <ArtefactPreview
                 content={artefact.content}
                 type={artefact.type}
