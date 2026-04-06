@@ -34,17 +34,17 @@ export function ChatView({ persona }: ChatViewProps) {
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
-  const resolvingSession = useRef(false)
+  const [isResolvingSession, setIsResolvingSession] = useState(false)
 
   const isIncognito = searchParams.get('incognito') === '1'
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
   const effectiveSessionId = isIncognito ? incognitoIdRef.current : sessionId
 
   useEffect(() => {
-    resolvingSession.current = false
+    setIsResolvingSession(false)
     if (isIncognito) return
     if (!personaId || sessionId) return
-    resolvingSession.current = true
+    setIsResolvingSession(true)
 
     const forceNew = searchParams.get('new') === '1'
 
@@ -52,7 +52,7 @@ export function ChatView({ persona }: ChatViewProps) {
       chatApi
         .createSession(personaId)
         .then((session) => navigate(`/chat/${personaId}/${session.id}`, { replace: true }))
-        .finally(() => { resolvingSession.current = false })
+        .finally(() => { setIsResolvingSession(false) })
       return
     }
 
@@ -71,7 +71,7 @@ export function ChatView({ persona }: ChatViewProps) {
           })
         }
       })
-      .finally(() => { resolvingSession.current = false })
+      .finally(() => { setIsResolvingSession(false) })
   }, [searchParams, personaId, sessionId, navigate, isIncognito])
 
   const messages = useChatStore((s) => s.messages)
@@ -320,8 +320,13 @@ export function ChatView({ persona }: ChatViewProps) {
 
   if (!effectiveSessionId) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[13px] text-white/20">
-        Loading chat...
+      <div className="flex flex-1 flex-col items-center justify-center gap-3">
+        {isResolvingSession && (
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
+        )}
+        <span className="text-[13px] text-white/20">
+          {isResolvingSession ? 'Resolving session...' : 'Loading chat...'}
+        </span>
       </div>
     )
   }

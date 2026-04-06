@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   DndContext,
@@ -159,9 +159,22 @@ export function Sidebar({
     localStorage.setItem("chatsune_projects_open", String(next))
   }
 
+  const hasPinnedPersonas = personas.some((p) => p.pinned)
+  const hasExplicitUnpinnedPref = localStorage.getItem("chatsune_unpinned_open") !== null
   const [unpinnedOpen, setUnpinnedOpen] = useState(() => {
-    return localStorage.getItem("chatsune_unpinned_open") === "true"
+    if (hasExplicitUnpinnedPref) {
+      return localStorage.getItem("chatsune_unpinned_open") === "true"
+    }
+    // Default open when no personas are pinned so users can see their personas
+    return !hasPinnedPersonas
   })
+
+  // Auto-open the unpinned section when no personas are pinned
+  useEffect(() => {
+    if (!hasPinnedPersonas) {
+      setUnpinnedOpen(true)
+    }
+  }, [hasPinnedPersonas])
 
   function toggleUnpinned() {
     const next = !unpinnedOpen

@@ -28,6 +28,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: There is a complete `notificationStore` with `addNotification` and `dismissToast` functions, but no UI component renders these notifications. Users never receive visual feedback for silent successes and errors.
 - Why it matters: Actions like "password reset", "user deleted" and similar have no visible result unless the user checks the table. This completely violates the feedback principle.
 - Fix: Create a `<ToastContainer />` component and include it in `AppLayout.tsx` that consumes notifications from the store and displays them as temporary toasts.
+- **Status:** Fixed — `Toast.tsx` and `ToastContainer.tsx` components created, integrated into `AppLayout.tsx`. Toasts auto-dismiss with pause-on-hover and manual dismiss.
 
 ---
 
@@ -76,6 +77,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/features/chat/ChatView.tsx:43-75`, `frontend/src/features/chat/ChatView.tsx:321-327`
 - Problem: When the user clicks a persona and `/chat/:personaId` is called (without session ID), `chatApi.listSessions()` and potentially `chatApi.createSession()` run. During this time the UI may show an empty chat area without clear feedback.
 - Fix: Introduce a dedicated `isResolvingSession` state and show a spinner during resolution.
+- **Status:** Fixed — `resolvingSession` ref replaced with `isResolvingSession` state, spinner shown with "Resolving session..." text during resolution.
 
 ---
 
@@ -107,6 +109,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/user-modal/HistoryTab.tsx:319-325`, `frontend/src/app/components/persona-overlay/HistoryTab.tsx:239-244`
 - Problem: After clicking "GEN", the button text changes to "..." for 2 seconds (hard-coded timeout), regardless of whether the title was actually generated. The response is event-driven -- there is no real feedback on success or failure.
 - Fix: Reset button to "GEN" when a `session.title` update event arrives for this session, or use a tooltip "Generating..." + icon spinner.
+- **Status:** Fixed — static "..." replaced with animated spinner, opacity raised to 60% for visibility. Event-driven reset logic was already correct.
 
 ---
 
@@ -162,6 +165,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: The `unpinnedOpen` state starts as `false` (unless localStorage says otherwise). If a user has personas that are all unpinned, they see "No pinned personas" and nothing else -- the other personas are hidden behind a very small "Other Personas 3" element.
 - Why it matters: New users who have not pinned any personas see an empty sidebar and may think there are no personas. Very misleading for first-time use.
 - Fix: Default to `unpinnedOpen: true` when no personas are pinned. Or: if no personas are pinned, show all personas directly without dropdown.
+- **Status:** Fixed — defaults to open when no personas are pinned, auto-opens when last persona is unpinned, respects explicit localStorage preference.
 
 ---
 
@@ -170,6 +174,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/persona-overlay/PersonaOverlay.tsx:161-188`
 - Problem: The tab bar shows all 5 tabs during persona creation. The tabs "Overview", "Knowledge", "Memories", "History" render nothing (they return `null` since `isCreating` is true), but the buttons are still clickable.
 - Fix: During `isCreating = true`, only show the "Edit" tab, or mark others as disabled with a tooltip "Available after creation".
+- **Status:** Fixed — tabs filtered to show only "Edit" tab when `isCreating` is true.
 
 ---
 
@@ -221,6 +226,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: The API is called with `{ persona_id: personaId }`, but `personaId` is optional and can be `undefined`. In incognito chats there is no `personaId`, which leads to all files being displayed without filtering.
 - Why it matters: In NSFW personas or sanitised mode, files from other personas may be visible.
 - Fix: In incognito mode, disable the upload browser panel or show an empty state.
+- **Status:** Fixed — API call skipped in incognito mode, empty state message shown instead.
 
 ---
 
@@ -248,6 +254,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/sidebar/Sidebar.tsx:305-312`
 - Problem: `handleDeleteSession` deletes the session and navigates to `/personas` if it was active. This happens without warning: the user suddenly sees the personas page without knowing why.
 - Fix: After deleting an active chat, provide clearer feedback (toast: "Chat deleted. You've been redirected to Personas.").
+- **Status:** Fixed — toast notification with session title and "Undo" action button shown on deletion.
 
 ---
 

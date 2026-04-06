@@ -10,15 +10,20 @@ interface UploadBrowserPanelProps {
 export function UploadBrowserPanel({ personaId, onSelect, onClose }: UploadBrowserPanelProps) {
   const [files, setFiles] = useState<StorageFileDto[]>([])
   const [loading, setLoading] = useState(true)
+  const isIncognito = !personaId
 
   useEffect(() => {
+    if (isIncognito) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     storageApi
       .listFiles({ persona_id: personaId, sort_by: 'date', order: 'desc', limit: 50 })
       .then(setFiles)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [personaId])
+  }, [personaId, isIncognito])
 
   return (
     <div className="border-t border-white/6 bg-surface px-4 py-3">
@@ -36,7 +41,11 @@ export function UploadBrowserPanel({ personaId, onSelect, onClose }: UploadBrows
           </button>
         </div>
 
-        {loading ? (
+        {isIncognito ? (
+          <div className="py-4 text-center text-[12px] text-white/20">
+            Upload browser is not available in incognito mode
+          </div>
+        ) : loading ? (
           <div className="py-4 text-center text-[12px] text-white/20">Loading...</div>
         ) : files.length === 0 ? (
           <div className="py-4 text-center text-[12px] text-white/20">No uploads yet</div>

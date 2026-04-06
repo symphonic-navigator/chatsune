@@ -158,33 +158,35 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           className="flex px-4 flex-shrink-0"
           style={{ borderBottom: `1px solid ${borderColour}` }}
         >
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={[
-                  'px-3 py-2.5 border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap flex flex-col items-start',
-                  isActive
-                    ? 'text-white/90'
-                    : 'border-transparent text-white/45 hover:text-white/70',
-                ].join(' ')}
-                style={isActive ? { borderBottomColor: chakra.hex } : undefined}
-              >
-                <span className="text-[12px] leading-none">{tab.label}</span>
-                {tab.subtitle && (
-                  <span
-                    className="text-[9px] leading-none mt-0.5 font-mono"
-                    style={{ color: isActive ? `${chakra.hex}99` : 'rgba(255,255,255,0.2)' }}
-                  >
-                    {tab.subtitle}
-                  </span>
-                )}
-              </button>
-            )
-          })}
+          {TABS
+            .filter((tab) => !isCreating || tab.id === 'edit')
+            .map((tab) => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onTabChange(tab.id)}
+                  className={[
+                    'px-3 py-2.5 border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap flex flex-col items-start',
+                    isActive
+                      ? 'text-white/90'
+                      : 'border-transparent text-white/45 hover:text-white/70',
+                  ].join(' ')}
+                  style={isActive ? { borderBottomColor: chakra.hex } : undefined}
+                >
+                  <span className="text-[12px] leading-none">{tab.label}</span>
+                  {tab.subtitle && (
+                    <span
+                      className="text-[9px] leading-none mt-0.5 font-mono"
+                      style={{ color: isActive ? `${chakra.hex}99` : 'rgba(255,255,255,0.2)' }}
+                    >
+                      {tab.subtitle}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
         </div>
 
         {/* Tab content */}

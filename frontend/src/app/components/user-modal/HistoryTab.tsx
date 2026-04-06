@@ -336,9 +336,11 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
             onClick={handleGenerateTitle}
             disabled={generating}
             title="Generate title"
-            className={`${BTN_NEUTRAL} ${generating ? 'opacity-30 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
+            className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
           >
-            {generating ? '...' : genSuccess ? 'OK' : 'GEN'}
+            {generating ? (
+              <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-white/20 border-t-white/50" />
+            ) : genSuccess ? 'OK' : 'GEN'}
           </button>
           {confirmDelete ? (
             <button ref={sureRef} type="button" onClick={handleDelete} className={BTN_RED}>
