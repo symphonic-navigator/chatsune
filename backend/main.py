@@ -232,15 +232,19 @@ async def lifespan(app: FastAPI):
                             session_id = session["_id"]
                             model_unique_id = session["model_unique_id"]
 
-                            # Fetch recent user messages for extraction
-                            messages = await ext_repo.list_messages(session_id)
-                            user_messages = [
-                                m["content"] for m in messages if m["role"] == "user"
-                            ]
-                            if not user_messages:
+                            # Fetch unextracted user messages only
+                            unextracted = await ext_repo.list_unextracted_user_messages(
+                                session_id, limit=20,
+                            )
+                            if not unextracted:
+                                _extraction_log.debug(
+                                    "No unextracted messages for periodic extraction: user=%s persona=%s session=%s",
+                                    uid, pid, session_id,
+                                )
                                 continue
 
-                            recent = user_messages[-20:]
+                            msg_ids = [m["_id"] for m in unextracted]
+                            msg_contents = [m["content"] for m in unextracted]
 
                             await _ext_submit(
                                 job_type=_ExtJobType.MEMORY_EXTRACTION,
@@ -249,12 +253,13 @@ async def lifespan(app: FastAPI):
                                 payload={
                                     "persona_id": pid,
                                     "session_id": session_id,
-                                    "messages": recent,
+                                    "messages": msg_contents,
+                                    "message_ids": msg_ids,
                                 },
                             )
                             _extraction_log.info(
-                                "Submitted periodic fallback extraction for user %s, persona %s, session %s",
-                                uid, pid, session_id,
+                                "Submitted periodic fallback extraction: user=%s persona=%s session=%s msg_count=%d",
+                                uid, pid, session_id, len(msg_ids),
                             )
                         except Exception:
                             _extraction_log.exception(

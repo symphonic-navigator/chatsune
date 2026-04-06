@@ -291,6 +291,31 @@ class ChatRepository:
         cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
         return await cursor.to_list(length=5000)
 
+    async def list_unextracted_user_messages(
+        self, session_id: str, limit: int = 20,
+    ) -> list[dict]:
+        """Return user messages not yet processed for memory extraction, oldest first."""
+        cursor = (
+            self._messages.find({
+                "session_id": session_id,
+                "role": "user",
+                "extracted_at": {"$exists": False},
+            })
+            .sort("created_at", 1)
+            .limit(limit)
+        )
+        return await cursor.to_list(length=limit)
+
+    async def mark_messages_extracted(self, message_ids: list[str]) -> int:
+        """Set extracted_at on the given messages. Returns count of updated docs."""
+        if not message_ids:
+            return 0
+        result = await self._messages.update_many(
+            {"_id": {"$in": message_ids}},
+            {"$set": {"extracted_at": datetime.now(UTC)}},
+        )
+        return result.modified_count
+
     async def delete_messages_after(self, session_id: str, message_id: str) -> bool:
         """Delete all messages in a session created after the given message."""
         target = await self._messages.find_one({"_id": message_id, "session_id": session_id})

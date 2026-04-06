@@ -44,11 +44,12 @@ async def handle_memory_extraction(
     persona_id = job.payload["persona_id"]
     session_id = job.payload["session_id"]
     messages_raw: list[str] = job.payload.get("messages", [])
+    message_ids: list[str] = job.payload.get("message_ids", [])
     provider_id, model_slug = job.model_unique_id.split(":", 1)
 
     _log.info(
-        "Starting memory extraction for persona %s, session %s (%d messages)",
-        persona_id, session_id, len(messages_raw),
+        "Starting memory extraction: persona=%s session=%s msg_count=%d msg_ids=%s model=%s:%s",
+        persona_id, session_id, len(messages_raw), message_ids, provider_id, model_slug,
     )
 
     # Publish started event.
@@ -211,6 +212,16 @@ async def handle_memory_extraction(
                 correlation_id=job.correlation_id,
             )
 
+        # Mark source messages as extracted so they are not re-processed.
+        if message_ids:
+            from backend.modules.chat._repository import ChatRepository as _ChatRepo
+            chat_repo = _ChatRepo(db)
+            marked = await chat_repo.mark_messages_extracted(message_ids)
+            _log.info(
+                "Marked %d/%d messages as extracted: persona=%s session=%s ids=%s",
+                marked, len(message_ids), persona_id, session_id, message_ids,
+            )
+
         # Update Redis tracking state.
         tracking_key = f"memory:extraction:{job.user_id}:{persona_id}"
         await redis.hset(tracking_key, mapping={
@@ -233,8 +244,8 @@ async def handle_memory_extraction(
         )
 
         _log.info(
-            "Memory extraction completed for persona %s, session %s: %d entries created",
-            persona_id, session_id, entries_created,
+            "Extraction completed: persona=%s session=%s entries_created=%d discarded=%d source_msgs=%d",
+            persona_id, session_id, entries_created, discarded, len(messages_raw),
         )
 
     except Exception as exc:

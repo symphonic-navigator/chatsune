@@ -351,20 +351,20 @@ async def _schedule_idle_extraction(
         if current_ts != idle_timestamp:
             return
 
-        # Fetch recent user messages for extraction
+        # Fetch unextracted user messages only
         db = get_db()
         repo = ChatRepository(db)
-        messages = await repo.list_messages(session_id)
-        user_messages = [
-            m["content"] for m in messages
-            if m["role"] == "user"
-        ]
+        unextracted = await repo.list_unextracted_user_messages(session_id, limit=20)
 
-        if not user_messages:
+        if not unextracted:
+            _log.debug(
+                "No unextracted messages for idle extraction: user=%s persona=%s session=%s",
+                user_id, persona_id, session_id,
+            )
             return
 
-        # Take the last 20 user messages at most
-        recent = user_messages[-20:]
+        message_ids = [m["_id"] for m in unextracted]
+        message_contents = [m["content"] for m in unextracted]
 
         await submit(
             job_type=JobType.MEMORY_EXTRACTION,
@@ -373,12 +373,13 @@ async def _schedule_idle_extraction(
             payload={
                 "persona_id": persona_id,
                 "session_id": session_id,
-                "messages": recent,
+                "messages": message_contents,
+                "message_ids": message_ids,
             },
         )
         _log.info(
-            "Submitted idle-triggered memory extraction for user %s, persona %s, session %s",
-            user_id, persona_id, session_id,
+            "Submitted idle-triggered extraction: user=%s persona=%s session=%s msg_count=%d msg_ids=%s",
+            user_id, persona_id, session_id, len(message_ids), message_ids,
         )
     except asyncio.CancelledError:
         pass
@@ -466,19 +467,20 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                 # Extract persona_id from the key
                 persona_id = key.removeprefix(prefix)
 
-                # Fetch recent user messages for extraction
+                # Fetch unextracted user messages only
                 db = get_db()
                 repo = ChatRepository(db)
-                messages = await repo.list_messages(session_id)
-                user_messages = [
-                    m["content"] for m in messages
-                    if m["role"] == "user"
-                ]
+                unextracted = await repo.list_unextracted_user_messages(session_id, limit=20)
 
-                if not user_messages:
+                if not unextracted:
+                    _log.debug(
+                        "No unextracted messages for disconnect extraction: user=%s persona=%s session=%s",
+                        user_id, persona_id, session_id,
+                    )
                     continue
 
-                recent = user_messages[-20:]
+                message_ids = [m["_id"] for m in unextracted]
+                message_contents = [m["content"] for m in unextracted]
 
                 await submit(
                     job_type=JobType.MEMORY_EXTRACTION,
@@ -487,12 +489,13 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                     payload={
                         "persona_id": persona_id,
                         "session_id": session_id,
-                        "messages": recent,
+                        "messages": message_contents,
+                        "message_ids": message_ids,
                     },
                 )
                 _log.info(
-                    "Submitted disconnect-triggered memory extraction for user %s, persona %s, session %s",
-                    user_id, persona_id, session_id,
+                    "Submitted disconnect-triggered extraction: user=%s persona=%s session=%s msg_count=%d",
+                    user_id, persona_id, session_id, len(message_ids),
                 )
 
             if cursor == 0:
