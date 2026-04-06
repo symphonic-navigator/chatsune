@@ -106,8 +106,12 @@ export function ArtefactOverlay() {
   const redoDisabled = !artefact || artefact.version >= artefact.max_version
 
   return (
-    <div className="absolute inset-0 z-30 flex items-stretch bg-black/40" onClick={closeOverlay}>
-      <div className="m-2 flex flex-1 flex-col overflow-hidden rounded border border-white/10 bg-elevated shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeOverlay}>
+      <div
+        className="flex flex-col overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
+        style={{ width: 'calc(100vw - 120px)', height: 'calc(100vh - 80px)', maxWidth: '1200px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Toolbar */}
         <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2">
           {/* Left: title + badges */}
@@ -205,19 +209,21 @@ export function ArtefactOverlay() {
         </div>
 
         {/* Content area */}
-        <div className="relative flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
           {loading && (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-1 items-center justify-center">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/50" />
             </div>
           )}
 
           {!loading && artefact && mode === 'preview' && (
-            <ArtefactPreview
-              content={artefact.content}
-              type={artefact.type}
-              language={artefact.language}
-            />
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ArtefactPreview
+                content={artefact.content}
+                type={artefact.type}
+                language={artefact.language}
+              />
+            </div>
           )}
 
           {!loading && artefact && mode === 'edit' && (

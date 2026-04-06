@@ -10,7 +10,7 @@ import type { ArtefactType } from '../../core/types/artefact'
 
 function MarkdownPreview({ content, highlighter }: { content: string; highlighter: Highlighter | null }) {
   return (
-    <div className="absolute inset-0 overflow-y-auto p-4">
+    <div className="h-full w-full overflow-y-auto p-4">
       <div className="markdown-preview">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -44,14 +44,14 @@ function CodePreview({ content, language, highlighter }: { content: string; lang
     // html is Shiki library output, not user-controlled markup
     return (
       <div
-        className="absolute inset-0 overflow-auto p-4 text-[13px] [&_pre]:!bg-transparent [&_pre]:p-0"
+        className="h-full w-full overflow-auto p-4 text-[13px] [&_pre]:!bg-transparent [&_pre]:p-0"
         dangerouslySetInnerHTML={{ __html: html }} // nosec: Shiki-generated, not user content
       />
     )
   }
 
   return (
-    <pre className="absolute inset-0 overflow-auto p-4 text-[13px]">
+    <pre className="h-full w-full overflow-auto p-4 text-[13px]">
       <code>{content}</code>
     </pre>
   )
@@ -64,7 +64,7 @@ function HtmlPreview({ content }: { content: string }) {
     <iframe
       srcDoc={content}
       sandbox="allow-scripts"
-      className="absolute inset-0 border-0 bg-white rounded"
+      className="h-full w-full border-0 bg-white rounded"
       title="HTML preview"
     />
   )
@@ -76,7 +76,7 @@ function SvgPreview({ content }: { content: string }) {
   const dataUri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(content)))}`
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center p-4">
+    <div className="h-full w-full flex items-center justify-center p-4">
       <img src={dataUri} alt="SVG preview" className="max-h-full max-w-full object-contain" />
     </div>
   )
@@ -157,7 +157,7 @@ function JsxPreview({ content }: { content: string }) {
     <iframe
       srcDoc={JSX_SANDBOX_HTML(code, componentName)}
       sandbox="allow-scripts"
-      className="absolute inset-0 border-0 bg-white rounded"
+      className="h-full w-full border-0 bg-white rounded"
       title="JSX preview"
     />
   )
@@ -203,7 +203,7 @@ function MermaidPreview({ content }: { content: string }) {
 
   if (error) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center p-4">
+      <div className="h-full w-full flex items-center justify-center p-4">
         <div className="rounded border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
           <div className="mb-1 font-semibold">Diagram parse error</div>
           <div className="font-mono text-xs opacity-80">{error}</div>
@@ -215,7 +215,7 @@ function MermaidPreview({ content }: { content: string }) {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 flex items-center justify-center overflow-auto p-4 [&_svg]:max-h-full [&_svg]:max-w-full"
+      className="h-full w-full flex items-center justify-center overflow-auto p-4 [&_svg]:max-h-full [&_svg]:max-w-full"
     />
   )
 }
