@@ -54,6 +54,9 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
   const [search, setSearch] = useState('')
   const [personaFilter, setPersonaFilter] = useState<string>('all')
+  const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>()
   const navigate = useNavigate()
 
   // Sanitised mode: build set of NSFW persona IDs
@@ -62,36 +65,58 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
     [personas],
   )
 
-  // Filter sessions by sanitised mode, persona filter, and search
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+
+    const trimmed = search.trim()
+    if (!trimmed) {
+      setSearchResults(null)
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const excludeIds = isSanitised
+          ? personas.filter((p) => p.nsfw).map((p) => p.id)
+          : undefined
+        const results = await chatApi.searchSessions({
+          q: trimmed,
+          persona_id: personaFilter !== 'all' ? personaFilter : undefined,
+          exclude_persona_ids: excludeIds,
+        })
+        setSearchResults(results)
+      } catch {
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300)
+
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current)
+    }
+  }, [search, personaFilter, isSanitised, personas])
+
+  // Filter sessions by sanitised mode and persona filter; use backend results when searching
   const filtered = useMemo(() => {
+    if (searchResults !== null) {
+      return searchResults
+    }
+
     let result = sessions
 
-    // Sanitised mode
     if (isSanitised) {
       result = result.filter((s) => !nsfwPersonaIds.has(s.persona_id))
     }
 
-    // Persona filter
     if (personaFilter !== 'all') {
       result = result.filter((s) => s.persona_id === personaFilter)
     }
 
-    // Text search
-    if (search.trim()) {
-      const term = search.toLowerCase()
-      result = result.filter((s) => {
-        const name = personas.find((p) => p.id === s.persona_id)?.name ?? s.persona_id
-        const title = s.title ?? ''
-        return (
-          name.toLowerCase().includes(term) ||
-          title.toLowerCase().includes(term) ||
-          s.id.toLowerCase().includes(term)
-        )
-      })
-    }
-
     return result
-  }, [sessions, search, personas, personaFilter, isSanitised, nsfwPersonaIds])
+  }, [sessions, searchResults, personaFilter, isSanitised, nsfwPersonaIds])
 
   // Personas available for the filter dropdown (only those with sessions, respecting sanitised mode)
   const filterPersonas = useMemo(() => {
@@ -137,8 +162,10 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
-        {isLoading && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">Loading...</p>
+        {(isLoading || isSearching) && (
+          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">
+            {isSearching ? 'Searching...' : 'Loading...'}
+          </p>
         )}
         {!isLoading && filtered.length === 0 && (
           <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No sessions found.</p>
