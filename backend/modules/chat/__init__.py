@@ -261,6 +261,7 @@ async def _run_inference(
         thinking: str | None,
         usage: dict | None,
         web_search_context: list[dict] | None = None,
+        knowledge_context: list[dict] | None = None,
     ) -> str | None:
         token_count = count_tokens(content)
         doc = await repo.save_message(
@@ -270,6 +271,7 @@ async def _run_inference(
             token_count=token_count,
             thinking=thinking,
             web_search_context=web_search_context,
+            knowledge_context=knowledge_context,
         )
         await repo.update_session_state(session_id, "idle")
 
@@ -842,6 +844,7 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
             thinking: str | None,
             usage: dict | None,
             web_search_context: list[dict] | None = None,
+            knowledge_context: list[dict] | None = None,
         ) -> None:
             pass
 

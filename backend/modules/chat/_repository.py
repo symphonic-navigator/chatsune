@@ -271,6 +271,7 @@ class ChatRepository:
         token_count: int,
         thinking: str | None = None,
         web_search_context: list[dict] | None = None,
+        knowledge_context: list[dict] | None = None,
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
     ) -> dict:
@@ -286,6 +287,8 @@ class ChatRepository:
         }
         if web_search_context:
             doc["web_search_context"] = web_search_context
+        if knowledge_context:
+            doc["knowledge_context"] = knowledge_context
         if attachment_ids:
             doc["attachment_ids"] = attachment_ids
         if attachment_refs:

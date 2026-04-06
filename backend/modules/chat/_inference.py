@@ -71,6 +71,7 @@ class InferenceRunner:
         usage = None
         status = "completed"
         web_search_context: list[dict] = []
+        knowledge_context: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
@@ -230,6 +231,16 @@ class InferenceRunner:
                         except (json.JSONDecodeError, TypeError):
                             pass
 
+                    # Capture knowledge search context for metadata + pills
+                    if tc.name == "knowledge_search":
+                        try:
+                            parsed = json.loads(result_str)
+                            if isinstance(parsed, dict) and "results" in parsed:
+                                for r in parsed["results"]:
+                                    knowledge_context.append(r)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                     # Add tool result message for LLM context
                     extra_messages.append(CompletionMessage(
                         role="tool",
@@ -255,6 +266,7 @@ class InferenceRunner:
                 thinking=full_thinking or None,
                 usage=usage,
                 web_search_context=web_search_context or None,
+                knowledge_context=knowledge_context or None,
             )
 
         await emit_fn(ChatStreamEndedEvent(

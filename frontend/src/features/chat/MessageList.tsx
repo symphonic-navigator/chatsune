@@ -83,6 +83,9 @@ export function MessageList({
                 {msg.web_search_context && msg.web_search_context.length > 0 && (
                   <WebSearchPills items={msg.web_search_context} />
                 )}
+                {msg.knowledge_context && msg.knowledge_context.length > 0 && (
+                  <KnowledgePills items={msg.knowledge_context} />
+                )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   thinkingDefaultExpanded={thinkingExpandedRef.current}

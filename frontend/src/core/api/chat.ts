@@ -1,5 +1,6 @@
 import { api } from "./client"
 import type { AttachmentRefDto } from "./storage"
+import type { RetrievedChunkDto } from "../types/knowledge"
 
 interface ChatSessionDto {
   id: string
@@ -31,6 +32,7 @@ interface ChatMessageDto {
   token_count: number
   attachments: AttachmentRefDto[] | null
   web_search_context: WebSearchContextItem[] | null
+  knowledge_context: RetrievedChunkDto[] | null
   created_at: string
 }
 
