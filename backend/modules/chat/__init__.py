@@ -63,6 +63,27 @@ async def init_indexes(db) -> None:
     await ChatRepository(db).create_indexes()
 
 
+def _make_tool_executor(session: dict, persona: dict | None):
+    """Wrap execute_tool to inject knowledge library IDs for knowledge_search."""
+    persona_lib_ids = (persona or {}).get("knowledge_library_ids", [])
+    session_lib_ids = session.get("knowledge_library_ids", [])
+    sanitised = session.get("sanitised", False)
+
+    async def _executor(user_id: str, tool_name: str, arguments_json: str) -> str:
+        import json as _json
+
+        if tool_name == "knowledge_search":
+            args = _json.loads(arguments_json)
+            args["_persona_library_ids"] = persona_lib_ids
+            args["_session_library_ids"] = session_lib_ids
+            args["_sanitised"] = sanitised
+            arguments_json = _json.dumps(args)
+
+        return await execute_tool(user_id, tool_name, arguments_json)
+
+    return _executor
+
+
 async def _run_inference(
     user_id: str,
     session_id: str,
@@ -289,7 +310,7 @@ async def _run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
-            tool_executor_fn=execute_tool if active_tools else None,
+            tool_executor_fn=_make_tool_executor(session, persona) if active_tools else None,
         )
     except LlmCredentialNotFoundError:
         now = datetime.now(timezone.utc)
@@ -834,7 +855,7 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
                 cancel_event=cancel_event,
                 context_status="green",
                 context_fill_percentage=0.0,
-                tool_executor_fn=execute_tool if active_tools else None,
+                tool_executor_fn=_make_tool_executor(session, persona) if active_tools else None,
             )
         except LlmCredentialNotFoundError:
             now = datetime.now(timezone.utc)

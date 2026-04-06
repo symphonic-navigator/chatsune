@@ -23,7 +23,12 @@ async def search(
     from backend.modules.embedding import query_embed
 
     effective_ids = list(set(persona_library_ids + session_library_ids))
+    _log.info(
+        "knowledge search: query=%r, persona_libs=%s, session_libs=%s, effective=%s, sanitised=%s",
+        query[:80], persona_library_ids, session_library_ids, effective_ids, sanitised,
+    )
     if not effective_ids:
+        _log.warning("knowledge search: no effective library IDs — returning empty")
         return []
 
     repo = KnowledgeRepository(get_db())
@@ -38,10 +43,13 @@ async def search(
         effective_ids = filtered
 
     if not effective_ids:
+        _log.warning("knowledge search: all libraries filtered by sanitised mode")
         return []
 
     query_vector = await query_embed(query)
+    _log.info("knowledge search: query embedded, vector dim=%d", len(query_vector))
     raw_results = await repo.vector_search(user_id, effective_ids, query_vector, top_k)
+    _log.info("knowledge search: vector search returned %d results", len(raw_results))
 
     results: list[RetrievedChunkDto] = []
     for r in raw_results:
