@@ -161,7 +161,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
         {!isLoading && filtered.length === 0 && (
           <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No bookmarks found.</p>
         )}
-        <DndContext collisionDetection={closestCenter} modifiers={zoomModifiers} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map((b) => b.id)} strategy={verticalListSortingStrategy}>
             {grouped.map(([group, groupBookmarks]) => (
               <div key={group}>

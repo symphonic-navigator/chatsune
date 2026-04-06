@@ -541,7 +541,6 @@ export function Sidebar({
 
         <DndContext
           collisionDetection={pointerWithin}
-          modifiers={zoomModifiers}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
@@ -657,7 +656,6 @@ export function Sidebar({
 
         <DndContext
           collisionDetection={pointerWithin}
-          modifiers={zoomModifiers}
           onDragStart={handleHistoryDragStart}
           onDragEnd={handleHistoryDragEnd}
         >

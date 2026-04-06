@@ -75,7 +75,6 @@ export default function PersonasPage() {
     <div className="h-full overflow-y-auto p-10">
       <DndContext
         collisionDetection={closestCenter}
-        modifiers={zoomModifiers}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >

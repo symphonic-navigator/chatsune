@@ -60,7 +60,7 @@ export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksRe
       ref={panelRef}
       className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-white/10 bg-elevated shadow-xl"
     >
-      <DndContext collisionDetection={closestCenter} modifiers={zoomModifiers} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <SortableContext items={bookmarks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
           <div className="py-1 max-h-[300px] overflow-y-auto">
             {bookmarks.map((bm) => (
