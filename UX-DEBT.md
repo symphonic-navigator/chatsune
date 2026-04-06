@@ -47,6 +47,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - Problem: The two-step confirmation menu ("Delete" -> "Confirm delete?") offers no undo after deletion. Once deleted, the entire chat history is irrecoverably gone. The two-step confirmation is small and hidden in the hover state -- easily triggered accidentally.
 - Why it matters: Accidental deletion is permanent.
 - Fix: After deletion, show a brief toast with an "Undo" button (e.g. 5 seconds) that restores the session. Alternatively: implement a "Recycle Bin" logic in the backend.
+- **Status:** Fixed — toast with "Undo" action button shown after session deletion.
 
 ---
 
@@ -118,6 +119,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/app/components/sidebar/HistoryItem.tsx:33`, `frontend/src/app/components/user-modal/HistoryTab.tsx:250-254`, `frontend/src/app/components/user-modal/BookmarksTab.tsx:277-281`
 - Problem: The 3-second timeout for the delete confirmation simply disappears without telling the user the action was cancelled. If the user was waiting to click "SURE?", they only see that the button vanished.
 - Fix: Either remove the timeout, or add a visual progress indicator (e.g. a shrinking border). Closing on outside-click is better.
+- **Status:** Fixed.
 
 ---
 
@@ -145,6 +147,7 @@ Generated: 2026-04-05. Covers all files under `frontend/src/`.
 - File: `frontend/src/features/chat/ContextStatusPill.tsx:16-29`
 - Problem: In `green` state, the pill shows only a green dot -- no percentage, no label, no automatically visible tooltip text. A user wondering "What is that green thing?" gets no information without hovering.
 - Fix: In `green` status, show either a minimal label ("CTX") or an always-visible tooltip-like hint. Or remove the element entirely until the context is no longer green.
+- **Status:** Fixed.
 
 ---
 
