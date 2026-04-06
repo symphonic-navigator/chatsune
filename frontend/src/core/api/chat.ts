@@ -51,6 +51,19 @@ export const chatApi = {
   listSessions: () =>
     api.get<ChatSessionDto[]>("/api/chat/sessions"),
 
+  searchSessions: (params: {
+    q: string
+    persona_id?: string
+    exclude_persona_ids?: string[]
+  }) => {
+    const searchParams = new URLSearchParams({ q: params.q })
+    if (params.persona_id) searchParams.set('persona_id', params.persona_id)
+    if (params.exclude_persona_ids?.length) {
+      searchParams.set('exclude_persona_ids', params.exclude_persona_ids.join(','))
+    }
+    return api.get<ChatSessionDto[]>(`/api/chat/sessions/search?${searchParams}`)
+  },
+
   getSession: (sessionId: string) =>
     api.get<ChatSessionDto>(`/api/chat/sessions/${sessionId}`),
 
