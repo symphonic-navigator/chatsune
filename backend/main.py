@@ -104,6 +104,91 @@ async def lifespan(app: FastAPI):
             except Exception:
                 _cleanup_log.exception("Memory auto-commit cleanup failed")
 
+            # Dreaming auto-trigger: consolidate committed journal entries
+            try:
+                from backend.modules.memory._repository import MemoryRepository as _DreamRepo
+                from backend.modules.persona import get_persona as _get_persona
+                from backend.jobs._submit import submit as _dream_submit
+                from backend.jobs._models import JobType as _DreamJobType
+
+                dream_repo = _DreamRepo(get_db())
+                dream_redis = get_redis()
+
+                # Aggregate (user_id, persona_id) pairs with committed entry counts
+                pipeline = [
+                    {"$match": {"state": "committed"}},
+                    {"$group": {
+                        "_id": {"user_id": "$user_id", "persona_id": "$persona_id"},
+                        "count": {"$sum": 1},
+                    }},
+                ]
+                cursor = dream_repo._entries.aggregate(pipeline)
+                pairs = await cursor.to_list(length=1000)
+
+                now = datetime.now(timezone.utc)
+                for pair in pairs:
+                    uid = pair["_id"]["user_id"]
+                    pid = pair["_id"]["persona_id"]
+                    count = pair["count"]
+
+                    try:
+                        should_dream = False
+
+                        if count >= 25:
+                            # Hard limit — immediate dream
+                            should_dream = True
+                            _cleanup_log.info(
+                                "Dreaming trigger (hard limit): %d committed entries for user %s, persona %s",
+                                count, uid, pid,
+                            )
+                        elif count >= 10:
+                            # Soft limit — only if 6h since last dream
+                            dream_key = f"memory:dream:{uid}:{pid}"
+                            last_dream_str = await dream_redis.hget(dream_key, "last_dream_at")
+                            if last_dream_str:
+                                from datetime import datetime as _dt
+                                last_dream = _dt.fromisoformat(last_dream_str)
+                                hours_since = (now - last_dream).total_seconds() / 3600
+                                if hours_since >= 6:
+                                    should_dream = True
+                                    _cleanup_log.info(
+                                        "Dreaming trigger (soft limit): %d entries, %.1fh since last dream for user %s, persona %s",
+                                        count, hours_since, uid, pid,
+                                    )
+                            else:
+                                # Never dreamed before — trigger
+                                should_dream = True
+                                _cleanup_log.info(
+                                    "Dreaming trigger (soft limit, first dream): %d entries for user %s, persona %s",
+                                    count, uid, pid,
+                                )
+
+                        if should_dream:
+                            persona = await _get_persona(pid, uid)
+                            if persona and persona.get("model_unique_id"):
+                                await _dream_submit(
+                                    job_type=_DreamJobType.MEMORY_CONSOLIDATION,
+                                    user_id=uid,
+                                    model_unique_id=persona["model_unique_id"],
+                                    payload={"persona_id": pid},
+                                )
+                                _cleanup_log.info(
+                                    "Submitted dreaming job for user %s, persona %s",
+                                    uid, pid,
+                                )
+                            else:
+                                _cleanup_log.warning(
+                                    "Cannot trigger dream for persona %s: no model_unique_id",
+                                    pid,
+                                )
+                    except Exception:
+                        _cleanup_log.exception(
+                            "Failed to check/trigger dream for user %s, persona %s",
+                            uid, pid,
+                        )
+            except Exception:
+                _cleanup_log.exception("Dreaming auto-trigger check failed")
+
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 
     yield

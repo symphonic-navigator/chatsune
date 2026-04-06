@@ -15,7 +15,7 @@ from backend.modules.chat._token_counter import count_tokens
 from backend.modules.chat._prompt_assembler import assemble, assemble_preview
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
 from backend.jobs import submit, JobType
-from backend.database import get_db
+from backend.database import get_db, get_redis
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
     get_effective_context_window,
@@ -51,7 +51,11 @@ _runner = InferenceRunner()
 # Active cancel events keyed by correlation_id
 _cancel_events: dict[str, asyncio.Event] = {}
 
+# In-flight idle extraction timers keyed by "user_id:persona_id"
+_idle_extraction_tasks: dict[str, asyncio.Task] = {}
+
 _DEFAULT_CONTEXT_WINDOW = 8192
+_IDLE_EXTRACTION_DELAY_SECONDS = 300  # 5 minutes
 
 
 async def init_indexes(db) -> None:
@@ -328,6 +332,100 @@ async def _emit_session_expired(user_id: str, session_id: str) -> None:
     ).model_dump(mode="json"))
 
 
+async def _schedule_idle_extraction(
+    user_id: str,
+    persona_id: str,
+    session_id: str,
+    model_unique_id: str,
+    idle_timestamp: str,
+) -> None:
+    """Wait for idle period, then submit memory extraction if user is still idle."""
+    try:
+        await asyncio.sleep(_IDLE_EXTRACTION_DELAY_SECONDS)
+
+        redis = get_redis()
+        tracking_key = f"memory:extraction:{user_id}:{persona_id}"
+        current_ts = await redis.hget(tracking_key, "last_message_at")
+
+        # User sent another message — a newer timer will handle extraction
+        if current_ts != idle_timestamp:
+            return
+
+        # Fetch recent user messages for extraction
+        db = get_db()
+        repo = ChatRepository(db)
+        messages = await repo.list_messages(session_id)
+        user_messages = [
+            m["content"] for m in messages
+            if m["role"] == "user"
+        ]
+
+        if not user_messages:
+            return
+
+        # Take the last 20 user messages at most
+        recent = user_messages[-20:]
+
+        await submit(
+            job_type=JobType.MEMORY_EXTRACTION,
+            user_id=user_id,
+            model_unique_id=model_unique_id,
+            payload={
+                "persona_id": persona_id,
+                "session_id": session_id,
+                "messages": recent,
+            },
+        )
+        _log.info(
+            "Submitted idle-triggered memory extraction for user %s, persona %s, session %s",
+            user_id, persona_id, session_id,
+        )
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        _log.exception(
+            "Error in idle extraction timer for user %s, persona %s",
+            user_id, persona_id,
+        )
+    finally:
+        _idle_extraction_tasks.pop(f"{user_id}:{persona_id}", None)
+
+
+async def _track_extraction_trigger(
+    user_id: str,
+    persona_id: str,
+    session_id: str,
+    model_unique_id: str,
+) -> None:
+    """Track message count and schedule idle-based extraction after a user message."""
+    try:
+        redis = get_redis()
+        tracking_key = f"memory:extraction:{user_id}:{persona_id}"
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        await redis.hincrby(tracking_key, "messages_since_extraction", 1)
+        await redis.hset(tracking_key, "last_message_at", now_iso)
+
+        # Cancel any existing idle timer for this user+persona pair
+        task_key = f"{user_id}:{persona_id}"
+        old_task = _idle_extraction_tasks.pop(task_key, None)
+        if old_task and not old_task.done():
+            old_task.cancel()
+
+        # Schedule new idle extraction timer
+        task = asyncio.create_task(
+            _schedule_idle_extraction(
+                user_id, persona_id, session_id, model_unique_id, now_iso,
+            )
+        )
+        _idle_extraction_tasks[task_key] = task
+    except Exception:
+        _log.exception(
+            "Error tracking extraction trigger for user %s, persona %s",
+            user_id, persona_id,
+        )
+
+
 async def handle_chat_send(user_id: str, data: dict) -> None:
     """Handle a chat.send WebSocket message — save user message, run inference."""
     session_id = data.get("session_id")
@@ -380,6 +478,14 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
             attachment_ids=attachment_ids,
             attachment_refs=attachment_refs,
         )
+
+        # Track extraction trigger (non-incognito sessions only)
+        persona_id = session.get("persona_id")
+        model_unique_id = session.get("model_unique_id", "")
+        if persona_id and model_unique_id:
+            await _track_extraction_trigger(
+                user_id, persona_id, session_id, model_unique_id,
+            )
 
         await _run_inference(user_id, session_id, repo, session)
     except Exception:
