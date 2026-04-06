@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.database import get_db
@@ -77,6 +77,28 @@ async def create_session(
 async def list_sessions(user: dict = Depends(require_active_session)):
     repo = _chat_repo()
     docs = await repo.list_sessions(user["sub"])
+    return [ChatRepository.session_to_dto(d) for d in docs]
+
+
+@router.get("/sessions/search")
+async def search_sessions(
+    q: str = Query(min_length=1, max_length=200, strip_whitespace=True),
+    persona_id: str | None = Query(default=None),
+    exclude_persona_ids: str | None = Query(default=None),
+    user: dict = Depends(require_active_session),
+):
+    repo = _chat_repo()
+    excluded = (
+        [pid.strip() for pid in exclude_persona_ids.split(",") if pid.strip()]
+        if exclude_persona_ids
+        else None
+    )
+    docs = await repo.search_sessions(
+        user_id=user["sub"],
+        query=q,
+        persona_id=persona_id,
+        exclude_persona_ids=excluded,
+    )
     return [ChatRepository.session_to_dto(d) for d in docs]
 
 
