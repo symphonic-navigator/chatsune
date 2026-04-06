@@ -1,9 +1,27 @@
 import { useEffect } from 'react'
 import { eventBus } from '../../core/websocket/eventBus'
 import { useArtefactStore } from '../../core/store/artefactStore'
+import { artefactApi } from '../../core/api/artefact'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import type { ArtefactType } from '../../core/types/artefact'
+
+async function refreshActiveArtefact(sessionId: string, handle: string) {
+  const store = useArtefactStore.getState()
+  const active = store.activeArtefact
+  if (!active || active.handle !== handle) return
+
+  const summary = store.artefacts.find((a) => a.handle === handle)
+  if (!summary) return
+
+  store.setActiveArtefactLoading(true)
+  try {
+    const detail = await artefactApi.get(sessionId, summary.id)
+    store.openOverlay(detail)
+  } catch {
+    store.setActiveArtefactLoading(false)
+  }
+}
 
 export function useArtefactEvents(sessionId: string | null) {
   useEffect(() => {
@@ -41,11 +59,7 @@ export function useArtefactEvents(sessionId: string | null) {
             version: p.version as number,
             updated_at: event.timestamp,
           })
-          const active = store().activeArtefact
-          if (active && active.handle === p.handle) {
-            store().setActiveArtefact(null)
-            store().setActiveArtefactLoading(true)
-          }
+          refreshActiveArtefact(sessionId, p.handle as string)
           break
         }
         case Topics.ARTEFACT_DELETED: {
@@ -58,11 +72,7 @@ export function useArtefactEvents(sessionId: string | null) {
             version: p.version as number,
             updated_at: event.timestamp,
           })
-          const active = store().activeArtefact
-          if (active && active.handle === p.handle) {
-            store().setActiveArtefact(null)
-            store().setActiveArtefactLoading(true)
-          }
+          refreshActiveArtefact(sessionId, p.handle as string)
           break
         }
       }
