@@ -400,6 +400,13 @@ body {
   accent-color: var(--color-gold);
 }
 
+/* Artefact preview scrollbar — gold accent, matching chat scroll */
+.artefact-scroll::-webkit-scrollbar { width: 8px; }
+.artefact-scroll::-webkit-scrollbar-track { background: transparent; }
+.artefact-scroll::-webkit-scrollbar-thumb { background: rgba(201, 168, 76, 0.2); border-radius: 4px; }
+.artefact-scroll::-webkit-scrollbar-thumb:hover { background: rgba(201, 168, 76, 0.4); }
+.artefact-scroll { scrollbar-width: thin; scrollbar-color: rgba(201, 168, 76, 0.2) transparent; }
+
 /* Global styled scrollbar */
 *::-webkit-scrollbar {
   width: 6px;

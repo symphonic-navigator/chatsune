@@ -6,14 +6,15 @@ import { createMarkdownComponents } from '../chat/markdownComponents'
 import { useHighlighter } from '../chat/useMarkdown'
 import type { ArtefactType } from '../../core/types/artefact'
 
-/** Shared style: fill the grid cell from the parent overlay */
+/** Shared style: fill the parent container with gold-accent scrollbar */
 const FILL: React.CSSProperties = { width: '100%', height: '100%', overflow: 'auto' }
+const FILL_CLS = 'artefact-scroll'
 
 // ─── Markdown ────────────────────────────────────────────────────────────────
 
 function MarkdownPreview({ content, highlighter }: { content: string; highlighter: Highlighter | null }) {
   return (
-    <div style={FILL} className="p-4">
+    <div style={FILL} className={`${FILL_CLS} p-4`}>
       <div className="markdown-preview">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -48,14 +49,14 @@ function CodePreview({ content, language, highlighter }: { content: string; lang
     return (
       <div
         style={FILL}
-        className="p-4 text-[13px] [&_pre]:!bg-transparent [&_pre]:p-0"
+        className={`${FILL_CLS} p-4 text-[13px] [&_pre]:!bg-transparent [&_pre]:p-0`}
         dangerouslySetInnerHTML={{ __html: html }} // nosec: Shiki-generated, not user content
       />
     )
   }
 
   return (
-    <pre style={FILL} className="p-4 text-[13px]">
+    <pre style={FILL} className={`${FILL_CLS} p-4 text-[13px]`}>
       <code>{content}</code>
     </pre>
   )
@@ -63,7 +64,7 @@ function CodePreview({ content, language, highlighter }: { content: string; lang
 
 // ─── HTML ────────────────────────────────────────────────────────────────────
 
-const HTML_SCROLLBAR_CSS = `<style>*::-webkit-scrollbar{width:6px;height:6px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:3px}*::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25)}*{scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}</style>`
+const HTML_SCROLLBAR_CSS = `<style>*::-webkit-scrollbar{width:6px;height:6px}*::-webkit-scrollbar-track{background:transparent}*::-webkit-scrollbar-thumb{background:rgba(201,168,76,.2);border-radius:3px}*::-webkit-scrollbar-thumb:hover{background:rgba(201,168,76,.4)}*{scrollbar-width:thin;scrollbar-color:rgba(201,168,76,.2) transparent}</style>`
 const HTML_ESCAPE_SCRIPT = `<script>window.addEventListener('keydown',function(e){if(e.key==='Escape')window.parent.postMessage({type:'artefact-escape'},'*')})</script>`
 
 function HtmlPreview({ content }: { content: string }) {
