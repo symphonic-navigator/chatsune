@@ -118,6 +118,37 @@ body {
   animation: thinkPulse 2s ease-in-out infinite;
 }
 
+/* Toast animations */
+@keyframes toastEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toastExit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.animate-toast-enter {
+  animation: toastEnter 0.2s ease-out;
+}
+
+.animate-toast-exit {
+  animation: toastExit 0.2s ease-out forwards;
+}
+
 /* Markdown prose inside chat */
 .chat-prose {
   word-break: break-word;
