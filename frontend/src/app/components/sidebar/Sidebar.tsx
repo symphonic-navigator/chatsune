@@ -20,6 +20,7 @@ import { useSidebarStore } from "../../../core/store/sidebarStore"
 import { useAuth } from "../../../core/hooks/useAuth"
 import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { NavRow } from "./NavRow"
+import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
@@ -180,6 +181,17 @@ export function Sidebar({
     const next = !unpinnedOpen
     setUnpinnedOpen(next)
     localStorage.setItem("chatsune_unpinned_open", String(next))
+  }
+
+  const [flyoutTab, setFlyoutTab] = useState<'projects' | 'history' | null>(null)
+
+  function toggleFlyout(tab: 'projects' | 'history') {
+    setFlyoutTab((prev) => (prev === tab ? null : tab))
+  }
+
+  function openFullViewFromFlyout(tab: 'projects' | 'history') {
+    setFlyoutTab(null)
+    onOpenModal(tab)
   }
 
   const [dragActiveId, setDragActiveId] = useState<string | null>(null)
@@ -367,7 +379,7 @@ export function Sidebar({
         {/* Logo — expand */}
         <button
           type="button"
-          onClick={toggleCollapsed}
+          onClick={() => { setFlyoutTab(null); toggleCollapsed() }}
           title="Expand sidebar"
           className="group flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
         >
@@ -408,17 +420,17 @@ export function Sidebar({
         {/* Projects */}
         <IconBtn
           icon="🔭"
-          onClick={() => onOpenModal('projects')}
+          onClick={() => toggleFlyout('projects')}
           title="Projects"
-          isActive={isTabActive('projects')}
+          isActive={isTabActive('projects') || flyoutTab === 'projects'}
         />
 
         {/* History */}
         <IconBtn
           icon="📖"
-          onClick={() => onOpenModal('history')}
+          onClick={() => toggleFlyout('history')}
           title="History"
-          isActive={isTabActive('history')}
+          isActive={isTabActive('history') || flyoutTab === 'history'}
         />
 
         {/* Spacer */}
@@ -496,6 +508,77 @@ export function Sidebar({
         >
           ↪
         </button>
+
+        {/* Flyout panels */}
+        {flyoutTab === 'history' && (
+          <SidebarFlyout
+            title="History"
+            onClose={() => setFlyoutTab(null)}
+            onOpenFullView={() => openFullViewFromFlyout('history')}
+          >
+            <div className="mt-0.5 pb-2">
+              {pinnedSessions.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/25">Pinned</div>
+                  {pinnedSessions.map((s) => {
+                    const persona = personas.find((p) => p.id === s.persona_id)
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => { handleSessionClick(s); setFlyoutTab(null) }}
+                        className={`mx-2 mb-0.5 flex w-[calc(100%-16px)] flex-col rounded-md px-2.5 py-2 text-left transition-colors ${
+                          s.id === activeSessionId ? 'bg-white/8' : 'hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="truncate text-[12px] text-white/70">{s.title ?? 'Untitled session'}</span>
+                        <span className="text-[10px] text-white/25">{persona?.name}</span>
+                      </button>
+                    )
+                  })}
+                  <div className="mx-3 my-1 h-px bg-white/4" />
+                </>
+              )}
+
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/25">Recent</div>
+              {unpinnedSessions.map((s) => {
+                const persona = personas.find((p) => p.id === s.persona_id)
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { handleSessionClick(s); setFlyoutTab(null) }}
+                    className={`mx-2 mb-0.5 flex w-[calc(100%-16px)] flex-col rounded-md px-2.5 py-2 text-left transition-colors ${
+                      s.id === activeSessionId ? 'bg-white/8' : 'hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="truncate text-[12px] text-white/70">{s.title ?? 'Untitled session'}</span>
+                    <span className="text-[10px] text-white/25">{persona?.name}</span>
+                  </button>
+                )
+              })}
+
+              {sessions.length === 0 && (
+                <p className="px-4 py-3 text-center text-[12px] text-white/20">No history yet</p>
+              )}
+            </div>
+          </SidebarFlyout>
+        )}
+
+        {flyoutTab === 'projects' && (
+          <SidebarFlyout
+            title="Projects"
+            onClose={() => setFlyoutTab(null)}
+            onOpenFullView={() => openFullViewFromFlyout('projects')}
+          >
+            <div className="flex h-full flex-col items-center justify-center gap-3 py-8 text-white/20">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+              <span className="text-[12px]">No projects yet</span>
+            </div>
+          </SidebarFlyout>
+        )}
       </aside>
     )
   }
