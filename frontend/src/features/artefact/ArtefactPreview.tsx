@@ -99,12 +99,33 @@ function SvgPreview({ content }: { content: string }) {
 
 /**
  * Preprocess JSX code for browser execution:
- * - Strip `export default` (no module system in <script>)
- * - Detect the component name to render
+ * - Strip `import` statements (no module system in <script>; React globals are pre-loaded)
+ * - Strip `export default` and detect the component name to render
+ * - Emit destructured React bindings so hooks like useState work as globals
  */
 function preprocessJsx(code: string): { code: string; componentName: string } {
   let processed = code
   let componentName = 'App'
+
+  // Collect named imports from 'react' so we can re-emit them as destructured globals
+  const reactNamedImports = new Set<string>()
+  const reactImportPattern = /import\s+(?:React\s*,\s*)?\{([^}]+)\}\s+from\s+['"]react['"]\s*;?/g
+  let rim
+  while ((rim = reactImportPattern.exec(processed)) !== null) {
+    rim[1].split(',').map(s => s.trim().split(/\s+as\s+/).pop()!.trim()).forEach(n => {
+      if (n) reactNamedImports.add(n)
+    })
+  }
+
+  // Strip all import statements (react, react-dom, CSS side-effect imports, etc.)
+  processed = processed.replace(/^import\s+.*?from\s+['"].*?['"]\s*;?\s*$/gm, '')
+  processed = processed.replace(/^import\s+['"].*?['"]\s*;?\s*$/gm, '')
+
+  // Emit destructured React hooks/helpers as top-level const
+  if (reactNamedImports.size > 0) {
+    const names = [...reactNamedImports].join(', ')
+    processed = `const { ${names} } = React;\n${processed}`
+  }
 
   // export default function Name() { ... }
   const funcMatch = processed.match(/export\s+default\s+function\s+(\w+)/)
