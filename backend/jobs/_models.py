@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 class JobType(StrEnum):
     TITLE_GENERATION = "title_generation"
+    MEMORY_EXTRACTION = "memory_extraction"
+    MEMORY_CONSOLIDATION = "memory_consolidation"
 
 
 @dataclass(frozen=True)

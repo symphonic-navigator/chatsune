@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from shared.dtos.memory import JournalEntryDto, MemoryBodyDto
+from shared.dtos.memory import JournalEntryDto
 
 
 class MemoryExtractionStartedEvent(BaseModel):
