@@ -1,15 +1,23 @@
 import { create } from "zustand"
 
+export interface NotificationAction {
+  label: string
+  onClick: () => void
+}
+
 export interface AppNotification {
   id: string
-  level: "success" | "error" | "info"
+  level: "success" | "error" | "info" | "warning"
   title: string
   message: string
+  action?: NotificationAction
+  duration?: number
   timestamp: number
   dismissed: boolean
 }
 
-type NewNotification = Pick<AppNotification, "level" | "title" | "message">
+type NewNotification = Pick<AppNotification, "level" | "title" | "message"> &
+  Partial<Pick<AppNotification, "action" | "duration">>
 
 interface NotificationState {
   notifications: AppNotification[]
