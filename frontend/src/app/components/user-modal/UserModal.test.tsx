@@ -29,7 +29,7 @@ describe('UserModal', () => {
 
   it('switches tab on click', () => {
     const { onTabChange } = renderModal('about-me')
-    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    fireEvent.click(screen.getByRole('tab', { name: /settings/i }))
     expect(onTabChange).toHaveBeenCalledWith('settings')
   })
 
