@@ -9,12 +9,19 @@ import {
   type SortField,
 } from "./modelFilters"
 
+export interface LockedFilters {
+  capTools?: true
+  capVision?: true
+  capReason?: true
+}
+
 interface ModelBrowserProps {
   onEditConfig?: (model: EnrichedModelDto) => void
   onToggleFavourite?: (model: EnrichedModelDto) => void
   onSelect?: (model: EnrichedModelDto) => void
   currentModelId?: string | null
   models?: EnrichedModelDto[]
+  lockedFilters?: LockedFilters
 }
 
 const SORT_FIELDS: { field: SortField; label: string }[] = [
@@ -64,11 +71,22 @@ export function ModelBrowser({
   onSelect,
   currentModelId,
   models: externalModels,
+  lockedFilters,
 }: ModelBrowserProps) {
   const { models: fetchedModels, isLoading: hookLoading, error: hookError } = useEnrichedModels()
 
   const [filters, setFilters] = useState<ModelFilters>({})
   const [sort, setSort] = useState<ModelSortConfig | null>(null)
+
+  useEffect(() => {
+    if (!lockedFilters) return
+    setFilters((f) => ({
+      ...f,
+      ...(lockedFilters.capTools ? { capTools: true } : {}),
+      ...(lockedFilters.capVision ? { capVision: true } : {}),
+      ...(lockedFilters.capReason ? { capReason: true } : {}),
+    }))
+  }, [lockedFilters])
 
   const allModels = externalModels ?? fetchedModels
   const loading = !externalModels && hookLoading
@@ -206,39 +224,45 @@ export function ModelBrowser({
           <button
             type="button"
             onClick={() => updateFilter("capTools", !filters.capTools)}
+            disabled={lockedFilters?.capTools === true}
             className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer",
+              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+              lockedFilters?.capTools ? "cursor-not-allowed" : "cursor-pointer",
               filters.capTools
                 ? "bg-[#a6e3a1]/15 text-[#a6e3a1]"
                 : "text-white/30 hover:text-white/50",
             ].join(" ")}
-            title="Tool Calls"
+            title={lockedFilters?.capTools ? "Tool Calls (required)" : "Tool Calls"}
           >
             T
           </button>
           <button
             type="button"
             onClick={() => updateFilter("capVision", !filters.capVision)}
+            disabled={lockedFilters?.capVision === true}
             className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer",
+              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+              lockedFilters?.capVision ? "cursor-not-allowed" : "cursor-pointer",
               filters.capVision
                 ? "bg-[#89b4fa]/15 text-[#89b4fa]"
                 : "text-white/30 hover:text-white/50",
             ].join(" ")}
-            title="Vision"
+            title={lockedFilters?.capVision ? "Vision (required)" : "Vision"}
           >
             V
           </button>
           <button
             type="button"
             onClick={() => updateFilter("capReason", !filters.capReason)}
+            disabled={lockedFilters?.capReason === true}
             className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors cursor-pointer",
+              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
+              lockedFilters?.capReason ? "cursor-not-allowed" : "cursor-pointer",
               filters.capReason
                 ? "bg-[#f9e2af]/15 text-[#f9e2af]"
                 : "text-white/30 hover:text-white/50",
             ].join(" ")}
-            title="Reasoning"
+            title={lockedFilters?.capReason ? "Reasoning (required)" : "Reasoning"}
           >
             R
           </button>
