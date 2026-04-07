@@ -16,6 +16,7 @@ class StorageFileDocument(BaseModel):
     file_path: str  # relative path: "{user_id}/{uuid}.bin"
     thumbnail_b64: str | None = None
     text_preview: str | None = None
+    vision_descriptions: dict[str, dict] | None = None
     created_at: datetime
     updated_at: datetime
 

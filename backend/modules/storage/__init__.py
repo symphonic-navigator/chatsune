@@ -33,9 +33,29 @@ async def get_files_by_ids(file_ids: list[str], user_id: str) -> list[dict]:
     return results
 
 
+async def get_cached_vision_description(
+    file_id: str, user_id: str, model_id: str,
+) -> str | None:
+    """Cross-module API: read a cached vision description, or None if missing."""
+    db = get_db()
+    repo = StorageRepository(db)
+    return await repo.get_vision_description(file_id, user_id, model_id)
+
+
+async def store_vision_description(
+    file_id: str, user_id: str, model_id: str, text: str,
+) -> None:
+    """Cross-module API: persist a vision description for a (file, model) pair."""
+    db = get_db()
+    repo = StorageRepository(db)
+    await repo.store_vision_description(file_id, user_id, model_id, text)
+
+
 __all__ = [
     "router",
     "init_indexes",
     "get_file_metadata",
     "get_files_by_ids",
+    "get_cached_vision_description",
+    "store_vision_description",
 ]

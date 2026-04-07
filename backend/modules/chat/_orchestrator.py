@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._repository import ChatRepository
+from backend.modules.chat._vision_fallback import describe_image, VisionFallbackError
 from backend.token_counter import count_tokens
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
@@ -25,6 +26,11 @@ from backend.modules.llm import (
     LlmCredentialNotFoundError,
 )
 from backend.modules.persona import get_persona
+from backend.modules.storage import (
+    get_files_by_ids,
+    get_cached_vision_description,
+    store_vision_description,
+)
 from backend.modules.tools import execute_tool, get_active_definitions
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
@@ -32,6 +38,7 @@ from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentP
 from shared.events.chat import (
     ChatStreamEndedEvent,
     ChatStreamErrorEvent,
+    ChatVisionDescriptionEvent,
 )
 
 _log = logging.getLogger(__name__)
@@ -75,6 +82,150 @@ def _make_tool_executor(session: dict, persona: dict | None, correlation_id: str
     return _executor
 
 
+async def _resolve_image_attachments_for_inference(
+    *,
+    user_id: str,
+    files: list[dict],
+    supports_vision: bool,
+    vision_fallback_model: str | None,
+    emit_event,
+    correlation_id: str,
+) -> tuple[list[ContentPart], list[dict], None]:
+    """Convert a list of file dicts into ContentParts plus vision snapshots.
+
+    Returns ``(parts, snapshots, _)``. The third element is currently unused
+    and reserved for future extensions. Snapshots are dicts with keys
+    ``file_id, display_name, model_id, text``.
+
+    For each image attachment:
+      1. If the main model supports vision: pass through as an image part.
+      2. Else if no fallback configured: emit a placeholder text part.
+      3. Else if cache hit: emit a text part from the cache + snapshot +
+         single success event.
+      4. Else: emit pending event, call describe_image, on success store +
+         snapshot + success event, on failure emit error event and use a
+         placeholder text part with an error marker.
+
+    Non-image attachments are converted to text parts as in the previous
+    inline implementation.
+    """
+    parts: list[ContentPart] = []
+    snapshots: list[dict] = []
+
+    for f in files:
+        if f.get("data") and f["media_type"].startswith("image/"):
+            if supports_vision:
+                parts.append(ContentPart(
+                    type="image",
+                    data=base64.b64encode(f["data"]).decode("ascii"),
+                    media_type=f["media_type"],
+                ))
+                continue
+
+            if not vision_fallback_model:
+                parts.append(ContentPart(
+                    type="text",
+                    text=f"\n[Image: {f['display_name']} — model does not support vision, image omitted]",
+                ))
+                continue
+
+            cached = await get_cached_vision_description(
+                f["_id"], user_id, vision_fallback_model,
+            )
+            now = datetime.now(timezone.utc)
+            if cached:
+                parts.append(ContentPart(
+                    type="text",
+                    text=f"\n[Image description for {f['display_name']} (via {vision_fallback_model}):\n{cached}\n]",
+                ))
+                snapshots.append({
+                    "file_id": f["_id"],
+                    "display_name": f["display_name"],
+                    "model_id": vision_fallback_model,
+                    "text": cached,
+                })
+                await emit_event(ChatVisionDescriptionEvent(
+                    correlation_id=correlation_id,
+                    file_id=f["_id"],
+                    display_name=f["display_name"],
+                    model_id=vision_fallback_model,
+                    status="success",
+                    text=cached,
+                    error=None,
+                    timestamp=now,
+                ))
+                continue
+
+            # Cache miss — announce pending, then call the vision model.
+            await emit_event(ChatVisionDescriptionEvent(
+                correlation_id=correlation_id,
+                file_id=f["_id"],
+                display_name=f["display_name"],
+                model_id=vision_fallback_model,
+                status="pending",
+                text=None,
+                error=None,
+                timestamp=now,
+            ))
+            try:
+                text = await describe_image(
+                    user_id, vision_fallback_model, f["data"], f["media_type"],
+                )
+            except VisionFallbackError as exc:
+                _log.warning(
+                    "vision fallback failed for file=%s model=%s: %s",
+                    f["_id"], vision_fallback_model, exc,
+                )
+                parts.append(ContentPart(
+                    type="text",
+                    text=f"\n[Image: {f['display_name']} — vision fallback failed]",
+                ))
+                await emit_event(ChatVisionDescriptionEvent(
+                    correlation_id=correlation_id,
+                    file_id=f["_id"],
+                    display_name=f["display_name"],
+                    model_id=vision_fallback_model,
+                    status="error",
+                    text=None,
+                    error=str(exc),
+                    timestamp=datetime.now(timezone.utc),
+                ))
+                continue
+
+            await store_vision_description(
+                f["_id"], user_id, vision_fallback_model, text,
+            )
+            parts.append(ContentPart(
+                type="text",
+                text=f"\n[Image description for {f['display_name']} (via {vision_fallback_model}):\n{text}\n]",
+            ))
+            snapshots.append({
+                "file_id": f["_id"],
+                "display_name": f["display_name"],
+                "model_id": vision_fallback_model,
+                "text": text,
+            })
+            await emit_event(ChatVisionDescriptionEvent(
+                correlation_id=correlation_id,
+                file_id=f["_id"],
+                display_name=f["display_name"],
+                model_id=vision_fallback_model,
+                status="success",
+                text=text,
+                error=None,
+                timestamp=datetime.now(timezone.utc),
+            ))
+
+        elif f.get("data"):
+            text_content = f["data"].decode("utf-8", errors="replace")
+            parts.append(ContentPart(
+                type="text",
+                text=f"\n--- {f['display_name']} ---\n{text_content}",
+            ))
+
+    return parts, snapshots, None
+
+
 async def run_inference(
     user_id: str,
     session_id: str,
@@ -92,11 +243,23 @@ async def run_inference(
 
     provider_id, model_slug = model_unique_id.split(":", 1)
 
+    # Resolve persona and reasoning context early so the prompt assembler
+    # can decide whether to inject the Soft-CoT block.
+    persona = await get_persona(persona_id, user_id) if persona_id else None
+    reasoning_override = session.get("reasoning_override")
+    if reasoning_override is not None:
+        reasoning_enabled = reasoning_override
+    else:
+        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
+    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+
     # Assemble system prompt
     system_prompt = await assemble(
         user_id=user_id,
         persona_id=persona_id,
         model_unique_id=model_unique_id,
+        supports_reasoning=supports_reasoning,
+        reasoning_enabled_for_call=reasoning_enabled,
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
@@ -159,53 +322,46 @@ async def run_inference(
                 content_parts_list.append(
                     ContentPart(type="text", text=f"\n[Attachment: {ref['display_name']}]")
                 )
+        # Feed back stored vision snapshots so the model has consistent context
+        snaps = doc.get("vision_descriptions_used")
+        if snaps:
+            for s in snaps:
+                content_parts_list.append(
+                    ContentPart(
+                        type="text",
+                        text=f"\n[Image description for {s['display_name']} (via {s['model_id']}):\n{s['text']}\n]",
+                    )
+                )
         messages.append(CompletionMessage(role=doc["role"], content=content_parts_list))
 
     # Append the new user message (with full attachment data if present)
     if history_docs:
         last_msg = history_docs[-1]
         last_msg_parts: list[ContentPart] = [ContentPart(type="text", text=last_msg["content"])]
+        new_msg_vision_snapshots: list[dict] = []
         attachment_ids = last_msg.get("attachment_ids")
         if attachment_ids:
-            from backend.modules.storage import get_files_by_ids
             supports_vision = await get_model_supports_vision(provider_id, model_slug)
             files = await get_files_by_ids(attachment_ids, user_id)
-            for f in files:
-                if f.get("data") and f["media_type"].startswith("image/"):
-                    if not supports_vision:
-                        last_msg_parts.append(ContentPart(
-                            type="text",
-                            text=f"\n[Image: {f['display_name']} — model does not support vision, image omitted]",
-                        ))
-                        continue
-                    last_msg_parts.append(ContentPart(
-                        type="image",
-                        data=base64.b64encode(f["data"]).decode("ascii"),
-                        media_type=f["media_type"],
-                    ))
-                elif f.get("data"):
-                    text_content = f["data"].decode("utf-8", errors="replace")
-                    last_msg_parts.append(ContentPart(
-                        type="text",
-                        text=f"\n--- {f['display_name']} ---\n{text_content}",
-                    ))
+            vision_fallback_model = persona.get("vision_fallback_model") if persona else None
+            extra_parts, new_msg_vision_snapshots, _ = await _resolve_image_attachments_for_inference(
+                user_id=user_id,
+                files=files,
+                supports_vision=supports_vision,
+                vision_fallback_model=vision_fallback_model,
+                emit_event=emit_fn,
+                correlation_id=correlation_id,
+            )
+            last_msg_parts.extend(extra_parts)
+            if new_msg_vision_snapshots:
+                await repo.update_message_vision_snapshots(
+                    last_msg["_id"], new_msg_vision_snapshots,
+                )
         messages.append(CompletionMessage(role=last_msg["role"], content=last_msg_parts))
-
-    # Get persona settings for temperature/reasoning
-    persona = await get_persona(persona_id, user_id) if persona_id else None
 
     # Resolve active tool definitions based on session toggle state
     disabled_tool_groups = session.get("disabled_tool_groups", [])
     active_tools = get_active_definitions(disabled_tool_groups) or None
-
-    # Resolve reasoning: session override > persona default
-    reasoning_override = session.get("reasoning_override")
-    if reasoning_override is not None:
-        reasoning_enabled = reasoning_override
-    else:
-        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
-
-    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
 
     request = CompletionRequest(
         model=model_slug,
@@ -216,9 +372,8 @@ async def run_inference(
         tools=active_tools,
     )
 
-    # Set session state to streaming
-    await repo.update_session_state(session_id, "streaming")
-
+    # Set up correlation ID and event emission before building messages so that
+    # _resolve_image_attachments_for_inference can emit vision description events.
     correlation_id = str(uuid4())
     cancel_event = asyncio.Event()
     _cancel_events[correlation_id] = cancel_event
@@ -238,12 +393,27 @@ async def run_inference(
             correlation_id=correlation_id,
         )
 
+    # Set session state to streaming
+    await repo.update_session_state(session_id, "streaming")
+
+    from backend.modules.chat._soft_cot import is_soft_cot_active
+    from backend.modules.chat._soft_cot_parser import wrap_with_soft_cot_parser
+
+    soft_cot_on = is_soft_cot_active(
+        soft_cot_enabled=bool(persona and persona.get("soft_cot_enabled")),
+        supports_reasoning=supports_reasoning,
+        reasoning_enabled=reasoning_enabled,
+    )
+
     def stream_fn(extra_messages=None):
         req = request
         if extra_messages:
             extended = list(request.messages) + extra_messages
             req = request.model_copy(update={"messages": extended})
-        return llm_stream_completion(user_id, provider_id, req)
+        upstream = llm_stream_completion(user_id, provider_id, req)
+        if soft_cot_on:
+            return wrap_with_soft_cot_parser(upstream)
+        return upstream
 
     async def save_fn(
         content: str,

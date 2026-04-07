@@ -70,6 +70,36 @@ class StorageRepository:
         cursor = self._col.find({"_id": {"$in": file_ids}, "user_id": user_id})
         return await cursor.to_list(length=len(file_ids))
 
+    async def get_vision_description(
+        self, file_id: str, user_id: str, model_id: str,
+    ) -> str | None:
+        """Return cached vision description text for a (file, model) pair."""
+        doc = await self._col.find_one(
+            {"_id": file_id, "user_id": user_id},
+            {f"vision_descriptions.{model_id}": 1},
+        )
+        if not doc:
+            return None
+        entry = (doc.get("vision_descriptions") or {}).get(model_id)
+        if not entry:
+            return None
+        return entry.get("text")
+
+    async def store_vision_description(
+        self, file_id: str, user_id: str, model_id: str, text: str,
+    ) -> None:
+        """Persist a vision description for a (file, model) pair. No TTL."""
+        await self._col.update_one(
+            {"_id": file_id, "user_id": user_id},
+            {"$set": {
+                f"vision_descriptions.{model_id}": {
+                    "text": text,
+                    "model_id": model_id,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            }},
+        )
+
     @staticmethod
     def file_to_dto(doc: dict) -> StorageFileDto:
         return StorageFileDto(

@@ -33,6 +33,14 @@ async def _get_persona_prompt(persona_id: str | None, user_id: str) -> str | Non
     return persona.get("system_prompt")
 
 
+async def _get_persona_doc(persona_id: str | None, user_id: str) -> dict | None:
+    """Fetch the full persona document (used for soft_cot_enabled lookup)."""
+    if not persona_id:
+        return None
+    from backend.modules.persona import get_persona
+    return await get_persona(persona_id, user_id)
+
+
 async def _get_user_about_me(user_id: str) -> str | None:
     """Fetch the user's about_me text."""
     from backend.modules.user import get_user_about_me
@@ -43,11 +51,24 @@ async def assemble(
     user_id: str,
     persona_id: str | None,
     model_unique_id: str,
+    supports_reasoning: bool = False,
+    reasoning_enabled_for_call: bool = False,
 ) -> str:
-    """Assemble the full 4-layer XML system prompt for LLM consumption."""
+    """Assemble the full XML system prompt for LLM consumption.
+
+    ``supports_reasoning`` and ``reasoning_enabled_for_call`` drive the
+    Soft-CoT visibility decision. They default to False so that legacy
+    callers (preview, scripts) retain the pre-existing behaviour.
+    """
+    from backend.modules.chat._soft_cot import (
+        SOFT_COT_INSTRUCTIONS,
+        is_soft_cot_active,
+    )
+
     admin_prompt = await _get_admin_prompt()
     model_instructions = await _get_model_instructions(user_id, model_unique_id)
     persona_prompt = await _get_persona_prompt(persona_id, user_id)
+    persona_doc = await _get_persona_doc(persona_id, user_id)
     user_about_me = await _get_user_about_me(user_id)
 
     parts: list[str] = []
@@ -71,6 +92,14 @@ async def assemble(
         cleaned = sanitise(persona_prompt.strip())
         if cleaned:
             parts.append(f'<you priority="normal">\n{cleaned}\n</you>')
+
+    # Soft-CoT instruction block — sits between persona and memory so it
+    # is "felt" alongside the persona voice but does not displace admin or
+    # model instructions. Injected only when the persona has opted in and
+    # native Hard-CoT is not taking over this inference call.
+    soft_cot_enabled = bool(persona_doc and persona_doc.get("soft_cot_enabled"))
+    if is_soft_cot_active(soft_cot_enabled, supports_reasoning, reasoning_enabled_for_call):
+        parts.append(SOFT_COT_INSTRUCTIONS)
 
     # Layer: User memory (if available)
     from backend.modules.memory import get_memory_context

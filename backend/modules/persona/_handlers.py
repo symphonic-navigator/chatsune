@@ -87,6 +87,8 @@ async def create_persona(
         nsfw=body.nsfw,
         colour_scheme=body.colour_scheme,
         display_order=body.display_order,
+        soft_cot_enabled=body.soft_cot_enabled,
+        vision_fallback_model=body.vision_fallback_model,
     )
 
     user_id = user["sub"]
@@ -240,6 +242,10 @@ async def update_persona(
     event_bus: EventBus = Depends(get_event_bus),
 ):
     fields = body.model_dump(exclude_none=True)
+    # vision_fallback_model is explicitly clearable — if the client set it
+    # to null, exclude_none would drop it, so we re-include it here.
+    if "vision_fallback_model" in body.model_fields_set:
+        fields["vision_fallback_model"] = body.vision_fallback_model
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 

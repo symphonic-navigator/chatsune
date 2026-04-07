@@ -290,11 +290,16 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
 
         provider_id, model_slug = model_unique_id.split(":", 1)
 
+        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+        reasoning_enabled_for_call = persona.get("reasoning_enabled", False)
+
         # Assemble system prompt
         system_prompt = await assemble(
             user_id=user_id,
             persona_id=persona_id,
             model_unique_id=model_unique_id,
+            supports_reasoning=supports_reasoning,
+            reasoning_enabled_for_call=reasoning_enabled_for_call,
         )
 
         # Build CompletionMessage list
@@ -311,8 +316,6 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
                 role=msg["role"],
                 content=[ContentPart(type="text", text=msg["content"])],
             ))
-
-        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
 
         # Respect session-level tool group toggles (BD-038)
         db = get_db()
@@ -348,12 +351,24 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
                 correlation_id=correlation_id,
             )
 
+        from backend.modules.chat._soft_cot import is_soft_cot_active
+        from backend.modules.chat._soft_cot_parser import wrap_with_soft_cot_parser
+
+        soft_cot_on = is_soft_cot_active(
+            soft_cot_enabled=bool(persona.get("soft_cot_enabled")),
+            supports_reasoning=supports_reasoning,
+            reasoning_enabled=reasoning_enabled_for_call,
+        )
+
         def stream_fn(extra_messages=None):
             req = request
             if extra_messages:
                 extended = list(request.messages) + extra_messages
                 req = request.model_copy(update={"messages": extended})
-            return llm_stream_completion(user_id, provider_id, req)
+            upstream = llm_stream_completion(user_id, provider_id, req)
+            if soft_cot_on:
+                return wrap_with_soft_cot_parser(upstream)
+            return upstream
 
         async def save_fn(
             content: str,
