@@ -20,6 +20,8 @@ function p(id: string, name: string, opts: Partial<PersonaDto> = {}): PersonaDto
     name,
     pinned: false,
     nsfw: false,
+    colour_scheme: 'heart',
+    monogram: name.charAt(0).toUpperCase(),
     ...opts,
   } as PersonaDto
 }
@@ -44,7 +46,8 @@ describe("NewChatRow", () => {
     fireEvent.click(screen.getByRole("button", { name: /new chat/i }))
 
     const items = screen.getAllByTestId("new-chat-persona")
-    expect(items.map((i) => i.textContent)).toEqual(["Bob", "Alice"])
+    const names = items.map((i) => i.querySelector("span.flex-1")?.textContent)
+    expect(names).toEqual(["Bob", "Alice"])
 
     fireEvent.click(items[0])
     expect(mockNavigate).toHaveBeenCalledWith("/chat/b?new=1")

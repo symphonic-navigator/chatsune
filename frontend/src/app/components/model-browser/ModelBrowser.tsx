@@ -109,6 +109,15 @@ export function ModelBrowser({
     [allModels],
   )
 
+  // If the favourites filter is on but no favourites remain (e.g. user just
+  // unfavourited the last one), turn the filter off so the user is not left
+  // staring at an empty list.
+  useEffect(() => {
+    if (filters.favouritesOnly && !hasFavourites) {
+      setFilters((f) => ({ ...f, favouritesOnly: false }))
+    }
+  }, [filters.favouritesOnly, hasFavourites])
+
   // Auto-activate favourites filter on first load when user has favourites
   const [initialFavSet, setInitialFavSet] = useState(false)
   useEffect(() => {

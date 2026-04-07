@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import { sortPersonas } from './personaSort'
 
 interface NewChatRowProps {
@@ -45,17 +46,36 @@ export function NewChatRow({ personas, onCloseModal }: NewChatRowProps) {
           {visible.length === 0 ? (
             <p className="px-3 py-1 text-[11px] text-white/40">No personas available</p>
           ) : (
-            visible.map((persona) => (
-              <button
-                key={persona.id}
-                type="button"
-                data-testid="new-chat-persona"
-                onClick={() => startNewChat(persona)}
-                className="flex w-full items-center gap-2 px-3 py-1 text-left text-[12px] text-white/80 transition-colors hover:bg-white/6"
-              >
-                {persona.name}
-              </button>
-            ))
+            visible.map((persona) => {
+              const chakra = CHAKRA_PALETTE[persona.colour_scheme]
+              const monogram = persona.monogram || persona.name.charAt(0).toUpperCase()
+              return (
+                <button
+                  key={persona.id}
+                  type="button"
+                  data-testid="new-chat-persona"
+                  onClick={() => startNewChat(persona)}
+                  className="flex w-full items-center gap-2 px-3 py-1 text-left text-[12px] text-white/80 transition-colors hover:bg-white/6"
+                >
+                  <span
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+                    style={{
+                      background: `${chakra.hex}22`,
+                      border: `1px solid ${chakra.hex}55`,
+                      color: chakra.hex,
+                    }}
+                  >
+                    {monogram}
+                  </span>
+                  <span className="flex-1 truncate">{persona.name}</span>
+                  {persona.nsfw && (
+                    <span className="text-[12px]" aria-label="NSFW" title="NSFW">
+                      💋
+                    </span>
+                  )}
+                </button>
+              )
+            })
           )}
         </div>
       )}
