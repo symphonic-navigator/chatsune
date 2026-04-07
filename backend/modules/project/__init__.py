@@ -3,6 +3,7 @@
 Public API: import only from this file.
 """
 
+from backend.modules.project._handlers import router
 from backend.modules.project._repository import ProjectRepository
 
 
@@ -10,4 +11,4 @@ async def init_indexes(db) -> None:
     await ProjectRepository(db).create_indexes()
 
 
-__all__ = ["init_indexes", "ProjectRepository"]
+__all__ = ["router", "init_indexes", "ProjectRepository"]
