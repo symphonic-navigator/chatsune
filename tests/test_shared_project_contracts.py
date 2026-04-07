@@ -84,3 +84,56 @@ def test_update_dto_emoji_explicit_none_means_clear():
 def test_update_dto_emoji_string_value():
     dto = ProjectUpdateDto.model_validate({"emoji": "✏️"})
     assert dto.emoji == "✏️"
+
+
+from shared.events.project import (
+    ProjectCreatedEvent,
+    ProjectDeletedEvent,
+    ProjectUpdatedEvent,
+)
+
+
+def _sample_dto() -> ProjectDto:
+    now = datetime.now(timezone.utc)
+    return ProjectDto(
+        id="p1",
+        user_id="u1",
+        title="x",
+        emoji=None,
+        description="",
+        nsfw=False,
+        pinned=False,
+        sort_order=0,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def test_project_created_event():
+    ev = ProjectCreatedEvent(
+        project_id="p1",
+        user_id="u1",
+        project=_sample_dto(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    assert ev.type == "project.created"
+    assert ev.project.id == "p1"
+
+
+def test_project_updated_event():
+    ev = ProjectUpdatedEvent(
+        project_id="p1",
+        user_id="u1",
+        project=_sample_dto(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    assert ev.type == "project.updated"
+
+
+def test_project_deleted_event():
+    ev = ProjectDeletedEvent(
+        project_id="p1",
+        user_id="u1",
+        timestamp=datetime.now(timezone.utc),
+    )
+    assert ev.type == "project.deleted"
