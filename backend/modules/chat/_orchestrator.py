@@ -92,11 +92,23 @@ async def run_inference(
 
     provider_id, model_slug = model_unique_id.split(":", 1)
 
+    # Resolve persona and reasoning context early so the prompt assembler
+    # can decide whether to inject the Soft-CoT block.
+    persona = await get_persona(persona_id, user_id) if persona_id else None
+    reasoning_override = session.get("reasoning_override")
+    if reasoning_override is not None:
+        reasoning_enabled = reasoning_override
+    else:
+        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
+    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+
     # Assemble system prompt
     system_prompt = await assemble(
         user_id=user_id,
         persona_id=persona_id,
         model_unique_id=model_unique_id,
+        supports_reasoning=supports_reasoning,
+        reasoning_enabled_for_call=reasoning_enabled,
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
@@ -191,21 +203,9 @@ async def run_inference(
                     ))
         messages.append(CompletionMessage(role=last_msg["role"], content=last_msg_parts))
 
-    # Get persona settings for temperature/reasoning
-    persona = await get_persona(persona_id, user_id) if persona_id else None
-
     # Resolve active tool definitions based on session toggle state
     disabled_tool_groups = session.get("disabled_tool_groups", [])
     active_tools = get_active_definitions(disabled_tool_groups) or None
-
-    # Resolve reasoning: session override > persona default
-    reasoning_override = session.get("reasoning_override")
-    if reasoning_override is not None:
-        reasoning_enabled = reasoning_override
-    else:
-        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
-
-    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
 
     request = CompletionRequest(
         model=model_slug,
@@ -238,12 +238,24 @@ async def run_inference(
             correlation_id=correlation_id,
         )
 
+    from backend.modules.chat._soft_cot import is_soft_cot_active
+    from backend.modules.chat._soft_cot_parser import wrap_with_soft_cot_parser
+
+    soft_cot_on = is_soft_cot_active(
+        soft_cot_enabled=bool(persona and persona.get("soft_cot_enabled")),
+        supports_reasoning=supports_reasoning,
+        reasoning_enabled=reasoning_enabled,
+    )
+
     def stream_fn(extra_messages=None):
         req = request
         if extra_messages:
             extended = list(request.messages) + extra_messages
             req = request.model_copy(update={"messages": extended})
-        return llm_stream_completion(user_id, provider_id, req)
+        upstream = llm_stream_completion(user_id, provider_id, req)
+        if soft_cot_on:
+            return wrap_with_soft_cot_parser(upstream)
+        return upstream
 
     async def save_fn(
         content: str,
