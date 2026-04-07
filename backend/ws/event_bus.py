@@ -30,6 +30,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.PERSONA_CREATED: ([], True),
     Topics.PERSONA_UPDATED: ([], True),
     Topics.PERSONA_DELETED: ([], True),
+    Topics.PERSONA_REORDERED: ([], True),
     Topics.LLM_CREDENTIAL_SET: ([], True),
     Topics.LLM_CREDENTIAL_REMOVED: ([], True),
     Topics.LLM_CREDENTIAL_TESTED: ([], True),
