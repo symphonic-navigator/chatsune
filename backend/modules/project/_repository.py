@@ -24,7 +24,7 @@ class ProjectRepository:
         description: str,
         nsfw: bool,
     ) -> dict:
-        now = datetime.now(UTC)
+        now = datetime.now(UTC).replace(tzinfo=None)
         doc = {
             "_id": str(uuid4()),
             "user_id": user_id,
@@ -48,6 +48,26 @@ class ProjectRepository:
     async def list_for_user(self, user_id: str) -> list[dict]:
         cursor = self._collection.find({"user_id": user_id}).sort("created_at", -1)
         return await cursor.to_list(length=500)
+
+    async def update(
+        self, project_id: str, user_id: str, fields: dict,
+    ) -> dict | None:
+        if not fields:
+            return await self.find_by_id(project_id, user_id)
+        fields = {**fields, "updated_at": datetime.now(UTC).replace(tzinfo=None)}
+        result = await self._collection.update_one(
+            {"_id": project_id, "user_id": user_id},
+            {"$set": fields},
+        )
+        if result.matched_count == 0:
+            return None
+        return await self.find_by_id(project_id, user_id)
+
+    async def delete(self, project_id: str, user_id: str) -> bool:
+        result = await self._collection.delete_one(
+            {"_id": project_id, "user_id": user_id},
+        )
+        return result.deleted_count > 0
 
     @staticmethod
     def to_dto(doc: dict) -> ProjectDto:
