@@ -59,6 +59,13 @@ class ChatRepository:
         ]
         return await self._sessions.aggregate(pipeline).to_list(length=200)
 
+    async def find_sessions_by_ids(self, session_ids: list[str], user_id: str) -> list[dict]:
+        """Return raw session docs for the given ids that belong to the user. Soft-deleted included."""
+        if not session_ids:
+            return []
+        cursor = self._sessions.find({"_id": {"$in": session_ids}, "user_id": user_id})
+        return await cursor.to_list(length=len(session_ids))
+
     async def search_sessions(
         self,
         user_id: str,

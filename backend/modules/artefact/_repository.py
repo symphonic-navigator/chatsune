@@ -42,6 +42,13 @@ class ArtefactRepository:
         ).sort("created_at", 1)
         return await cursor.to_list(length=200)
 
+    async def list_by_user(self, user_id: str) -> list[dict]:
+        """List all artefacts owned by ``user_id`` across all sessions, newest first."""
+        cursor = self._artefacts.find(
+            {"user_id": user_id},
+        ).sort("updated_at", -1)
+        return await cursor.to_list(length=2000)
+
     async def update_content(
         self,
         artefact_id: str,

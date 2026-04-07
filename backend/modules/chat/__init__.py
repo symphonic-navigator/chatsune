@@ -110,6 +110,20 @@ async def mark_messages_extracted(message_ids: list[str]) -> int:
     return await repo.mark_messages_extracted(message_ids)
 
 
+async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:
+    """Return ``{session_id: {"title": str | None, "persona_id": str}}`` for the given ids.
+
+    Public-API helper so other modules (artefact list view) can enrich rows with
+    session context without reaching into the chat repository directly.
+    """
+    repo = ChatRepository(get_db())
+    docs = await repo.find_sessions_by_ids(session_ids, user_id)
+    return {
+        str(d["_id"]): {"title": d.get("title"), "persona_id": d.get("persona_id")}
+        for d in docs
+    }
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
@@ -118,4 +132,5 @@ __all__ = [
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
+    "get_session_summaries",
 ]
