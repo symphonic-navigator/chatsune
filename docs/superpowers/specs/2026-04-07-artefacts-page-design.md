@@ -154,6 +154,33 @@ Action menu → "Open in chat" (also the default click on the row body).
 This satisfies the user's wish to also see the surrounding conversation that
 produced the artefact.
 
+## Events
+
+Per project rule (Event-First, no exceptions): every state change must be
+visible to the user via an event. For this feature:
+
+- **Rename** uses the existing `PATCH /api/chat/sessions/{sid}/artefacts/{id}`
+  which already publishes `Topics.ARTEFACT_UPDATED` with an
+  `ArtefactUpdatedEvent`. Verify the event payload contains the fields the
+  Artefacts page needs (`title`, `updated_at`); if not, extend the existing
+  event DTO in `shared/events/` rather than adding a new event.
+- **Delete** uses the existing `DELETE` endpoint which already publishes
+  `Topics.ARTEFACT_DELETED`. The list page subscribes and removes the row.
+- **Create** (artefacts produced inside a chat) already emits
+  `Topics.ARTEFACT_CREATED`. The list page subscribes and inserts new rows
+  at the top so a freshly produced artefact appears immediately even if the
+  user was already on the Artefacts page.
+- **Persona incognito toggle** already emits an event consumed by
+  `personaStore`; no new event needed — the page re-derives from the store.
+- **No new endpoints introduce silent state changes.** The new
+  `GET /api/artefacts/` is read-only. If during planning we discover any
+  write path that lacks an event, we add the event to `shared/events/` and
+  the topic to `shared/topics.py` *first*, then wire it up.
+
+Verification step during planning: enumerate every artefact-related event
+already defined in `shared/events/` and `shared/topics.py`, confirm each
+covers the fields the page needs, and only extend (never duplicate).
+
 ## Error handling
 
 - List fetch failure: standard error toast plus a retry affordance in the
