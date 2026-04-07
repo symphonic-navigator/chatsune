@@ -1,5 +1,6 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
+import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import { UserBubble } from './UserBubble'
 import { AssistantMessage } from './AssistantMessage'
@@ -48,6 +49,31 @@ export function MessageList({
   const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
   const thinkingExpandedRef = useRef(true)
 
+  const visionDescriptions = useChatStore((s) => s.visionDescriptions)
+  const correlationId = useChatStore((s) => s.correlationId)
+
+  // Live vision descriptions only apply to the most recent user message while
+  // a stream is active; persisted messages render from their own snapshots.
+  const lastUserMessageId = useMemo(() => {
+    const idx = messages.findLastIndex((m) => m.role === 'user')
+    return idx === -1 ? null : messages[idx].id
+  }, [messages])
+
+  function liveDescriptionsForMessage(messageId: string): Record<string, LiveVisionDescription> | undefined {
+    if (!correlationId || messageId !== lastUserMessageId) return undefined
+    const result: Record<string, LiveVisionDescription> = {}
+    for (const [key, payload] of Object.entries(visionDescriptions)) {
+      const sepIndex = key.indexOf(':')
+      if (sepIndex === -1) continue
+      const corr = key.slice(0, sepIndex)
+      const fileId = key.slice(sepIndex + 1)
+      if (corr === correlationId) {
+        result[fileId] = payload
+      }
+    }
+    return Object.keys(result).length > 0 ? result : undefined
+  }
+
   const scrollbarStyle = `
     .chat-scroll::-webkit-scrollbar { width: 8px; }
     .chat-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -72,9 +98,16 @@ export function MessageList({
             return (
               <div key={msg.id}>
                 <div id={`msg-${msg.id}`} />
-                <UserBubble content={msg.content} attachments={msg.attachments}
-                  onEdit={(newContent) => onEdit(msg.id, newContent)} isEditable={!isStreaming}
-                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)} />
+                <UserBubble
+                  content={msg.content}
+                  attachments={msg.attachments}
+                  visionDescriptionsUsed={msg.vision_descriptions_used}
+                  liveVisionDescriptions={liveDescriptionsForMessage(msg.id)}
+                  onEdit={(newContent) => onEdit(msg.id, newContent)}
+                  isEditable={!isStreaming}
+                  isBookmarked={isBm}
+                  onBookmark={() => onBookmark(msg.id)}
+                />
               </div>
             )
           }

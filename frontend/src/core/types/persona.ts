@@ -17,6 +17,8 @@ export interface PersonaDto {
   system_prompt: string;
   temperature: number;
   reasoning_enabled: boolean;
+  soft_cot_enabled: boolean;
+  vision_fallback_model: string | null;
   nsfw: boolean;
   colour_scheme: ChakraColour;
   display_order: number;
@@ -35,6 +37,8 @@ export interface CreatePersonaRequest {
   system_prompt: string;
   temperature?: number;
   reasoning_enabled?: boolean;
+  soft_cot_enabled?: boolean;
+  vision_fallback_model?: string | null;
   nsfw?: boolean;
   colour_scheme?: ChakraColour;
   display_order?: number;
@@ -49,6 +53,8 @@ export interface UpdatePersonaRequest {
   system_prompt?: string;
   temperature?: number;
   reasoning_enabled?: boolean;
+  soft_cot_enabled?: boolean;
+  vision_fallback_model?: string | null;
   nsfw?: boolean;
   colour_scheme?: ChakraColour;
   display_order?: number;

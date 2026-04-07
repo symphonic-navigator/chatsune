@@ -23,6 +23,13 @@ interface WebSearchContextItem {
   source_type?: "search" | "fetch"
 }
 
+interface VisionDescriptionSnapshot {
+  file_id: string
+  display_name: string
+  model_id: string
+  text: string
+}
+
 interface ChatMessageDto {
   id: string
   session_id: string
@@ -33,6 +40,7 @@ interface ChatMessageDto {
   attachments: AttachmentRefDto[] | null
   web_search_context: WebSearchContextItem[] | null
   knowledge_context: RetrievedChunkDto[] | null
+  vision_descriptions_used?: VisionDescriptionSnapshot[] | null
   created_at: string
 }
 
@@ -44,7 +52,14 @@ interface ToolGroupDto {
   toggleable: boolean
 }
 
-export type { ChatSessionDto, ChatMessageDto, WebSearchContextItem, ToolGroupDto, AttachmentRefDto }
+export type {
+  ChatSessionDto,
+  ChatMessageDto,
+  WebSearchContextItem,
+  VisionDescriptionSnapshot,
+  ToolGroupDto,
+  AttachmentRefDto,
+}
 
 export const chatApi = {
   createSession: (personaId: string) =>

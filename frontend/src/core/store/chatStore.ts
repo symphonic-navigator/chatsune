@@ -17,6 +17,15 @@ interface ActiveToolCall {
   status: 'running' | 'done'
 }
 
+export interface LiveVisionDescription {
+  file_id: string
+  display_name: string
+  model_id: string
+  status: 'pending' | 'success' | 'error'
+  text: string | null
+  error: string | null
+}
+
 interface ChatState {
   messages: ChatMessageDto[]
   isWaitingForResponse: boolean
@@ -27,6 +36,7 @@ interface ChatState {
   streamingWebSearchContext: WebSearchContextItem[]
   streamingKnowledgeContext: RetrievedChunkDto[]
   activeToolCalls: ActiveToolCall[]
+  visionDescriptions: Record<string, LiveVisionDescription>
   contextStatus: ContextStatus
   contextFillPercentage: number
   error: ChatError | null
@@ -43,6 +53,7 @@ interface ChatState {
   setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
+  upsertVisionDescription: (correlationId: string, payload: LiveVisionDescription) => void
   finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number) => void
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
@@ -69,6 +80,7 @@ const INITIAL_STATE = {
   streamingWebSearchContext: [] as WebSearchContextItem[],
   streamingKnowledgeContext: [] as RetrievedChunkDto[],
   activeToolCalls: [] as ActiveToolCall[],
+  visionDescriptions: {} as Record<string, LiveVisionDescription>,
   contextStatus: 'green' as ContextStatus,
   contextFillPercentage: 0,
   error: null as ChatError | null,
@@ -88,7 +100,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], error: null,
+      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], visionDescriptions: {}, error: null,
     }),
   appendStreamingContent: (delta) =>
     set((s) => ({ streamingContent: s.streamingContent + delta })),
@@ -105,6 +117,13 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       activeToolCalls: s.activeToolCalls.map((tc) =>
         tc.id === toolCallId ? { ...tc, status: 'done' as const } : tc,
       ),
+    })),
+  upsertVisionDescription: (correlationId, payload) =>
+    set((s) => ({
+      visionDescriptions: {
+        ...s.visionDescriptions,
+        [`${correlationId}:${payload.file_id}`]: payload,
+      },
     })),
   finishStreaming: (finalMessage, contextStatus, fillPercentage) =>
     set((s) => ({

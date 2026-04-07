@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import type { AttachmentRefDto } from '../../core/api/chat'
+import type { AttachmentRefDto, VisionDescriptionSnapshot } from '../../core/api/chat'
+import type { LiveVisionDescription } from '../../core/store/chatStore'
 import { AttachmentChip } from './AttachmentChip'
+import { VisionDescriptionBlock } from './VisionDescriptionBlock'
 
 interface UserBubbleProps {
   content: string
   attachments?: AttachmentRefDto[] | null
+  visionDescriptionsUsed?: VisionDescriptionSnapshot[] | null
+  liveVisionDescriptions?: Record<string, LiveVisionDescription>
   onEdit: (newContent: string) => void
   isEditable: boolean
   isBookmarked?: boolean
   onBookmark?: () => void
 }
 
-export function UserBubble({ content, attachments, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
+export function UserBubble({ content, attachments, visionDescriptionsUsed, liveVisionDescriptions, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -63,10 +67,37 @@ export function UserBubble({ content, attachments, onEdit, isEditable, isBookmar
         <div className="rounded-2xl rounded-tr-sm bg-white/8 px-4 py-2.5">
           <p className="chat-text whitespace-pre-wrap text-white/90">{content}</p>
           {attachments && attachments.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {attachments.map((att) => (
-                <AttachmentChip key={att.file_id} attachment={att} />
-              ))}
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {attachments.map((att) => {
+                const isImage = att.media_type.startsWith('image/')
+                const persisted = visionDescriptionsUsed?.find((s) => s.file_id === att.file_id)
+                const live = liveVisionDescriptions?.[att.file_id]
+                const visionState: LiveVisionDescription | null = live
+                  ? live
+                  : persisted
+                    ? {
+                        file_id: persisted.file_id,
+                        display_name: persisted.display_name,
+                        model_id: persisted.model_id,
+                        status: 'success' as const,
+                        text: persisted.text,
+                        error: null,
+                      }
+                    : null
+                return (
+                  <div key={att.file_id} className="flex flex-col">
+                    <AttachmentChip attachment={att} />
+                    {isImage && visionState && (
+                      <VisionDescriptionBlock
+                        status={visionState.status}
+                        modelId={visionState.model_id}
+                        text={visionState.text}
+                        error={visionState.error}
+                      />
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
           {isEditable && (

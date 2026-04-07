@@ -44,6 +44,7 @@ export const Topics = {
   CHAT_THINKING_DELTA: "chat.thinking.delta",
   CHAT_STREAM_ENDED: "chat.stream.ended",
   CHAT_STREAM_ERROR: "chat.stream.error",
+  CHAT_VISION_DESCRIPTION: "chat.vision.description",
   CHAT_MESSAGES_TRUNCATED: "chat.messages.truncated",
   CHAT_MESSAGE_UPDATED: "chat.message.updated",
   CHAT_MESSAGE_DELETED: "chat.message.deleted",

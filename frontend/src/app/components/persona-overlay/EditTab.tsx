@@ -25,6 +25,8 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [systemPrompt, setSystemPrompt] = useState(persona.system_prompt)
   const [temperature, setTemperature] = useState(persona.temperature)
   const [reasoningEnabled, setReasoningEnabled] = useState(persona.reasoning_enabled)
+  const [softCotEnabled, setSoftCotEnabled] = useState(persona.soft_cot_enabled)
+  const [visionFallbackModel, setVisionFallbackModel] = useState<string | null>(persona.vision_fallback_model)
   const [nsfw, setNsfw] = useState(persona.nsfw)
   const [saving, setSaving] = useState(false)
   const [modelUniqueId, setModelUniqueId] = useState(persona.model_unique_id)
@@ -36,6 +38,10 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   )
   const [canReason, setCanReason] = useState(false)
   const [canUseTools, setCanUseTools] = useState(true)
+  const [canSeeImages, setCanSeeImages] = useState(true)
+  const [visionCapableModels, setVisionCapableModels] = useState<
+    Array<{ unique_id: string; display_name: string; provider_id: string }>
+  >([])
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
@@ -60,6 +66,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         const model = models.find((m) => m.model_id === modelSlug)
         setCanReason(model?.supports_reasoning ?? false)
         setCanUseTools(model?.supports_tool_calls ?? false)
+        setCanSeeImages(model?.supports_vision ?? false)
         if (model && !model.supports_reasoning) {
           setReasoningEnabled(false)
         }
@@ -67,8 +74,39 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       .catch(() => {
         setCanReason(false)
         setCanUseTools(true)
+        setCanSeeImages(false)
       })
   }, [persona.model_unique_id])
+
+  // Load vision-capable models across all registered providers for the
+  // fallback dropdown. Runs once on mount — the result does not depend on
+  // the persona's main model and is cheap to keep around.
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const providers = await llmApi.listProviders()
+        const perProvider = await Promise.all(
+          providers.map((p) => llmApi.listModels(p.provider_id).catch(() => [])),
+        )
+        if (cancelled) return
+        const flat = perProvider.flat().filter((m) => m.supports_vision)
+        setVisionCapableModels(flat.map((m) => ({
+          unique_id: m.unique_id,
+          display_name: m.display_name,
+          provider_id: m.provider_id,
+        })))
+      } catch {
+        if (!cancelled) setVisionCapableModels([])
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  // Soft-CoT is available whenever the persona has opted in and Hard-CoT
+  // is not currently active. The toggle is greyed while Hard-CoT takes over.
+  const softCotDisabled = canReason && reasoningEnabled
 
   const isDirty = isCreating ||
     name !== persona.name ||
@@ -77,6 +115,8 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     systemPrompt !== persona.system_prompt ||
     temperature !== persona.temperature ||
     reasoningEnabled !== persona.reasoning_enabled ||
+    softCotEnabled !== persona.soft_cot_enabled ||
+    visionFallbackModel !== persona.vision_fallback_model ||
     nsfw !== persona.nsfw ||
     modelUniqueId !== persona.model_unique_id
 
@@ -95,6 +135,8 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         system_prompt: systemPrompt,
         temperature,
         reasoning_enabled: reasoningEnabled,
+        soft_cot_enabled: softCotEnabled,
+        vision_fallback_model: visionFallbackModel,
         nsfw,
         model_unique_id: modelUniqueId,
       }
@@ -110,12 +152,14 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     provider_id: string
     supports_reasoning: boolean
     supports_tool_calls: boolean
+    supports_vision?: boolean
   }) {
     setModelUniqueId(model.unique_id)
     setModelDisplayName(model.display_name)
     setModelProvider(model.provider_id)
     setCanReason(model.supports_reasoning)
     setCanUseTools(model.supports_tool_calls)
+    setCanSeeImages(model.supports_vision ?? false)
     if (!model.supports_reasoning) {
       setReasoningEnabled(false)
     }
@@ -346,6 +390,48 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
             chakraHex={chakra.hex}
             disabled={!canReason}
           />
+          <Toggle
+            label="Soft Chain-of-Thought"
+            description={
+              softCotDisabled
+                ? "Disabled while native reasoning is active"
+                : "Ask the model to reason inside <think>...</think> blocks"
+            }
+            value={softCotEnabled}
+            onChange={setSoftCotEnabled}
+            chakraHex={chakra.hex}
+            disabled={softCotDisabled}
+          />
+          {!canSeeImages && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] text-white/40 uppercase tracking-wider">
+                Vision fallback
+              </label>
+              <select
+                value={visionFallbackModel ?? ""}
+                onChange={(e) => setVisionFallbackModel(e.target.value || null)}
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${chakra.hex}26`,
+                  borderRadius: 8,
+                  color: 'rgba(255,255,255,0.85)',
+                  fontSize: 13,
+                  padding: '8px 12px',
+                  outline: 'none',
+                }}
+              >
+                <option value="">No fallback</option>
+                {visionCapableModels.map((m) => (
+                  <option key={m.unique_id} value={m.unique_id}>
+                    {m.provider_id} — {m.display_name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-white/45">
+                Used to describe images for this non-vision model.
+              </span>
+            </div>
+          )}
           <Toggle
             label="NSFW"
             description="Hide this persona and related data in 'sanitised' mode"

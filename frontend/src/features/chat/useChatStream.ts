@@ -29,6 +29,17 @@ export function useChatStream(sessionId: string | null) {
           getStore().appendStreamingThinking(p.delta as string)
           break
         }
+        case Topics.CHAT_VISION_DESCRIPTION: {
+          getStore().upsertVisionDescription(event.correlation_id, {
+            file_id: p.file_id as string,
+            display_name: p.display_name as string,
+            model_id: p.model_id as string,
+            status: p.status as 'pending' | 'success' | 'error',
+            text: (p.text as string | null) ?? null,
+            error: (p.error as string | null) ?? null,
+          })
+          break
+        }
         case Topics.CHAT_TOOL_CALL_STARTED: {
           if (event.correlation_id !== getStore().correlationId) return
           getStore().addToolCall({
