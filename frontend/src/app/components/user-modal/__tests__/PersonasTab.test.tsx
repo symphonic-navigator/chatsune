@@ -41,10 +41,11 @@ beforeEach(() => {
 })
 
 describe('PersonasTab', () => {
-  it('renders personas in pinned-first then display_order ascending', () => {
+  it('renders pinned personas first, preserving state order otherwise', () => {
+    // State order from API is already sorted by display_order; we only partition by pinned.
     mockPersonas = [
-      makePersona({ id: 'a', name: 'Alpha', display_order: 2, pinned: false }),
       makePersona({ id: 'b', name: 'Beta', display_order: 0, pinned: false }),
+      makePersona({ id: 'a', name: 'Alpha', display_order: 2, pinned: false }),
       makePersona({ id: 'c', name: 'Gamma', display_order: 5, pinned: true }),
     ]
     render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
