@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from redis.asyncio import Redis
 
-from backend.jobs._lock import get_user_lock
+from backend.jobs._lock import get_job_lock
 from backend.jobs._models import JobEntry
 from backend.jobs._registry import JOB_REGISTRY
 from backend.jobs._retry import set_retry, get_retry, clear_retry
@@ -19,6 +19,21 @@ _log = logging.getLogger(__name__)
 _STREAM = "jobs:pending"
 _GROUP = "workers"
 _CONSUMER_NAME = "consumer-1"
+
+
+def _is_actionable(job: JobEntry, retry_state: dict | None) -> bool:
+    """Return True if a pending job can be executed in this iteration.
+
+    A pending entry is *not* actionable when its retry timer is still in
+    the future, or when another background job for the same user is
+    currently running. We must skip such entries instead of blocking on
+    them, otherwise one stuck job halts the entire stream.
+    """
+    if retry_state and retry_state["next_retry_at"] > datetime.now(timezone.utc):
+        return False
+    if get_job_lock(job.user_id).locked():
+        return False
+    return True
 
 
 async def ensure_consumer_group(redis: Redis) -> None:
@@ -38,22 +53,38 @@ async def process_one(redis: Redis, event_bus) -> bool:
     Returns True if a job was processed (success, failure, or expiry).
     Returns False if no job was available or the job was skipped (locked user).
     """
-    # First check pending entries (retries, previously unacked)
-    entries = await redis.xreadgroup(
-        _GROUP, _CONSUMER_NAME, {_STREAM: "0"}, count=1,
+    # First, scan pending entries (retries, previously unacked) for an
+    # actionable one. We read a batch instead of count=1 because a single
+    # stuck pending entry (locked user, retry timer in the future) must
+    # not block the rest of the queue — we have to be able to step over
+    # it and still pick up new work in the same iteration.
+    pending = await redis.xreadgroup(
+        _GROUP, _CONSUMER_NAME, {_STREAM: "0"}, count=32,
     )
+    pending_entries = pending[0][1] if pending and pending[0][1] else []
 
-    if not entries or not entries[0][1]:
-        # No pending — read new entries
-        entries = await redis.xreadgroup(
+    stream_id: str | None = None
+    job: JobEntry | None = None
+    for entry_id, fields in pending_entries:
+        candidate = JobEntry.model_validate_json(fields["data"])
+        retry_state = await get_retry(redis, candidate.id)
+        if _is_actionable(candidate, retry_state):
+            if retry_state:
+                candidate.attempt = retry_state["attempt"]
+            stream_id, job = entry_id, candidate
+            break
+
+    # No actionable pending entry — try to fetch a new one. If even that
+    # is empty, we genuinely have nothing to do; block briefly so the
+    # outer loop does not spin when the queue is fully drained.
+    if job is None:
+        new_entries = await redis.xreadgroup(
             _GROUP, _CONSUMER_NAME, {_STREAM: ">"}, count=1, block=5000,
         )
-
-    if not entries or not entries[0][1]:
-        return False
-
-    stream_id, fields = entries[0][1][0]
-    job = JobEntry.model_validate_json(fields["data"])
+        if not new_entries or not new_entries[0][1]:
+            return False
+        stream_id, fields = new_entries[0][1][0]
+        job = JobEntry.model_validate_json(fields["data"])
 
     config = JOB_REGISTRY.get(job.job_type)
     if config is None:
@@ -86,19 +117,10 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await redis.xack(_STREAM, _GROUP, stream_id)
         return True
 
-    # Check retry timing
-    retry_state = await get_retry(redis, job.id)
-    if retry_state and retry_state["next_retry_at"] > now:
-        return False  # Not yet time — leave unacked
-
-    # Update attempt from retry state if available
-    if retry_state:
-        job.attempt = retry_state["attempt"]
-
-    # Check per-user lock (non-blocking)
-    lock = get_user_lock(job.user_id)
-    if lock.locked():
-        return False  # User busy — leave unacked for next iteration
+    # Retry timing and per-user lock were already checked in the
+    # actionable scan above; we hold no flag for them here. The job-level
+    # lock is taken below to serialise concurrent jobs for the same user.
+    lock = get_job_lock(job.user_id)
 
     # Execute the job
     try:
