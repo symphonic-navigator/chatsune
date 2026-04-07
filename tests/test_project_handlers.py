@@ -183,3 +183,22 @@ async def test_patch_invalid_title_rejected(client: AsyncClient):
         f"/api/projects/{pid}", json={"title": "   "}, headers=_auth(token),
     )
     assert resp.status_code == 422
+
+
+async def test_delete_project(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "x"}, headers=_auth(token),
+    )).json()["id"]
+
+    resp = await client.delete(f"/api/projects/{pid}", headers=_auth(token))
+    assert resp.status_code == 204
+
+    get_resp = await client.get(f"/api/projects/{pid}", headers=_auth(token))
+    assert get_resp.status_code == 404
+
+
+async def test_delete_other_user_returns_404(client: AsyncClient):
+    token = await _setup_and_login(client)
+    resp = await client.delete("/api/projects/nonexistent", headers=_auth(token))
+    assert resp.status_code == 404

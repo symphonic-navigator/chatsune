@@ -8,7 +8,7 @@ from backend.dependencies import require_active_session
 from backend.modules.project._repository import ProjectRepository
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.project import ProjectCreateDto, ProjectUpdateDto, _Unset
-from shared.events.project import ProjectCreatedEvent, ProjectUpdatedEvent
+from shared.events.project import ProjectCreatedEvent, ProjectDeletedEvent, ProjectUpdatedEvent
 from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
@@ -105,3 +105,27 @@ async def update_project(
         target_user_ids=[user["sub"]],
     )
     return dto
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(
+    project_id: str,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    repo = _repo()
+    deleted = await repo.delete(project_id, user["sub"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await event_bus.publish(
+        Topics.PROJECT_DELETED,
+        ProjectDeletedEvent(
+            project_id=project_id,
+            user_id=user["sub"],
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"user:{user['sub']}",
+        target_user_ids=[user["sub"]],
+    )
+    return None
