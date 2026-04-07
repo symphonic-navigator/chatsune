@@ -3,7 +3,7 @@ import type { EnrichedModelDto } from "../../../core/types/llm"
 import { llmApi } from "../../../core/api/llm"
 import { useEnrichedModels } from "../../../core/hooks/useEnrichedModels"
 import { slugWithoutProvider } from "./modelFilters"
-import { ModelBrowser } from "./ModelBrowser"
+import { ModelBrowser, type LockedFilters } from "./ModelBrowser"
 import { ModelConfigModal } from "./ModelConfigModal"
 
 interface ModelSelectionModalProps {
@@ -16,12 +16,14 @@ interface ModelSelectionModalProps {
     supports_tool_calls: boolean
   }) => void
   onClose: () => void
+  lockedFilters?: LockedFilters
 }
 
 export function ModelSelectionModal({
   currentModelId,
   onSelect,
   onClose,
+  lockedFilters,
 }: ModelSelectionModalProps) {
   const { models, setModels, isLoading: loading, error } = useEnrichedModels()
   const [configModel, setConfigModel] = useState<EnrichedModelDto | null>(null)
@@ -143,6 +145,7 @@ export function ModelSelectionModal({
                 onSelect={handleSelect}
                 onEditConfig={(m) => setConfigModel(m)}
                 onToggleFavourite={handleToggleFavourite}
+                lockedFilters={lockedFilters}
               />
             )}
           </div>
