@@ -26,3 +26,10 @@ class PersonaDeletedEvent(BaseModel):
     persona_id: str
     user_id: str
     timestamp: datetime
+
+
+class PersonaReorderedEvent(BaseModel):
+    type: str = "persona.reordered"
+    user_id: str
+    ordered_ids: list[str]
+    timestamp: datetime

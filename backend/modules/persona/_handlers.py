@@ -25,6 +25,7 @@ from shared.dtos.persona import (
 from shared.events.persona import (
     PersonaCreatedEvent,
     PersonaDeletedEvent,
+    PersonaReorderedEvent,
     PersonaUpdatedEvent,
 )
 from shared.topics import Topics
@@ -114,9 +115,20 @@ async def create_persona(
 async def reorder_personas(
     body: ReorderPersonasDto,
     user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _persona_repo()
     await repo.bulk_reorder(user["sub"], body.ordered_ids)
+    await event_bus.publish(
+        Topics.PERSONA_REORDERED,
+        PersonaReorderedEvent(
+            user_id=user["sub"],
+            ordered_ids=body.ordered_ids,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"user:{user['sub']}",
+        target_user_ids=[user["sub"]],
+    )
     return {"status": "ok"}
 
 

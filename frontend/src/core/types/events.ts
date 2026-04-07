@@ -27,6 +27,7 @@ export const Topics = {
   PERSONA_CREATED: "persona.created",
   PERSONA_UPDATED: "persona.updated",
   PERSONA_DELETED: "persona.deleted",
+  PERSONA_REORDERED: "persona.reordered",
   LLM_CREDENTIAL_SET: "llm.credential.set",
   LLM_CREDENTIAL_REMOVED: "llm.credential.removed",
   LLM_CREDENTIAL_TESTED: "llm.credential.tested",

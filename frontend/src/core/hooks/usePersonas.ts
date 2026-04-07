@@ -46,6 +46,18 @@ export function usePersonas() {
         if (!personaId) return
         setPersonas((prev) => prev.filter((p) => p.id !== personaId))
       }),
+      eventBus.on(Topics.PERSONA_REORDERED, (event: BaseEvent) => {
+        const orderedIds = event.payload.ordered_ids as string[] | undefined
+        if (!orderedIds) return
+        setPersonas((prev) => {
+          const map = new Map(prev.map((p) => [p.id, p]))
+          const reordered = orderedIds.map((id) => map.get(id)).filter(Boolean) as PersonaDto[]
+          // Preserve any personas not present in ordered_ids (shouldn't normally happen)
+          const seen = new Set(orderedIds)
+          const leftover = prev.filter((p) => !seen.has(p.id))
+          return [...reordered, ...leftover]
+        })
+      }),
     ]
 
     return () => unsubs.forEach((u) => u())
