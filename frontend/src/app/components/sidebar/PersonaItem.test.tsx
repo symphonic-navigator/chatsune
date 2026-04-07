@@ -13,6 +13,8 @@ const mockPersona: PersonaDto = {
   system_prompt: "",
   temperature: 0.8,
   reasoning_enabled: false,
+  soft_cot_enabled: false,
+  vision_fallback_model: null,
   nsfw: false,
   colour_scheme: "heart",
   display_order: 0,
