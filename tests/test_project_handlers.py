@@ -106,3 +106,80 @@ async def test_list_orders_newest_first(client: AsyncClient):
     resp = await client.get("/api/projects", headers=_auth(token))
     titles = [p["title"] for p in resp.json()]
     assert titles == ["C", "B", "A"]
+
+
+async def test_patch_title(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "Old"}, headers=_auth(token),
+    )).json()["id"]
+
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"title": "New"}, headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "New"
+
+
+async def test_patch_emoji_set(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "x"}, headers=_auth(token),
+    )).json()["id"]
+
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"emoji": "🔥"}, headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["emoji"] == "🔥"
+
+
+async def test_patch_emoji_explicit_null_clears(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects",
+        json={"title": "x", "emoji": "🔥"},
+        headers=_auth(token),
+    )).json()["id"]
+
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"emoji": None}, headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["emoji"] is None
+
+
+async def test_patch_emoji_omitted_preserves(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects",
+        json={"title": "x", "emoji": "🔥"},
+        headers=_auth(token),
+    )).json()["id"]
+
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"title": "y"}, headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["title"] == "y"
+    assert body["emoji"] == "🔥"
+
+
+async def test_patch_other_user_returns_404(client: AsyncClient):
+    token = await _setup_and_login(client)
+    resp = await client.patch(
+        "/api/projects/nonexistent", json={"title": "x"}, headers=_auth(token),
+    )
+    assert resp.status_code == 404
+
+
+async def test_patch_invalid_title_rejected(client: AsyncClient):
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "x"}, headers=_auth(token),
+    )).json()["id"]
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"title": "   "}, headers=_auth(token),
+    )
+    assert resp.status_code == 422

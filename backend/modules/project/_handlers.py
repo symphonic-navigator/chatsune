@@ -7,8 +7,8 @@ from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.project._repository import ProjectRepository
 from backend.ws.event_bus import EventBus, get_event_bus
-from shared.dtos.project import ProjectCreateDto
-from shared.events.project import ProjectCreatedEvent
+from shared.dtos.project import ProjectCreateDto, ProjectUpdateDto, _Unset
+from shared.events.project import ProjectCreatedEvent, ProjectUpdatedEvent
 from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
@@ -56,6 +56,47 @@ async def create_project(
         Topics.PROJECT_CREATED,
         ProjectCreatedEvent(
             project_id=doc["_id"],
+            user_id=user["sub"],
+            project=dto,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"user:{user['sub']}",
+        target_user_ids=[user["sub"]],
+    )
+    return dto
+
+
+@router.patch("/{project_id}")
+async def update_project(
+    project_id: str,
+    body: ProjectUpdateDto,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    fields: dict = {}
+    if body.title is not None:
+        fields["title"] = body.title
+    if body.description is not None:
+        fields["description"] = body.description
+    if body.nsfw is not None:
+        fields["nsfw"] = body.nsfw
+    # Sentinel-aware emoji handling: UNSET → don't touch; None → clear; str → set.
+    if not isinstance(body.emoji, _Unset):
+        fields["emoji"] = body.emoji
+
+    if not fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    repo = _repo()
+    updated = await repo.update(project_id, user["sub"], fields)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    dto = ProjectRepository.to_dto(updated)
+    await event_bus.publish(
+        Topics.PROJECT_UPDATED,
+        ProjectUpdatedEvent(
+            project_id=project_id,
             user_id=user["sub"],
             project=dto,
             timestamp=datetime.now(timezone.utc),
