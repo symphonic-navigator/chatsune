@@ -22,9 +22,10 @@ def _make_test_uri(base: str) -> str:
     return f"{parts[0]}/{parts[1]}_test"
 
 
-# Override the URI once at import time so every test — whether or not it uses
-# the clean_db fixture — talks to the dedicated test database.
+# Override the URI and DB name once at import time so every test talks to the
+# dedicated test database (chatsune_test) instead of the live one.
 settings.mongodb_uri = _make_test_uri(settings.mongodb_uri)
+settings.mongo_db_name = settings.mongo_db_name + "_test"
 
 
 @pytest_asyncio.fixture

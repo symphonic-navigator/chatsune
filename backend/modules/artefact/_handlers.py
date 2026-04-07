@@ -247,6 +247,63 @@ async def undo_artefact(
     return _to_detail(updated)
 
 
+from backend.modules.chat import get_session_summaries
+from backend.modules.persona import get_persona
+from shared.dtos.artefact import ArtefactListItemDto
+
+global_router = APIRouter(prefix="/api/artefacts", tags=["artefacts"])
+
+
+@global_router.get("/")
+async def list_user_artefacts(
+    user: dict = Depends(require_active_session),
+) -> list[ArtefactListItemDto]:
+    """Return every artefact owned by the authenticated user across all sessions."""
+    repo = _repo()
+    artefacts = await repo.list_by_user(user["sub"])
+    if not artefacts:
+        return []
+
+    session_ids = list({a["session_id"] for a in artefacts})
+    sessions = await get_session_summaries(session_ids, user["sub"])
+
+    persona_ids = {info["persona_id"] for info in sessions.values() if info.get("persona_id")}
+    personas: dict[str, dict] = {}
+    for pid in persona_ids:
+        p = await get_persona(pid, user["sub"])
+        if p:
+            personas[pid] = p
+
+    rows: list[ArtefactListItemDto] = []
+    for a in artefacts:
+        sid = a["session_id"]
+        sess = sessions.get(sid)
+        if not sess:
+            continue  # orphan (hard-deleted session) — skip
+        persona_id = sess.get("persona_id") or ""
+        persona = personas.get(persona_id)
+        if not persona:
+            continue
+        rows.append(ArtefactListItemDto(
+            id=str(a["_id"]),
+            handle=a["handle"],
+            title=a["title"],
+            type=a["type"],
+            language=a.get("language"),
+            size_bytes=a["size_bytes"],
+            version=a["version"],
+            created_at=a["created_at"],
+            updated_at=a["updated_at"],
+            session_id=sid,
+            session_title=sess.get("title"),
+            persona_id=persona_id,
+            persona_name=persona.get("name", ""),
+            persona_monogram=persona.get("monogram") or (persona.get("name", "?")[:1].upper()),
+            persona_colour_scheme=persona.get("colour_scheme") or "throat",
+        ))
+    return rows
+
+
 @router.post("/{artefact_id}/redo")
 async def redo_artefact(
     session_id: str,

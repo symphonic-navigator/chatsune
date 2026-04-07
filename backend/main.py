@@ -25,7 +25,7 @@ from backend.modules.knowledge import (
     handle_embedding_completed,
     handle_embedding_error,
 )
-from backend.modules.artefact import router as artefact_router, init_indexes as artefact_init_indexes
+from backend.modules.artefact import router as artefact_router, global_router as artefact_global_router, init_indexes as artefact_init_indexes
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -394,6 +394,7 @@ app.include_router(memory_router)
 app.include_router(embedding_router)
 app.include_router(knowledge_router)
 app.include_router(artefact_router)
+app.include_router(artefact_global_router)
 app.include_router(ws_router)
 
 

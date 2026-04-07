@@ -7,7 +7,7 @@ import re
 from datetime import datetime, timezone
 
 from backend.database import get_db
-from backend.modules.artefact._handlers import router
+from backend.modules.artefact._handlers import router, global_router
 from backend.modules.artefact._repository import ArtefactRepository
 
 _HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -159,6 +159,7 @@ async def list_artefacts(*, session_id: str) -> list[dict]:
 
 __all__ = [
     "router",
+    "global_router",
     "init_indexes",
     "create_artefact",
     "update_artefact",
