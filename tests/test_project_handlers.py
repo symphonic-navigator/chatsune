@@ -202,3 +202,100 @@ async def test_delete_other_user_returns_404(client: AsyncClient):
     token = await _setup_and_login(client)
     resp = await client.delete("/api/projects/nonexistent", headers=_auth(token))
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Event-publishing assertions
+# ---------------------------------------------------------------------------
+
+async def test_create_publishes_event(client: AsyncClient, monkeypatch):
+    captured = []
+    from backend.ws.event_bus import EventBus
+    original_publish = EventBus.publish
+
+    async def capturing_publish(self, topic, event, scope="global", target_user_ids=None, correlation_id=None):
+        captured.append((topic, event, scope, target_user_ids))
+        return await original_publish(self, topic, event, scope=scope, target_user_ids=target_user_ids, correlation_id=correlation_id)
+
+    monkeypatch.setattr(EventBus, "publish", capturing_publish)
+
+    token = await _setup_and_login(client)
+    resp = await client.post(
+        "/api/projects", json={"title": "Test Project"}, headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    pid = resp.json()["id"]
+
+    from shared.topics import Topics
+    project_events = [c for c in captured if c[0] == Topics.PROJECT_CREATED]
+    assert len(project_events) == 1
+    topic, event, scope, targets = project_events[0]
+    assert event.project_id == pid
+    assert event.project.title == "Test Project"
+    assert scope.startswith("user:")
+    assert targets == [event.user_id]
+
+
+async def test_update_publishes_event(client: AsyncClient, monkeypatch):
+    captured = []
+    from backend.ws.event_bus import EventBus
+    original_publish = EventBus.publish
+
+    async def capturing_publish(self, topic, event, scope="global", target_user_ids=None, correlation_id=None):
+        captured.append((topic, event, scope, target_user_ids))
+        return await original_publish(self, topic, event, scope=scope, target_user_ids=target_user_ids, correlation_id=correlation_id)
+
+    monkeypatch.setattr(EventBus, "publish", capturing_publish)
+
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "Original"}, headers=_auth(token),
+    )).json()["id"]
+
+    # Clear events from the create call before patching
+    captured.clear()
+
+    resp = await client.patch(
+        f"/api/projects/{pid}", json={"title": "Updated"}, headers=_auth(token),
+    )
+    assert resp.status_code == 200
+
+    from shared.topics import Topics
+    update_events = [c for c in captured if c[0] == Topics.PROJECT_UPDATED]
+    assert len(update_events) == 1
+    topic, event, scope, targets = update_events[0]
+    assert event.project_id == pid
+    assert event.project.title == "Updated"
+    assert scope.startswith("user:")
+    assert targets == [event.user_id]
+
+
+async def test_delete_publishes_event(client: AsyncClient, monkeypatch):
+    captured = []
+    from backend.ws.event_bus import EventBus
+    original_publish = EventBus.publish
+
+    async def capturing_publish(self, topic, event, scope="global", target_user_ids=None, correlation_id=None):
+        captured.append((topic, event, scope, target_user_ids))
+        return await original_publish(self, topic, event, scope=scope, target_user_ids=target_user_ids, correlation_id=correlation_id)
+
+    monkeypatch.setattr(EventBus, "publish", capturing_publish)
+
+    token = await _setup_and_login(client)
+    pid = (await client.post(
+        "/api/projects", json={"title": "ToDelete"}, headers=_auth(token),
+    )).json()["id"]
+
+    # Clear events from the create call before deleting
+    captured.clear()
+
+    resp = await client.delete(f"/api/projects/{pid}", headers=_auth(token))
+    assert resp.status_code == 204
+
+    from shared.topics import Topics
+    delete_events = [c for c in captured if c[0] == Topics.PROJECT_DELETED]
+    assert len(delete_events) == 1
+    topic, event, scope, targets = delete_events[0]
+    assert event.project_id == pid
+    assert scope.startswith("user:")
+    assert targets == [event.user_id]
