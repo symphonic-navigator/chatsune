@@ -14,6 +14,8 @@ class PersonaDocument(BaseModel):
     system_prompt: str
     temperature: float
     reasoning_enabled: bool
+    soft_cot_enabled: bool = False
+    vision_fallback_model: str | None = None
     nsfw: bool
     colour_scheme: str
     display_order: int

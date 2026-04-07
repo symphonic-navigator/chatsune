@@ -28,6 +28,8 @@ class PersonaRepository:
         display_order: int,
         pinned: bool = False,
         profile_image: str | None = None,
+        soft_cot_enabled: bool = False,
+        vision_fallback_model: str | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -39,6 +41,8 @@ class PersonaRepository:
             "system_prompt": system_prompt,
             "temperature": temperature,
             "reasoning_enabled": reasoning_enabled,
+            "soft_cot_enabled": soft_cot_enabled,
+            "vision_fallback_model": vision_fallback_model,
             "nsfw": nsfw,
             "colour_scheme": colour_scheme,
             "display_order": display_order,
@@ -134,6 +138,8 @@ class PersonaRepository:
             system_prompt=doc["system_prompt"],
             temperature=doc["temperature"],
             reasoning_enabled=doc["reasoning_enabled"],
+            soft_cot_enabled=doc.get("soft_cot_enabled", False),
+            vision_fallback_model=doc.get("vision_fallback_model"),
             nsfw=doc.get("nsfw", False),
             colour_scheme=doc["colour_scheme"],
             display_order=doc["display_order"],
