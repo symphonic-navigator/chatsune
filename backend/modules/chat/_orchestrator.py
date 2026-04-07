@@ -334,6 +334,28 @@ async def run_inference(
                 )
         messages.append(CompletionMessage(role=doc["role"], content=content_parts_list))
 
+    # Set up correlation ID and event emission BEFORE building messages so
+    # that _resolve_image_attachments_for_inference can emit vision
+    # description events from inside the attachment loop.
+    correlation_id = str(uuid4())
+    cancel_event = asyncio.Event()
+    _cancel_events[correlation_id] = cancel_event
+
+    manager = get_manager()
+    event_bus = get_event_bus()
+
+    async def emit_fn(event) -> None:
+        event_dict = event.model_dump(mode="json")
+        event_type = event_dict.get("type", "")
+
+        await event_bus.publish(
+            event_type,
+            event,
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+
     # Append the new user message (with full attachment data if present)
     if history_docs:
         last_msg = history_docs[-1]
@@ -371,27 +393,6 @@ async def run_inference(
         supports_reasoning=supports_reasoning,
         tools=active_tools,
     )
-
-    # Set up correlation ID and event emission before building messages so that
-    # _resolve_image_attachments_for_inference can emit vision description events.
-    correlation_id = str(uuid4())
-    cancel_event = asyncio.Event()
-    _cancel_events[correlation_id] = cancel_event
-
-    manager = get_manager()
-    event_bus = get_event_bus()
-
-    async def emit_fn(event) -> None:
-        event_dict = event.model_dump(mode="json")
-        event_type = event_dict.get("type", "")
-
-        await event_bus.publish(
-            event_type,
-            event,
-            scope=f"session:{session_id}",
-            target_user_ids=[user_id],
-            correlation_id=correlation_id,
-        )
 
     # Set session state to streaming
     await repo.update_session_state(session_id, "streaming")
