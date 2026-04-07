@@ -1,11 +1,14 @@
 import { api } from './client'
-import type { ArtefactDetail, ArtefactSummary } from '../types/artefact'
+import type { ArtefactDetail, ArtefactListItem, ArtefactSummary } from '../types/artefact'
 
 const BASE = '/api/chat/sessions'
 
 export const artefactApi = {
   list: (sessionId: string) =>
     api.get<ArtefactSummary[]>(`${BASE}/${sessionId}/artefacts/`),
+
+  listAll: () =>
+    api.get<ArtefactListItem[]>(`/api/artefacts/`),
 
   get: (sessionId: string, artefactId: string) =>
     api.get<ArtefactDetail>(`${BASE}/${sessionId}/artefacts/${artefactId}`),
