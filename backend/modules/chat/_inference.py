@@ -260,7 +260,11 @@ class InferenceRunner:
             ))
 
         message_id = None
-        if status == "completed" and full_content:
+        # Save when the stream produced any useful output — either visible
+        # content or a thinking block. The latter covers the case where a
+        # Soft-CoT response consists entirely of <think>...</think> with no
+        # answer after it; we still want the thinking block to render.
+        if status == "completed" and (full_content or full_thinking):
             message_id = await save_fn(
                 content=full_content,
                 thinking=full_thinking or None,

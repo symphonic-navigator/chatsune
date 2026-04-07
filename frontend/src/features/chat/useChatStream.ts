@@ -72,7 +72,10 @@ export function useChatStream(sessionId: string | null) {
             const thinking = getStore().streamingThinking
             const webSearchContext = getStore().streamingWebSearchContext
             const knowledgeContext = getStore().streamingKnowledgeContext
-            if (content) {
+            // Finish when there is anything to show — content OR a thinking
+            // block. A Soft-CoT reply can consist entirely of <think>...</think>
+            // with no answer, and we still want the thinking block to render.
+            if (content || thinking) {
               getStore().finishStreaming(
                 {
                   id: (p.message_id as string) ?? `streaming-${Date.now()}`,

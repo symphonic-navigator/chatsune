@@ -20,14 +20,25 @@ from backend.modules.llm import (
 
 _OPEN_TAG = "<think>"
 _CLOSE_TAG = "</think>"
-# Maximum number of buffered characters that can still be the start of a tag.
-# Equal to len(longest_tag) - 1 so we never over-eagerly flush a partial tag.
-_MAX_LOOKAHEAD = max(len(_OPEN_TAG), len(_CLOSE_TAG)) - 1
 
 
-def _is_tag_prefix(text: str, tag: str) -> bool:
-    """Return True if *text* is a non-empty prefix of *tag*."""
-    return bool(text) and tag.startswith(text)
+def _split_safe_and_tail(buffer: str, tag: str) -> tuple[str, str]:
+    """Split *buffer* into a safely-emittable prefix and a tail that might
+    still grow into *tag*.
+
+    The tail begins at the rightmost ``<`` character whose suffix is still a
+    prefix of *tag*. Everything before that ``<`` is safe to flush
+    immediately. If no such ``<`` exists, the entire buffer is safe.
+    """
+    # Scan right-to-left for a ``<`` whose suffix can still become *tag*.
+    idx = buffer.rfind("<")
+    while idx != -1:
+        candidate = buffer[idx:]
+        if tag.startswith(candidate):
+            return buffer[:idx], candidate
+        # This `<` is not a viable tag start; look for one further left.
+        idx = buffer.rfind("<", 0, idx)
+    return buffer, ""
 
 
 async def wrap_with_soft_cot_parser(
@@ -60,59 +71,27 @@ async def wrap_with_soft_cot_parser(
         events: list[ProviderStreamEvent] = []
 
         while True:
-            if not inside_think:
-                tag = _OPEN_TAG
-                idx = buffer.find(tag)
-                if idx != -1:
-                    # Found the full open tag — emit prefix, switch state.
-                    if idx > 0:
-                        events.extend(_flush_outside(buffer[:idx]))
-                    buffer = buffer[idx + len(tag):]
-                    inside_think = True
-                    # Continue the loop to process content after the tag.
-                    continue
+            tag = _OPEN_TAG if not inside_think else _CLOSE_TAG
+            flush = _flush_outside if not inside_think else _flush_inside
 
-                # No full tag found.  Flush everything except the last
-                # _MAX_LOOKAHEAD chars, which might be the start of a tag.
-                tail_start = max(0, len(buffer) - _MAX_LOOKAHEAD)
-                safe = buffer[:tail_start]
-                tail = buffer[tail_start:]
+            idx = buffer.find(tag)
+            if idx != -1:
+                # Found the full tag — emit prefix, switch state, loop again
+                # in case another tag follows in the same buffer.
+                if idx > 0:
+                    events.extend(flush(buffer[:idx]))
+                buffer = buffer[idx + len(tag):]
+                inside_think = not inside_think
+                continue
 
-                # If the tail cannot be a prefix of the open tag, flush it too.
-                if not _is_tag_prefix(tail, tag):
-                    safe += tail
-                    tail = ""
-
-                if safe:
-                    events.extend(_flush_outside(safe))
-                buffer = tail
-                break
-
-            else:
-                tag = _CLOSE_TAG
-                idx = buffer.find(tag)
-                if idx != -1:
-                    # Found the full close tag — emit thinking content, switch state.
-                    if idx > 0:
-                        events.extend(_flush_inside(buffer[:idx]))
-                    buffer = buffer[idx + len(tag):]
-                    inside_think = False
-                    # Continue the loop — there may be more content or another open tag.
-                    continue
-
-                # No full close tag yet.  Keep up to _MAX_LOOKAHEAD chars as tail.
-                tail_start = max(0, len(buffer) - _MAX_LOOKAHEAD)
-                safe = buffer[:tail_start]
-                tail = buffer[tail_start:]
-
-                if not _is_tag_prefix(tail, tag):
-                    safe += tail
-                    tail = ""
-
-                if safe:
-                    events.extend(_flush_inside(safe))
-                buffer = tail
-                break
+            # No full tag found. Split the buffer into a safe prefix that can
+            # be emitted immediately and a tail that might still grow into a
+            # tag on the next chunk.
+            safe, tail = _split_safe_and_tail(buffer, tag)
+            if safe:
+                events.extend(flush(safe))
+            buffer = tail
+            break
 
         return events
 

@@ -99,6 +99,56 @@ async def test_unclosed_think_flushed_on_done():
 
 
 @pytest.mark.asyncio
+async def test_close_tag_split_after_long_thinking():
+    """Regression: when thinking content is longer than the lookahead window
+    and the closing tag splits across a chunk boundary, the parser must keep
+    the partial "</" in the buffer instead of flushing it as thinking text."""
+    src = _stream(
+        ContentDelta(delta="<think>reasoning</th"),
+        ContentDelta(delta="ink>answer"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "reasoning"
+    assert content == "answer"
+
+
+@pytest.mark.asyncio
+async def test_close_tag_split_with_very_long_thinking():
+    """Same as above but with thinking content significantly longer than the
+    lookahead window, to rule out off-by-one edge cases."""
+    long_reasoning = "a" * 100
+    src = _stream(
+        ContentDelta(delta=f"<think>{long_reasoning}</thi"),
+        ContentDelta(delta="nk>done"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == long_reasoning
+    assert content == "done"
+
+
+@pytest.mark.asyncio
+async def test_response_is_only_thinking():
+    """Regression: the entire response can be a single <think>...</think>
+    block. The parser must still emit all thinking correctly and produce
+    no content output."""
+    src = _stream(
+        ContentDelta(delta="<think>the whole answer is reasoning</think>"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "the whole answer is reasoning"
+    assert content == ""
+
+
+@pytest.mark.asyncio
 async def test_other_event_types_pass_through():
     src = _stream(
         ContentDelta(delta="before "),
