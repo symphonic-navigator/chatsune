@@ -11,7 +11,18 @@ import { ModelsTab } from './ModelsTab'
 import { ApiKeysTab } from './ApiKeysTab'
 import type { ProviderCredentialDto } from '../../../core/types/llm'
 
-export type UserModalTab = 'about-me' | 'projects' | 'history' | 'knowledge' | 'bookmarks' | 'uploads' | 'artefacts' | 'models' | 'settings' | 'api-keys'
+export type UserModalTab =
+  | 'about-me'
+  | 'personas'
+  | 'projects'
+  | 'history'
+  | 'knowledge'
+  | 'bookmarks'
+  | 'uploads'
+  | 'artefacts'
+  | 'models'
+  | 'settings'
+  | 'api-keys'
 
 interface Tab {
   id: UserModalTab
@@ -20,6 +31,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'about-me', label: 'About me' },
+  { id: 'personas', label: 'Personas' },
   { id: 'projects', label: 'Projects' },
   { id: 'history', label: 'History' },
   { id: 'knowledge', label: 'Knowledge' },
@@ -156,6 +168,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           aria-labelledby={`user-tab-${activeTab}`}
           className="flex-1 overflow-hidden flex flex-col">
           {activeTab === 'about-me' && <AboutMeTab />}
+          {activeTab === 'personas' && <div data-testid="personas-tab-placeholder" />}
           {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
