@@ -1,6 +1,7 @@
 import { useOutletContext } from 'react-router-dom'
 import { memoryApi, type JournalEntryDto } from '../../core/api/memory'
 import { useMemoryStore } from '../../core/store/memoryStore'
+import { useEscapeKey } from '../../app/hooks/useEscapeKey'
 
 interface JournalDropdownProps {
   personaId: string
@@ -25,6 +26,8 @@ export function JournalDropdown({ personaId, entries, canTriggerExtraction, onCl
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
   }>()
   const store = useMemoryStore.getState
+
+  useEscapeKey(onClose)
 
   const visibleEntries = entries.slice(0, 10)
 

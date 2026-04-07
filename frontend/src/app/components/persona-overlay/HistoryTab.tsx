@@ -288,15 +288,15 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
 
         {/* Actions */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex-shrink-0">
-          <button type="button" onClick={startEdit} title="Rename" aria-label="Rename session" className={BTN_NEUTRAL}>
+          <button type="button" onClick={startEdit} title="Rename session" aria-label="Rename session" className={BTN_NEUTRAL}>
             REN
           </button>
           <button
             type="button"
             onClick={handleGenerateTitle}
             disabled={generating}
-            title="Generate title"
-            aria-label="Generate session title"
+            title="Regenerate title"
+            aria-label="Regenerate session title"
             className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
           >
             {generating ? (
@@ -307,7 +307,8 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
             <button
               type="button"
               onClick={handleDelete}
-              aria-label="Confirm delete session"
+              title="Confirm delete (click again)"
+              aria-label="Confirm delete session (click again)"
               className={BTN_RED}
             >
               SURE?
@@ -316,6 +317,7 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
             <button
               type="button"
               onClick={startDeleteConfirm}
+              title="Delete session"
               aria-label="Delete session"
               className={BTN_NEUTRAL}
             >

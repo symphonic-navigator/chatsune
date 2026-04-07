@@ -178,6 +178,27 @@ export function ChatView({ persona }: ChatViewProps) {
   const bookmarkedMessageIds = new Set(bookmarks.map((b) => b.message_id))
   const [bookmarkTargetMsgId, setBookmarkTargetMsgId] = useState<string | null>(null)
   const [bookmarksExpanded, setBookmarksExpanded] = useState(false)
+  const [incognitoInfoOpen, setIncognitoInfoOpen] = useState(false)
+  const incognitoInfoRef = useRef<HTMLDivElement>(null)
+
+  // Close incognito info popover on outside click or Escape
+  useEffect(() => {
+    if (!incognitoInfoOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (incognitoInfoRef.current && !incognitoInfoRef.current.contains(e.target as Node)) {
+        setIncognitoInfoOpen(false)
+      }
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIncognitoInfoOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [incognitoInfoOpen])
 
   // Show incognito notice once when entering incognito mode
   useEffect(() => {
@@ -456,9 +477,34 @@ export function ChatView({ persona }: ChatViewProps) {
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2">
         <div className="flex items-center gap-2">
           {isIncognito && (
-            <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/40" title="Messages are not saved">
-              INCOGNITO
-            </span>
+            <div ref={incognitoInfoRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setIncognitoInfoOpen((v) => !v)}
+                title="Messages are not saved — click for details"
+                aria-label="Incognito mode information"
+                aria-expanded={incognitoInfoOpen}
+                className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/40 hover:text-gold hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                INCOGNITO
+              </button>
+              {incognitoInfoOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Incognito mode explained"
+                  className="absolute left-0 top-full mt-2 z-50 w-72 rounded-md border border-gold/25 bg-[#0b0a08]/95 backdrop-blur-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2.5 text-[12px] text-white/70 font-mono leading-relaxed"
+                >
+                  <div className="mb-1 text-[10px] uppercase tracking-widest text-gold">Incognito mode</div>
+                  <p className="mb-1.5">This conversation is ephemeral. Nothing is persisted:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-white/60">
+                    <li>No messages stored</li>
+                    <li>No memory updated</li>
+                    <li>No journal entries</li>
+                  </ul>
+                  <p className="mt-1.5 text-white/50">Once you close or leave this chat, everything is gone.</p>
+                </div>
+              )}
+            </div>
           )}
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}

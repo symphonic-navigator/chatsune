@@ -35,7 +35,7 @@ Legend: **Impact** / **Effort** / **Risk** = high / med / low.
 
 ### Keyboard navigation
 
-- [ ] **No global Esc-to-close convention** — only some modals close on Esc; verify and unify across all overlays. Impact: med / Effort: low / Risk: low.
+- [x] **No global Esc-to-close convention** — only some modals close on Esc; verify and unify across all overlays. Impact: med / Effort: low / Risk: low. _Audited all overlays (2026-04-07); added reusable `useEscapeKey` hook and fixed `JournalDropdown`. All other modals already supported Esc._
 - [ ] **No documented shortcut surface** — `Shift+Esc` to focus chat input is implemented (`ChatView.tsx:215-224`) but undiscoverable. Add a `?` shortcut help overlay. Impact: med / Effort: med / Risk: low.
 - [ ] **Sidebar navigation not keyboard-traversable** — items rely on click handlers without arrow-key navigation. Impact: med / Effort: med / Risk: low.
 - [ ] **Drag-and-drop has no keyboard alternative** — bookmark/persona/session reordering via dnd-kit has no `aria-keyshortcuts` fallback. Impact: med / Effort: med / Risk: low.
@@ -66,14 +66,14 @@ Legend: **Impact** / **Effort** / **Risk** = high / med / low.
 ### Onboarding & Discoverability
 
 - [ ] **No first-run tour** — after master-admin setup, user lands on `/personas` with zero guidance. Impact: med / Effort: med / Risk: low.
-- [ ] **Persona/tools/journal/incognito concepts are undocumented in-app** — INCOGNITO badge has only a `title="Messages are not saved"` (`ChatView.tsx:379`). Add an info-popover. Impact: med / Effort: low / Risk: low.
+- [x] **Persona/tools/journal/incognito concepts are undocumented in-app** — INCOGNITO badge now has a click-to-open info popover explaining ephemeral mode (`ChatView.tsx`). Impact: med / Effort: low / Risk: low.
 - [~] **API-key onboarding is hidden** — `ApiKeysTab` now shows a prominent "Add your first API key" panel with explanation when 0 keys are configured. Global gating outside the tab still pending.
 - [~] **No empty-state CTAs** — Knowledge (existing), Bookmarks, Projects, Uploads, ApiKeys empty states now show explanatory text + CTA where applicable (user-modal scope).
 
 ### Microcopy / Labels
 
 - [x] **Mystical labels obscure function** (login only — other surfaces TBD) — "Omen", "Incantation", "Cast", "Casting…" (`LoginPage.tsx`). Charming but blocks new users; at minimum add a small subtitle ("username", "password"). Impact: med / Effort: low / Risk: low.
-- [ ] **All-caps mono "REN / GEN / DEL / SURE?"** — `persona-overlay/HistoryTab.tsx:279-300`. Clever but unreadable for new users; add tooltips at minimum. Impact: med / Effort: low / Risk: low.
+- [x] **All-caps mono "REN / GEN / DEL / SURE?"** — `persona-overlay/HistoryTab.tsx`. `title` + `aria-label` tooltips added ("Rename session", "Regenerate title", "Delete session", "Confirm delete (click again)"). Impact: med / Effort: low / Risk: low.
 - [~] **Error messages are generic** — `ApiKeysTab` messages reworded ("Could not delete API key. Please try again." etc.). Other surfaces still pending.
 
 ### Misc Flows
