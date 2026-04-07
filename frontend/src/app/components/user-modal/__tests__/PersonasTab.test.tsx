@@ -91,4 +91,17 @@ describe('PersonasTab', () => {
     render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
     expect(screen.getByTestId('persona-nsfw-indicator')).toBeInTheDocument()
   })
+
+  it('reorder via drag-end calls reorder with new order', () => {
+    mockPersonas = [
+      makePersona({ id: 'a', name: 'Alpha', display_order: 0 }),
+      makePersona({ id: 'b', name: 'Beta', display_order: 1 }),
+      makePersona({ id: 'c', name: 'Gamma', display_order: 2 }),
+    ]
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    const helper = (window as any).__personasTabTestHelper
+    expect(helper).toBeDefined()
+    helper.simulateReorder('a', 'c')
+    expect(mockReorder).toHaveBeenCalledWith(['b', 'c', 'a'])
+  })
 })

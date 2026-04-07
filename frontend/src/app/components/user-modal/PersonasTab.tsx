@@ -1,4 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+  type DraggableAttributes,
+  type DraggableSyntheticListeners,
+} from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { zoomModifiers } from '../../../core/utils/dndZoomModifier'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
@@ -17,7 +27,7 @@ function sortPersonas(list: PersonaDto[]): PersonaDto[] {
 }
 
 export function PersonasTab({ onOpenPersonaOverlay }: PersonasTabProps) {
-  const { personas, update } = usePersonas()
+  const { personas, update, reorder } = usePersonas()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
 
   const visible = useMemo(() => {
@@ -25,16 +35,44 @@ export function PersonasTab({ onOpenPersonaOverlay }: PersonasTabProps) {
     return sortPersonas(filtered)
   }, [personas, isSanitised])
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = visible.findIndex((p) => p.id === active.id)
+    const newIndex = visible.findIndex((p) => p.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+    const reordered = arrayMove(visible, oldIndex, newIndex)
+    reorder(reordered.map((p) => p.id))
+  }
+
+  // Test seam — exposes the same handler the DndContext uses, so unit tests
+  // can drive reorder logic without simulating jsdom pointer events.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    ;(window as any).__personasTabTestHelper = {
+      simulateReorder: (activeId: string, overId: string) => {
+        handleDragEnd({ active: { id: activeId }, over: { id: overId } } as unknown as DragEndEvent)
+      },
+    }
+    return () => {
+      delete (window as any).__personasTabTestHelper
+    }
+  })
+
   return (
     <div className="flex flex-col gap-2 p-4">
-      {visible.map((persona) => (
-        <PersonaRow
-          key={persona.id}
-          persona={persona}
-          onOpen={() => onOpenPersonaOverlay(persona.id)}
-          onTogglePin={() => update(persona.id, { pinned: !persona.pinned })}
-        />
-      ))}
+      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={zoomModifiers}>
+        <SortableContext items={visible.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          {visible.map((persona) => (
+            <SortablePersonaRow
+              key={persona.id}
+              persona={persona}
+              onOpen={() => onOpenPersonaOverlay(persona.id)}
+              onTogglePin={() => update(persona.id, { pinned: !persona.pinned })}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   )
 }
@@ -43,9 +81,27 @@ interface PersonaRowProps {
   persona: PersonaDto
   onOpen: () => void
   onTogglePin: () => void
+  dragAttributes?: DraggableAttributes
+  dragListeners?: DraggableSyntheticListeners
 }
 
-function PersonaRow({ persona, onOpen, onTogglePin }: PersonaRowProps) {
+function SortablePersonaRow(props: PersonaRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.persona.id,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      <PersonaRow {...props} dragAttributes={attributes} dragListeners={listeners} />
+    </div>
+  )
+}
+
+function PersonaRow({ persona, onOpen, onTogglePin, dragAttributes, dragListeners }: PersonaRowProps) {
   const chakra = CHAKRA_PALETTE[persona.colour_scheme]
   const modelLabel = persona.model_unique_id.split(':').slice(1).join(':')
 
@@ -60,6 +116,8 @@ function PersonaRow({ persona, onOpen, onTogglePin }: PersonaRowProps) {
         data-testid="persona-drag-handle"
         className="cursor-grab select-none text-white/30"
         aria-hidden
+        {...(dragAttributes ?? {})}
+        {...(dragListeners ?? {})}
       >
         ≡
       </span>
