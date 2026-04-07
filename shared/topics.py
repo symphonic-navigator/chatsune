@@ -52,6 +52,10 @@ class Topics:
     BOOKMARK_CREATED = "bookmark.created"
     BOOKMARK_UPDATED = "bookmark.updated"
     BOOKMARK_DELETED = "bookmark.deleted"
+    # Projects
+    PROJECT_CREATED = "project.created"
+    PROJECT_UPDATED = "project.updated"
+    PROJECT_DELETED = "project.deleted"
     # Background jobs
     JOB_STARTED = "job.started"
     JOB_COMPLETED = "job.completed"
