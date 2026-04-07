@@ -18,7 +18,7 @@ Legende: H = high, M = med, L = low.
 - [x] **`eventStore.ts:1-18`** — `lastSequence: string | null` mit Default `null`; `connection.ts` checks `!== null`. (BaseEvent.sequence ist im Frontend-Type bereits string.) **I:H E:L R:M**
 - [ ] **`connection.ts:59`** — `JSON.parse(msg.data)` ohne Schema-Validierung; direkt zu `BaseEvent` gecastet. Kein Zod o.ä. an der Systemgrenze (verstößt gegen CLAUDE.md "validate at system boundaries"). **I:H E:M R:L**
 - [ ] **`useChatStream.ts:14`** — `event.payload as Record<string, unknown>` — payload sollte typed sein. **I:M E:L R:L**
-- [ ] **`HistoryTab.tsx:163`** (persona-overlay) — `useRef<ReturnType<typeof setTimeout>>()` ohne Initialwert; in TS strict ist das nun ein Fehler in React 19 (`useRef` requires arg). **I:L E:L R:L**
+- [x] **`HistoryTab.tsx:163`** (persona-overlay) — `useRef<ReturnType<typeof setTimeout>>()` ohne Initialwert; in TS strict ist das nun ein Fehler in React 19 (`useRef` requires arg). **I:L E:L R:L**
 
 ### B. useEffect / Cleanup / Dependencies
 
@@ -42,9 +42,9 @@ Legende: H = high, M = med, L = low.
 ### D. Memory Leaks / Resource Management
 
 - [~] **`useAttachments.ts:20`** — Object-URLs leben im globalen `uploadStore`, nicht component-scoped. Blanket revoke-on-unmount würde Tab-Wechsel brechen; korrekte Lösung gehört in `clear()`/Logout-Pfad des Stores. Übersprungen. **I:M E:L R:L**
-- [ ] **`uploadStore.ts:22`** — Globale Zustand-Store hält `pendingAttachments` über Component-Mounts hinweg; `URL.createObjectURL` Lebenszeit ist an Store geknüpft, nicht an Komponente. Bei Browser-Tab-Close OK, aber bei Logout sollten Object-URLs revoked werden — kein Hook in `authStore.clear()`. **I:L E:L R:L**
-- [ ] **`eventBus.ts:5-39`** — Singleton ohne Limit; wenn ein Hook leakt, akkumulieren Listener unbegrenzt. Kein DEV-Warning bei N>100 Listeners pro Type. **I:L E:L R:L**
-- [ ] **`useEventBus.ts:7-19`** — Hält `eventsRef` UND `events` State (doppelte Speicherung); harmlos aber unnötig. **I:L E:L R:L**
+- [x] **`uploadStore.ts:22`** — Globale Zustand-Store hält `pendingAttachments` über Component-Mounts hinweg; `URL.createObjectURL` Lebenszeit ist an Store geknüpft, nicht an Komponente. Bei Browser-Tab-Close OK, aber bei Logout sollten Object-URLs revoked werden — kein Hook in `authStore.clear()`. **I:L E:L R:L**
+- [x] **`eventBus.ts:5-39`** — Singleton ohne Limit; wenn ein Hook leakt, akkumulieren Listener unbegrenzt. Kein DEV-Warning bei N>100 Listeners pro Type. **I:L E:L R:L**
+- [x] **`useEventBus.ts:7-19`** — Hält `eventsRef` UND `events` State (doppelte Speicherung); harmlos aber unnötig. **I:L E:L R:L**
 - [x] **`ArtefactPreview.tsx:215-245`** — Mermaid-Import jetzt als Module-level Promise gecached. **I:L E:L R:L**
 
 ### E. Doppelte / falsche fetch-Pattern (Polling-Geruch)
@@ -59,7 +59,7 @@ Legende: H = high, M = med, L = low.
 - [ ] **`ArtefactPreview.tsx:67-83`** — `HtmlPreview` injiziert vor `</head>` per `replace`; wenn user-HTML kein `</head>` hat, läuft Fallback. Funktioniert, aber `srcDoc` mit `allow-scripts` führt user-controlled JS aus. Da self-hosted single-user Tool akzeptabel; sollte aber per Setting deaktivierbar sein. **I:M E:M R:M**
 - [x] **`ArtefactPreview.tsx:89`** — Ersetzt durch `TextEncoder`-basierten `utf8ToBase64` Helper. **I:L E:L R:L**
 - [ ] **`ArtefactPreview.tsx:168-170`** — JSX-Sandbox lädt React/Babel von **unpkg.com** zur Laufzeit → Supply-Chain-Risk + offline broken. Sollte gebundelt aus public/ kommen. **I:M E:M R:L**
-- [ ] **`App.tsx:14-19`** und **`Sidebar.tsx:154,164`** — `localStorage` ohne try/catch (Quota / Privacy-Mode). Inkonsistent: `displaySettingsStore.ts:14` macht typeof-Check, andere nicht. **I:L E:L R:L**
+- [x] **`App.tsx:14-19`** und **`Sidebar.tsx:154,164`** — `localStorage` ohne try/catch (Quota / Privacy-Mode). Inkonsistent: `displaySettingsStore.ts:14` macht typeof-Check, andere nicht. **I:L E:L R:L**
 - [x] **`client.ts:55-79`** — In-flight `currentRefresh` Promise wird geteilt. **I:M E:M R:L**
 
 ### G. Connection / WebSocket
@@ -71,14 +71,14 @@ Legende: H = high, M = med, L = low.
 
 ### H. State Management
 
-- [ ] **`useChatStream.ts:11`** — `const store = useChatStore.getState` (Funktionsreferenz, nicht aufgerufen) — funktioniert aber unidiomatisch und macht Code verwirrend. **I:L E:L R:L**
+- [x] **`useChatStream.ts:11`** — `const store = useChatStore.getState` (Funktionsreferenz, nicht aufgerufen) — funktioniert aber unidiomatisch und macht Code verwirrend. **I:L E:L R:L**
 - [ ] **`MemoryBodySection.tsx:7`** — `EMPTY_ENTRIES` als Module-Konstante mit dynamic-import-type; OK aber Pattern wäre einfacher als shallow-selector. **I:L E:L R:L**
 - [ ] **`Sidebar.tsx:154-167`** — `useState(() => localStorage.getItem(...))` Lazy-Init OK, aber State und localStorage werden parallel gehalten ohne Sync zwischen Tabs (kein storage-event listener). **I:L E:L R:L**
 
 ### I. Code-Qualität / Wiederholung
 
 - [x] **`ChatView.tsx:158-167`** und **`ChatView.tsx:198-208`** — In `applyModelCapabilities` Helper extrahiert. **I:L E:L R:L**
-- [ ] **`HistoryTab.tsx:58` (persona-overlay)** und **`HistoryTab.tsx:59` (user-modal)** — Wahrscheinlich duplizierte History-Tab-Implementierungen. Bestätigen + extrahieren. **I:M E:M R:M**
+- [x] **`HistoryTab.tsx` (persona-overlay)** und **`HistoryTab.tsx` (user-modal)** — Geprüft 2026-04-07: keine echten Duplikate. Divergieren in Persona-Filter, sanitised-mode, Styling-System (chakra vs. neutral), Interaktionsmustern (outside-click vs. 3s-Auto-Timeout) und Fehlerbehandlung. Extraktion wäre falsches DRY. **I:M E:M R:M**
 - [x] **`markdownComponents.tsx:13`, `AssistantMessage.tsx:22`, `ArtefactOverlay.tsx:66`** — `useRef`-basierter Cleanup ergänzt. Weitere Stellen in der Codebase bleiben offen. **I:L E:L R:L**
 
 ---

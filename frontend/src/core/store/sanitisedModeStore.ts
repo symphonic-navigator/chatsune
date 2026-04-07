@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { safeLocalStorage } from '../utils/safeStorage'
 
 const STORAGE_KEY = 'chatsune_sanitised_mode'
 
@@ -8,10 +9,10 @@ interface SanitisedModeState {
 }
 
 export const useSanitisedMode = create<SanitisedModeState>((set, get) => ({
-  isSanitised: typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY) === 'true',
+  isSanitised: safeLocalStorage.getItem(STORAGE_KEY) === 'true',
   toggle: () => {
     const next = !get().isSanitised
-    if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, String(next))
+    safeLocalStorage.setItem(STORAGE_KEY, String(next))
     set({ isSanitised: next })
   },
 }))

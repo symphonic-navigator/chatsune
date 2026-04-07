@@ -9,7 +9,15 @@ class EventBus {
     if (!this.listeners.has(eventType)) {
       this.listeners.set(eventType, new Set())
     }
-    this.listeners.get(eventType)!.add(callback)
+    const set = this.listeners.get(eventType)!
+    set.add(callback)
+
+    // Dev-only leak guard: surfaces hooks that fail to unsubscribe on unmount.
+    if (import.meta.env.DEV && set.size > 100) {
+      console.warn(
+        `[eventBus] Listener count for "${eventType}" exceeded 100 (now ${set.size}). Possible leak — check unsubscribe in hook cleanup.`,
+      )
+    }
 
     return () => {
       this.listeners.get(eventType)?.delete(callback)

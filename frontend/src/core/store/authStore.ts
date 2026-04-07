@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { UserDto } from "../types/auth"
 import { configureClient } from "../api/client"
+import { useUploadStore } from "./uploadStore"
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
   const base64 = token.split(".")[1]
@@ -63,7 +64,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setInitialised: () => set({ isInitialising: false }),
 
-  clear: () => set({ accessToken: null, user: null, isAuthenticated: false }),
+  clear: () => {
+    // Revoke any outstanding blob object URLs before wiping attachments,
+    // otherwise they would leak memory until the tab is closed.
+    useUploadStore.getState().clearPending()
+    set({ accessToken: null, user: null, isAuthenticated: false })
+  },
 }))
 
 // Wire up the API client to use the auth store

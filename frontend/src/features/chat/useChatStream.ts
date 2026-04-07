@@ -8,7 +8,7 @@ export function useChatStream(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return
 
-    const store = useChatStore.getState
+    const getStore = useChatStore.getState
 
     const handleEvent = (event: BaseEvent) => {
       const p = event.payload as Record<string, unknown>
@@ -16,22 +16,22 @@ export function useChatStream(sessionId: string | null) {
       switch (event.type) {
         case Topics.CHAT_STREAM_STARTED: {
           if (p.session_id !== sessionId) return
-          store().startStreaming(event.correlation_id)
+          getStore().startStreaming(event.correlation_id)
           break
         }
         case Topics.CHAT_CONTENT_DELTA: {
-          if (event.correlation_id !== store().correlationId) return
-          store().appendStreamingContent(p.delta as string)
+          if (event.correlation_id !== getStore().correlationId) return
+          getStore().appendStreamingContent(p.delta as string)
           break
         }
         case Topics.CHAT_THINKING_DELTA: {
-          if (event.correlation_id !== store().correlationId) return
-          store().appendStreamingThinking(p.delta as string)
+          if (event.correlation_id !== getStore().correlationId) return
+          getStore().appendStreamingThinking(p.delta as string)
           break
         }
         case Topics.CHAT_TOOL_CALL_STARTED: {
-          if (event.correlation_id !== store().correlationId) return
-          store().addToolCall({
+          if (event.correlation_id !== getStore().correlationId) return
+          getStore().addToolCall({
             id: p.tool_call_id as string,
             toolName: p.tool_name as string,
             arguments: p.arguments as Record<string, unknown>,
@@ -40,14 +40,14 @@ export function useChatStream(sessionId: string | null) {
           break
         }
         case Topics.CHAT_TOOL_CALL_COMPLETED: {
-          if (event.correlation_id !== store().correlationId) return
-          store().completeToolCall(p.tool_call_id as string)
+          if (event.correlation_id !== getStore().correlationId) return
+          getStore().completeToolCall(p.tool_call_id as string)
           break
         }
         case Topics.CHAT_WEB_SEARCH_CONTEXT: {
-          if (event.correlation_id !== store().correlationId) return
+          if (event.correlation_id !== getStore().correlationId) return
           const items = p.items as Array<{ title: string; url: string; snippet: string }>
-          store().setStreamingWebSearchContext(items)
+          getStore().setStreamingWebSearchContext(items)
           break
         }
         case Topics.CHAT_STREAM_ENDED: {
@@ -57,12 +57,12 @@ export function useChatStream(sessionId: string | null) {
           const fillPercentage = (p.context_fill_percentage as number) ?? 0
 
           if (status === 'completed') {
-            const content = store().streamingContent
-            const thinking = store().streamingThinking
-            const webSearchContext = store().streamingWebSearchContext
-            const knowledgeContext = store().streamingKnowledgeContext
+            const content = getStore().streamingContent
+            const thinking = getStore().streamingThinking
+            const webSearchContext = getStore().streamingWebSearchContext
+            const knowledgeContext = getStore().streamingKnowledgeContext
             if (content) {
-              store().finishStreaming(
+              getStore().finishStreaming(
                 {
                   id: (p.message_id as string) ?? `streaming-${Date.now()}`,
                   session_id: sessionId,
@@ -79,21 +79,21 @@ export function useChatStream(sessionId: string | null) {
                 fillPercentage,
               )
             } else {
-              store().cancelStreaming()
+              getStore().cancelStreaming()
             }
           } else {
-            store().cancelStreaming()
+            getStore().cancelStreaming()
           }
-          store().setContextStatus(contextStatus)
-          store().setContextFillPercentage(fillPercentage)
+          getStore().setContextStatus(contextStatus)
+          getStore().setContextFillPercentage(fillPercentage)
           break
         }
         case Topics.CHAT_STREAM_ERROR: {
           const errorCode = p.error_code as string
           // Session-level errors arrive outside a streaming context
           const isSessionError = errorCode === 'session_expired'
-          if (!isSessionError && event.correlation_id !== store().correlationId) return
-          store().setError({
+          if (!isSessionError && event.correlation_id !== getStore().correlationId) return
+          getStore().setError({
             errorCode,
             recoverable: p.recoverable as boolean,
             userMessage: p.user_message as string,
@@ -102,27 +102,27 @@ export function useChatStream(sessionId: string | null) {
         }
         case Topics.CHAT_MESSAGES_TRUNCATED: {
           if (p.session_id !== sessionId) return
-          store().truncateAfter(p.after_message_id as string)
+          getStore().truncateAfter(p.after_message_id as string)
           break
         }
         case Topics.CHAT_MESSAGE_UPDATED: {
           if (p.session_id !== sessionId) return
-          store().updateMessage(p.message_id as string, p.content as string, p.token_count as number)
+          getStore().updateMessage(p.message_id as string, p.content as string, p.token_count as number)
           break
         }
         case Topics.CHAT_MESSAGE_DELETED: {
           if (p.session_id !== sessionId) return
-          store().deleteMessage(p.message_id as string)
+          getStore().deleteMessage(p.message_id as string)
           break
         }
         case Topics.CHAT_SESSION_TITLE_UPDATED: {
           if (p.session_id !== sessionId) return
-          store().setSessionTitle(p.title as string)
+          getStore().setSessionTitle(p.title as string)
           break
         }
         case Topics.CHAT_SESSION_TOOLS_UPDATED: {
           if (p.session_id !== sessionId) return
-          store().setDisabledToolGroups(p.disabled_tool_groups as string[])
+          getStore().setDisabledToolGroups(p.disabled_tool_groups as string[])
           break
         }
       }

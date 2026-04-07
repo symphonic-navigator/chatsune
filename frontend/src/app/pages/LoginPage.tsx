@@ -3,6 +3,7 @@ import type { KeyboardEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../core/hooks/useAuth"
 import { useAuthStore } from "../../core/store/authStore"
+import { safeLocalStorage } from "../../core/utils/safeStorage"
 
 export default function LoginPage() {
   const isSetupComplete = useAuthStore((s) => s.isSetupComplete)
@@ -90,7 +91,7 @@ function LoginForm() {
     setIsLoading(true)
     try {
       await login({ username, password })
-      const last = localStorage.getItem("chatsune_last_route")
+      const last = safeLocalStorage.getItem("chatsune_last_route")
       navigate(last ?? "/personas", { replace: true })
     } catch (err) {
       const { fields, general } = extractFieldErrors(err)
