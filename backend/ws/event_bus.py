@@ -59,6 +59,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_TOOL_CALL_STARTED: ([], True),
     Topics.CHAT_TOOL_CALL_COMPLETED: ([], True),
     Topics.CHAT_WEB_SEARCH_CONTEXT: ([], True),
+    Topics.CHAT_VISION_DESCRIPTION: ([], True),
     # Storage — target user only
     Topics.STORAGE_FILE_UPLOADED: ([], True),
     Topics.STORAGE_FILE_DELETED: ([], True),
