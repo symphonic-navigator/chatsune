@@ -38,11 +38,12 @@ interface UserModalProps {
   displayName: string
   hasApiKeyProblem: boolean
   onProvidersChanged: (providers: ProviderCredentialDto[]) => void
+  onOpenPersonaOverlay: (personaId: string) => void
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApiKeyProblem, onProvidersChanged }: UserModalProps) {
+export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApiKeyProblem, onProvidersChanged, onOpenPersonaOverlay }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
 
   // Focus trap + Escape key

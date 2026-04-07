@@ -210,6 +210,10 @@ export default function AppLayout() {
               displayName={displayName}
               hasApiKeyProblem={hasApiKeyProblem}
               onProvidersChanged={setProviders}
+              onOpenPersonaOverlay={(id) => {
+                closeModal()
+                openPersonaOverlay(id, "overview")
+              }}
             />
           )}
           {adminTab !== null && (
