@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { llmApi } from '../../core/api/llm'
 import { sendMessage } from '../../core/websocket/connection'
@@ -38,6 +38,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const { personaId, sessionId } = useParams<{ personaId: string; sessionId?: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation() as { state?: { pendingArtefactId?: string } | null }
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
@@ -295,6 +296,29 @@ export function ChatView({ persona }: ChatViewProps) {
 
     return () => { cancelled = true }
   }, [sessionId, scrollToBottom, isIncognito, persona?.id, persona?.model_unique_id, applyModelCapabilities])
+
+  // When navigated here from the global Artefacts tab with a pendingArtefactId,
+  // fetch the artefact detail and open the overlay once the session is ready.
+  useEffect(() => {
+    const pendingId = location.state?.pendingArtefactId
+    if (!pendingId || !sessionId) return
+
+    let cancelled = false
+    artefactApi.get(sessionId, pendingId)
+      .then((detail) => {
+        if (cancelled) return
+        useArtefactStore.getState().openOverlay(detail)
+      })
+      .catch((err) => {
+        console.error('Failed to open pending artefact', err)
+      })
+      .finally(() => {
+        // Clear the state so a reload does not re-open the overlay.
+        window.history.replaceState({}, '')
+      })
+
+    return () => { cancelled = true }
+  }, [location.state, sessionId])
 
   // Shift+Esc focuses the input
   useEffect(() => {
