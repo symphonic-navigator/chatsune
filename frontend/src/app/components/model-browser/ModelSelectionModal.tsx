@@ -70,6 +70,8 @@ export function ModelSelectionModal({
                 model_unique_id: m.unique_id,
                 is_favourite: newFav,
                 is_hidden: m.user_config?.is_hidden ?? false,
+                custom_display_name: m.user_config?.custom_display_name ?? null,
+                custom_context_window: m.user_config?.custom_context_window ?? null,
                 notes: m.user_config?.notes ?? null,
                 system_prompt_addition: m.user_config?.system_prompt_addition ?? null,
               },

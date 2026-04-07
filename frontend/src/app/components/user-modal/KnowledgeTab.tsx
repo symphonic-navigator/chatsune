@@ -147,7 +147,7 @@ export function KnowledgeTab() {
       <div className="flex-1 overflow-y-auto">
         {visibleLibraries.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 py-16">
-            <p className="text-[12px] font-mono text-white/25">No libraries yet</p>
+            <p className="text-[12px] font-mono text-white/60">No libraries yet</p>
             <button
               type="button"
               onClick={() => setLibraryModal({ mode: 'create' })}
@@ -194,7 +194,8 @@ export function KnowledgeTab() {
                 <button
                   type="button"
                   onClick={() => setLibraryModal({ mode: 'edit', library })}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/40 transition-all hover:border-white/20 hover:text-white/60 cursor-pointer"
+                  aria-label={`Edit library ${library.name}`}
+                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer"
                   title="Edit library"
                 >
                   ✎

@@ -1,39 +1,33 @@
 import json
+import logging
 from datetime import datetime, timezone
+
+_log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from backend.database import get_db
-from backend.dependencies import require_active_session
+from backend.dependencies import get_optional_user, require_active_session
 from backend.modules.llm import is_valid_provider
 from backend.modules.persona._avatar_store import AvatarStore
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
-from shared.dtos.persona import CreatePersonaDto, PersonaDto, UpdatePersonaDto
+from shared.dtos.persona import (
+    CreatePersonaDto,
+    PersonaDto,
+    ReorderPersonasDto,
+    UpdatePersonaDto,
+)
 from shared.events.persona import (
     PersonaCreatedEvent,
     PersonaDeletedEvent,
     PersonaUpdatedEvent,
 )
 from shared.topics import Topics
-
-from fastapi import Request
-
-async def _optional_user(request: Request) -> dict | None:
-    """Return user if Bearer header present, otherwise None (allows query-param auth fallback)."""
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        return None
-    from backend.modules.user import decode_access_token
-    try:
-        return decode_access_token(auth.removeprefix("Bearer "))
-    except Exception:
-        return None
-
 
 _ALLOWED_IMAGE_TYPES = {
     "image/jpeg": "jpg",
@@ -118,12 +112,11 @@ async def create_persona(
 
 @router.patch("/reorder")
 async def reorder_personas(
-    body: dict,
+    body: ReorderPersonasDto,
     user: dict = Depends(require_active_session),
 ):
     repo = _persona_repo()
-    ordered_ids: list[str] = body.get("ordered_ids", [])
-    await repo.bulk_reorder(user["sub"], ordered_ids)
+    await repo.bulk_reorder(user["sub"], body.ordered_ids)
     return {"status": "ok"}
 
 
@@ -336,13 +329,16 @@ async def upload_avatar(
 
     updated = await repo.update_profile_image(persona_id, user["sub"], filename)
 
-    # Parse and store crop parameters if provided
+    # Parse and store crop parameters if provided. The form field is a JSON
+    # string because multipart/form-data has no native object type; the same
+    # shape is used by the dedicated PATCH /crop endpoint via UpdateAvatarCropRequest.
     crop_dict = None
     if crop:
         try:
-            crop_dict = json.loads(crop)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid crop JSON")
+            crop_dto = UpdateAvatarCropRequest.model_validate_json(crop)
+            crop_dict = crop_dto.model_dump()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid crop payload")
     await repo.update_profile_crop(persona_id, user["sub"], crop_dict)
     updated = await repo.find_by_id(persona_id, user["sub"])
 
@@ -369,7 +365,7 @@ async def get_avatar(
     expires: str | None = None,
     uid: str | None = None,
     sig: str | None = None,
-    user: dict | None = Depends(_optional_user),
+    user: dict | None = Depends(get_optional_user),
 ):
     # Prefer header auth; fall back to signed URL for <img src>
     if user is None and expires and uid and sig:

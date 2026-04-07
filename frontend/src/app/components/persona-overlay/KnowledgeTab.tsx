@@ -91,7 +91,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
               </div>
               <button
                 onClick={() => handleRemove(lib.id)}
-                className="ml-3 text-white/30 hover:text-white/70 transition-colors shrink-0 font-mono text-[14px] leading-none"
+                className="ml-3 text-white/60 hover:text-white/90 transition-colors shrink-0 font-mono text-[14px] leading-none"
                 aria-label={`Remove ${lib.name}`}
               >
                 ×
@@ -123,7 +123,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
             }}
           >
             {visibleUnassigned.length === 0 ? (
-              <div className="px-3 py-2 text-[12px] text-white/30 font-mono">
+              <div className="px-3 py-2 text-[12px] text-white/60 font-mono">
                 No libraries available
               </div>
             ) : (
@@ -141,7 +141,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
                   }}
                 >
                   <span className="truncate">{lib.name}</span>
-                  <span className="text-white/30 text-[11px] shrink-0 ml-auto">
+                  <span className="text-white/60 text-[11px] shrink-0 ml-auto">
                     {lib.document_count} doc{lib.document_count !== 1 ? 's' : ''}
                   </span>
                   {lib.nsfw && <span className="shrink-0">💋</span>}
@@ -154,7 +154,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
 
       {/* Sanitised mode note */}
       {hasNsfwLibraries && !isSanitised && (
-        <p className="font-mono text-[11px] text-white/25">
+        <p className="font-mono text-[11px] text-white/60">
           💋 libraries are hidden when sanitised mode is active
         </p>
       )}

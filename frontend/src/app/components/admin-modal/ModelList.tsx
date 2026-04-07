@@ -19,13 +19,6 @@ function formatContext(ctx: number): string {
   return String(ctx)
 }
 
-/** Compose parameter + quantisation display string */
-function formatParams(model: ModelMetaDto): string {
-  if (!model.parameter_count) return "-"
-  if (model.quantisation_level) return `${model.parameter_count} ${model.quantisation_level}`
-  return model.parameter_count
-}
-
 const RATING_COLOURS: Record<ModelRating, string> = {
   recommended: "text-[#a6e3a1] bg-[#a6e3a1]/10 border-[#a6e3a1]/25",
   available: "text-[#89b4fa] bg-[#89b4fa]/10 border-[#89b4fa]/25",
@@ -139,6 +132,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          aria-label="Search models"
           placeholder="Search models..."
           className="w-48 rounded-lg border border-white/8 bg-elevated px-3 py-1.5 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
         />
@@ -147,6 +141,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         <select
           value={providerFilter}
           onChange={(e) => setProviderFilter(e.target.value)}
+          aria-label="Filter by provider"
           className="rounded-lg border border-white/8 bg-elevated px-2 py-1.5 text-[11px] text-white/70 outline-none focus:border-gold/40 transition-colors cursor-pointer"
         >
           <option value="all">All Providers</option>
@@ -160,12 +155,14 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
           <button
             type="button"
             onClick={() => setCapTools((v) => !v)}
+            aria-label="Filter: tool calls"
+            aria-pressed={capTools}
             title="Tool Calls"
             className={[
               "rounded px-1.5 py-1 text-[10px] font-bold transition-colors cursor-pointer border",
               capTools
                 ? "text-[#a6e3a1] bg-[#a6e3a1]/15 border-[#a6e3a1]/30"
-                : "text-white/30 border-white/8 hover:text-white/50 hover:border-white/15",
+                : "text-white/60 border-white/8 hover:text-white/80 hover:border-white/15",
             ].join(" ")}
           >
             T
@@ -173,12 +170,14 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
           <button
             type="button"
             onClick={() => setCapVision((v) => !v)}
+            aria-label="Filter: vision"
+            aria-pressed={capVision}
             title="Vision"
             className={[
               "rounded px-1.5 py-1 text-[10px] font-bold transition-colors cursor-pointer border",
               capVision
                 ? "text-[#89b4fa] bg-[#89b4fa]/15 border-[#89b4fa]/30"
-                : "text-white/30 border-white/8 hover:text-white/50 hover:border-white/15",
+                : "text-white/60 border-white/8 hover:text-white/80 hover:border-white/15",
             ].join(" ")}
           >
             V
@@ -186,12 +185,14 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
           <button
             type="button"
             onClick={() => setCapReasoning((v) => !v)}
+            aria-label="Filter: reasoning"
+            aria-pressed={capReasoning}
             title="Reasoning"
             className={[
               "rounded px-1.5 py-1 text-[10px] font-bold transition-colors cursor-pointer border",
               capReasoning
                 ? "text-[#f9e2af] bg-[#f9e2af]/15 border-[#f9e2af]/30"
-                : "text-white/30 border-white/8 hover:text-white/50 hover:border-white/15",
+                : "text-white/60 border-white/8 hover:text-white/80 hover:border-white/15",
             ].join(" ")}
           >
             R
@@ -202,6 +203,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         <select
           value={ratingFilter}
           onChange={(e) => setRatingFilter(e.target.value as RatingFilter)}
+          aria-label="Filter by rating"
           className="rounded-lg border border-white/8 bg-elevated px-2 py-1.5 text-[11px] text-white/70 outline-none focus:border-gold/40 transition-colors cursor-pointer"
         >
           <option value="all">All Ratings</option>
@@ -215,6 +217,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
         <select
           value={visibilityFilter}
           onChange={(e) => setVisibilityFilter(e.target.value as VisibilityFilter)}
+          aria-label="Filter by visibility"
           className="rounded-lg border border-white/8 bg-elevated px-2 py-1.5 text-[11px] text-white/70 outline-none focus:border-gold/40 transition-colors cursor-pointer"
         >
           <option value="all">All Visibility</option>
@@ -230,6 +233,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
             inputMode="numeric"
             value={ctxMin}
             onChange={(e) => setCtxMin(e.target.value.replace(/[^0-9]/g, ''))}
+            aria-label="Minimum context window in thousands"
             placeholder="min"
             className="w-20 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
           />
@@ -239,6 +243,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
             inputMode="numeric"
             value={ctxMax}
             onChange={(e) => setCtxMax(e.target.value.replace(/[^0-9]/g, ''))}
+            aria-label="Maximum context window in thousands"
             placeholder="max"
             className="w-20 rounded border border-white/8 bg-elevated px-1.5 py-1 text-[10px] text-white/70 outline-none focus:border-gold/40 transition-colors"
           />
@@ -250,7 +255,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
       <div className="flex-1 overflow-auto">
         <table className="w-full text-left">
           <thead className="sticky top-0 z-10 bg-surface">
-            <tr className="border-b border-white/6 text-[10px] uppercase tracking-wider text-white/30">
+            <tr className="border-b border-white/6 text-[10px] uppercase tracking-wider text-white/60">
               <th
                 onClick={() => toggleSort("provider")}
                 className="cursor-pointer px-4 py-2 font-medium hover:text-white/50 transition-colors"
@@ -282,7 +287,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-[12px] text-white/20">
+                <td colSpan={6} className="px-4 py-8 text-center text-[12px] text-white/60">
                   No models match your filters
                 </td>
               </tr>
@@ -303,7 +308,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] text-white/80">{model.display_name}</span>
                     {model.curation?.hidden && (
-                      <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/30">
+                      <span className="rounded bg-white/6 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/60">
                         Hidden
                       </span>
                     )}
@@ -354,7 +359,7 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
                       {RATING_LABELS[model.curation.overall_rating]}
                     </span>
                   ) : (
-                    <span className="text-[10px] text-white/20">-</span>
+                    <span className="text-[10px] text-white/60">-</span>
                   )}
                 </td>
 
@@ -366,10 +371,10 @@ export function ModelList({ models, onSelectModel }: ModelListProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-white/6 px-4 py-2">
-        <span className="text-[10px] text-white/30">
+        <span className="text-[10px] text-white/60">
           {filtered.length} of {models.length} models
         </span>
-        <span className="text-[10px] text-white/20">
+        <span className="text-[10px] text-white/60">
           Click a row to curate
         </span>
       </div>

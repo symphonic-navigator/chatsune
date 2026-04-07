@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from backend.database import get_db, get_redis
 from backend.dependencies import require_active_session
 from backend.jobs import JobType, submit
-from backend.modules.chat._repository import ChatRepository
+from backend.modules.chat import get_latest_user_messages_for_persona
 from backend.modules.memory._repository import MemoryRepository
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import EventBus, get_event_bus
@@ -44,10 +44,6 @@ def _memory_repo() -> MemoryRepository:
     return MemoryRepository(get_db())
 
 
-def _chat_repo() -> ChatRepository:
-    return ChatRepository(get_db())
-
-
 # ---------------------------------------------------------------------------
 # Request models
 # ---------------------------------------------------------------------------
@@ -71,6 +67,13 @@ class RollbackRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _ensure_aware(dt: datetime) -> datetime:
+    """Return *dt* as a UTC-aware datetime, regardless of whether it was naive."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
 
 def _entry_doc_to_dto(doc: dict) -> JournalEntryDto:
     return JournalEntryDto(
@@ -170,13 +173,18 @@ async def commit_journal_entries(
     now = datetime.now(timezone.utc)
     committed_count = 0
 
+    # Fetch entries once before the loop and refresh once after commits to avoid
+    # an N+1 list_journal_entries call per entry_id.
     for entry_id in body.entry_ids:
         ok = await repo.commit_entry(entry_id, user["sub"])
         if ok:
             committed_count += 1
-            # Re-fetch entry for the event
-            entries = await repo.list_journal_entries(user["sub"], persona_id)
-            entry_doc = next((e for e in entries if e["id"] == entry_id), None)
+
+    if committed_count:
+        entries = await repo.list_journal_entries(user["sub"], persona_id)
+        entries_by_id = {e["id"]: e for e in entries}
+        for entry_id in body.entry_ids:
+            entry_doc = entries_by_id.get(entry_id)
             if entry_doc:
                 await event_bus.publish(
                     Topics.MEMORY_ENTRY_COMMITTED,
@@ -352,7 +360,7 @@ async def get_memory_context(
     # 30 minutes since last extraction AND 5+ messages since
     can_trigger = messages_since_extraction >= _EXTRACTION_MIN_MESSAGES
     if can_trigger and last_extraction_at:
-        elapsed = (datetime.now(UTC) - last_extraction_at.replace(tzinfo=UTC)).total_seconds()
+        elapsed = (datetime.now(UTC) - _ensure_aware(last_extraction_at)).total_seconds()
         if elapsed < _EXTRACTION_COOLDOWN_SECONDS:
             can_trigger = False
 
@@ -384,20 +392,14 @@ async def trigger_extraction(
 
     model_unique_id = persona.get("model_unique_id", "")
 
-    # Fetch last 20 user messages from the most recent session for this persona
-    chat_repo = _chat_repo()
-    sessions = await chat_repo.list_sessions(user_id)
-    persona_sessions = [s for s in sessions if s.get("persona_id") == persona_id]
-
-    if not persona_sessions:
+    # Fetch last N user messages from the most recent session via chat public API
+    result = await get_latest_user_messages_for_persona(
+        user_id, persona_id, _EXTRACTION_MESSAGE_COUNT,
+    )
+    if result is None:
         raise HTTPException(status_code=400, detail="No chat sessions found for this persona")
 
-    # Get messages from the latest session
-    latest_session = persona_sessions[0]  # Already sorted by updated_at desc
-    all_messages = await chat_repo.list_messages(latest_session["_id"])
-    user_messages = [m for m in all_messages if m["role"] == "user"]
-    recent_user_messages = user_messages[-_EXTRACTION_MESSAGE_COUNT:]
-
+    latest_session_id, recent_user_messages = result
     if not recent_user_messages:
         raise HTTPException(status_code=400, detail="No user messages found in latest session")
 
@@ -409,7 +411,7 @@ async def trigger_extraction(
         model_unique_id=model_unique_id,
         payload={
             "persona_id": persona_id,
-            "session_id": latest_session["_id"],
+            "session_id": latest_session_id,
             "messages": [m["content"] for m in recent_user_messages],
         },
         correlation_id=correlation_id,

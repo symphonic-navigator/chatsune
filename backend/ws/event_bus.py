@@ -166,15 +166,9 @@ class EventBus:
             stream_id = await self._redis.xadd(
                 stream_key, {"envelope": envelope.model_dump_json()}
             )
+            # Redis stream IDs have the form "<ms>-<seq>"; BaseEvent.sequence is str.
             envelope.sequence = stream_id
-
-            now_ms = int(now.timestamp() * 1000)
-            try:
-                await self._redis.xtrim(
-                    stream_key, minid=str(now_ms - _TWENTY_FOUR_HOURS_MS)
-                )
-            except Exception:
-                pass  # trim failure must not abort delivery
+            # NOTE: periodic xtrim runs in start_periodic_trim() — no inline trim here.
 
         await self._fan_out(
             topic, envelope.model_dump(mode="json"), target_user_ids or []
@@ -200,9 +194,9 @@ class EventBus:
                         try:
                             await self._redis.xtrim(key, minid=min_id)
                         except Exception:
-                            pass
+                            _log.warning("xtrim failed for stream %r", key, exc_info=True)
                 except Exception:
-                    pass  # Non-critical — retry next cycle
+                    _log.warning("Periodic stream trim cycle failed", exc_info=True)
 
         return asyncio.create_task(_trim_loop())
 

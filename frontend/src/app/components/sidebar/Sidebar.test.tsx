@@ -30,6 +30,7 @@ const defaults = {
   activeModalTab: null as null,
   onOpenAdmin: vi.fn(),
   isAdminOpen: false,
+  hasApiKeyProblem: false,
 }
 
 function renderSidebar(overrides: Partial<typeof defaults> = {}) {

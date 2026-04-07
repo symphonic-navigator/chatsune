@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { ProfileCrop } from '../../../core/types/persona'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 interface AvatarCropModalProps {
   isOpen: boolean
@@ -39,6 +40,9 @@ export function AvatarCropModal({
   const [removing, setRemoving] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useFocusTrap(dialogRef, isOpen)
 
   const [image, setImage] = useState<HTMLImageElement | null>(null)
   const [zoom, setZoom] = useState(1)
@@ -263,15 +267,16 @@ export function AvatarCropModal({
       <div className="fixed inset-0 bg-black/60 z-30" onClick={onClose} aria-hidden />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Profile Picture"
-        className="fixed z-40 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col rounded-xl shadow-2xl overflow-hidden"
-        style={{ backgroundColor: '#13101e', border: `1px solid ${borderColour}`, width: 340 }}
+        aria-labelledby={titleId}
+        className="fixed z-40 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col rounded-xl shadow-2xl overflow-hidden w-[calc(100vw-2rem)] sm:w-[340px]"
+        style={{ backgroundColor: '#13101e', border: `1px solid ${borderColour}` }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/6">
-          <span className="font-mono text-[13px] font-semibold text-white/80">Profile Picture</span>
+          <span id={titleId} className="font-mono text-[13px] font-semibold text-white/80">Profile Picture</span>
           <button type="button" onClick={onClose} aria-label="Close" className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors cursor-pointer">
             ✕
           </button>

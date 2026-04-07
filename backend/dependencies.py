@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 import jwt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _log = logging.getLogger(__name__)
@@ -46,6 +46,23 @@ async def require_admin(
     if user["role"] not in ("admin", "master_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+async def get_optional_user(request: Request) -> dict | None:
+    """Decode JWT from a Bearer header if present, else return None.
+
+    Used by endpoints that support an alternative auth path (e.g. signed URLs)
+    and only need a user identity when a Bearer token is supplied.
+    """
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    from backend.modules.user._auth import decode_access_token  # deferred to break circular import
+
+    try:
+        return decode_access_token(auth.removeprefix("Bearer "))
+    except Exception:
+        return None
 
 
 async def require_master_admin(

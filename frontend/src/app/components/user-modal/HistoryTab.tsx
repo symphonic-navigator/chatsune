@@ -163,12 +163,12 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
         {(isLoading || isSearching) && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">
+          <p className="px-4 py-3 text-[12px] text-white/60 font-mono">
             {isSearching ? 'Searching...' : 'Loading...'}
           </p>
         )}
         {!isLoading && filtered.length === 0 && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No sessions found.</p>
+          <p className="px-4 py-3 text-[12px] text-white/60 font-mono">No sessions found.</p>
         )}
         {grouped.map(([group, groupSessions]) => (
           <div key={group}>
@@ -353,6 +353,7 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
           <button
             type="button"
             onClick={startEdit}
+            aria-label="Rename session"
             title="Rename"
             className={BTN_NEUTRAL}
           >
@@ -362,6 +363,7 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
             type="button"
             onClick={handleGenerateTitle}
             disabled={generating}
+            aria-label="Generate session title"
             title="Generate title"
             className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
           >
@@ -370,14 +372,17 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
             ) : genSuccess ? 'OK' : 'GEN'}
           </button>
           {confirmDelete ? (
-            <button ref={sureRef} type="button" onClick={handleDelete} className={BTN_RED}>
+            <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete session" title="Confirm delete" className={BTN_RED}>
               SURE?
             </button>
           ) : (
-            <button type="button" onClick={startDeleteConfirm} className={BTN_NEUTRAL}>
+            <button type="button" onClick={startDeleteConfirm} aria-label="Delete session" title="Delete session" className={BTN_NEUTRAL}>
               DEL
             </button>
           )}
+          <span role="status" aria-live="polite" className="sr-only">
+            {confirmDelete ? 'Confirm delete: press SURE to remove this session.' : ''}
+          </span>
         </div>
 
         {/* Open arrow */}

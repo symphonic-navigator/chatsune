@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
 import type { ProviderCredentialDto } from '../../../core/types/llm'
 
@@ -31,6 +31,9 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const deleteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const announceId = useId()
+  const configuredCount = useMemo(() => keys.filter((k) => k.provider.is_configured).length, [keys])
+  const anyConfirming = useMemo(() => keys.some((k) => k.confirmDelete), [keys])
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -47,7 +50,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
       onProvidersLoaded?.(providers)
       setError(null)
     } catch {
-      setError('Failed to load providers')
+      setError('Could not load providers. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -107,7 +110,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
       }
     } catch {
       updateKey(providerId, { saving: false })
-      setError('Failed to save key')
+      setError('Could not save API key. Please try again.')
     }
   }
 
@@ -151,7 +154,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
       const providers = await llmApi.listProviders()
       onProvidersLoaded?.(providers)
     } catch {
-      setError('Failed to delete key')
+      setError('Could not delete API key. Please try again.')
     }
   }
 
@@ -193,18 +196,30 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
 
   return (
     <div className="flex-1 overflow-y-auto">
+      <div id={announceId} role="status" aria-live="polite" className="sr-only">
+        {anyConfirming ? 'Confirm delete: press the SURE? button again to remove this key.' : ''}
+      </div>
       {error && (
-        <div className="mx-4 mt-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-2 text-[11px] text-red-400">
+        <div role="alert" className="mx-4 mt-3 rounded-lg border border-red-400/20 bg-red-400/5 px-4 py-2 text-[11px] text-red-400">
           {error}
+        </div>
+      )}
+
+      {configuredCount === 0 && (
+        <div className="mx-4 mt-4 rounded-lg border border-gold/20 bg-gold/5 px-4 py-4 flex flex-col gap-2">
+          <p className="text-[12px] font-mono text-gold/90 uppercase tracking-wider">Add your first API key</p>
+          <p className="text-[11px] text-white/60 leading-relaxed">
+            Without an API key Chatsune cannot reach any LLM provider. Pick a provider below and click SET to add one.
+          </p>
         </div>
       )}
 
       <div className="px-4 pt-3">
         <div className="grid grid-cols-[1fr_1fr_6rem_6rem] gap-2 border-b border-white/6 px-3 py-2">
-          <span className="text-[10px] uppercase tracking-wider text-white/30 font-mono">Provider</span>
-          <span className="text-[10px] uppercase tracking-wider text-white/30 font-mono">Key</span>
-          <span className="text-[10px] uppercase tracking-wider text-white/30 font-mono">Status</span>
-          <span className="text-[10px] uppercase tracking-wider text-white/30 font-mono text-right">Ops</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Provider</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Key</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Status</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono text-right">Ops</span>
         </div>
 
         {keys.map((k) => {
@@ -224,7 +239,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
                   {k.provider.display_name}
                 </span>
 
-                <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/25 tracking-[2px]' : 'text-white/15 italic'}`}>
+                <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/60 tracking-[2px]' : 'text-white/60 italic'}`} aria-label={k.provider.is_configured ? 'API key set' : 'No API key configured'}>
                   {k.provider.is_configured ? '••••••••••••' : 'not configured'}
                 </span>
 
@@ -244,29 +259,31 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
                 <div className="flex gap-1 justify-end">
                   {k.provider.is_configured ? (
                     <>
-                      <button type="button" onClick={() => startEdit(k.provider.provider_id)} className={BTN_NEUTRAL}>
+                      <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Edit API key for ${k.provider.display_name}`} title="Edit API key" className={BTN_NEUTRAL}>
                         EDIT
                       </button>
                       <button
                         type="button"
                         onClick={() => handleTest(k.provider.provider_id)}
                         disabled={status === 'testing'}
+                        aria-label={`Test API key for ${k.provider.display_name}`}
+                        title="Test connectivity"
                         className={`${BTN_NEUTRAL} ${status === 'testing' ? 'opacity-30 cursor-not-allowed' : ''}`}
                       >
                         TEST
                       </button>
                       {k.confirmDelete ? (
-                        <button type="button" onClick={() => handleDelete(k.provider.provider_id)} className={BTN_RED}>
+                        <button type="button" onClick={() => handleDelete(k.provider.provider_id)} aria-label={`Confirm delete API key for ${k.provider.display_name}`} title="Confirm delete" className={BTN_RED}>
                           SURE?
                         </button>
                       ) : (
-                        <button type="button" onClick={() => startDeleteConfirm(k.provider.provider_id)} className={BTN_NEUTRAL}>
+                        <button type="button" onClick={() => startDeleteConfirm(k.provider.provider_id)} aria-label={`Delete API key for ${k.provider.display_name}`} title="Delete API key" className={BTN_NEUTRAL}>
                           DEL
                         </button>
                       )}
                     </>
                   ) : (
-                    <button type="button" onClick={() => startEdit(k.provider.provider_id)} className={BTN_GOLD}>
+                    <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Set API key for ${k.provider.display_name}`} title="Set API key" className={BTN_GOLD}>
                       SET
                     </button>
                   )}
@@ -307,6 +324,7 @@ function EditRow({
   onCancel: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const inputId = useId()
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -325,19 +343,24 @@ function EditRow({
       )}
       <div className="flex gap-2 items-center">
         <div className="relative flex-1">
+          <label htmlFor={inputId} className="sr-only">API key</label>
           <input
+            id={inputId}
             ref={inputRef}
             type={visible ? 'text' : 'password'}
             value={editValue}
             onChange={(e) => onChangeValue(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Paste your API key..."
-            className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 pr-8 text-[12px] font-mono text-white/75 placeholder-white/20 outline-none focus:border-gold/30 transition-colors"
+            className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 pr-8 text-[12px] font-mono text-white/75 placeholder-white/30 outline-none focus:border-gold/30 transition-colors"
           />
           <button
             type="button"
             onClick={() => setVisible(!visible)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-white/25 hover:text-white/50 transition-colors"
+            aria-label={visible ? 'Hide API key' : 'Show API key'}
+            aria-pressed={visible}
+            title={visible ? 'Hide' : 'Show'}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-white/60 hover:text-white/80 transition-colors"
             tabIndex={-1}
           >
             {visible ? '◉' : '○'}
@@ -355,7 +378,7 @@ function EditRow({
           CANCEL
         </button>
       </div>
-      <p className="mt-1.5 text-[9px] text-white/25 font-mono">Saving will automatically run a connectivity test</p>
+      <p className="mt-1.5 text-[9px] text-white/60 font-mono">Saving will automatically run a connectivity test</p>
     </div>
   )
 }

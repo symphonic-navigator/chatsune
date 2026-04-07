@@ -156,10 +156,15 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
         {isLoading && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">Loading...</p>
+          <p className="px-4 py-3 text-[12px] text-white/60 font-mono">Loading...</p>
         )}
         {!isLoading && filtered.length === 0 && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No bookmarks found.</p>
+          <div className="flex flex-col items-center justify-center gap-2 py-16 px-4">
+            <p className="text-[12px] font-mono text-white/60">No bookmarks yet</p>
+            <p className="max-w-xs text-center text-[11px] text-white/60 leading-relaxed">
+              Bookmark a chat message from any conversation to find it again here.
+            </p>
+          </div>
         )}
         <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map((b) => b.id)} strategy={verticalListSortingStrategy}>
@@ -345,20 +350,24 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
           <button
             type="button"
             onClick={startEdit}
+            aria-label={`Edit bookmark title ${bookmark.title}`}
             title="Edit title"
             className={BTN_NEUTRAL}
           >
             EDIT
           </button>
           {confirmDelete ? (
-            <button ref={sureRef} type="button" onClick={handleDelete} className={BTN_RED}>
+            <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete bookmark" title="Confirm delete" className={BTN_RED}>
               SURE?
             </button>
           ) : (
-            <button type="button" onClick={startDeleteConfirm} className={BTN_NEUTRAL}>
+            <button type="button" onClick={startDeleteConfirm} aria-label={`Delete bookmark ${bookmark.title}`} title="Delete bookmark" className={BTN_NEUTRAL}>
               DEL
             </button>
           )}
+          <span role="status" aria-live="polite" className="sr-only">
+            {confirmDelete ? 'Confirm delete: press SURE to remove this bookmark.' : ''}
+          </span>
         </div>
 
         {/* Open arrow */}

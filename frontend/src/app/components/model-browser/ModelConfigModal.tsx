@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useId } from "react"
 import type { EnrichedModelDto, SetUserModelConfigRequest } from "../../../core/types/llm"
 import { llmApi } from "../../../core/api/llm"
 import { slugWithoutProvider } from "./modelFilters"
+import { useFocusTrap } from "../../hooks/useFocusTrap"
 
 const SYSTEM_PROMPT_LIMIT = 4000
 const NOTES_LIMIT = 2000
@@ -57,6 +58,9 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
     model.user_config?.custom_context_window ?? null,
   )
   const backdropRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useFocusTrap(dialogRef, true)
 
   const contextSliderAvailable = model.context_window >= MIN_CONTEXT_FOR_SLIDER
   const steps = contextSliderAvailable ? availableSteps(model.context_window) : []
@@ -113,11 +117,17 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
       onClick={handleBackdropClick}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
     >
-      <div className="w-full max-w-lg rounded-xl border border-white/8 bg-surface shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full sm:max-w-lg rounded-xl border border-white/8 bg-surface shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-white/80">
+            <div id={titleId} className="truncate text-[13px] font-semibold text-white/80">
               {model.display_name}
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/40">
@@ -158,7 +168,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             </button>
             <div>
               <div className="text-[12px] text-white/70">Favourite</div>
-              <div className="text-[10px] text-white/30">
+              <div className="text-[10px] text-white/60">
                 Favourited models appear at the top of the selection list
               </div>
             </div>
@@ -184,7 +194,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             </div>
             <div>
               <div className="text-[12px] text-white/70">Hidden</div>
-              <div className="text-[10px] text-white/30">
+              <div className="text-[10px] text-white/60">
                 Hide this model from your model selection lists
               </div>
             </div>
@@ -221,7 +231,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
               className="w-full rounded-lg border border-white/8 bg-elevated px-3 py-2 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
             />
             {model.display_name && (
-              <div className="mt-1 text-[10px] text-white/25">
+              <div className="mt-1 text-[10px] text-white/60">
                 Original: {model.display_name}
               </div>
             )}
@@ -256,16 +266,16 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
                   {formatContextLabel(model.context_window)} (max)
                 </span>
               </div>
-              <div className="mt-1.5 text-[10px] text-white/25">
+              <div className="mt-1.5 text-[10px] text-white/60">
                 Smaller context = lower cost per message. Default is the model's maximum.
               </div>
             </div>
           ) : (
             <div>
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-white/25">
+              <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-white/60">
                 Context Size
               </div>
-              <div className="text-[10px] text-white/20 italic">
+              <div className="text-[10px] text-white/60 italic">
                 Context adjustment available for models with 96k+ context window.
                 This model has {formatContextLabel(model.context_window)}.
               </div>

@@ -150,8 +150,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isStreaming || disabled}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:text-white/60 disabled:opacity-30"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
           title="Attach file"
+          aria-label="Attach file"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M7.5 2C5 2 3 4 3 6.5V11C3 13.5 5 15.5 7.5 15.5C10 15.5 12 13.5 12 11V5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
@@ -161,8 +162,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           type="button"
           onClick={onToggleBrowser}
           disabled={isStreaming || disabled}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition-colors hover:text-white/60 disabled:opacity-30"
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
           title="Browse uploads"
+          aria-label="Browse uploads"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
@@ -177,13 +179,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           placeholder="Type a message..."
           disabled={isStreaming || disabled}
           rows={1}
-          className="chat-text flex-1 resize-none overflow-hidden rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/20 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40"
+          className="chat-text flex-1 resize-none overflow-hidden rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40"
         />
         {isStreaming ? (
           <button
             type="button"
             data-testid="cancel-button"
             onClick={onCancel}
+            title="Cancel response"
+            aria-label="Cancel response"
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -196,7 +200,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             data-testid="send-button"
             onClick={handleSend}
             disabled={!text.trim() || disabled || hasPendingUploads}
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/50 transition-colors hover:bg-white/10 hover:text-white/70 disabled:opacity-30 disabled:hover:bg-white/6"
+            title="Send message"
+            aria-label="Send message"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />

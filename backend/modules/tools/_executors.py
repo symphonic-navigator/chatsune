@@ -58,7 +58,7 @@ class KnowledgeSearchExecutor:
     """Dispatches knowledge_search tool calls to the knowledge retrieval module."""
 
     async def execute(self, user_id: str, tool_name: str, arguments: dict) -> str:
-        from backend.modules.knowledge._retrieval import search
+        from backend.modules.knowledge import search
 
         try:
             query = arguments.get("query", "")
@@ -116,139 +116,49 @@ class KnowledgeSearchExecutor:
 
 
 class ArtefactToolExecutor:
-    """Dispatches artefact tool calls (create, update, read, list) to the artefact repository."""
-
-    _HANDLE_RE = None
-
-    def _handle_pattern(self):
-        import re
-        if ArtefactToolExecutor._HANDLE_RE is None:
-            ArtefactToolExecutor._HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-        return ArtefactToolExecutor._HANDLE_RE
+    """Dispatches artefact tool calls (create, update, read, list) to the artefact module."""
 
     async def execute(self, user_id: str, tool_name: str, arguments: dict) -> str:
         session_id = arguments.pop("_session_id", "")
         correlation_id = arguments.pop("_correlation_id", "")
 
         try:
-            from datetime import datetime, timezone
-            from backend.database import get_db
-            from backend.modules.artefact._repository import ArtefactRepository
-            from backend.ws.event_bus import get_event_bus
-            from shared.events.artefact import ArtefactCreatedEvent, ArtefactUpdatedEvent
-            from shared.topics import Topics
-
-            db = get_db()
-            repo = ArtefactRepository(db)
+            from backend.modules.artefact import (
+                create_artefact,
+                list_artefacts,
+                read_artefact,
+                update_artefact,
+            )
 
             if tool_name == "create_artefact":
-                handle = arguments.get("handle", "")
-                title = arguments.get("title", "")
-                artefact_type = arguments.get("type", "")
-                content = arguments.get("content", "")
-                language = arguments.get("language")
-
-                if not self._handle_pattern().match(handle) or len(handle) > 64:
-                    return json.dumps({"error": f"Invalid handle '{handle}'. Must match ^[a-z0-9][a-z0-9-]*$ and be at most 64 characters."})
-
-                existing = await repo.get_by_handle(session_id, handle)
-                if existing:
-                    return json.dumps({"error": f"An artefact with handle '{handle}' already exists in this session."})
-
-                now = datetime.now(timezone.utc)
-                doc = {
-                    "session_id": session_id,
-                    "user_id": user_id,
-                    "handle": handle,
-                    "title": title,
-                    "type": artefact_type,
-                    "language": language,
-                    "content": content,
-                    "size_bytes": len(content.encode("utf-8")),
-                    "version": 1,
-                    "max_version": 1,
-                    "created_at": now,
-                    "updated_at": now,
-                }
-                created = await repo.create(doc)
-                artefact_id = str(created["_id"])
-
-                event_bus = get_event_bus()
-                await event_bus.publish(
-                    Topics.ARTEFACT_CREATED,
-                    ArtefactCreatedEvent(
-                        session_id=session_id,
-                        artefact_id=artefact_id,
-                        handle=handle,
-                        title=title,
-                        artefact_type=artefact_type,
-                        language=language,
-                        size_bytes=created["size_bytes"],
-                        correlation_id=correlation_id,
-                        timestamp=now,
-                    ),
-                    scope=f"session:{session_id}",
-                    target_user_ids=[user_id],
+                result = await create_artefact(
+                    user_id=user_id,
+                    session_id=session_id,
+                    handle=arguments.get("handle", ""),
+                    title=arguments.get("title", ""),
+                    artefact_type=arguments.get("type", ""),
+                    content=arguments.get("content", ""),
+                    language=arguments.get("language"),
                     correlation_id=correlation_id,
                 )
-
-                return json.dumps({"ok": True, "handle": handle, "artefact_id": artefact_id})
+                return json.dumps(result)
 
             if tool_name == "update_artefact":
-                handle = arguments.get("handle", "")
-                content = arguments.get("content", "")
-                new_title = arguments.get("title")
-
-                artefact = await repo.get_by_handle(session_id, handle)
-                if not artefact:
-                    return json.dumps({"error": f"No artefact with handle '{handle}' found in this session."})
-
-                artefact_id = str(artefact["_id"])
-                current_version = artefact.get("version", 1)
-
-                # Save current version before overwriting, clear redo history
-                await repo.save_version(artefact_id, current_version, artefact["content"], artefact["title"])
-                await repo.delete_versions_above(artefact_id, current_version)
-
-                new_version = current_version + 1
-                updated = await repo.update_content(
-                    artefact_id=artefact_id,
-                    content=content,
-                    title=new_title,
-                    new_version=new_version,
-                    max_version=new_version,
-                )
-
-                if not updated:
-                    return json.dumps({"error": "Update failed unexpectedly."})
-
-                now = datetime.now(timezone.utc)
-                event_bus = get_event_bus()
-                await event_bus.publish(
-                    Topics.ARTEFACT_UPDATED,
-                    ArtefactUpdatedEvent(
-                        session_id=session_id,
-                        handle=handle,
-                        title=updated["title"],
-                        artefact_type=updated["type"],
-                        size_bytes=updated["size_bytes"],
-                        version=new_version,
-                        correlation_id=correlation_id,
-                        timestamp=now,
-                    ),
-                    scope=f"session:{session_id}",
-                    target_user_ids=[user_id],
+                result = await update_artefact(
+                    user_id=user_id,
+                    session_id=session_id,
+                    handle=arguments.get("handle", ""),
+                    content=arguments.get("content", ""),
+                    title=arguments.get("title"),
                     correlation_id=correlation_id,
                 )
-
-                return json.dumps({"ok": True, "handle": handle, "version": new_version})
+                return json.dumps(result)
 
             if tool_name == "read_artefact":
                 handle = arguments.get("handle", "")
-                artefact = await repo.get_by_handle(session_id, handle)
+                artefact = await read_artefact(session_id=session_id, handle=handle)
                 if not artefact:
                     return json.dumps({"error": f"No artefact with handle '{handle}' found in this session."})
-
                 return json.dumps({
                     "handle": artefact["handle"],
                     "title": artefact["title"],
@@ -260,7 +170,7 @@ class ArtefactToolExecutor:
                 }, ensure_ascii=False)
 
             if tool_name == "list_artefacts":
-                artefacts = await repo.list_by_session(session_id)
+                artefacts = await list_artefacts(session_id=session_id)
                 summary = [
                     {
                         "handle": a["handle"],

@@ -24,6 +24,7 @@ export function UsersTab() {
   const [generatedPw, setGeneratedPw] = useState<GeneratedPassword | null>(null)
   const [pwCountdown, setPwCountdown] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -46,7 +47,10 @@ export function UsersTab() {
     fetchUsers()
   }, [fetchUsers])
 
-  // Password banner countdown
+  // Password banner countdown.
+  // setInterval is intentional here: the banner shows a live "Disappears in Ns"
+  // counter that ticks every second until the 60s window expires. A one-shot
+  // setTimeout would not give the user the running visual feedback.
   useEffect(() => {
     if (!generatedPw) return
     const remaining = Math.max(0, Math.ceil((generatedPw.expiresAt - Date.now()) / 1000))
@@ -67,16 +71,19 @@ export function UsersTab() {
   function showPassword(username: string, password: string) {
     setGeneratedPw({ username, password, expiresAt: Date.now() + 60_000 })
     setCopied(false)
+    setCopyError(null)
   }
 
   async function handleCopy() {
     if (!generatedPw) return
+    setCopyError(null)
     try {
       await navigator.clipboard.writeText(generatedPw.password)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Clipboard API may be blocked
+      // Clipboard API may be blocked (insecure context, denied permission, etc.)
+      setCopyError("Copy failed — please select and copy manually")
     }
   }
 
@@ -157,7 +164,7 @@ export function UsersTab() {
       <div className="flex flex-1 items-center justify-center">
         <div className="flex items-center gap-3">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
-          <span className="text-[12px] text-white/40">Loading users...</span>
+          <span className="text-[12px] text-white/60">Loading users...</span>
         </div>
       </div>
     )
@@ -167,7 +174,7 @@ export function UsersTab() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2.5">
-        <span className="text-[10px] uppercase tracking-[0.15em] text-white/30">
+        <span className="text-[10px] uppercase tracking-[0.15em] text-white/60">
           User Registry
         </span>
         <button
@@ -176,7 +183,7 @@ export function UsersTab() {
           className={[
             "rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer",
             showNewForm
-              ? "border-white/8 text-white/55 hover:bg-white/6"
+              ? "border-white/8 text-white/60 hover:bg-white/6"
               : "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
           ].join(" ")}
         >
@@ -195,30 +202,39 @@ export function UsersTab() {
 
       {/* Generated password banner */}
       {generatedPw && (
-        <div className="flex items-center gap-3 border-b border-green-400/20 bg-green-400/5 px-4 py-2.5">
-          <span className="text-[11px] text-green-400">
-            Password for <span className="font-medium">{generatedPw.username}</span>:
-          </span>
-          <code className="rounded bg-white/6 px-2 py-0.5 text-[12px] font-mono text-white/80">
-            {generatedPw.password}
-          </code>
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="rounded border border-white/8 px-2 py-0.5 text-[10px] text-white/55 transition-colors hover:bg-white/6 hover:text-white/75 cursor-pointer"
-          >
-            {copied ? "COPIED" : "COPY"}
-          </button>
-          <span className="text-[10px] text-white/30">
-            Disappears in {pwCountdown}s
-          </span>
-          <button
-            type="button"
-            onClick={() => setGeneratedPw(null)}
-            className="ml-auto text-[10px] text-white/30 hover:text-white/55 transition-colors cursor-pointer"
-          >
-            Dismiss
-          </button>
+        <div className="flex flex-col gap-1 border-b border-green-400/20 bg-green-400/5 px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-green-400">
+              Password for <span className="font-medium">{generatedPw.username}</span>:
+            </span>
+            <code className="rounded bg-white/6 px-2 py-0.5 text-[12px] font-mono text-white/80">
+              {generatedPw.password}
+            </code>
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label={copied ? "Password copied to clipboard" : "Copy password to clipboard"}
+              className="rounded border border-white/8 px-2 py-0.5 text-[10px] text-white/60 transition-colors hover:bg-white/6 hover:text-white/80 cursor-pointer"
+            >
+              {copied ? "COPIED" : "COPY"}
+            </button>
+            <span className="text-[10px] text-white/60">
+              Disappears in {pwCountdown}s
+            </span>
+            <button
+              type="button"
+              onClick={() => setGeneratedPw(null)}
+              aria-label="Dismiss password banner"
+              className="ml-auto text-[10px] text-white/60 hover:text-white/80 transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+          {copyError && (
+            <div role="alert" aria-live="polite" className="text-[10px] text-red-400">
+              {copyError}
+            </div>
+          )}
         </div>
       )}
 
@@ -240,7 +256,7 @@ export function UsersTab() {
       <div className="flex-1 overflow-auto">
         <table className="w-full text-left">
           <thead className="sticky top-0 z-10 bg-surface">
-            <tr className="border-b border-white/6 text-[10px] uppercase tracking-wider text-white/30">
+            <tr className="border-b border-white/6 text-[10px] uppercase tracking-wider text-white/60">
               <th className="px-4 py-2 font-medium">User</th>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Role</th>
@@ -250,8 +266,19 @@ export function UsersTab() {
           <tbody>
             {users.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-[12px] text-white/20">
-                  No users found
+                <td colSpan={4} className="px-4 py-10 text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="text-[12px] text-white/60">No users yet</span>
+                    {!showNewForm && (
+                      <button
+                        type="button"
+                        onClick={() => setShowNewForm(true)}
+                        className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-1.5 text-[11px] font-medium text-gold transition-colors hover:bg-gold/20 cursor-pointer"
+                      >
+                        Create your first user
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             )}
@@ -276,7 +303,7 @@ export function UsersTab() {
 
       {/* Footer */}
       <div className="flex items-center border-t border-white/6 px-4 py-2">
-        <span className="text-[10px] text-white/30">
+        <span className="text-[10px] text-white/60">
           {total} {total === 1 ? "user" : "users"}
         </span>
       </div>
@@ -340,7 +367,7 @@ function UserRow({
         <div className="flex items-center gap-2">
           <div className="flex flex-col">
             <span className="text-[12px] text-white/80">{user.username}</span>
-            <span className="text-[10px] text-white/40">{user.display_name}</span>
+            <span className="text-[10px] text-white/60">{user.display_name}</span>
           </div>
           {isMaster && (
             <span className="rounded bg-purple-400/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-purple-400 border border-purple-400/25">
@@ -386,7 +413,10 @@ function UserRow({
 
       {/* Ops — visible on hover */}
       <td className="px-4 py-2">
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div
+          aria-live="polite"
+          className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+        >
           {/* Lock/Unlock */}
           <button
             type="button"
@@ -400,6 +430,7 @@ function UserRow({
                   ? "text-white/55 hover:bg-white/6 hover:text-white/75 cursor-pointer"
                   : "text-green-400 hover:bg-green-400/10 cursor-pointer",
             ].join(" ")}
+            aria-label={user.is_active ? `Lock user ${user.username}` : `Unlock user ${user.username}`}
             title={opsDisabled ? "Cannot modify" : user.is_active ? "Lock user" : "Unlock user"}
           >
             {user.is_active ? "LOCK" : "UNLOCK"}
@@ -416,6 +447,7 @@ function UserRow({
                 ? "text-white/15 cursor-not-allowed"
                 : "text-white/55 hover:bg-white/6 hover:text-white/75 cursor-pointer",
             ].join(" ")}
+            aria-label={`Reset password for ${user.username}`}
             title={isSelf ? "Cannot reset own password" : "Reset password"}
           >
             RESET
@@ -433,15 +465,20 @@ function UserRow({
                   ? "text-white/15 cursor-not-allowed"
                   : "text-red-400/60 hover:bg-red-400/10 hover:text-red-400 cursor-pointer",
               ].join(" ")}
+              aria-label={`Deactivate user ${user.username}`}
               title={opsDisabled ? "Cannot deactivate" : "Deactivate user"}
             >
               DEL
             </button>
           ) : (
             <>
+              <span className="sr-only" role="status">
+                Confirm deactivation of {user.username}
+              </span>
               <button
                 type="button"
                 onClick={onDeactivateConfirm}
+                aria-label={`Confirm deactivation of ${user.username}`}
                 className="rounded bg-red-400/15 px-1.5 py-0.5 text-[10px] text-red-400 hover:bg-red-400/25 transition-colors cursor-pointer"
               >
                 CONFIRM
@@ -449,7 +486,8 @@ function UserRow({
               <button
                 type="button"
                 onClick={onDeactivateCancel}
-                className="rounded px-1.5 py-0.5 text-[10px] text-white/40 hover:text-white/60 transition-colors cursor-pointer"
+                aria-label="Cancel deactivation"
+                className="rounded px-1.5 py-0.5 text-[10px] text-white/60 hover:text-white/80 transition-colors cursor-pointer"
               >
                 CANCEL
               </button>

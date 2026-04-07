@@ -47,6 +47,7 @@ const DEFAULT_PERSONA: PersonaDto = {
   monogram: '?',
   pinned: false,
   profile_image: null,
+  profile_crop: null,
   created_at: '',
   updated_at: '',
 }
@@ -156,6 +157,8 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
         {/* Tab bar */}
         <div
           className="flex px-4 flex-shrink-0"
+          role="tablist"
+          aria-label="Persona sections"
           style={{ borderBottom: `1px solid ${borderColour}` }}
         >
           {TABS
@@ -166,6 +169,11 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                 <button
                   key={tab.id}
                   type="button"
+                  role="tab"
+                  id={`persona-tab-${tab.id}`}
+                  aria-selected={isActive}
+                  aria-controls={`persona-tabpanel-${tab.id}`}
+                  tabIndex={isActive ? 0 : -1}
                   onClick={() => onTabChange(tab.id)}
                   className={[
                     'px-3 py-2.5 border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap flex flex-col items-start',
@@ -179,7 +187,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                   {tab.subtitle && (
                     <span
                       className="text-[9px] leading-none mt-0.5 font-mono"
-                      style={{ color: isActive ? `${chakra.hex}99` : 'rgba(255,255,255,0.2)' }}
+                      style={{ color: isActive ? `${chakra.hex}99` : 'rgba(255,255,255,0.6)' }}
                     >
                       {tab.subtitle}
                     </span>
@@ -190,7 +198,12 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className="flex-1 overflow-y-auto"
+          role="tabpanel"
+          id={`persona-tabpanel-${activeTab}`}
+          aria-labelledby={`persona-tab-${activeTab}`}
+        >
           {activeTab === 'overview' && !isCreating && (
             <OverviewTab
               persona={resolved}

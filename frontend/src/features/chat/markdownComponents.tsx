@@ -1,4 +1,4 @@
-import { useCallback, useState, type ComponentPropsWithoutRef } from "react"
+import { useCallback, useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react"
 import type { Components } from "react-markdown"
 import type { Highlighter } from "shiki"
 
@@ -6,11 +6,17 @@ const COLLAPSE_LINE_THRESHOLD = 15
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+  }, [])
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text)
     setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => setCopied(false), 1500)
   }, [text])
 
   return (

@@ -20,7 +20,7 @@ describe('chatStore', () => {
   it('setMessages replaces messages', () => {
     const msgs: ChatMessageDto[] = [{
       id: '1', session_id: 's1', role: 'user', content: 'hello',
-      thinking: null, web_search_context: null, token_count: 5, created_at: '2026-01-01T00:00:00Z',
+      thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 5, created_at: '2026-01-01T00:00:00Z',
     }]
     useChatStore.getState().setMessages(msgs)
     expect(useChatStore.getState().messages).toEqual(msgs)
@@ -49,7 +49,7 @@ describe('chatStore', () => {
     appendStreamingThinking('Reasoning')
     finishStreaming({
       id: 'msg-1', session_id: 's1', role: 'assistant', content: 'Answer',
-      thinking: 'Reasoning', web_search_context: null, token_count: 10, created_at: '2026-01-01T00:00:00Z',
+      thinking: 'Reasoning', web_search_context: null, attachments: null, knowledge_context: null, token_count: 10, created_at: '2026-01-01T00:00:00Z',
     }, 'yellow', 0.55)
 
     const state = useChatStore.getState()
@@ -73,10 +73,10 @@ describe('chatStore', () => {
 
   it('truncateAfter removes messages after given ID', () => {
     const msgs: ChatMessageDto[] = [
-      { id: '1', session_id: 's1', role: 'user', content: 'a', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
-      { id: '2', session_id: 's1', role: 'assistant', content: 'b', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:01Z' },
-      { id: '3', session_id: 's1', role: 'user', content: 'c', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:02Z' },
-      { id: '4', session_id: 's1', role: 'assistant', content: 'd', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:03Z' },
+      { id: '1', session_id: 's1', role: 'user', content: 'a', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
+      { id: '2', session_id: 's1', role: 'assistant', content: 'b', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:01Z' },
+      { id: '3', session_id: 's1', role: 'user', content: 'c', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:02Z' },
+      { id: '4', session_id: 's1', role: 'assistant', content: 'd', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:03Z' },
     ]
     useChatStore.getState().setMessages(msgs)
     useChatStore.getState().truncateAfter('2')
@@ -85,7 +85,7 @@ describe('chatStore', () => {
 
   it('updateMessage replaces content of existing message', () => {
     const msgs: ChatMessageDto[] = [
-      { id: '1', session_id: 's1', role: 'user', content: 'old', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
+      { id: '1', session_id: 's1', role: 'user', content: 'old', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
     ]
     useChatStore.getState().setMessages(msgs)
     useChatStore.getState().updateMessage('1', 'new', 3)
@@ -95,8 +95,8 @@ describe('chatStore', () => {
 
   it('deleteMessage removes message by ID', () => {
     const msgs: ChatMessageDto[] = [
-      { id: '1', session_id: 's1', role: 'user', content: 'a', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
-      { id: '2', session_id: 's1', role: 'assistant', content: 'b', thinking: null, web_search_context: null, token_count: 1, created_at: '2026-01-01T00:00:01Z' },
+      { id: '1', session_id: 's1', role: 'user', content: 'a', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:00Z' },
+      { id: '2', session_id: 's1', role: 'assistant', content: 'b', thinking: null, web_search_context: null, attachments: null, knowledge_context: null, token_count: 1, created_at: '2026-01-01T00:00:01Z' },
     ]
     useChatStore.getState().setMessages(msgs)
     useChatStore.getState().deleteMessage('2')

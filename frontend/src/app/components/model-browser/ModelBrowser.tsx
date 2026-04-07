@@ -58,12 +58,6 @@ function formatContext(ctx: number): string {
   return String(ctx)
 }
 
-function formatParams(model: EnrichedModelDto): string {
-  if (!model.parameter_count) return "--"
-  if (model.quantisation_level) return `${model.parameter_count} ${model.quantisation_level}`
-  return model.parameter_count
-}
-
 export function ModelBrowser({
   onEditConfig,
   onToggleFavourite,

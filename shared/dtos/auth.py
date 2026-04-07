@@ -1,6 +1,13 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+class Role(StrEnum):
+    USER = "user"
+    ADMIN = "admin"
+    MASTER_ADMIN = "master_admin"
 
 
 class UserDto(BaseModel):

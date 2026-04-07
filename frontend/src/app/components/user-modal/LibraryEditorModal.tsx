@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 
 interface LibraryEditorModalProps {
   initial?: { name: string; description: string; nsfw: boolean }
@@ -16,9 +18,22 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const nameId = useId()
+  const descId = useId()
+  const nsfwId = useId()
+  const titleId = useId()
 
   const isEdit = initial !== undefined
+  useFocusTrap(dialogRef, true)
+
+  const isDirty =
+    name !== (initial?.name ?? '') ||
+    description !== (initial?.description ?? '') ||
+    nsfw !== (initial?.nsfw ?? false)
+  const { confirmingClose, attemptClose, confirmDiscard, cancelDiscard } =
+    useUnsavedChangesGuard(isDirty, onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -58,22 +73,52 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose()
+    if (e.key === 'Escape') attemptClose()
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) attemptClose() }}
       onKeyDown={handleKeyDown}
     >
-      <div className="w-full max-w-md rounded-xl border border-white/8 bg-elevated shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full sm:max-w-md rounded-xl border border-white/8 bg-elevated shadow-2xl"
+      >
         {/* Header */}
         <div className="border-b border-white/6 px-5 py-4">
-          <h2 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
+          <h2 id={titleId} className="text-[13px] font-mono uppercase tracking-wider text-white/60">
             {isEdit ? 'Edit Library' : 'New Library'}
           </h2>
         </div>
+
+        {confirmingClose && (
+          <div className="border-b border-amber-400/30 bg-amber-400/10 px-5 py-3">
+            <p className="text-[11px] text-amber-200 font-mono mb-2">
+              Discard unsaved changes?
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelDiscard}
+                className="rounded border border-white/15 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/60 hover:text-white/90 cursor-pointer"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={confirmDiscard}
+                className="rounded border border-amber-400/40 bg-amber-400/15 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-amber-200 hover:bg-amber-400/25 cursor-pointer"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex flex-col gap-4 px-5 py-4">
@@ -84,10 +129,11 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
           )}
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-mono uppercase tracking-wider text-white/40">
+            <label htmlFor={nameId} className="text-[11px] font-mono uppercase tracking-wider text-white/60">
               Name
             </label>
             <input
+              id={nameId}
               ref={nameRef}
               type="text"
               value={name}
@@ -99,10 +145,11 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[11px] font-mono uppercase tracking-wider text-white/40">
+            <label htmlFor={descId} className="text-[11px] font-mono uppercase tracking-wider text-white/60">
               Description
             </label>
             <textarea
+              id={descId}
               value={description}
               onChange={(e) => setDescription(e.target.value.slice(0, 1000))}
               maxLength={1000}
@@ -112,8 +159,9 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
             />
           </div>
 
-          <label className="flex cursor-pointer items-center gap-3">
+          <label htmlFor={nsfwId} className="flex cursor-pointer items-center gap-3">
             <input
+              id={nsfwId}
               type="checkbox"
               checked={nsfw}
               onChange={(e) => setNsfw(e.target.checked)}
@@ -137,7 +185,7 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
                   'rounded px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider border transition-colors',
                   confirmDelete
                     ? 'border-red-400/40 bg-red-400/10 text-red-400 hover:bg-red-400/15'
-                    : 'border-white/8 text-white/30 hover:border-red-400/30 hover:text-red-400',
+                    : 'border-white/8 text-white/60 hover:border-red-400/30 hover:text-red-400',
                   deleting ? 'cursor-not-allowed opacity-30' : 'cursor-pointer',
                 ].join(' ')}
               >
@@ -148,9 +196,9 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={attemptClose}
               disabled={saving || deleting}
-              className="rounded border border-white/8 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/40 transition-colors hover:border-white/15 hover:text-white/60 cursor-pointer"
+              className="rounded border border-white/8 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/60 transition-colors hover:border-white/15 hover:text-white/80 cursor-pointer"
             >
               Cancel
             </button>

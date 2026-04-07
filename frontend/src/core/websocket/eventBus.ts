@@ -25,10 +25,11 @@ class EventBus {
       this.listeners.get("*")?.forEach((cb) => cb(event))
     }
 
-    // Notify prefix subscribers (e.g. "persona.*" matches "persona.created")
+    // Notify prefix subscribers recursively (e.g. "persona.*" matches "persona.memory.created",
+    // "persona.memory.*" matches "persona.memory.created", etc.)
     const parts = event.type.split(".")
-    if (parts.length > 1) {
-      const prefix = parts[0] + ".*"
+    for (let i = 1; i < parts.length; i++) {
+      const prefix = parts.slice(0, i).join(".") + ".*"
       this.listeners.get(prefix)?.forEach((cb) => cb(event))
     }
   }

@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from backend.config import settings
 from backend.database import connect_db, disconnect_db, get_db, get_redis
 from backend.modules.user import router as user_router, init_indexes as user_init_indexes
 from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
@@ -75,11 +77,11 @@ async def lifespan(app: FastAPI):
             try:
                 await cleanup_stale_empty_sessions()
             except Exception:
-                pass
+                _cleanup_log.warning("cleanup_stale_empty_sessions failed", exc_info=True)
             try:
                 await cleanup_soft_deleted_sessions()
             except Exception:
-                pass
+                _cleanup_log.warning("cleanup_soft_deleted_sessions failed", exc_info=True)
             # Auto-commit memory journal entries older than 48h
             try:
                 from backend.modules.memory import MemoryRepository
@@ -212,16 +214,17 @@ async def lifespan(app: FastAPI):
         while True:
             await asyncio.sleep(900)
             try:
-                from backend.modules.chat._repository import ChatRepository as _ExtRepo
+                from backend.modules.chat import (
+                    find_sessions_for_extraction,
+                    list_unextracted_messages_for_session,
+                )
                 from backend.jobs._submit import submit as _ext_submit
                 from backend.jobs._models import JobType as _ExtJobType
 
                 ext_redis = get_redis()
-                ext_db = get_db()
-                ext_repo = _ExtRepo(ext_db)
 
                 # Scan for all extraction tracking keys
-                cursor = b"0"
+                cursor = "0"
                 while True:
                     cursor, keys = await ext_redis.scan(
                         cursor=cursor, match="memory:extraction:*", count=100,
@@ -243,10 +246,7 @@ async def lifespan(app: FastAPI):
                             pid = parts[3]
 
                             # Find the most recent session for this user+persona
-                            session = await ext_db["chat_sessions"].find_one(
-                                {"user_id": uid, "persona_id": pid, "deleted_at": None},
-                                sort=[("updated_at", -1)],
-                            )
+                            session = await find_sessions_for_extraction(uid, pid)
                             if not session or not session.get("model_unique_id"):
                                 continue
 
@@ -254,7 +254,7 @@ async def lifespan(app: FastAPI):
                             model_unique_id = session["model_unique_id"]
 
                             # Fetch unextracted user messages only
-                            unextracted = await ext_repo.list_unextracted_user_messages(
+                            unextracted = await list_unextracted_messages_for_session(
                                 session_id, limit=20,
                             )
                             if not unextracted:
@@ -287,7 +287,7 @@ async def lifespan(app: FastAPI):
                                 "Failed to process extraction key %s", key,
                             )
 
-                    if cursor == b"0" or cursor == 0:
+                    if cursor == "0":
                         break
             except Exception:
                 _extraction_log.exception("Periodic extraction loop failed")
@@ -320,6 +320,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Chatsune", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(user_router)
 app.include_router(llm_router)
 app.include_router(persona_router)

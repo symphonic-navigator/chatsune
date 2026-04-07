@@ -918,10 +918,68 @@ async def cleanup_soft_deleted_sessions() -> int:
     return len(deleted_ids)
 
 
+async def find_sessions_for_extraction(
+    user_id: str, persona_id: str,
+) -> dict | None:
+    """Return the most recent non-deleted session for a (user, persona) pair, or None.
+
+    Public API for the periodic memory-extraction loop so it does not need to
+    reach into chat module internals or the chat_sessions collection directly.
+    """
+    db = get_db()
+    repo = ChatRepository(db)
+    return await repo.get_latest_active_session(user_id, persona_id)
+
+
+async def list_unextracted_messages_for_session(
+    session_id: str, limit: int = 20,
+) -> list[dict]:
+    """Return up to `limit` unextracted user messages for a session."""
+    db = get_db()
+    repo = ChatRepository(db)
+    return await repo.list_unextracted_user_messages(session_id, limit=limit)
+
+
+async def get_latest_user_messages_for_persona(
+    user_id: str,
+    persona_id: str,
+    limit: int,
+) -> tuple[str, list[dict]] | None:
+    """Return ``(session_id, user_messages)`` for the most recent session of a persona.
+
+    Returns ``None`` if the user has no sessions for that persona. Otherwise
+    returns the latest session id together with up to ``limit`` most recent
+    user messages (each as the raw message dict from the chat repository).
+    Used by the memory module to trigger manual extractions without reaching
+    into chat internals.
+    """
+    repo = ChatRepository(get_db())
+    sessions = await repo.list_sessions(user_id)
+    persona_sessions = [s for s in sessions if s.get("persona_id") == persona_id]
+    if not persona_sessions:
+        return None
+    latest = persona_sessions[0]
+    all_messages = await repo.list_messages(latest["_id"])
+    user_messages = [m for m in all_messages if m["role"] == "user"]
+    return latest["_id"], user_messages[-limit:]
+
+
+async def mark_messages_extracted(message_ids: list[str]) -> int:
+    """Mark chat messages as having been processed by memory extraction.
+
+    Public-API wrapper around the chat repository so other modules (memory
+    extraction job handler) do not need to import chat internals.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.mark_messages_extracted(message_ids)
+
+
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "handle_incognito_send", "update_session_title",
     "trigger_disconnect_extraction",
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
+    "find_sessions_for_extraction", "list_unextracted_messages_for_session",
+    "get_latest_user_messages_for_persona", "mark_messages_extracted",
 ]

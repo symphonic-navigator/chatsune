@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
@@ -24,11 +26,20 @@ class ConnectionManager:
             del self._user_roles[user_id]
 
     async def send_to_user(self, user_id: str, event: dict) -> None:
-        for ws in list(self._connections.get(user_id, set())):
+        sockets = list(self._connections.get(user_id, set()))
+        if not sockets:
+            return
+
+        async def _send(ws: WebSocket) -> None:
             try:
                 await ws.send_json(event)
             except WebSocketDisconnect:
                 await self.disconnect(user_id, ws)
+            except Exception:
+                # Treat any send error as a dead socket — drop it.
+                await self.disconnect(user_id, ws)
+
+        await asyncio.gather(*(_send(ws) for ws in sockets), return_exceptions=True)
 
     async def send_to_users(self, user_ids: list[str], event: dict) -> None:
         for user_id in user_ids:

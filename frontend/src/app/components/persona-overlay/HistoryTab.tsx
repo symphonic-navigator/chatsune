@@ -111,7 +111,7 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search history..."
           aria-label="Search session history"
-          className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none transition-colors font-mono"
+          className="w-full bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/60 outline-none transition-colors font-mono"
           style={{ borderColor: search ? `${chakra.hex}40` : undefined }}
         />
       </div>
@@ -119,16 +119,16 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
         {(isLoading || isSearching) && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">
+          <p className="px-4 py-3 text-[12px] text-white/60 font-mono">
             {isSearching ? 'Searching...' : 'Loading...'}
           </p>
         )}
         {!isLoading && filtered.length === 0 && (
-          <p className="px-4 py-3 text-[12px] text-white/30 font-mono">No sessions found.</p>
+          <p className="px-4 py-3 text-[12px] text-white/60 font-mono">No sessions found.</p>
         )}
         {grouped.map(([group, groupSessions]) => (
           <div key={group}>
-            <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/30 font-mono">
+            <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/60 font-mono">
               {group}
             </div>
             {groupSessions.map((s) => (
@@ -160,7 +160,8 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
   const [generating, setGenerating] = useState(false)
   const [genSuccess, setGenSuccess] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const deleteTimer = useRef<ReturnType<typeof setTimeout>>()
+  const [genError, setGenError] = useState(false)
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (editing) inputRef.current?.focus()
@@ -202,6 +203,7 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
   }, [saveEdit, cancelEdit])
 
   const handleGenerateTitle = useCallback(async () => {
+    setGenError(false)
     setGenerating(true)
     try {
       await chatApi.generateTitle(session.id)
@@ -219,12 +221,22 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
     return () => clearTimeout(t)
   }, [session.title])
 
-  // Fallback: reset after 10s if no title event arrives
+  // Fallback: reset after 10s if no title event arrives, surface an error notice
   useEffect(() => {
     if (!generating) return
-    const t = setTimeout(() => setGenerating(false), 10000)
+    const t = setTimeout(() => {
+      setGenerating(false)
+      setGenError(true)
+    }, 10000)
     return () => clearTimeout(t)
   }, [generating])
+
+  // Auto-clear error notice after a few seconds
+  useEffect(() => {
+    if (!genError) return
+    const t = setTimeout(() => setGenError(false), 4000)
+    return () => clearTimeout(t)
+  }, [genError])
 
   const handleDelete = useCallback(async () => {
     try {
@@ -242,7 +254,7 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
   }, [])
 
   return (
-    <div className="group rounded-lg transition-colors hover:bg-white/4">
+    <div className="group rounded-lg transition-colors hover:bg-white/4 focus-within:bg-white/4">
       <div className="flex items-center gap-3 px-3 py-2.5">
         {/* Main content */}
         <button
@@ -269,14 +281,14 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
               </p>
             )}
           </div>
-          <p className="text-[10px] text-white/30 font-mono mt-0.5">
+          <p className="text-[10px] text-white/60 font-mono mt-0.5">
             {formatDate(session.updated_at)}
           </p>
         </button>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button type="button" onClick={startEdit} title="Rename" className={BTN_NEUTRAL}>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex-shrink-0">
+          <button type="button" onClick={startEdit} title="Rename" aria-label="Rename session" className={BTN_NEUTRAL}>
             REN
           </button>
           <button
@@ -284,6 +296,7 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
             onClick={handleGenerateTitle}
             disabled={generating}
             title="Generate title"
+            aria-label="Generate session title"
             className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
           >
             {generating ? (
@@ -291,27 +304,46 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
             ) : genSuccess ? 'OK' : 'GEN'}
           </button>
           {confirmDelete ? (
-            <button type="button" onClick={handleDelete} className={BTN_RED}>
+            <button
+              type="button"
+              onClick={handleDelete}
+              aria-label="Confirm delete session"
+              className={BTN_RED}
+            >
               SURE?
             </button>
           ) : (
-            <button type="button" onClick={startDeleteConfirm} className={BTN_NEUTRAL}>
+            <button
+              type="button"
+              onClick={startDeleteConfirm}
+              aria-label="Delete session"
+              className={BTN_NEUTRAL}
+            >
               DEL
             </button>
           )}
         </div>
+        <span className="sr-only" aria-live="polite">
+          {confirmDelete ? 'Confirm deletion: press SURE to delete this session.' : ''}
+          {genError ? 'Title generation failed, please retry.' : ''}
+        </span>
 
         {/* Open arrow */}
         <span
-          className="text-[11px] text-white/20 transition-colors flex-shrink-0 cursor-pointer"
-          style={{ color: undefined }}
+          className="text-[11px] text-white/60 transition-colors flex-shrink-0 cursor-pointer"
+          aria-hidden="true"
           onMouseEnter={(e) => { e.currentTarget.style.color = `${chakra.hex}80` }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.2)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}
           onClick={onOpen}
         >
           ›
         </span>
       </div>
+      {genError && (
+        <p className="px-3 pb-2 text-[11px] text-red-400/90 font-mono">
+          Title generation failed, please retry.
+        </p>
+      )}
     </div>
   )
 }

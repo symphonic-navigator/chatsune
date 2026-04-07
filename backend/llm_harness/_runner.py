@@ -8,14 +8,16 @@ import json
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
-from backend.modules.llm._adapters._ollama_cloud import OllamaCloudAdapter
-from backend.modules.llm._adapters._events import (
+from backend.modules.llm import (
     ContentDelta,
     ProviderStreamEvent,
     StreamDone,
     StreamError,
     ToolCallEvent,
 )
+# Adapter import is intentionally direct: harness is a standalone tool that
+# targets a specific provider implementation, not the registry-based public API.
+from backend.modules.llm._adapters._ollama_cloud import OllamaCloudAdapter
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,

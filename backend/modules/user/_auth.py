@@ -8,6 +8,9 @@ import jwt
 
 from backend.config import settings
 
+JWT_ISSUER = "chatsune"
+JWT_AUDIENCE = "chatsune"
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(
@@ -44,6 +47,8 @@ def create_access_token(
         "session_id": session_id,
         "iat": now,
         "exp": now + expires_delta,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
     }
     if must_change_password:
         payload["mcp"] = True
@@ -51,7 +56,13 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict:
-    return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    return jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=["HS256"],
+        audience=JWT_AUDIENCE,
+        issuer=JWT_ISSUER,
+    )
 
 
 def generate_refresh_token() -> str:

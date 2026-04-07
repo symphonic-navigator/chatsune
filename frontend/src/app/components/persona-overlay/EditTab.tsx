@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
 import { personasApi } from '../../../core/api/personas'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
-import type { ProfileCrop } from '../../../core/types/persona'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
@@ -42,6 +41,13 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [cropOpen, setCropOpen] = useState(false)
 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
+
+  const nameId = useId()
+  const taglineId = useId()
+  const modelId = useId()
+  const colourId = useId()
+  const systemPromptId = useId()
+  const temperatureId = useId()
 
   // Load actual model capabilities when editing an existing persona
   useEffect(() => {
@@ -138,6 +144,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
               type="button"
               onClick={() => setCropOpen(true)}
               className="group relative rounded-full flex-shrink-0 cursor-pointer"
+              aria-label="Change profile picture"
               title="Change profile picture"
               style={{
                 width: 64,
@@ -171,15 +178,16 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
             </button>
             <div className="flex flex-col gap-0.5">
               <span className="text-[11px] text-white/40 uppercase tracking-wider">Profile picture</span>
-              <span className="text-[11px] text-white/25">Click to {persona.profile_image ? 'change' : 'add'}</span>
+              <span className="text-[11px] text-white/60">Click to {persona.profile_image ? 'change' : 'add'}</span>
             </div>
           </div>
         )}
 
         {/* Name */}
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5" htmlFor={nameId}>
           <span className="text-[11px] text-white/40 uppercase tracking-wider">Name</span>
           <input
+            id={nameId}
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -190,9 +198,10 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         </label>
 
         {/* Tagline */}
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5" htmlFor={taglineId}>
           <span className="text-[11px] text-white/40 uppercase tracking-wider">Tagline</span>
           <input
+            id={taglineId}
             type="text"
             value={tagline}
             onChange={(e) => setTagline(e.target.value)}
@@ -204,9 +213,11 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
 
         {/* Model */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] text-white/40 uppercase tracking-wider">Model</span>
+          <label htmlFor={modelId} className="text-[11px] text-white/40 uppercase tracking-wider">Model</label>
           <button
+            id={modelId}
             type="button"
+            aria-label="Select model"
             onClick={() => setModelModalOpen(true)}
             className="flex items-center gap-2 w-full text-left rounded-lg px-3 py-2.5 transition-colors hover:bg-white/4 cursor-pointer"
             style={{
@@ -223,7 +234,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
                 <span className="text-[13px] text-white/80">{modelDisplayName || modelUniqueId}</span>
               </>
             ) : (
-              <span className="text-[13px] text-white/30 italic">Select a model...</span>
+              <span className="text-[13px] text-white/60 italic">Select a model...</span>
             )}
           </button>
           {modelUniqueId && !canUseTools && (
@@ -247,8 +258,8 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
 
         {/* Chakra colour picker */}
         <div className="flex flex-col gap-2">
-          <span className="text-[11px] text-white/40 uppercase tracking-wider">Chakra colour</span>
-          <div className="flex gap-2 flex-wrap">
+          <span id={colourId} className="text-[11px] text-white/40 uppercase tracking-wider">Chakra colour</span>
+          <div className="flex gap-2 flex-wrap" role="radiogroup" aria-labelledby={colourId}>
             {CHAKRA_COLOURS.map((c) => {
               const entry = CHAKRA_PALETTE[c]
               const isSelected = colourScheme === c
@@ -256,6 +267,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
                 <button
                   key={c}
                   type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  aria-label={entry.label}
                   title={entry.label}
                   onClick={() => setColourScheme(c)}
                   className="transition-transform hover:scale-110"
@@ -276,9 +290,10 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         </div>
 
         {/* System prompt */}
-        <label className="flex flex-col gap-1.5">
+        <label className="flex flex-col gap-1.5" htmlFor={systemPromptId}>
           <span className="text-[11px] text-white/40 uppercase tracking-wider">System prompt</span>
           <textarea
+            id={systemPromptId}
             value={systemPrompt}
             onChange={(e) => {
               setSystemPrompt(e.target.value)
@@ -301,10 +316,11 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         {/* Temperature */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-white/40 uppercase tracking-wider">Temperature</span>
+            <label htmlFor={temperatureId} className="text-[11px] text-white/40 uppercase tracking-wider">Temperature</label>
             <span className="text-[12px] text-white/60 font-mono">{temperature.toFixed(2)}</span>
           </div>
           <input
+            id={temperatureId}
             type="range"
             min={0}
             max={2}
@@ -314,7 +330,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
             className="w-full cursor-pointer"
             style={{ accentColor: chakra.hex }}
           />
-          <div className="flex justify-between text-[10px] text-white/25">
+          <div className="flex justify-between text-[10px] text-white/60">
             <span>Precise</span>
             <span>Creative</span>
           </div>
@@ -401,11 +417,14 @@ interface ToggleProps {
 
 function Toggle({ label, description, value, onChange, chakraHex, disabled }: ToggleProps) {
   return (
-    <div
-      className="flex items-center justify-between py-2 px-3 rounded-lg"
+    <button
+      type="button"
+      className="flex items-center justify-between py-2 px-3 rounded-lg w-full text-left"
       role="switch"
       aria-checked={value}
       aria-label={label}
+      aria-describedby={undefined}
+      disabled={disabled}
       tabIndex={disabled ? -1 : 0}
       style={{
         background: 'rgba(255,255,255,0.02)',
@@ -416,7 +435,7 @@ function Toggle({ label, description, value, onChange, chakraHex, disabled }: To
       title={disabled ? description : undefined}
       onClick={() => !disabled && onChange(!value)}
       onKeyDown={(e) => {
-        if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+        if (!disabled && (e.key === ' ' || e.key === 'Enter')) {
           e.preventDefault()
           onChange(!value)
         }
@@ -424,7 +443,7 @@ function Toggle({ label, description, value, onChange, chakraHex, disabled }: To
     >
       <div className="flex flex-col gap-0.5">
         <span className="text-[13px] text-white/75">{label}</span>
-        <span className="text-[11px] text-white/30">{description}</span>
+        <span className="text-[11px] text-white/60">{description}</span>
       </div>
 
       {/* Custom toggle — 44×20px */}
@@ -453,6 +472,6 @@ function Toggle({ label, description, value, onChange, chakraHex, disabled }: To
           }}
         />
       </div>
-    </div>
+    </button>
   )
 }

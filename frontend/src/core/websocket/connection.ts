@@ -11,7 +11,7 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectDelay = INITIAL_RECONNECT_DELAY
 let intentionalClose = false
-let isRefreshing = false
+let currentRefresh: Promise<boolean> | null = null
 
 function wsUrl(): string {
   const env = import.meta.env.VITE_WS_URL
@@ -40,7 +40,7 @@ export function connect() {
   setStatus("connecting")
 
   let url = `${wsUrl()}/ws?token=${encodeURIComponent(token)}`
-  if (lastSequence) {
+  if (lastSequence !== null) {
     url += `&since=${encodeURIComponent(lastSequence)}`
   }
 
@@ -119,26 +119,33 @@ export function sendMessage(message: Record<string, unknown>) {
 
 function scheduleReconnect() {
   useEventStore.getState().setStatus("reconnecting")
+  // Apply ±20% jitter to spread reconnect storms
+  const jitter = reconnectDelay * (Math.random() * 0.4 - 0.2)
+  const delay = Math.max(0, reconnectDelay + jitter)
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
     reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY)
     connect()
-  }, reconnectDelay)
+  }, delay)
 }
 
-async function handleTokenRefresh() {
-  if (isRefreshing) return
-  isRefreshing = true
-  try {
-    const res = await authApi.refresh()
-    useAuthStore.getState().setToken(res.access_token)
-    // Reconnect with new token
-    disconnect()
-    intentionalClose = false
-    connect()
-  } catch {
-    useAuthStore.getState().clear()
-  } finally {
-    isRefreshing = false
-  }
+async function handleTokenRefresh(): Promise<boolean> {
+  // Share the in-flight refresh promise so parallel callers wait on the same request
+  if (currentRefresh) return currentRefresh
+  currentRefresh = (async () => {
+    try {
+      const res = await authApi.refresh()
+      useAuthStore.getState().setToken(res.access_token)
+      disconnect()
+      intentionalClose = false
+      connect()
+      return true
+    } catch {
+      useAuthStore.getState().clear()
+      return false
+    } finally {
+      currentRefresh = null
+    }
+  })()
+  return currentRefresh
 }

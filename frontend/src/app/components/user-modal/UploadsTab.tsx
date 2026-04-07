@@ -295,8 +295,17 @@ export function UploadsTab() {
 
       {/* File list */}
       {filteredFiles.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center text-[13px] text-white/25 font-mono">
-          {files.length === 0 ? 'No files uploaded yet' : 'No files match the current filter'}
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-[13px] text-white/60 font-mono">
+          {files.length === 0 ? (
+            <>
+              <p>No files uploaded yet</p>
+              <p className="max-w-xs text-center text-[11px] text-white/60 leading-relaxed">
+                Drop a file into any chat to upload your first attachment. Files appear here once uploaded.
+              </p>
+            </>
+          ) : (
+            <p>No files match the current filter</p>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto -mx-1 px-1">
@@ -365,10 +374,11 @@ export function UploadsTab() {
                 <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                   {deletingId === file.id ? (
                     <>
-                      <span className="text-[10px] text-red-400 font-mono mr-1">Delete?</span>
+                      <span role="status" aria-live="polite" className="text-[10px] text-red-400 font-mono mr-1">Delete?</span>
                       <button
                         type="button"
                         onClick={() => confirmDelete(file.id)}
+                        aria-label={`Confirm delete ${file.display_name}`}
                         className={BTN_RED}
                       >
                         Yes
@@ -376,6 +386,7 @@ export function UploadsTab() {
                       <button
                         type="button"
                         onClick={() => setDeletingId(null)}
+                        aria-label="Cancel delete"
                         className={BTN_NEUTRAL}
                       >
                         No
@@ -386,6 +397,7 @@ export function UploadsTab() {
                       <button
                         type="button"
                         onClick={() => downloadFile(file.id, file.display_name)}
+                        aria-label={`Download ${file.display_name}`}
                         className={BTN_NEUTRAL}
                         title="Download"
                       >
@@ -394,6 +406,7 @@ export function UploadsTab() {
                       <button
                         type="button"
                         onClick={() => setDeletingId(file.id)}
+                        aria-label={`Delete ${file.display_name}`}
                         className={BTN_NEUTRAL}
                         title="Delete"
                       >

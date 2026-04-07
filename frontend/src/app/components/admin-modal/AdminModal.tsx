@@ -95,25 +95,38 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           </button>
         </div>
 
-        <div className="flex border-b border-white/6 px-4 flex-shrink-0">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onTabChange(tab.id)}
-              className={[
-                'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
-                activeTab === tab.id
-                  ? 'border-gold text-gold'
-                  : 'border-transparent text-white/55 hover:text-white/75 hover:underline',
-              ].join(' ')}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div role="tablist" aria-label="Admin sections" className="flex border-b border-white/6 px-4 flex-shrink-0">
+          {TABS.map((tab) => {
+            const selected = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`admin-tab-${tab.id}`}
+                aria-selected={selected}
+                aria-controls={`admin-tabpanel-${tab.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onTabChange(tab.id)}
+                className={[
+                  'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
+                  selected
+                    ? 'border-gold text-gold'
+                    : 'border-transparent text-white/60 hover:text-white/80 hover:underline',
+                ].join(' ')}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
         </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div
+          role="tabpanel"
+          id={`admin-tabpanel-${activeTab}`}
+          aria-labelledby={`admin-tab-${activeTab}`}
+          className="flex-1 overflow-hidden flex flex-col"
+        >
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'system' && <SystemTab />}

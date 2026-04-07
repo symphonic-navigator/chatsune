@@ -3,12 +3,10 @@ import { useNavigate } from "react-router-dom"
 import {
   DndContext,
   DragOverlay,
-  closestCenter,
   useDroppable,
   useDraggable,
   type DragEndEvent,
   type DragStartEvent,
-  type DragOverEvent,
   pointerWithin,
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable"
@@ -26,6 +24,7 @@ import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
 import { chatApi, type ChatSessionDto } from "../../../core/api/chat"
 import type { UserModalTab } from "../user-modal/UserModal"
+import { safeLocalStorage } from "../../../core/utils/safeStorage"
 
 interface SidebarProps {
   personas: PersonaDto[]
@@ -62,9 +61,10 @@ function IconBtn({
       type="button"
       onClick={onClick}
       title={title}
+      aria-label={title}
       className={[
         "flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8",
-        isActive ? "text-gold" : "text-white/50",
+        isActive ? "text-gold" : "text-white/60",
         className,
       ].join(" ")}
     >
@@ -151,20 +151,20 @@ export function Sidebar({
   const lastSession = sessions[0] ?? null
 
   const [projectsOpen, setProjectsOpen] = useState(() => {
-    return localStorage.getItem("chatsune_projects_open") === "true"
+    return safeLocalStorage.getItem("chatsune_projects_open") === "true"
   })
 
   function toggleProjects() {
     const next = !projectsOpen
     setProjectsOpen(next)
-    localStorage.setItem("chatsune_projects_open", String(next))
+    safeLocalStorage.setItem("chatsune_projects_open", String(next))
   }
 
   const hasPinnedPersonas = personas.some((p) => p.pinned)
-  const hasExplicitUnpinnedPref = localStorage.getItem("chatsune_unpinned_open") !== null
+  const hasExplicitUnpinnedPref = safeLocalStorage.hasItem("chatsune_unpinned_open")
   const [unpinnedOpen, setUnpinnedOpen] = useState(() => {
     if (hasExplicitUnpinnedPref) {
-      return localStorage.getItem("chatsune_unpinned_open") === "true"
+      return safeLocalStorage.getItem("chatsune_unpinned_open") === "true"
     }
     // Default open when no personas are pinned so users can see their personas
     return !hasPinnedPersonas
@@ -180,7 +180,7 @@ export function Sidebar({
   function toggleUnpinned() {
     const next = !unpinnedOpen
     setUnpinnedOpen(next)
-    localStorage.setItem("chatsune_unpinned_open", String(next))
+    safeLocalStorage.setItem("chatsune_unpinned_open", String(next))
   }
 
   const [historySearch, setHistorySearch] = useState("")
@@ -402,6 +402,7 @@ export function Sidebar({
           type="button"
           onClick={() => { setFlyoutTab(null); setHistorySearch(""); toggleCollapsed() }}
           title="Expand sidebar"
+          aria-label="Expand sidebar"
           className="group flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
         >
           <span className="group-hover:hidden">🦊</span>
@@ -496,9 +497,11 @@ export function Sidebar({
           type="button"
           onClick={toggleSanitised}
           title={isSanitised ? "Click to turn sanitised mode off" : "Click to turn sanitised mode on"}
+          aria-label={isSanitised ? "Turn sanitised mode off" : "Turn sanitised mode on"}
+          aria-pressed={isSanitised}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8"
         >
-          <span className={isSanitised ? "opacity-100" : "opacity-25 grayscale"}>🔒</span>
+          <span className={isSanitised ? "opacity-100" : "opacity-60 grayscale"}>🔒</span>
         </button>
 
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
@@ -508,6 +511,7 @@ export function Sidebar({
           type="button"
           onClick={() => onOpenModal(avatarTab)}
           title={displayName}
+          aria-label={`Open profile for ${displayName}`}
           className={[
             "relative flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white transition-colors",
             avatarHighlight ? "ring-1 ring-gold" : "",
@@ -525,7 +529,8 @@ export function Sidebar({
           type="button"
           onClick={() => logout()}
           title="Log out"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/55"
+          aria-label="Log out"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
         >
           ↪
         </button>
@@ -544,14 +549,14 @@ export function Sidebar({
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
                   placeholder="Filter sessions..."
-                  className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/25 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
+                  className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/55 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
                 />
               </div>
             )}
             <div className="mt-0.5 pb-2">
               {pinnedSessions.length > 0 && (
                 <>
-                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/25">Pinned</div>
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/60">Pinned</div>
                   {pinnedSessions.map((s) => {
                     const persona = personas.find((p) => p.id === s.persona_id)
                     return (
@@ -564,7 +569,7 @@ export function Sidebar({
                         }`}
                       >
                         <span className="truncate text-[12px] text-white/70">{s.title ?? 'Untitled session'}</span>
-                        <span className="text-[10px] text-white/25">{persona?.name}</span>
+                        <span className="text-[10px] text-white/60">{persona?.name}</span>
                       </button>
                     )
                   })}
@@ -572,7 +577,7 @@ export function Sidebar({
                 </>
               )}
 
-              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/25">Recent</div>
+              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/60">Recent</div>
               {unpinnedSessions.map((s) => {
                 const persona = personas.find((p) => p.id === s.persona_id)
                 return (
@@ -591,10 +596,10 @@ export function Sidebar({
               })}
 
               {sessions.length === 0 && (
-                <p className="px-4 py-3 text-center text-[12px] text-white/20">No history yet</p>
+                <p className="px-4 py-3 text-center text-[12px] text-white/60">No history yet</p>
               )}
               {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
-                <p className="px-4 py-3 text-center text-[12px] text-white/20">No matching sessions</p>
+                <p className="px-4 py-3 text-center text-[12px] text-white/60">No matching sessions</p>
               )}
             </div>
           </SidebarFlyout>
@@ -606,7 +611,7 @@ export function Sidebar({
             onClose={() => setFlyoutTab(null)}
             onOpenFullView={() => openFullViewFromFlyout('projects')}
           >
-            <div className="flex h-full flex-col items-center justify-center gap-3 py-8 text-white/20">
+            <div className="flex h-full flex-col items-center justify-center gap-3 py-8 text-white/60">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
@@ -630,7 +635,8 @@ export function Sidebar({
           type="button"
           onClick={() => { setHistorySearch(""); toggleCollapsed() }}
           title="Collapse sidebar"
-          className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-white/25 transition-colors hover:bg-white/8 hover:text-white/55"
+          aria-label="Collapse sidebar"
+          className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
         >
           ⏪
         </button>
@@ -665,8 +671,8 @@ export function Sidebar({
             onClick={handleContinue}
             className="group mx-3 mb-0.5 flex w-[calc(100%-24px)] items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5"
           >
-            <span className="text-[10px] text-white/25 group-hover:text-white/50">▶️</span>
-            <span className="text-[12px] text-white/35 group-hover:text-white/60">Continue</span>
+            <span className="text-[10px] text-white/60 group-hover:text-white/80">▶️</span>
+            <span className="text-[12px] text-white/60 group-hover:text-white/85">Continue</span>
           </button>
         )}
 
@@ -706,9 +712,9 @@ export function Sidebar({
                 onClick={toggleUnpinned}
                 className="mx-2 mt-1 flex w-[calc(100%-16px)] items-center gap-1.5 rounded-md px-2 py-1 text-left transition-colors hover:bg-white/5"
               >
-                <span className="text-[10px] text-white/30">{unpinnedOpen ? "∨" : "›"}</span>
-                <span className="text-[11px] font-medium uppercase tracking-wider text-white/30">Other Personas</span>
-                <span className="text-[10px] text-white/20">{unpinnedPersonas.length}</span>
+                <span className="text-[10px] text-white/60">{unpinnedOpen ? "∨" : "›"}</span>
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/60">Other Personas</span>
+                <span className="text-[10px] text-white/60">{unpinnedPersonas.length}</span>
               </button>
               {unpinnedOpen && (
                 <DroppableZone id="unpinned-zone">
@@ -760,9 +766,10 @@ export function Sidebar({
             <>
               <button
                 type="button"
-                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
                 onClick={(e) => { e.stopPropagation(); toggleProjects() }}
                 aria-label={projectsOpen ? "Collapse projects" : "Expand projects"}
+                title={projectsOpen ? "Collapse projects" : "Expand projects"}
               >
                 {projectsOpen ? "∨" : "›"}
               </button>
@@ -792,7 +799,7 @@ export function Sidebar({
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               placeholder="Filter sessions..."
-              className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/25 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
+              className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/55 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
             />
           </div>
         )}
@@ -853,7 +860,7 @@ export function Sidebar({
               <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
             )}
             {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
-              <p className="px-4 py-1 text-[12px] text-white/30">No matching sessions</p>
+              <p className="px-4 py-1 text-[12px] text-white/60">No matching sessions</p>
             )}
           </div>
 
@@ -910,12 +917,14 @@ export function Sidebar({
           type="button"
           onClick={toggleSanitised}
           title={isSanitised ? "Sanitised mode on — NSFW content hidden" : "Sanitised mode off — all content visible"}
+          aria-label={isSanitised ? "Turn sanitised mode off" : "Turn sanitised mode on"}
+          aria-pressed={isSanitised}
           className="flex w-full items-center gap-2.5 px-3.5 py-1.5 transition-colors hover:bg-white/5"
         >
-          <span className={`text-[15px] ${isSanitised ? "opacity-100" : "opacity-25 grayscale"}`}>
+          <span className={`text-[15px] ${isSanitised ? "opacity-100" : "opacity-60 grayscale"}`}>
             🔒
           </span>
-          <span className={`text-[13px] transition-colors ${isSanitised ? "text-gold font-medium" : "text-white/30"}`}>
+          <span className={`text-[13px] transition-colors ${isSanitised ? "text-gold font-medium" : "text-white/60"}`}>
             Sanitised
           </span>
         </button>
@@ -948,7 +957,7 @@ export function Sidebar({
               ].join(" ")}>
                 {displayName}
               </p>
-              <p className="text-[10px] text-white/30">{user?.role}</p>
+              <p className="text-[10px] text-white/60">{user?.role}</p>
             </div>
           </button>
 
@@ -957,7 +966,8 @@ export function Sidebar({
             type="button"
             onClick={() => onOpenModal('settings')}
             title="Settings"
-            className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[11px] text-white/30 transition-colors hover:bg-white/8 hover:text-white/65"
+            aria-label="Settings"
+            className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
           >
             ···
           </button>
@@ -967,7 +977,8 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => logout()}
-          className="flex w-full items-center gap-2 px-4 py-1.5 text-[11px] text-white/30 hover:text-white/55 transition-colors font-mono"
+          aria-label="Log out"
+          className="flex w-full items-center gap-2 px-4 py-1.5 text-[11px] text-white/60 hover:text-white/85 transition-colors font-mono"
         >
           <span>↪</span>
           <span>Log out</span>

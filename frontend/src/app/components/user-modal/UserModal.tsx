@@ -110,7 +110,8 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close user area"
+            title="Close"
             className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors"
           >
             ✕
@@ -118,29 +119,41 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
         </div>
 
         {/* Tab bar */}
-        <div className="flex overflow-x-auto border-b border-white/6 px-4 flex-shrink-0">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => onTabChange(tab.id)}
-              className={[
-                'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
-                activeTab === tab.id
-                  ? 'border-gold text-gold'
-                  : 'border-transparent text-white/55 hover:text-white/75 hover:underline',
-              ].join(' ')}
-            >
-              {tab.label}
-              {tab.id === 'api-keys' && hasApiKeyProblem && (
-                <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected">!</span>
-              )}
-            </button>
-          ))}
+        <div role="tablist" aria-label="User area sections" className="flex overflow-x-auto border-b border-white/6 px-4 flex-shrink-0">
+          {TABS.map((tab) => {
+            const selected = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`user-tab-${tab.id}`}
+                aria-selected={selected}
+                aria-controls={`user-tabpanel-${tab.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => onTabChange(tab.id)}
+                className={[
+                  'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
+                  selected
+                    ? 'border-gold text-gold'
+                    : 'border-transparent text-white/60 hover:text-white/80 hover:underline',
+                ].join(' ')}
+              >
+                {tab.label}
+                {tab.id === 'api-keys' && hasApiKeyProblem && (
+                  <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected" aria-label="API key issue detected">!</span>
+                )}
+              </button>
+            )
+          })}
         </div>
 
         {/* Tab content */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div
+          role="tabpanel"
+          id={`user-tabpanel-${activeTab}`}
+          aria-labelledby={`user-tab-${activeTab}`}
+          className="flex-1 overflow-hidden flex flex-col">
           {activeTab === 'about-me' && <AboutMeTab />}
           {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}

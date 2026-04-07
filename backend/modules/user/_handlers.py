@@ -15,7 +15,7 @@ from backend.modules.user._auth import (
     verify_password,
 )
 from backend.modules.user._audit import AuditRepository
-from backend.modules.user._rate_limit import check_login_rate_limit
+from backend.modules.user._rate_limit import check_login_rate_limit, get_client_ip
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from shared.dtos.auth import (
@@ -32,6 +32,7 @@ from shared.dtos.auth import (
     UpdateUserRequestDto,
     UserDto,
     AuditLogEntryDto,
+    Role,
 )
 from shared.events.auth import (
     UserCreatedEvent,
@@ -59,7 +60,7 @@ def _refresh_store() -> RefreshTokenStore:
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
+    kwargs: dict = dict(
         key="refresh_token",
         value=token,
         httponly=True,
@@ -67,12 +68,18 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         samesite="strict",
         max_age=settings.jwt_refresh_token_expire_days * 86400,
     )
+    if settings.cookie_domain:
+        kwargs["domain"] = settings.cookie_domain
+    response.set_cookie(**kwargs)
 
 
 def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(
+    kwargs: dict = dict(
         key="refresh_token", httponly=True, secure=True, samesite="strict"
     )
+    if settings.cookie_domain:
+        kwargs["domain"] = settings.cookie_domain
+    response.delete_cookie(**kwargs)
 
 
 # --- Auth Status ---
@@ -153,7 +160,7 @@ async def setup(
 
 @router.post("/auth/login")
 async def login(body: LoginRequestDto, response: Response, request: Request):
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request)
     if not await check_login_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
 
@@ -358,15 +365,15 @@ async def create_user(
     event_bus: EventBus = Depends(get_event_bus),
 ):
     # Only master_admin can create admins
-    if body.role == "admin" and user["role"] != "master_admin":
+    if body.role == Role.ADMIN and user["role"] != Role.MASTER_ADMIN:
         raise HTTPException(
             status_code=403, detail="Only master admin can create admin users"
         )
-    if body.role == "master_admin":
+    if body.role == Role.MASTER_ADMIN:
         raise HTTPException(
             status_code=403, detail="Cannot create another master admin"
         )
-    if body.role not in ("admin", "user"):
+    if body.role not in (Role.ADMIN, Role.USER):
         raise HTTPException(status_code=400, detail="Invalid role")
 
     repo = _user_repo()

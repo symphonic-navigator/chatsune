@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+
+_STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
 from backend.database import get_redis
 from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate, handle_incognito_send, trigger_disconnect_extraction
@@ -39,9 +42,13 @@ async def websocket_endpoint(
         await ws.close(code=4003)
         return
 
-    user_id: str = payload["sub"]
-    role: str = payload["role"]
-    exp: int = payload["exp"]
+    user_id = payload.get("sub")
+    role = payload.get("role")
+    exp = payload.get("exp")
+    if not user_id or not role or exp is None:
+        _log.warning("WebSocket token missing required claims (sub/role/exp)")
+        await ws.close(code=4001)
+        return
 
     manager = get_manager()
     await ws.accept()
@@ -52,14 +59,23 @@ async def websocket_endpoint(
     try:
         if since is not None:
             # Phase 1: replay from global scope only; future scopes (persona, session) extend this
-            entries = await get_redis().xrange("events:global", min=f"({since}", max="+")
-            for stream_id, data in entries:
+            if not _STREAM_ID_RE.match(since):
+                _log.warning("Ignoring invalid 'since' stream id from client: %r", since)
+            else:
                 try:
-                    envelope = json.loads(data["envelope"])
-                    envelope["sequence"] = stream_id
-                    await ws.send_json(envelope)
+                    entries = await get_redis().xrange(
+                        "events:global", min=f"({since}", max="+",
+                    )
                 except Exception:
-                    pass
+                    _log.exception("Failed to xrange replay stream for user %s", user_id)
+                    entries = []
+                for stream_id, data in entries:
+                    try:
+                        envelope = json.loads(data["envelope"])
+                        envelope["sequence"] = stream_id
+                        await ws.send_json(envelope)
+                    except Exception:
+                        _log.exception("Failed to replay stream entry %s", stream_id)
 
         async def _send_expiry_warning() -> None:
             now = datetime.now(timezone.utc).timestamp()

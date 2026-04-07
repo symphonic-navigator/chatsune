@@ -64,6 +64,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         type="button"
         onClick={() => setCropOpen(true)}
         className="group relative rounded-full flex-shrink-0 cursor-pointer"
+        aria-label="Change profile picture"
         title="Change profile picture"
         style={{
           width: 120,
@@ -129,7 +130,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           style={{ background: `${chakra.hex}08` }}
         >
           <span className="text-[18px] font-semibold text-white/70">{String(chatCount)}</span>
-          <span className="text-[10px] text-white/35 text-center leading-tight">Chats</span>
+          <span className="text-[10px] text-white/60 text-center leading-tight">Chats</span>
         </div>
       </div>
 
@@ -217,7 +218,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
       )}
 
       {/* Created date */}
-      <p className="text-[11px] text-white/25 font-mono">
+      <p className="text-[11px] text-white/60 font-mono">
         created {createdDate}
       </p>
     </div>

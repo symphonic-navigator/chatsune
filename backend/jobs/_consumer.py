@@ -201,9 +201,9 @@ async def consumer_loop(redis: Redis, event_bus) -> None:
 
     while True:
         try:
-            processed = await process_one(redis, event_bus)
-            if not processed:
-                await asyncio.sleep(1)
+            # process_one already blocks up to 5s in xreadgroup when idle, so
+            # there is no need for an additional sleep on the no-work path.
+            await process_one(redis, event_bus)
         except asyncio.CancelledError:
             _log.info("Job consumer shutting down")
             break

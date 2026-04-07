@@ -82,7 +82,9 @@ export function PersonaItem({
       onClick={() => onSelect(persona)}
     >
       <span
-        className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all"
+        aria-label="Drag to reorder"
+        title="Drag to reorder"
+        className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/60 group-focus-within:w-auto group-focus-within:text-white/60 transition-all"
         {...(dragListeners ?? {})}
         {...(dragAttributes ?? {})}
       >
@@ -116,7 +118,10 @@ export function PersonaItem({
       <button
         type="button"
         aria-label="More options"
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/30 opacity-0 transition-all hover:bg-white/10 hover:text-white/70 group-hover:opacity-100"
+        title="More options"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/60 opacity-0 transition-all hover:bg-white/10 hover:text-white/85 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100"
         onClick={(e) => { e.stopPropagation(); setMenuOpen(true) }}
       >
         ···

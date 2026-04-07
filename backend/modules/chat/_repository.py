@@ -178,6 +178,15 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def get_latest_active_session(
+        self, user_id: str, persona_id: str,
+    ) -> dict | None:
+        """Return the most recently updated non-deleted session for the pair."""
+        return await self._sessions.find_one(
+            {"user_id": user_id, "persona_id": persona_id, "deleted_at": None},
+            sort=[("updated_at", -1)],
+        )
+
     async def find_empty_sessions(
         self, user_id: str, persona_id: str, exclude_session_id: str | None = None,
     ) -> list[str]:

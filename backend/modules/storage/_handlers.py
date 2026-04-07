@@ -209,11 +209,12 @@ async def rename_file(
     body: RenameRequest,
     user: dict = Depends(require_active_session),
 ):
-    if not body.display_name or not body.display_name.strip():
+    new_name = (body.display_name or "").strip()
+    if not new_name:
         raise HTTPException(status_code=400, detail="display_name must not be empty")
 
     repo = _repo()
-    doc = await repo.update_display_name(file_id, user["sub"], body.display_name.strip())
+    doc = await repo.update_display_name(file_id, user["sub"], new_name)
     if not doc:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -226,7 +227,7 @@ async def rename_file(
         Topics.STORAGE_FILE_RENAMED,
         StorageFileRenamedEvent(
             file_id=file_id,
-            display_name=body.display_name.strip(),
+            display_name=new_name,
             correlation_id=correlation_id,
             timestamp=now,
         ),

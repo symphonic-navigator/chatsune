@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -83,9 +84,12 @@ def _translate_message(msg: CompletionMessage) -> dict:
     text_parts = [p.text for p in msg.content if p.type == "text" and p.text]
     images = [p.data for p in msg.content if p.type == "image" and p.data]
 
+    # Concatenate without an inserted separator. Multiple text parts are usually
+    # contiguous content fragments (mid-token in streaming, structured pre-formatted
+    # blocks otherwise) — adding spaces or newlines would corrupt Markdown / code.
     result: dict = {
         "role": msg.role,
-        "content": " ".join(text_parts) if text_parts else "",
+        "content": "".join(text_parts) if text_parts else "",
     }
 
     if images:
@@ -133,28 +137,34 @@ class OllamaCloudAdapter(BaseAdapter):
         return False  # explicit return for type checkers
 
     async def fetch_models(self) -> list[ModelMetaDto]:
-        """Fetch model list from /api/tags, then details from /api/show per model."""
+        """Fetch model list from /api/tags, then details from /api/show per model.
+
+        /api/show calls run concurrently bounded by a small semaphore so a
+        provider with many models does not serialise the whole refresh.
+        """
         tags_resp = await self._client.get(f"{self.base_url}/api/tags")
         tags_resp.raise_for_status()
         tag_entries = tags_resp.json().get("models", [])
 
-        models: list[ModelMetaDto] = []
-        for entry in tag_entries:
-            name = entry["name"]
-            try:
-                show_resp = await self._client.post(
-                    f"{self.base_url}/api/show",
-                    json={"model": name},
-                )
-                show_resp.raise_for_status()
-                detail = show_resp.json()
-            except Exception:
-                _log.warning("Failed to fetch details for model '%s'; skipping.", name)
-                continue
+        sem = asyncio.Semaphore(5)
 
-            models.append(self._map_to_dto(name, detail))
+        async def _fetch_one(name: str) -> tuple[str, dict | None]:
+            async with sem:
+                try:
+                    show_resp = await self._client.post(
+                        f"{self.base_url}/api/show",
+                        json={"model": name},
+                    )
+                    show_resp.raise_for_status()
+                    return name, show_resp.json()
+                except Exception:
+                    _log.warning("Failed to fetch details for model '%s'; skipping.", name)
+                    return name, None
 
-        return models
+        results = await asyncio.gather(
+            *(_fetch_one(entry["name"]) for entry in tag_entries),
+        )
+        return [self._map_to_dto(name, detail) for name, detail in results if detail is not None]
 
     async def stream_completion(
         self,

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from backend.modules.knowledge._handlers import router as knowledge_router, _trigger_embedding
 from backend.modules.knowledge._repository import KnowledgeRepository
+from backend.modules.knowledge._retrieval import search
 from backend.database import get_db
 from shared.events.knowledge import (
     KnowledgeDocumentEmbeddedEvent,
@@ -154,4 +155,5 @@ __all__ = [
     "init_indexes",
     "handle_embedding_completed",
     "handle_embedding_error",
+    "search",
 ]

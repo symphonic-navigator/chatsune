@@ -9,6 +9,7 @@ import ChatPage from "./app/pages/ChatPage"
 import ProjectsPage from "./app/pages/ProjectsPage"
 import HistoryPage from "./app/pages/HistoryPage"
 import KnowledgePage from "./app/pages/KnowledgePage"
+import { safeLocalStorage } from "./core/utils/safeStorage"
 
 
 /** Persists current /chat/... route to localStorage for bootstrap redirect */
@@ -16,7 +17,7 @@ function LastRouteTracker() {
   const location = useLocation()
   useEffect(() => {
     if (location.pathname.startsWith("/chat/")) {
-      localStorage.setItem("chatsune_last_route", location.pathname)
+      safeLocalStorage.setItem("chatsune_last_route", location.pathname)
     }
   }, [location.pathname])
   return null

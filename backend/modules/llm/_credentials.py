@@ -1,8 +1,12 @@
+import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from cryptography.fernet import Fernet
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+_log = logging.getLogger(__name__)
+_LIST_ALL_PAGE_SIZE = 1000
 
 from backend.config import settings
 from shared.dtos.llm import ProviderCredentialDto
@@ -84,9 +88,24 @@ class CredentialRepository:
         return await cursor.to_list(length=100)
 
     async def list_all(self) -> list[dict]:
-        """List all credentials across all users. Admin use only."""
+        """List all credentials across all users. Admin use only.
+
+        Iterates the cursor in pages of ``_LIST_ALL_PAGE_SIZE`` to avoid the
+        previous silent truncation at length=10000. TODO: expose true
+        cursor-based pagination once an admin endpoint actually needs it.
+        """
+        results: list[dict] = []
         cursor = self._collection.find({}, {"user_id": 1, "provider_id": 1, "_id": 0})
-        return await cursor.to_list(length=10000)
+        async for doc in cursor:
+            results.append(doc)
+            if len(results) % _LIST_ALL_PAGE_SIZE == 0:
+                _log.debug("CredentialRepository.list_all: %d rows so far", len(results))
+        if len(results) >= 10_000:
+            _log.warning(
+                "CredentialRepository.list_all returned %d rows — consider paginating",
+                len(results),
+            )
+        return results
 
     def get_raw_key(self, doc: dict) -> str:
         """Decrypt and return the raw API key. Use only at inference time."""

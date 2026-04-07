@@ -50,6 +50,10 @@ class CreatePersonaDto(BaseModel):
     profile_image: str | None = None
 
 
+class ReorderPersonasDto(BaseModel):
+    ordered_ids: list[str]
+
+
 class UpdatePersonaDto(BaseModel):
     name: str | None = None
     tagline: str | None = None

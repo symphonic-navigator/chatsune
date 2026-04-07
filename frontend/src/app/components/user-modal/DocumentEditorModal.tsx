@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createMarkdownComponents } from '../../../features/chat/markdownComponents'
@@ -21,7 +21,10 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const titleId = useId()
+  const editorId = useId()
   const titleRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -48,7 +51,10 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
 
   function handleClose() {
     if (isDirty.current && (title !== (initial?.title ?? '') || content !== (initial?.content ?? ''))) {
-      if (!window.confirm('You have unsaved changes. Discard them?')) return
+      if (!confirmDiscard) {
+        setConfirmDiscard(true)
+        return
+      }
     }
     onClose()
   }
@@ -120,15 +126,17 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
       onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex w-full max-w-3xl flex-col rounded-xl border border-white/8 bg-elevated shadow-2xl" style={{ maxHeight: '80vh' }}>
+      <div role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit document' : 'New document'} className="flex w-full max-w-3xl flex-col rounded-xl border border-white/8 bg-elevated shadow-2xl" style={{ maxHeight: '80vh' }}>
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-white/6 px-5 py-3">
           <div className="flex-1">
+            <label htmlFor={titleId} className="sr-only">Document title</label>
             <input
+              id={titleId}
               ref={titleRef}
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value.slice(0, 500))}
+              onChange={(e) => { setTitle(e.target.value.slice(0, 500)); if (confirmDiscard) setConfirmDiscard(false) }}
               maxLength={500}
               placeholder="Document title..."
               className="w-full bg-transparent text-[14px] font-mono text-white/80 placeholder-white/20 outline-none"
@@ -188,9 +196,12 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
         {/* Editor area */}
         <div className="flex min-h-0 flex-1">
           {/* Editor */}
+          <label htmlFor={editorId} className="sr-only">Document content</label>
           <textarea
+            id={editorId}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => { setContent(e.target.value); if (confirmDiscard) setConfirmDiscard(false) }}
+            aria-label="Document content"
             placeholder={isMarkdown ? '# Start writing in Markdown...' : 'Start writing...'}
             className={[
               'min-h-0 resize-none bg-transparent px-5 py-4 text-[13px] font-mono text-white/75 placeholder-white/15 outline-none',
@@ -235,14 +246,25 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
               </button>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {confirmDiscard && (
+              <span role="status" aria-live="polite" className="text-[10px] font-mono uppercase tracking-wider text-red-400">
+                Unsaved changes — click again to discard
+              </span>
+            )}
             <button
               type="button"
               onClick={handleClose}
+              aria-label={confirmDiscard ? 'Discard unsaved changes' : 'Cancel and close editor'}
               disabled={saving || deleting}
-              className="rounded border border-white/8 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/40 transition-colors hover:border-white/15 hover:text-white/60 cursor-pointer"
+              className={[
+                'rounded border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors cursor-pointer',
+                confirmDiscard
+                  ? 'border-red-400/40 bg-red-400/10 text-red-400 hover:bg-red-400/15'
+                  : 'border-white/8 text-white/60 hover:border-white/15 hover:text-white/80',
+              ].join(' ')}
             >
-              Cancel
+              {confirmDiscard ? 'Discard?' : 'Cancel'}
             </button>
             <button
               type="button"

@@ -109,7 +109,7 @@ export default function AppLayout() {
       if (personaId) {
         await personasApi.update(personaId, data as UpdatePersonaRequest)
       } else {
-        const created = await personasApi.create(data as CreatePersonaRequest)
+        const created = await personasApi.create(data as unknown as CreatePersonaRequest)
         setPersonaOverlay({ personaId: created.id, tab: "overview" })
       }
     },
@@ -167,6 +167,13 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-full overflow-hidden bg-base text-white">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-[100] focus:rounded-md focus:bg-elevated focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-gold"
+      >
+        Skip to content
+      </a>
+      <nav aria-label="Primary navigation" className="contents">
       <Sidebar
         personas={personas}
         sessions={filteredSessions}
@@ -190,9 +197,10 @@ export default function AppLayout() {
           }
         }}
       />
+      </nav>
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar personas={personas} onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")} />
-        <main className="relative flex-1 overflow-auto bg-surface">
+        <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto bg-surface">
           <Outlet context={{ openPersonaOverlay }} />
           {modalTab !== null && (
             <UserModal

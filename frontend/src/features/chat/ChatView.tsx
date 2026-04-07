@@ -45,6 +45,12 @@ export function ChatView({ persona }: ChatViewProps) {
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
   const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [resolveError, setResolveError] = useState<string | null>(null)
+  const [resolveAttempt, setResolveAttempt] = useState(0)
+  const [partialSavedNotice, setPartialSavedNotice] = useState(false)
+  // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
+  // Requires plumbing through MessageList/UserMessage; deferred — top-level error banner already exists.
 
   const isIncognito = searchParams.get('incognito') === '1'
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
@@ -52,37 +58,76 @@ export function ChatView({ persona }: ChatViewProps) {
 
   useEffect(() => {
     setIsResolvingSession(false)
+    setResolveError(null)
     if (isIncognito) return
     if (!personaId || sessionId) return
     setIsResolvingSession(true)
 
+    let cancelled = false
     const forceNew = searchParams.get('new') === '1'
+
+    // 15s safety timeout — if backend hangs, surface a retry option instead of an infinite spinner
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return
+      cancelled = true
+      setIsResolvingSession(false)
+      setResolveError('Resolving the chat session timed out. Please retry.')
+    }, 15_000)
+
+    const finish = () => {
+      if (cancelled) return
+      clearTimeout(timeoutId)
+      setIsResolvingSession(false)
+    }
+
+    const fail = (err: unknown) => {
+      if (cancelled) return
+      console.error('Chat session resolve failed', err)
+      cancelled = true
+      clearTimeout(timeoutId)
+      setIsResolvingSession(false)
+      setResolveError('Could not load or create a chat session.')
+    }
 
     if (forceNew) {
       chatApi
         .createSession(personaId)
-        .then((session) => navigate(`/chat/${personaId}/${session.id}`, { replace: true }))
-        .finally(() => { setIsResolvingSession(false) })
-      return
+        .then((session) => {
+          if (cancelled) return
+          navigate(`/chat/${personaId}/${session.id}`, { replace: true })
+        })
+        .catch(fail)
+        .finally(finish)
+      return () => {
+        cancelled = true
+        clearTimeout(timeoutId)
+      }
     }
 
-    // Resume latest session, or create a new one if none exists
     chatApi
       .listSessions()
       .then((sessions) => {
+        if (cancelled) return undefined
         const latest = sessions
           .filter((s) => s.persona_id === personaId)
           .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
         if (latest) {
           navigate(`/chat/${personaId}/${latest.id}`, { replace: true })
-        } else {
-          return chatApi.createSession(personaId).then((session) => {
-            navigate(`/chat/${personaId}/${session.id}`, { replace: true })
-          })
+          return undefined
         }
+        return chatApi.createSession(personaId).then((session) => {
+          if (cancelled) return
+          navigate(`/chat/${personaId}/${session.id}`, { replace: true })
+        })
       })
-      .finally(() => { setIsResolvingSession(false) })
-  }, [searchParams, personaId, sessionId, navigate, isIncognito])
+      .catch(fail)
+      .finally(finish)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt])
 
   const messages = useChatStore((s) => s.messages)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
@@ -101,7 +146,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const reasoningOverride = useChatStore((s) => s.reasoningOverride)
 
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
-  const effectiveReasoning = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
 
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
@@ -135,10 +179,32 @@ export function ChatView({ persona }: ChatViewProps) {
   const [bookmarkTargetMsgId, setBookmarkTargetMsgId] = useState<string | null>(null)
   const [bookmarksExpanded, setBookmarksExpanded] = useState(false)
 
-  // Show incognito notice once per incognito session
+  // Show incognito notice once when entering incognito mode
   useEffect(() => {
     setShowIncognitoNotice(isIncognito)
-  }, [isIncognito, effectiveSessionId])
+  }, [isIncognito])
+
+  // Look up tool/reasoning capabilities for a model unique id and update local state.
+  // Returns a cancel-aware function so callers can ignore stale results on session switch.
+  const applyModelCapabilities = useCallback((uid: string | null | undefined, isCancelled: () => boolean) => {
+    if (!uid || !uid.includes(':')) return
+    const providerId = uid.split(':')[0]
+    const modelSlug = uid.split(':').slice(1).join(':')
+    llmApi
+      .listModels(providerId)
+      .then((models) => {
+        if (isCancelled()) return
+        const model = models.find((m) => m.model_id === modelSlug)
+        setModelSupportsTools(model?.supports_tool_calls ?? false)
+        setModelSupportsReasoning(model?.supports_reasoning ?? false)
+      })
+      .catch((err) => {
+        if (isCancelled()) return
+        console.error('Failed to load model capabilities', err)
+        setModelSupportsTools(true)
+      })
+  }, [])
+  // TODO: capabilities should ideally come from PersonaDto / SessionDto so we can drop the llmApi.listModels call entirely.
 
   useChatStream(effectiveSessionId ?? null)
   useMemoryEvents(persona?.id ?? null)
@@ -150,66 +216,64 @@ export function ChatView({ persona }: ChatViewProps) {
     const store = useChatStore.getState()
     store.reset(effectiveSessionId)
     useArtefactStore.getState().reset()
+    setLoadError(null)
+
+    let cancelled = false
+    const isCancelled = () => cancelled
 
     if (isIncognito) {
-      // Load model capabilities from persona
-      if (persona?.model_unique_id) {
-        const uid = persona.model_unique_id
-        if (uid.includes(':')) {
-          const providerId = uid.split(':')[0]
-          const modelSlug = uid.split(':').slice(1).join(':')
-          llmApi.listModels(providerId)
-            .then((models) => {
-              const model = models.find((m) => m.model_id === modelSlug)
-              setModelSupportsTools(model?.supports_tool_calls ?? false)
-              setModelSupportsReasoning(model?.supports_reasoning ?? false)
-            })
-            .catch(() => {})
-        }
-      }
-      return
+      applyModelCapabilities(persona?.model_unique_id, isCancelled)
+      return () => { cancelled = true }
     }
 
-    if (!sessionId) return
+    if (!sessionId) return () => { cancelled = true }
 
     setIsLoading(true)
     chatApi
       .getMessages(sessionId)
       .then((msgs: ChatMessageDto[]) => {
+        if (cancelled) return
         useChatStore.getState().setMessages(msgs)
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load chat messages', err)
+        setLoadError('Could not load chat history.')
+      })
       .finally(() => {
+        if (cancelled) return
         setIsLoading(false)
       })
 
-    artefactApi.list(sessionId).then((arts) => {
-      useArtefactStore.getState().setArtefacts(arts)
-    }).catch(() => {})
+    artefactApi
+      .list(sessionId)
+      .then((arts) => {
+        if (cancelled) return
+        useArtefactStore.getState().setArtefacts(arts)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load artefacts', err)
+        setLoadError((prev) => prev ?? 'Could not load artefacts for this session.')
+      })
 
     chatApi
       .getSession(sessionId)
       .then((session) => {
+        if (cancelled) return
         useChatStore.getState().setSessionTitle(session.title)
         useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
-
-        // Check if the model supports tool calls
-        const uid = session.model_unique_id
-        if (uid && uid.includes(':')) {
-          const providerId = uid.split(':')[0]
-          const modelSlug = uid.split(':').slice(1).join(':')
-          llmApi.listModels(providerId)
-            .then((models) => {
-              const model = models.find((m) => m.model_id === modelSlug)
-              setModelSupportsTools(model?.supports_tool_calls ?? false)
-              setModelSupportsReasoning(model?.supports_reasoning ?? false)
-            })
-            .catch(() => setModelSupportsTools(true))
-        }
+        applyModelCapabilities(session.model_unique_id, isCancelled)
       })
-      .catch(() => {})
-  }, [sessionId, scrollToBottom, isIncognito, persona])
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load session metadata', err)
+        setLoadError((prev) => prev ?? 'Could not load session metadata.')
+      })
+
+    return () => { cancelled = true }
+  }, [sessionId, scrollToBottom, isIncognito, persona?.id, persona?.model_unique_id, applyModelCapabilities])
 
   // Shift+Esc focuses the input
   useEffect(() => {
@@ -259,7 +323,7 @@ export function ChatView({ persona }: ChatViewProps) {
       chatInputRef.current?.focus()
     }
     prevIsLoadingRef.current = isLoading
-  }, [isLoading, messages.length, scrollToBottom])
+  }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
@@ -275,6 +339,7 @@ export function ChatView({ persona }: ChatViewProps) {
         token_count: 0,
         attachments: isIncognito ? null : (attachments.getAttachmentRefs().length > 0 ? attachments.getAttachmentRefs() : null),
         web_search_context: null,
+        knowledge_context: null,
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
@@ -307,6 +372,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleCancel = useCallback(() => {
     if (!correlationId) return
     sendMessage({ type: 'chat.cancel', correlation_id: correlationId })
+    setPartialSavedNotice(true)
+    setTimeout(() => setPartialSavedNotice(false), 6000)
   }, [correlationId])
 
   const handleEdit = useCallback(
@@ -364,9 +431,22 @@ export function ChatView({ persona }: ChatViewProps) {
         {isResolvingSession && (
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />
         )}
-        <span className="text-[13px] text-white/20">
-          {isResolvingSession ? 'Resolving session...' : 'Loading chat...'}
-        </span>
+        {resolveError ? (
+          <>
+            <span className="text-[13px] text-red-400">{resolveError}</span>
+            <button
+              type="button"
+              onClick={() => { setResolveError(null); setResolveAttempt((n) => n + 1) }}
+              className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/5"
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <span className="text-[13px] text-white/60">
+            {isResolvingSession ? 'Resolving session...' : 'Loading chat...'}
+          </span>
+        )}
       </div>
     )
   }
@@ -380,7 +460,7 @@ export function ChatView({ persona }: ChatViewProps) {
               INCOGNITO
             </span>
           )}
-          <span className="max-w-[400px] truncate text-[13px] text-white/40">
+          <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
         </div>
@@ -436,6 +516,32 @@ export function ChatView({ persona }: ChatViewProps) {
         </div>
       )}
 
+      {loadError && (
+        <div className="border-b border-amber-500/20 bg-amber-500/5 px-4 py-2 text-[13px] text-amber-300">
+          {loadError}
+          <button
+            type="button"
+            onClick={() => setLoadError(null)}
+            className="ml-3 text-[12px] text-white/40 hover:text-white/60"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {partialSavedNotice && (
+        <div className="border-b border-white/10 bg-white/5 px-4 py-1.5 text-[12px] text-white/60">
+          Generation cancelled — partial response saved.
+          <button
+            type="button"
+            onClick={() => setPartialSavedNotice(false)}
+            className="ml-3 text-white/35 hover:text-white/60"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {showIncognitoNotice && (
         <div className="flex items-center justify-between border-b border-white/6 bg-white/5 px-4 py-1.5 text-[12px] text-white/40">
           <span>This conversation will not be saved. A new session starts each time you open this chat.</span>
@@ -456,7 +562,7 @@ export function ChatView({ persona }: ChatViewProps) {
         <div className="flex flex-1 flex-col min-w-0 relative">
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center">
-              <span className="text-[13px] text-white/20">Loading messages...</span>
+              <span className="text-[13px] text-white/60">Loading messages...</span>
             </div>
           ) : (
             <MessageList

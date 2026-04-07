@@ -5,8 +5,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from backend.jobs import get_user_lock
-from backend.modules.llm import ContentDelta, StreamDone, StreamError, ThinkingDelta
-from backend.modules.llm._adapters._events import ToolCallEvent
+from backend.modules.llm import ContentDelta, StreamDone, StreamError, ThinkingDelta, ToolCallEvent
+from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamStartedEvent, ChatThinkingDeltaEvent,
@@ -75,7 +75,7 @@ class InferenceRunner:
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
-        extra_messages = []
+        extra_messages: list[CompletionMessage] = []
 
         try:
             for iteration in range(_MAX_TOOL_ITERATIONS + 1):

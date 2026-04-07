@@ -9,7 +9,7 @@ import json
 import sys
 from collections.abc import AsyncIterator
 
-from backend.modules.llm._adapters._events import (
+from backend.modules.llm import (
     ContentDelta,
     ProviderStreamEvent,
     StreamDone,

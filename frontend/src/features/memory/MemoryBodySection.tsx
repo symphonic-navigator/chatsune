@@ -4,7 +4,6 @@ import { memoryApi } from '../../core/api/memory'
 import type { MemoryBodyDto, MemoryBodyVersionDto } from '../../core/api/memory'
 
 const TOKEN_LIMIT = 3000
-const EMPTY_ENTRIES: import('../../core/api/memory').JournalEntryDto[] = []
 
 interface Props {
   personaId: string
@@ -12,7 +11,6 @@ interface Props {
 
 export default function MemoryBodySection({ personaId }: Props) {
   const isDreaming = useMemoryStore((s) => s.isDreaming[personaId] ?? false)
-  const committedEntries = useMemoryStore((s) => s.committedEntries[personaId] ?? EMPTY_ENTRIES)
   const setMemoryBody = useMemoryStore((s) => s.setMemoryBody)
   const setBodyVersions = useMemoryStore((s) => s.setBodyVersions)
 
@@ -38,8 +36,12 @@ export default function MemoryBodySection({ personaId }: Props) {
     }
   }
 
+  // Shared cancel flag — both effects must invalidate any in-flight load when they re-run or unmount
+  const cancelRef = useRef<{ value: boolean }>({ value: false })
+
   useEffect(() => {
-    const cancelled = { value: false }
+    cancelRef.current = { value: false }
+    const cancelled = cancelRef.current
     loadBodyAndVersions(cancelled)
     return () => { cancelled.value = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,8 +50,10 @@ export default function MemoryBodySection({ personaId }: Props) {
   const prevIsDreaming = useRef(isDreaming)
   useEffect(() => {
     if (prevIsDreaming.current && !isDreaming) {
-      const cancelled = { value: false }
-      loadBodyAndVersions(cancelled)
+      // Reuse the shared cancel flag so the previous load (if still running) is cancelled
+      cancelRef.current.value = true
+      cancelRef.current = { value: false }
+      loadBodyAndVersions(cancelRef.current)
     }
     prevIsDreaming.current = isDreaming
   // eslint-disable-next-line react-hooks/exhaustive-deps

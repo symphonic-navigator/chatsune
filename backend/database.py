@@ -22,7 +22,7 @@ async def disconnect_db() -> None:
 
 
 def get_db() -> AsyncIOMotorDatabase:
-    return _mongo_client.get_database()
+    return _mongo_client.get_database(settings.mongo_db_name)
 
 
 def get_client() -> AsyncIOMotorClient:

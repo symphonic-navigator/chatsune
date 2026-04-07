@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
@@ -37,6 +37,10 @@ export function ArtefactOverlay() {
   const [editContent, setEditContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+  }, [])
 
   useEffect(() => {
     setMode('preview')
@@ -63,7 +67,8 @@ export function ArtefactOverlay() {
     if (!artefact) return
     navigator.clipboard.writeText(artefact.content).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500)
     })
   }, [artefact])
 

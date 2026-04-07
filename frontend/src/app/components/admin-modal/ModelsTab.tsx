@@ -75,7 +75,7 @@ export function ModelsTab() {
       <div className="flex flex-1 items-center justify-center">
         <div className="flex items-center gap-3">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
-          <span className="text-[12px] text-white/40">Loading models...</span>
+          <span className="text-[12px] text-white/60">Loading models...</span>
         </div>
       </div>
     )
@@ -88,7 +88,7 @@ export function ModelsTab() {
         <button
           type="button"
           onClick={fetchModels}
-          className="rounded-lg border border-white/8 px-3 py-1.5 text-[11px] text-white/55 hover:bg-white/6 hover:text-white/75 transition-colors cursor-pointer"
+          className="rounded-lg border border-white/8 px-3 py-1.5 text-[11px] text-white/60 hover:bg-white/6 hover:text-white/80 transition-colors cursor-pointer"
         >
           Retry
         </button>
@@ -98,8 +98,15 @@ export function ModelsTab() {
 
   if (models.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[12px] text-white/30">
-        No models available.
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-[12px] text-white/60">
+        <span>No models available</span>
+        <button
+          type="button"
+          onClick={fetchModels}
+          className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-1.5 text-[11px] font-medium text-gold transition-colors hover:bg-gold/20 cursor-pointer"
+        >
+          Refresh providers
+        </button>
       </div>
     )
   }

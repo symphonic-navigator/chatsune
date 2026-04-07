@@ -25,7 +25,7 @@ Object.defineProperty(window, "localStorage", {
 })
 
 // ResizeObserver is not implemented in jsdom
-global.ResizeObserver = class ResizeObserver {
+globalThis.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}

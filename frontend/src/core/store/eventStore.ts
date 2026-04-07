@@ -4,14 +4,14 @@ export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "re
 
 interface EventState {
   status: ConnectionStatus
-  lastSequence: string
+  lastSequence: string | null
   setStatus: (status: ConnectionStatus) => void
-  setLastSequence: (seq: string) => void
+  setLastSequence: (seq: string | null) => void
 }
 
 export const useEventStore = create<EventState>((set) => ({
   status: "disconnected",
-  lastSequence: "",
+  lastSequence: null,
   setStatus: (status) => set({ status }),
   setLastSequence: (lastSequence) => set({ lastSequence }),
 }))

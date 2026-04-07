@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useId } from "react"
 import type { ModelMetaDto, ModelRating, SetModelCurationRequest } from "../../../core/types/llm"
 import { llmApi } from "../../../core/api/llm"
+import { useFocusTrap } from "../../hooks/useFocusTrap"
 
 interface CurationModalProps {
   model: ModelMetaDto
@@ -21,6 +22,9 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const backdropRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  useFocusTrap(dialogRef, true)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -61,14 +65,20 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
     >
-      <div className="w-full max-w-md rounded-xl border border-white/8 bg-surface shadow-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full sm:max-w-md rounded-xl border border-white/8 bg-surface shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold text-white/80">
+            <div id={titleId} className="truncate text-[13px] font-semibold text-white/80">
               {model.display_name}
             </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/40">
+            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/60">
               <span>{model.provider_display_name}</span>
               {paramInfo && (
                 <>
@@ -84,7 +94,7 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/60 hover:bg-white/8 hover:text-white/80 transition-colors"
           >
             ✕
           </button>
@@ -94,7 +104,7 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
         <div className="space-y-4 px-5 py-4">
           {/* Rating selection */}
           <div>
-            <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-white/40">
+            <label className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-white/60">
               Rating
             </label>
             <div className="flex gap-2">
@@ -120,7 +130,7 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
           <div>
             <label
               htmlFor="curation-description"
-              className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-white/40"
+              className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-white/60"
             >
               Admin Description
             </label>
@@ -144,7 +154,7 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
             />
             <div>
               <div className="text-[12px] text-white/70">Hidden</div>
-              <div className="text-[10px] text-white/30">
+              <div className="text-[10px] text-white/60">
                 Hidden models are not shown to regular users
               </div>
             </div>

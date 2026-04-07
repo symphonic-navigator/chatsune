@@ -247,9 +247,8 @@ async def handle_memory_extraction(
 
         # Mark source messages as extracted so they are not re-processed.
         if message_ids:
-            from backend.modules.chat._repository import ChatRepository as _ChatRepo
-            chat_repo = _ChatRepo(db)
-            marked = await chat_repo.mark_messages_extracted(message_ids)
+            from backend.modules.chat import mark_messages_extracted
+            marked = await mark_messages_extracted(message_ids)
             _log.info(
                 "Marked %d/%d messages as extracted: persona=%s session=%s ids=%s",
                 marked, len(message_ids), persona_id, session_id, message_ids,

@@ -85,8 +85,15 @@ function HtmlPreview({ content }: { content: string }) {
 
 // ─── SVG ────────────────────────────────────────────────────────────────────
 
+function utf8ToBase64(input: string): string {
+  const bytes = new TextEncoder().encode(input)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
 function SvgPreview({ content }: { content: string }) {
-  const dataUri = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(content)))}`
+  const dataUri = `data:image/svg+xml;base64,${utf8ToBase64(content)}`
 
   return (
     <div style={{ ...FILL, display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="p-4">
@@ -208,6 +215,13 @@ function JsxPreview({ content }: { content: string }) {
 
 // ─── Mermaid ────────────────────────────────────────────────────────────────
 
+// Cache the dynamic import promise at module level so we don't re-resolve on every content change
+let mermaidPromise: Promise<typeof import('mermaid')> | null = null
+function loadMermaid(): Promise<typeof import('mermaid')> {
+  if (!mermaidPromise) mermaidPromise = import('mermaid')
+  return mermaidPromise
+}
+
 function MermaidPreview({ content }: { content: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -217,7 +231,7 @@ function MermaidPreview({ content }: { content: string }) {
 
     let cancelled = false
 
-    import('mermaid').then((mod) => {
+    loadMermaid().then((mod) => {
       if (cancelled) return
       const mermaid = mod.default
 

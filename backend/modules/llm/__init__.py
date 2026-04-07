@@ -11,6 +11,7 @@ from backend.modules.llm._adapters._events import (
     StreamDone,
     StreamError,
     ThinkingDelta,
+    ToolCallEvent,
 )
 from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._curation import CurationRepository
@@ -152,6 +153,7 @@ __all__ = [
     "StreamDone",
     "StreamError",
     "ProviderStreamEvent",
+    "ToolCallEvent",
     "LlmCredentialNotFoundError",
     "LlmProviderNotFoundError",
     "UserModelConfigRepository",

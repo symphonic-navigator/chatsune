@@ -22,7 +22,8 @@ _log = logging.getLogger("chatsune.embedding.queue")
 @dataclass
 class QueryRequest:
     text: str
-    future: asyncio.Future = field(default_factory=lambda: asyncio.get_event_loop().create_future())
+    # Future is created by submit_query() once an event loop is guaranteed to be running.
+    future: asyncio.Future | None = field(default=None)
 
 
 @dataclass
@@ -88,11 +89,13 @@ class EmbeddingQueue:
             except asyncio.QueueEmpty:
                 embed_req = None
 
-            if embed_req is not None:
-                if embed_req is None:  # sentinel
-                    break
+            if embed_req is None:
+                pass  # nothing to do here, fall through to wait
+            elif isinstance(embed_req, EmbedBatchRequest):
                 await self._process_embed(embed_req)
                 continue
+            else:  # sentinel (None placed via stop) — actually unreachable since None handled above
+                break
 
             # 3. Both queues empty — wait for either
             query_wait = asyncio.ensure_future(self._query_queue.get())

@@ -18,19 +18,28 @@ function baseUrl(): string {
   return import.meta.env.VITE_API_URL ?? ""
 }
 
+let currentRefresh: Promise<boolean> | null = null
+
 async function refreshToken(): Promise<boolean> {
-  try {
-    const res = await fetch(`${baseUrl()}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-    })
-    if (!res.ok) return false
-    const data = await res.json()
-    setAccessToken(data.access_token)
-    return true
-  } catch {
-    return false
-  }
+  // Share the in-flight refresh promise so parallel 401s coalesce into a single refresh call
+  if (currentRefresh) return currentRefresh
+  currentRefresh = (async () => {
+    try {
+      const res = await fetch(`${baseUrl()}/api/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      setAccessToken(data.access_token)
+      return true
+    } catch {
+      return false
+    } finally {
+      currentRefresh = null
+    }
+  })()
+  return currentRefresh
 }
 
 export async function apiRequest<T>(

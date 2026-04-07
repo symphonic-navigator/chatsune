@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createMarkdownComponents } from './markdownComponents'
@@ -15,11 +15,17 @@ interface AssistantMessageProps {
 
 export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, thinkingDefaultExpanded, onThinkingToggle, isBookmarked, onBookmark, canRegenerate, onRegenerate }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+  }, [])
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(content)
     setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500)
   }, [content])
 
   const components = createMarkdownComponents(highlighter)

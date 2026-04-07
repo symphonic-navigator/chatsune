@@ -106,6 +106,9 @@ export default function PersonaCard({
 
       {/* Drag handle — only this element triggers drag */}
       <div
+        role="button"
+        aria-label={`Drag to reorder ${persona.name}`}
+        title="Drag to reorder"
         className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-[3px] cursor-grab active:cursor-grabbing p-1"
         {...listeners}
       >
@@ -141,6 +144,8 @@ export default function PersonaCard({
               if (!persona.pinned) e.currentTarget.style.color = "rgba(255,255,255,0.2)";
             }}
             title={persona.pinned ? "Unpin" : "Pin"}
+            aria-label={persona.pinned ? `Unpin ${persona.name}` : `Pin ${persona.name}`}
+            aria-pressed={persona.pinned}
           >
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 17v5" />
@@ -251,6 +256,7 @@ export default function PersonaCard({
               borderRight: "1px solid rgba(255,255,255,0.04)",
             }}
             title={btn.title}
+            aria-label={`${btn.title} — ${persona.name}`}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onOpenOverlay(persona.id, btn.tab)}
             onMouseEnter={(e) => {
@@ -271,6 +277,7 @@ export default function PersonaCard({
           className="flex-1 flex items-center justify-center transition-colors duration-200 bg-transparent border-none cursor-pointer"
           style={{ color: chakra.hex + "b3" }}
           title="New Chat"
+          aria-label={`Start a new chat with ${persona.name}`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onNewChat(persona.id)}
           onMouseEnter={(e) => {
