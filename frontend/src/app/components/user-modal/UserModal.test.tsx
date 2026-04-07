@@ -15,7 +15,7 @@ function renderModal(activeTab = 'about-me' as const) {
   const onTabChange = vi.fn()
   render(
     <MemoryRouter>
-      <UserModal activeTab={activeTab} onClose={onClose} onTabChange={onTabChange} displayName="Chris" hasApiKeyProblem={false} onProvidersChanged={vi.fn()} />
+      <UserModal activeTab={activeTab} onClose={onClose} onTabChange={onTabChange} displayName="Chris" hasApiKeyProblem={false} onProvidersChanged={vi.fn()} onOpenPersonaOverlay={vi.fn()} />
     </MemoryRouter>,
   )
   return { onClose, onTabChange }
