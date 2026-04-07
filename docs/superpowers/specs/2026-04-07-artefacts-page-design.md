@@ -72,11 +72,14 @@ new write endpoints are added.
 
 ## Frontend
 
-### Route and entry point
+### Entry point
 
-- New page: `frontend/src/app/pages/ArtefactsPage.tsx`
-- Wired into the existing sidebar navigation alongside History, Knowledge,
-  Personas, etc.
+The "Artefacts page" is the existing **Artefacts tab inside the user modal**
+at `frontend/src/app/components/user-modal/ArtefactsTab.tsx`, currently a
+placeholder. This task replaces that placeholder. The tab follows the exact
+patterns established by `HistoryTab.tsx`, `BookmarksTab.tsx`, and
+`UploadsTab.tsx` (filter row, search input, list with hover actions, persona
+monogram with chakra colour).
 
 ### Data layer
 
@@ -116,13 +119,14 @@ badge, session title, timestamp, action menu.
   title).
 - All filters and search compose. The result count reflects the filtered set.
 
-### Sanitised mode (incognito)
+### Sanitised mode
 
-Artefacts whose persona has `incognito === true` (read from `personaStore`)
-are removed from the working set **before** any filter, search, or count
-runs. They are invisible to the page in every respect. When a persona is
-toggled incognito on/off via its existing event, the list re-derives
-automatically because the store change triggers a re-render.
+Sanitised mode is a single global flag in `useSanitisedMode` (already used
+by HistoryTab, BookmarksTab, UploadsTab, KnowledgeTab). When `isSanitised`
+is true, every artefact whose owning persona has `nsfw === true` is removed
+from the working set **before** any filter, search, count, or persona
+dropdown population runs — i.e. plausible deniability. The user can toggle
+sanitised mode at any time and the tab re-derives automatically.
 
 ### Rename (inline)
 
@@ -145,7 +149,7 @@ be a no-op.
 
 Action menu → "Open in chat" (also the default click on the row body).
 
-1. `useNavigate('/chat/' + sessionId, { state: { pendingArtefactId: id } })`.
+1. `useNavigate('/chat/' + personaId + '/' + sessionId, { state: { pendingArtefactId: id } })` (the chat route is `/chat/:personaId/:sessionId`).
 2. `ChatPage` reads `location.state.pendingArtefactId` once on mount /
    when session data is ready, calls `artefactStore.openOverlay(id)`, then
    clears the state via `history.replaceState` so a reload does not re-open
