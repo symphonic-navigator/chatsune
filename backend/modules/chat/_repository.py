@@ -4,7 +4,12 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from shared.dtos.chat import ChatMessageDto, ChatSessionDto, WebSearchContextItemDto
+from shared.dtos.chat import (
+    ChatMessageDto,
+    ChatSessionDto,
+    VisionDescriptionSnapshotDto,
+    WebSearchContextItemDto,
+)
 from shared.dtos.storage import AttachmentRefDto
 
 
@@ -290,6 +295,7 @@ class ChatRepository:
         knowledge_context: list[dict] | None = None,
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
+        vision_descriptions_used: list[dict] | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -309,8 +315,19 @@ class ChatRepository:
             doc["attachment_ids"] = attachment_ids
         if attachment_refs:
             doc["attachment_refs"] = attachment_refs
+        if vision_descriptions_used:
+            doc["vision_descriptions_used"] = vision_descriptions_used
         await self._messages.insert_one(doc)
         return doc
+
+    async def update_message_vision_snapshots(
+        self, message_id: str, snapshots: list[dict],
+    ) -> None:
+        """Persist vision-description snapshots on an existing message."""
+        await self._messages.update_one(
+            {"_id": message_id},
+            {"$set": {"vision_descriptions_used": snapshots}},
+        )
 
     async def count_messages(self, session_id: str) -> int:
         """Return the number of messages in a session."""
@@ -458,6 +475,20 @@ class ChatRepository:
             if raw_refs
             else None
         )
+        raw_vision_snaps = doc.get("vision_descriptions_used")
+        vision_snaps = (
+            [
+                VisionDescriptionSnapshotDto(
+                    file_id=s.get("file_id", ""),
+                    display_name=s.get("display_name", ""),
+                    model_id=s.get("model_id", ""),
+                    text=s.get("text", ""),
+                )
+                for s in raw_vision_snaps
+            ]
+            if raw_vision_snaps
+            else None
+        )
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -468,5 +499,6 @@ class ChatRepository:
             attachments=attachments,
             web_search_context=ws_ctx,
             knowledge_context=doc.get("knowledge_context"),
+            vision_descriptions_used=vision_snaps,
             created_at=doc["created_at"],
         )

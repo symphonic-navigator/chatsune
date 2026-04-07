@@ -27,6 +27,7 @@ class ChatMessageDocument(BaseModel):
     role: Literal["user", "assistant", "tool"]
     content: str
     thinking: str | None = None
+    vision_descriptions_used: list[dict] | None = None
     token_count: int
     created_at: datetime
 
