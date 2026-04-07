@@ -19,6 +19,7 @@ import { useAuth } from "../../../core/hooks/useAuth"
 import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { NavRow } from "./NavRow"
 import { SidebarFlyout } from './SidebarFlyout'
+import { NewChatRow } from './NewChatRow'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
@@ -659,6 +660,9 @@ export function Sidebar({
           <span className="text-[11px] text-gold/50">›</span>
         </button>
       )}
+
+      {/* New Chat */}
+      <NewChatRow personas={personas} onCloseModal={onCloseModal} />
 
       {/* PERSONAS */}
       <div className="mt-1.5 flex-shrink-0">
