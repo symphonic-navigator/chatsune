@@ -160,7 +160,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'knowledge' && <KnowledgeTab />}
           {activeTab === 'bookmarks' && <BookmarksTab onClose={onClose} />}
           {activeTab === 'uploads' && <UploadsTab />}
-          {activeTab === 'artefacts' && <ArtefactsTab />}
+          {activeTab === 'artefacts' && <ArtefactsTab onClose={onClose} />}
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
