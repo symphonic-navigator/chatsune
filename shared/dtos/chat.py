@@ -27,6 +27,13 @@ class WebSearchContextItemDto(BaseModel):
     source_type: str = "search"   # "search" or "fetch"
 
 
+class VisionDescriptionSnapshotDto(BaseModel):
+    file_id: str
+    display_name: str
+    model_id: str
+    text: str
+
+
 class ChatMessageDto(BaseModel):
     id: str
     session_id: str
@@ -37,4 +44,5 @@ class ChatMessageDto(BaseModel):
     attachments: list[AttachmentRefDto] | None = None
     web_search_context: list[WebSearchContextItemDto] | None = None
     knowledge_context: list[dict] | None = None
+    vision_descriptions_used: list[VisionDescriptionSnapshotDto] | None = None
     created_at: datetime

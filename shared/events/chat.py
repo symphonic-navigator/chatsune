@@ -151,3 +151,15 @@ class ChatSessionPinnedUpdatedEvent(BaseModel):
     pinned: bool
     correlation_id: str
     timestamp: datetime
+
+
+class ChatVisionDescriptionEvent(BaseModel):
+    type: str = "chat.vision.description"
+    correlation_id: str
+    file_id: str
+    display_name: str
+    model_id: str
+    status: Literal["pending", "success", "error"]
+    text: str | None = None
+    error: str | None = None
+    timestamp: datetime

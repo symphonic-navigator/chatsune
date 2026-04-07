@@ -25,6 +25,8 @@ class PersonaDto(BaseModel):
     system_prompt: str
     temperature: float = Field(ge=0.0, le=2.0)
     reasoning_enabled: bool
+    soft_cot_enabled: bool = False
+    vision_fallback_model: str | None = None
     nsfw: bool
     colour_scheme: ChakraColour
     display_order: int
@@ -43,6 +45,8 @@ class CreatePersonaDto(BaseModel):
     system_prompt: str
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
     reasoning_enabled: bool = False
+    soft_cot_enabled: bool = False
+    vision_fallback_model: str | None = None
     nsfw: bool = False
     colour_scheme: ChakraColour = "solar"
     display_order: int = 0
@@ -61,6 +65,8 @@ class UpdatePersonaDto(BaseModel):
     system_prompt: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     reasoning_enabled: bool | None = None
+    soft_cot_enabled: bool | None = None
+    vision_fallback_model: str | None = None
     nsfw: bool | None = None
     colour_scheme: ChakraColour | None = None
     display_order: int | None = None
