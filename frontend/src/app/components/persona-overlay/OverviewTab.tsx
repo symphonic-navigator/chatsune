@@ -111,12 +111,18 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         accentColour={chakra.hex}
       />
 
-      {/* Name + tagline */}
+      {/* Name + tagline + model */}
       <div className="flex flex-col items-center gap-1 text-center">
         <h2 className="text-[18px] font-semibold text-white/90">{persona.name}</h2>
         {persona.tagline && (
           <p className="text-[13px] text-white/45 max-w-xs">{persona.tagline}</p>
         )}
+        <p
+          className="font-mono text-[11px]"
+          style={{ color: chakra.hex + '4d', letterSpacing: '0.5px' }}
+        >
+          {persona.model_unique_id.split(':').slice(1).join(':')}
+        </p>
       </div>
 
       {/* Stats */}
