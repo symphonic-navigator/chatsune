@@ -9,6 +9,7 @@ import { ArtefactsTab } from './ArtefactsTab'
 import { BookmarksTab } from './BookmarksTab'
 import { ModelsTab } from './ModelsTab'
 import { ApiKeysTab } from './ApiKeysTab'
+import { PersonasTab } from './PersonasTab'
 import type { ProviderCredentialDto } from '../../../core/types/llm'
 
 export type UserModalTab =
@@ -168,7 +169,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           aria-labelledby={`user-tab-${activeTab}`}
           className="flex-1 overflow-hidden flex flex-col">
           {activeTab === 'about-me' && <AboutMeTab />}
-          {activeTab === 'personas' && <div data-testid="personas-tab-placeholder" />}
+          {activeTab === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} />}
           {activeTab === 'projects' && <ProjectsTab />}
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
