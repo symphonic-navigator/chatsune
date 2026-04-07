@@ -14,24 +14,10 @@ import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { PersonaDto } from '../../../core/types/persona'
+import { sortPersonas } from '../sidebar/personaSort'
 
 interface PersonasTabProps {
   onOpenPersonaOverlay: (personaId: string) => void
-}
-
-// Stable pinned-first partition. Preserves the incoming state order, which is
-// authoritative: the API returns personas already sorted by display_order, and
-// reorder() mutates array order (not display_order fields) for optimistic updates.
-// Sorting by display_order here would fight the optimistic update and make drag
-// reorder appear to have no effect.
-function sortPersonas(list: PersonaDto[]): PersonaDto[] {
-  const pinned: PersonaDto[] = []
-  const unpinned: PersonaDto[] = []
-  for (const p of list) {
-    if (p.pinned) pinned.push(p)
-    else unpinned.push(p)
-  }
-  return [...pinned, ...unpinned]
 }
 
 export function PersonasTab({ onOpenPersonaOverlay }: PersonasTabProps) {
