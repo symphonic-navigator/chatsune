@@ -18,15 +18,6 @@ interface EditTabProps {
 
 const CHAKRA_COLOURS: ChakraColour[] = ['root', 'sacral', 'solar', 'heart', 'throat', 'third_eye', 'crown']
 
-// Applied to every <option> in native <select> elements so the dropdown
-// list honours the app's dark theme. Browsers render the open list with OS
-// defaults and ignore styles on the parent <select> — see CLAUDE.md for
-// the full explanation.
-const _OPTION_STYLE: React.CSSProperties = {
-  background: '#0f0d16',
-  color: 'rgba(255,255,255,0.85)',
-}
-
 export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [name, setName] = useState(persona.name)
   const [tagline, setTagline] = useState(persona.tagline)
@@ -48,11 +39,10 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [canReason, setCanReason] = useState(false)
   const [canUseTools, setCanUseTools] = useState(true)
   const [canSeeImages, setCanSeeImages] = useState(true)
-  const [visionCapableModels, setVisionCapableModels] = useState<
-    Array<{ unique_id: string; display_name: string; provider_id: string }>
-  >([])
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
+  const [visionPickerOpen, setVisionPickerOpen] = useState(false)
+  const [visionFallbackDisplayName, setVisionFallbackDisplayName] = useState<string | null>(null)
   const [cropOpen, setCropOpen] = useState(false)
 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
@@ -87,31 +77,22 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       })
   }, [persona.model_unique_id])
 
-  // Load vision-capable models across all registered providers for the
-  // fallback dropdown. Runs once on mount — the result does not depend on
-  // the persona's main model and is cheap to keep around.
+  // Resolve a friendly display name for the persisted vision fallback model.
   useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const providers = await llmApi.listProviders()
-        const perProvider = await Promise.all(
-          providers.map((p) => llmApi.listModels(p.provider_id).catch(() => [])),
-        )
-        if (cancelled) return
-        const flat = perProvider.flat().filter((m) => m.supports_vision)
-        setVisionCapableModels(flat.map((m) => ({
-          unique_id: m.unique_id,
-          display_name: m.display_name,
-          provider_id: m.provider_id,
-        })))
-      } catch {
-        if (!cancelled) setVisionCapableModels([])
-      }
+    const uid = persona.vision_fallback_model
+    if (!uid || !uid.includes(":")) {
+      setVisionFallbackDisplayName(null)
+      return
     }
-    load()
-    return () => { cancelled = true }
-  }, [])
+    const providerId = uid.split(":")[0]
+    const modelSlug = uid.split(":").slice(1).join(":")
+    llmApi.listModels(providerId)
+      .then((models) => {
+        const model = models.find((m) => m.model_id === modelSlug)
+        setVisionFallbackDisplayName(model?.display_name ?? modelSlug)
+      })
+      .catch(() => setVisionFallbackDisplayName(modelSlug))
+  }, [persona.vision_fallback_model])
 
   // Soft-CoT is available whenever the persona has opted in and Hard-CoT
   // is not currently active. The toggle is greyed while Hard-CoT takes over.
@@ -416,32 +397,28 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
               <label className="text-[11px] text-white/40 uppercase tracking-wider">
                 Vision fallback
               </label>
-              <select
-                value={visionFallbackModel ?? ""}
-                onChange={(e) => setVisionFallbackModel(e.target.value || null)}
-                className="appearance-none cursor-pointer"
-                style={{
-                  background: `var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E") no-repeat right 10px center`,
-                  border: `1px solid ${chakra.hex}26`,
-                  borderRadius: 8,
-                  color: 'rgba(255,255,255,0.85)',
-                  fontSize: 13,
-                  padding: '8px 28px 8px 12px',
-                  outline: 'none',
-                }}
-              >
-                {/* Explicit style on each <option> is required: most browsers
-                    render the open dropdown list with OS-native defaults
-                    (light background) and ignore styles set on the <select>.
-                    Setting background-color/color directly on <option> is the
-                    portable way to get dark dropdown lists. */}
-                <option value="" style={_OPTION_STYLE}>No fallback</option>
-                {visionCapableModels.map((m) => (
-                  <option key={m.unique_id} value={m.unique_id} style={_OPTION_STYLE}>
-                    {m.provider_id} — {m.display_name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setVisionPickerOpen(true)}
+                  className="flex-1 rounded-lg border px-3 py-2 text-left text-[13px] text-white/85 transition-colors hover:bg-white/5"
+                  style={{ borderColor: `${chakra.hex}26`, background: 'var(--color-surface)' }}
+                >
+                  {visionFallbackModel
+                    ? (visionFallbackDisplayName ?? visionFallbackModel)
+                    : <span className="text-white/40">No fallback</span>}
+                </button>
+                {visionFallbackModel && (
+                  <button
+                    type="button"
+                    onClick={() => setVisionFallbackModel(null)}
+                    className="rounded-lg border border-white/10 px-2.5 py-2 text-[11px] text-white/55 hover:bg-white/5 transition-colors"
+                    title="Clear vision fallback"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
               <span className="text-[11px] text-white/45">
                 Used to describe images for this non-vision model.
               </span>
@@ -472,6 +449,19 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           {saving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
         </button>
       </div>
+
+      {visionPickerOpen && (
+        <ModelSelectionModal
+          currentModelId={visionFallbackModel}
+          onSelect={(m) => {
+            setVisionFallbackModel(m.unique_id)
+            setVisionFallbackDisplayName(m.display_name)
+            setVisionPickerOpen(false)
+          }}
+          onClose={() => setVisionPickerOpen(false)}
+          lockedFilters={{ capVision: true }}
+        />
+      )}
 
       {cropOpen && !isCreating && (
         <AvatarCropModal
