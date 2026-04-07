@@ -365,6 +365,38 @@ Chat, Persona, LLM — after the foundation is proven and stable.
 
 ---
 
+## Frontend styling gotchas
+
+### Native `<select>` dropdowns
+
+Browsers render the **open** dropdown list of a native `<select>` using
+OS-native widgets. They ignore styles set on the `<select>` element itself
+— `background`, `color`, Tailwind classes, nothing applies to the list
+when it is open. The parent element only styles the closed state.
+
+To get a dark dropdown list that matches the app theme, set `background`
+and `color` **directly on each `<option>` element**:
+
+```tsx
+const OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',         // surface colour
+  color: 'rgba(255,255,255,0.85)',
+}
+
+<select ...>
+  <option value="" style={OPTION_STYLE}>No fallback</option>
+  {items.map((x) => (
+    <option key={x.id} value={x.id} style={OPTION_STYLE}>{x.label}</option>
+  ))}
+</select>
+```
+
+Honoured by Chrome, Firefox, and Safari. Symptom when you forget it: the
+open dropdown list is light grey on white while the closed select looks
+correct. This is a recurring mistake — always the same fix.
+
+---
+
 ## What NOT to Do
 
 These are lessons from Prototype 2:

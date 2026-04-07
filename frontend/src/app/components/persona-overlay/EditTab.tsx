@@ -18,6 +18,15 @@ interface EditTabProps {
 
 const CHAKRA_COLOURS: ChakraColour[] = ['root', 'sacral', 'solar', 'heart', 'throat', 'third_eye', 'crown']
 
+// Applied to every <option> in native <select> elements so the dropdown
+// list honours the app's dark theme. Browsers render the open list with OS
+// defaults and ignore styles on the parent <select> — see CLAUDE.md for
+// the full explanation.
+const _OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',
+  color: 'rgba(255,255,255,0.85)',
+}
+
 export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [name, setName] = useState(persona.name)
   const [tagline, setTagline] = useState(persona.tagline)
@@ -410,19 +419,25 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
               <select
                 value={visionFallbackModel ?? ""}
                 onChange={(e) => setVisionFallbackModel(e.target.value || null)}
+                className="appearance-none cursor-pointer"
                 style={{
-                  background: 'rgba(255,255,255,0.03)',
+                  background: `var(--color-surface) url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E") no-repeat right 10px center`,
                   border: `1px solid ${chakra.hex}26`,
                   borderRadius: 8,
                   color: 'rgba(255,255,255,0.85)',
                   fontSize: 13,
-                  padding: '8px 12px',
+                  padding: '8px 28px 8px 12px',
                   outline: 'none',
                 }}
               >
-                <option value="">No fallback</option>
+                {/* Explicit style on each <option> is required: most browsers
+                    render the open dropdown list with OS-native defaults
+                    (light background) and ignore styles set on the <select>.
+                    Setting background-color/color directly on <option> is the
+                    portable way to get dark dropdown lists. */}
+                <option value="" style={_OPTION_STYLE}>No fallback</option>
                 {visionCapableModels.map((m) => (
-                  <option key={m.unique_id} value={m.unique_id}>
+                  <option key={m.unique_id} value={m.unique_id} style={_OPTION_STYLE}>
                     {m.provider_id} — {m.display_name}
                   </option>
                 ))}
