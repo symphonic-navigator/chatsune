@@ -39,6 +39,14 @@ async def handle_memory_consolidation(
     from backend.modules.memory._repository import MemoryRepository
     from backend.token_counter import count_tokens
 
+    token_key = f"job:executed:{job.execution_token}"
+    already = await redis.set(token_key, "1", nx=True, ex=48 * 3600)
+    if already is None:
+        _log.info(
+            "job.duplicate_skip token=%s job_id=%s", job.execution_token, job.id,
+        )
+        return
+
     persona_id = job.payload["persona_id"]
     provider_id, model_slug = job.model_unique_id.split(":", 1)
     dream_id = str(uuid4())

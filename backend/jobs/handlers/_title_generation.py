@@ -42,6 +42,14 @@ async def handle_title_generation(
     from backend.modules.llm import stream_completion as llm_stream_completion
     from backend.modules.llm import get_model_supports_reasoning
 
+    token_key = f"job:executed:{job.execution_token}"
+    already = await redis.set(token_key, "1", nx=True, ex=48 * 3600)
+    if already is None:
+        _log.info(
+            "job.duplicate_skip token=%s job_id=%s", job.execution_token, job.id,
+        )
+        return
+
     provider_id, model_slug = job.model_unique_id.split(":", 1)
     messages_data = job.payload.get("messages", [])
     session_id = job.payload.get("session_id", "unknown")

@@ -50,6 +50,7 @@ async def submit(
         payload=payload,
         correlation_id=corr_id,
         created_at=datetime.now(timezone.utc),
+        execution_token=uuid4().hex,
     )
 
     redis = get_redis()

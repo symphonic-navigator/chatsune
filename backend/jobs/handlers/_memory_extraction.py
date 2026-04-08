@@ -46,6 +46,14 @@ async def handle_memory_extraction(
     from backend.modules.memory._parser import parse_extraction_output
     from backend.modules.memory._repository import MemoryRepository
 
+    token_key = f"job:executed:{job.execution_token}"
+    already = await redis.set(token_key, "1", nx=True, ex=48 * 3600)
+    if already is None:
+        _log.info(
+            "job.duplicate_skip token=%s job_id=%s", job.execution_token, job.id,
+        )
+        return
+
     persona_id = job.payload["persona_id"]
     session_id = job.payload["session_id"]
     messages_raw: list[str] = job.payload.get("messages", [])

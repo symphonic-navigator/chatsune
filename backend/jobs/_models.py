@@ -2,8 +2,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JobType(StrEnum):
@@ -33,3 +34,6 @@ class JobEntry(BaseModel):
     correlation_id: str
     created_at: datetime
     attempt: int = 0
+    # Unique per submission; used as a one-shot idempotency key so a
+    # re-delivered stream message does not run its handler twice.
+    execution_token: str = Field(default_factory=lambda: uuid4().hex)
