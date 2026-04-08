@@ -407,7 +407,15 @@ async def lifespan(app: FastAPI):
             _lifecycle_log.info("stopped periodic_extraction_loop")
 
     extraction_task = asyncio.create_task(_periodic_extraction_loop())
-    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction")
+
+    # H-003: drain any disconnect-extraction submits that were buffered in
+    # Redis because ``submit()`` failed at WS-disconnect time.
+    from backend.jobs._disconnect_retry import disconnect_retry_recovery_loop
+    disconnect_retry_task = asyncio.create_task(
+        disconnect_retry_recovery_loop(get_redis()),
+    )
+
+    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction, disconnect_retry")
 
     yield
 
@@ -427,6 +435,7 @@ async def lifespan(app: FastAPI):
     consumer_task.cancel()
     trim_task.cancel()
     extraction_task.cancel()
+    disconnect_retry_task.cancel()
     for task in (
         cleanup_task,
         memory_auto_commit_task,
@@ -434,6 +443,7 @@ async def lifespan(app: FastAPI):
         consumer_task,
         trim_task,
         extraction_task,
+        disconnect_retry_task,
     ):
         try:
             await task
