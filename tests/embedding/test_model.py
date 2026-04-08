@@ -20,9 +20,9 @@ def mock_session():
     session = MagicMock()
     def mock_run(output_names, input_feed):
         batch_size = input_feed["input_ids"].shape[0]
-        seq_len = input_feed["input_ids"].shape[1]
-        hidden = np.random.randn(batch_size, seq_len, 768).astype(np.float32)
-        return [hidden]
+        # Mimic the ONNX "sentence_embedding" output — already pooled to (batch, 768).
+        pooled = np.random.randn(batch_size, 768).astype(np.float32)
+        return [pooled]
     session.run = mock_run
     return session
 
