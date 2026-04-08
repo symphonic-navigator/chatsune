@@ -53,12 +53,24 @@ async def test_create_session_invalid_persona(client: AsyncClient):
 
 
 async def test_list_sessions(client: AsyncClient):
+    # list_sessions only returns sessions with at least one message
+    # (empty ghost sessions are hidden). Persist a message per session directly.
+    from backend.database import get_db
+    from backend.modules.chat._repository import ChatRepository
+
     token = await _setup_and_login(client)
     create_resp = await client.post("/api/personas", json=_VALID_PERSONA, headers=_auth(token))
     persona_id = create_resp.json()["id"]
 
-    await client.post("/api/chat/sessions", json={"persona_id": persona_id}, headers=_auth(token))
-    await client.post("/api/chat/sessions", json={"persona_id": persona_id}, headers=_auth(token))
+    repo = ChatRepository(get_db())
+
+    # A second POST /sessions cleans up the previous empty session for
+    # the same user+persona, so we must persist a message before creating
+    # the next session to keep it alive.
+    s1 = await client.post("/api/chat/sessions", json={"persona_id": persona_id}, headers=_auth(token))
+    await repo.save_message(session_id=s1.json()["id"], role="user", content="hi", token_count=1)
+    s2 = await client.post("/api/chat/sessions", json={"persona_id": persona_id}, headers=_auth(token))
+    await repo.save_message(session_id=s2.json()["id"], role="user", content="hi", token_count=1)
 
     resp = await client.get("/api/chat/sessions", headers=_auth(token))
     assert resp.status_code == 200

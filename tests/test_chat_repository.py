@@ -34,9 +34,14 @@ async def test_get_session_wrong_user(repo):
 
 
 async def test_list_sessions_for_user(repo):
-    await repo.create_session("user-1", "p-1", "ollama_cloud:m")
-    await repo.create_session("user-1", "p-2", "ollama_cloud:m")
-    await repo.create_session("user-2", "p-3", "ollama_cloud:m")
+    # list_sessions() only returns sessions with at least one message
+    # (empty ghost sessions are hidden, like on Claude.ai).
+    s1 = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    s2 = await repo.create_session("user-1", "p-2", "ollama_cloud:m")
+    s3 = await repo.create_session("user-2", "p-3", "ollama_cloud:m")
+    await repo.save_message(session_id=s1["_id"], role="user", content="hi", token_count=1)
+    await repo.save_message(session_id=s2["_id"], role="user", content="hi", token_count=1)
+    await repo.save_message(session_id=s3["_id"], role="user", content="hi", token_count=1)
     sessions = await repo.list_sessions("user-1")
     assert len(sessions) == 2
 
@@ -60,11 +65,12 @@ async def test_save_and_list_messages(repo):
     assert messages[1]["thinking"] == "Let me respond naturally."
 
 
-async def test_delete_session_cascades_messages(repo):
+async def test_soft_delete_session_hides_it(repo):
+    # Sessions are soft-deleted: get_session no longer returns them,
+    # but messages remain until hard_delete_expired_sessions runs.
     session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
     sid = session["_id"]
     await repo.save_message(session_id=sid, role="user", content="hi", token_count=1)
-    deleted = await repo.delete_session(sid, "user-1")
+    deleted = await repo.soft_delete_session(sid, "user-1")
     assert deleted is True
-    messages = await repo.list_messages(sid)
-    assert len(messages) == 0
+    assert await repo.get_session(sid, "user-1") is None
