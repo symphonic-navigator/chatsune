@@ -282,29 +282,33 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
             )
 
         last_msg = await repo.get_last_message(session_id)
-        if last_msg is None or last_msg["role"] != "assistant":
+        if last_msg is None:
+            return
+        if last_msg["role"] not in ("assistant", "user"):
             return
 
         correlation_id = str(uuid4())
         now = datetime.now(timezone.utc)
         event_bus = get_event_bus()
 
-        # Delete the last assistant message
-        await repo.delete_message(last_msg["_id"])
-        await delete_bookmarks_for_message(last_msg["_id"])
+        if last_msg["role"] == "assistant":
+            # Delete the last assistant message — we're going to replace it.
+            await repo.delete_message(last_msg["_id"])
+            await delete_bookmarks_for_message(last_msg["_id"])
 
-        await event_bus.publish(
-            Topics.CHAT_MESSAGE_DELETED,
-            ChatMessageDeletedEvent(
-                session_id=session_id,
-                message_id=last_msg["_id"],
+            await event_bus.publish(
+                Topics.CHAT_MESSAGE_DELETED,
+                ChatMessageDeletedEvent(
+                    session_id=session_id,
+                    message_id=last_msg["_id"],
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"session:{session_id}",
+                target_user_ids=[user_id],
                 correlation_id=correlation_id,
-                timestamp=now,
-            ),
-            scope=f"session:{session_id}",
-            target_user_ids=[user_id],
-            correlation_id=correlation_id,
-        )
+            )
+        # If last_msg is a user message, nothing to delete — just re-infer below.
 
         # Run inference using existing last user message
         await run_inference(user_id, session_id, repo, session)
