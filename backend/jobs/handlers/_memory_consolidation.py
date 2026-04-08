@@ -8,8 +8,10 @@ import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
+from backend.modules.llm._token_estimate import context_window_for, estimate_tokens
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.memory import (
     MemoryDreamCompletedEvent,
@@ -89,6 +91,25 @@ async def handle_memory_consolidation(
         body_doc = await repo.get_current_memory_body(job.user_id, persona_id)
         existing_body = body_doc["content"] if body_doc else None
 
+        # H-001 protection: guard against context-window overflow before calling
+        # the LLM. Over time the persistent memory body can grow arbitrarily
+        # large; without this guard we would send a payload the model cannot
+        # handle, burning retries and provider credits. We truncate the body
+        # first (keep the tail — the most recently consolidated content is
+        # usually most relevant) and, if the full prompt still blows past 70%
+        # of the context window, abort the job unrecoverably.
+        window = context_window_for(provider_id, model_slug)
+        if existing_body and estimate_tokens(existing_body) > window * 0.5:
+            keep_chars = int(window * 0.4 * 3)
+            existing_body = (
+                "[... earlier memory truncated to fit context window ...]\n"
+                + existing_body[-keep_chars:]
+            )
+            _log.warning(
+                "Consolidation body truncated for persona %s (window=%d)",
+                persona_id, window,
+            )
+
         # Build consolidation prompt.
         entries_for_prompt = [
             {"content": e["content"], "is_correction": e.get("is_correction", False)}
@@ -98,6 +119,14 @@ async def handle_memory_consolidation(
             existing_body=existing_body,
             entries=entries_for_prompt,
         )
+
+        estimated = estimate_tokens(system_prompt)
+        if estimated > window * 0.7:
+            raise UnrecoverableJobError(
+                f"Consolidation input too large: ~{estimated} tokens "
+                f"(>70% of {window} context window). Skipping to avoid "
+                f"wasted retries."
+            )
 
         supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
 
