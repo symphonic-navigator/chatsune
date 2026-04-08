@@ -209,6 +209,15 @@ class OllamaBaseAdapter(BaseAdapter):
                             name=fn.get("name", ""),
                             arguments=json.dumps(fn.get("arguments", {})),
                         )
+        except asyncio.CancelledError:
+            # Audit trail for H-002: when a job timeout cancels us mid-stream,
+            # the enclosing ``async with`` will close the socket and abort the
+            # billable upstream inference. Log it so we can correlate cost.
+            _log.warning(
+                "Upstream stream cancelled mid-flight (model=%s) — closing socket",
+                payload.get("model"),
+            )
+            raise
         except httpx.ConnectError:
             yield StreamError(error_code="provider_unavailable", message="Connection failed")
             return

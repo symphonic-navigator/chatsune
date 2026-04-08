@@ -8,7 +8,7 @@ from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._lock import get_job_lock
 from backend.jobs._models import JobEntry
 from backend.jobs._registry import JOB_REGISTRY
-from backend.jobs._retry import set_retry, get_retry, clear_retry
+from backend.jobs._retry import set_retry, get_retry, clear_retry, compute_backoff
 from backend.modules.safeguards import (
     BudgetExceededError,
     CircuitOpenError,
@@ -284,7 +284,10 @@ async def process_one(redis: Redis, event_bus) -> bool:
         return True
     else:
         # Schedule retry
-        next_retry_at = now + timedelta(seconds=config.retry_delay_seconds)
+        delay_seconds = compute_backoff(
+            attempt, base=config.retry_delay_seconds, cap=300,
+        )
+        next_retry_at = now + timedelta(seconds=delay_seconds)
         await set_retry(redis, job.id, attempt=attempt, next_retry_at=next_retry_at)
         await event_bus.publish(
             Topics.JOB_RETRY,

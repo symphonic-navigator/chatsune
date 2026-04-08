@@ -5,6 +5,17 @@ from redis.asyncio import Redis
 _RETRY_TTL = 7200  # 2 hours
 
 
+def compute_backoff(attempt: int, base: int = 15, cap: int = 300) -> int:
+    """Exponential backoff for job retries.
+
+    Attempt 1 -> base (15 s). Each subsequent attempt doubles, up to cap.
+    Caller passes ``attempt`` starting at 1 for the first retry.
+    """
+    if attempt < 1:
+        return base
+    return min(cap, base * (2 ** (attempt - 1)))
+
+
 async def set_retry(
     redis: Redis,
     job_id: str,
