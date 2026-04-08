@@ -42,3 +42,41 @@ def test_per_user_policy_returns_distinct_locks_per_user():
     c = reg.lock_for(_AdapterPerUser, user_id="u1")
     assert a is not b
     assert a is c
+
+
+async def test_global_lock_serialises_parallel_acquires(monkeypatch):
+    """Two tasks against the same GLOBAL lock run sequentially."""
+    from backend.modules.llm._concurrency import (
+        ConcurrencyPolicy,
+        InferenceLockRegistry,
+    )
+
+    class _FakeAdapter:
+        provider_id = "fake_local"
+        concurrency_policy = ConcurrencyPolicy.GLOBAL
+
+    reg = InferenceLockRegistry()
+    lock = reg.lock_for(_FakeAdapter, user_id="u1")
+    assert lock is not None
+
+    entered: list[int] = []
+    released = asyncio.Event()
+
+    async def stream_a():
+        async with lock:
+            entered.append(1)
+            await released.wait()
+
+    async def stream_b():
+        async with lock:
+            entered.append(2)
+
+    task_a = asyncio.create_task(stream_a())
+    await asyncio.sleep(0.01)
+    task_b = asyncio.create_task(stream_b())
+    await asyncio.sleep(0.01)
+
+    assert entered == [1]
+    released.set()
+    await asyncio.gather(task_a, task_b)
+    assert entered == [1, 2]

@@ -3,6 +3,7 @@
 Public API: import only from this file.
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -10,6 +11,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.modules.llm import _tracker
+from backend.modules.llm._concurrency import get_lock_registry
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
@@ -38,6 +40,16 @@ class LlmProviderNotFoundError(Exception):
     """Provider ID is not registered in the adapter registry."""
 
 
+class LlmInferenceLockTimeoutError(Exception):
+    """Timed out waiting for the provider's concurrency lock (5 minutes)."""
+
+    def __init__(self, provider_id: str) -> None:
+        super().__init__(
+            f"Timed out waiting for inference lock on provider '{provider_id}'"
+        )
+        self.provider_id = provider_id
+
+
 async def init_indexes(db) -> None:
     """Create MongoDB indexes for the LLM module collections."""
     await CredentialRepository(db).create_indexes()
@@ -58,15 +70,15 @@ async def stream_completion(
 ) -> AsyncIterator[ProviderStreamEvent]:
     """Resolve user's API key, instantiate adapter, stream completion.
 
-    Every call is registered with the in-flight inference tracker
-    (``backend.modules.llm._tracker``) and a debug event is broadcast to
-    admins on start and finish. The ``source`` parameter is purely
-    informational ("chat", "job:<type>", etc.) and surfaces in the admin
-    debug overlay.
+    Wraps the adapter call in an adapter-declared concurrency lock
+    (see :mod:`backend.modules.llm._concurrency`). For ``ollama_local``
+    this serialises all inferences across the process — a new chat
+    request waits until any in-flight generation finishes.
 
     Raises:
         LlmProviderNotFoundError: provider_id not in registry.
         LlmCredentialNotFoundError: user has no key for this provider.
+        LlmInferenceLockTimeoutError: waited >5 minutes for the lock.
     """
     if provider_id not in ADAPTER_REGISTRY:
         raise LlmProviderNotFoundError(f"Unknown provider: {provider_id}")
@@ -83,6 +95,8 @@ async def stream_completion(
         api_key = repo.get_raw_key(cred)
 
     adapter = adapter_cls(base_url=PROVIDER_BASE_URLS[provider_id])
+    lock = get_lock_registry().lock_for(adapter_cls, user_id)
+
     inference_id = _tracker.register(
         user_id=user_id,
         provider_id=provider_id,
@@ -100,8 +114,21 @@ async def stream_completion(
     )
     started_at_perf = _now_perf()
     try:
-        async for event in adapter.stream_completion(api_key, request):
-            yield event
+        if lock is not None:
+            try:
+                await asyncio.wait_for(lock.acquire(), timeout=300)
+            except asyncio.TimeoutError as exc:
+                raise LlmInferenceLockTimeoutError(
+                    provider_id=provider_id,
+                ) from exc
+            try:
+                async for event in adapter.stream_completion(api_key, request):
+                    yield event
+            finally:
+                lock.release()
+        else:
+            async for event in adapter.stream_completion(api_key, request):
+                yield event
     finally:
         _tracker.unregister(inference_id)
         await _publish_inference_finished(
@@ -326,6 +353,7 @@ __all__ = [
     "ToolCallEvent",
     "LlmCredentialNotFoundError",
     "LlmProviderNotFoundError",
+    "LlmInferenceLockTimeoutError",
     "UserModelConfigRepository",
     "get_model_context_window",
     "get_api_key",
