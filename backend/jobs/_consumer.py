@@ -9,6 +9,17 @@ from backend.jobs._lock import get_job_lock
 from backend.jobs._models import JobEntry
 from backend.jobs._registry import JOB_REGISTRY
 from backend.jobs._retry import set_retry, get_retry, clear_retry
+from backend.modules.safeguards import (
+    BudgetExceededError,
+    CircuitOpenError,
+    EmergencyStoppedError,
+    RateLimitExceededError,
+    SafeguardConfig,
+    acknowledge_job_done,
+    check_job_preconditions,
+    record_job_failure,
+    record_job_success,
+)
 from shared.events.jobs import (
     JobCompletedEvent, JobExpiredEvent, JobFailedEvent,
     JobRetryEvent, JobStartedEvent,
@@ -127,6 +138,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
         await redis.xdel(_STREAM, stream_id)
+        await acknowledge_job_done(redis, job.user_id, stream_id)
         return True
 
     # Retry timing and per-user lock were already checked in the
@@ -134,8 +146,31 @@ async def process_one(redis: Redis, event_bus) -> bool:
     # lock is taken below to serialise concurrent jobs for the same user.
     lock = get_job_lock(job.user_id)
 
+    # Re-read safeguard config per job so env-driven toggles (kill-switch)
+    # take effect without a restart.
+    sg_config = SafeguardConfig.from_env()
+    provider_id, _, model_slug = job.model_unique_id.partition(":")
+
     # Execute the job
     try:
+        try:
+            await check_job_preconditions(
+                redis,
+                sg_config,
+                user_id=job.user_id,
+                provider_id=provider_id,
+                model_slug=model_slug,
+                # TODO(Task 17): pass real estimated tokens
+                estimated_input_tokens=0,
+            )
+        except (
+            EmergencyStoppedError,
+            RateLimitExceededError,
+            BudgetExceededError,
+            CircuitOpenError,
+        ) as exc:
+            raise UnrecoverableJobError(str(exc)) from exc
+
         async with asyncio.timeout(config.execution_timeout_seconds):
             async with lock:
                 await event_bus.publish(
@@ -149,12 +184,32 @@ async def process_one(redis: Redis, event_bus) -> bool:
                     target_user_ids=[job.user_id],
                     correlation_id=job.correlation_id,
                 )
-                await config.handler(
-                    job=job,
-                    config=config,
-                    redis=redis,
-                    event_bus=event_bus,
-                )
+                try:
+                    await config.handler(
+                        job=job,
+                        config=config,
+                        redis=redis,
+                        event_bus=event_bus,
+                    )
+                except Exception:
+                    await record_job_failure(
+                        redis,
+                        sg_config,
+                        user_id=job.user_id,
+                        provider_id=provider_id,
+                        model_slug=model_slug,
+                    )
+                    raise
+                else:
+                    await record_job_success(
+                        redis,
+                        sg_config,
+                        user_id=job.user_id,
+                        provider_id=provider_id,
+                        model_slug=model_slug,
+                        # TODO(Task 17): pass real tokens spent
+                        tokens_spent=0,
+                    )
 
         # Success
         if config.notify:
@@ -172,12 +227,20 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
         await redis.xdel(_STREAM, stream_id)
+        await acknowledge_job_done(redis, job.user_id, stream_id)
         return True
 
     except TimeoutError:
         error_message = f"Execution timed out after {config.execution_timeout_seconds}s"
         unrecoverable = False
         _log.error("Job %s timed out after %ds", job.id, config.execution_timeout_seconds)
+        await record_job_failure(
+            redis,
+            sg_config,
+            user_id=job.user_id,
+            provider_id=provider_id,
+            model_slug=model_slug,
+        )
     except UnrecoverableJobError as exc:
         error_message = str(exc)
         unrecoverable = True
@@ -216,6 +279,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
         await redis.xdel(_STREAM, stream_id)
+        await acknowledge_job_done(redis, job.user_id, stream_id)
         _log.warning("Job %s failed after %d attempts: %s", job.id, attempt, error_message)
         return True
     else:
