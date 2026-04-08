@@ -138,7 +138,7 @@ async def test_fetch_models_skips_model_on_show_failure(adapter: OllamaCloudAdap
 
 
 def test_format_parameter_count():
-    from backend.modules.llm._adapters._ollama_cloud import _format_parameter_count
+    from backend.modules.llm._adapters._ollama_base import _format_parameter_count
 
     assert _format_parameter_count(675_000_000_000) == "675B"
     assert _format_parameter_count(7_000_000_000) == "7B"
