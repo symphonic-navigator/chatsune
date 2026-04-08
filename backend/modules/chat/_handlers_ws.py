@@ -38,6 +38,7 @@ from backend.modules.tools import get_active_definitions
 from backend.ws.event_bus import get_event_bus
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.chat import (
+    ChatMessageCreatedEvent,
     ChatMessageDeletedEvent,
     ChatMessagesTruncatedEvent,
     ChatMessageUpdatedEvent,
@@ -57,6 +58,7 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
     """Handle a chat.send WebSocket message — save user message, run inference."""
     session_id = data.get("session_id")
     content_parts = data.get("content")
+    client_message_id = data.get("client_message_id")
     if not session_id or not content_parts:
         return
 
@@ -107,13 +109,32 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
             ]
 
         token_count = count_tokens(text)
-        await repo.save_message(
+        saved_msg = await repo.save_message(
             session_id,
             role="user",
             content=text,
             token_count=token_count,
             attachment_ids=attachment_ids,
             attachment_refs=attachment_refs,
+        )
+
+        event_bus = get_event_bus()
+        correlation_id = str(uuid4())
+        await event_bus.publish(
+            Topics.CHAT_MESSAGE_CREATED,
+            ChatMessageCreatedEvent(
+                session_id=session_id,
+                message_id=saved_msg["_id"],
+                role="user",
+                content=text,
+                token_count=token_count,
+                correlation_id=correlation_id,
+                timestamp=datetime.now(timezone.utc),
+                client_message_id=client_message_id,
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
         )
 
         # Track extraction trigger — skip for incognito sessions
