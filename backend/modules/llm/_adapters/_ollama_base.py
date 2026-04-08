@@ -22,6 +22,11 @@ _log = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 
+# H-004: if the upstream stalls mid-stream (no new NDJSON chunk arrives for this
+# long), abort rather than wait on the enclosing job-level timeout. Module-level
+# so tests can monkeypatch it to a short value.
+GUTTER_TIMEOUT_SECONDS = 30.0
+
 
 def _parse_parameter_size(value: str) -> int | None:
     """Parse a parameter_size string like '7.6B', '405M', '1.2T' into a raw integer."""
@@ -177,7 +182,26 @@ class OllamaBaseAdapter(BaseAdapter):
                     )
                     return
 
-                async for line in resp.aiter_lines():
+                stream_iter = resp.aiter_lines().__aiter__()
+                while True:
+                    try:
+                        line = await asyncio.wait_for(
+                            stream_iter.__anext__(),
+                            timeout=GUTTER_TIMEOUT_SECONDS,
+                        )
+                    except asyncio.TimeoutError:
+                        _log.warning(
+                            "ollama_base.gutter_timeout model=%s aborting stream after %.1fs idle",
+                            payload.get("model"), GUTTER_TIMEOUT_SECONDS,
+                        )
+                        if not seen_done:
+                            # H-004: yielding on gutter timeout; no detail field on StreamDone
+                            yield StreamDone()
+                            seen_done = True
+                        break
+                    except StopAsyncIteration:
+                        break
+
                     line = line.strip()
                     if not line:
                         continue
