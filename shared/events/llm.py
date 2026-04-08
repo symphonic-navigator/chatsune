@@ -86,3 +86,20 @@ class LlmProviderStatusSnapshotEvent(BaseModel):
     type: str = "llm.provider_status.snapshot"
     statuses: dict[str, bool]
     timestamp: datetime
+
+
+class InferenceLockWaitStartedEvent(BaseModel):
+    """Emitted when a chat inference begins waiting on a provider lock."""
+    type: str = "inference.lock.wait_started"
+    correlation_id: str
+    provider_id: str
+    holder_source: str  # e.g. "job:memory_consolidation" or "chat"
+    timestamp: datetime
+
+
+class InferenceLockWaitEndedEvent(BaseModel):
+    """Emitted when the waiting chat inference finally acquires the lock."""
+    type: str = "inference.lock.wait_ended"
+    correlation_id: str
+    provider_id: str
+    timestamp: datetime
