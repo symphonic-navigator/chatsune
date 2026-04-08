@@ -331,3 +331,47 @@ mismatches are browser-specific and poorly documented. The key insight: the
 error is proportional to the element's distance from the viewport origin, which
 is why it was most visible horizontally (cards offset by sidebar + centering)
 and barely noticeable vertically (cards near the top).
+
+---
+
+## INS-013 — Embedding Query Cache: Count-Bounded Redis LRU
+
+**Decision:** Query-side embeddings (`query_embed`) are cached in Redis using a
+count-bounded LRU-by-insertion strategy. Default cap: 16384 entries. Bulk
+embeddings (`embed_texts`) are deliberately NOT cached.
+
+**Encoding:**
+Vectors are stored as base64-encoded `struct.pack` floats, not JSON. A 768-dim
+vector lands at ~4KB encoded vs. ~15KB as a JSON array. At 16384 entries this
+caps the Redis footprint at roughly 64MB — leaving room for 4× more entries
+within the same memory budget compared to JSON.
+
+**Normalization is shared:**
+The query is normalized (`strip().lower()`, whitespace collapsed) once. The
+SAME normalized string is used for BOTH the cache key hash AND the model
+inference call on a miss. This guarantees coherence: the cached vector is
+exactly what a recompute would produce. Without this, two queries that hash to
+the same key could legitimately return different vectors and the cache would
+be silently wrong.
+
+**Why bulk embeddings are excluded:**
+Document chunks rarely repeat verbatim. Caching them would pollute the index
+with one-shot entries and evict genuinely hot query embeddings. The cache is
+optimized for the search/retrieval pattern where the same query phrase recurs.
+
+**Graceful degradation:**
+Every Redis call in `_query_cache.py` is wrapped in try/except. On any failure
+the warning is logged with `exc_info=True` and the call falls through — `get`
+returns None (treated as a miss), `set` returns silently. The embedding path
+must never fail because of cache infrastructure issues.
+
+**Eviction:**
+After each `set`, the index sorted set is checked for overflow. Excess entries
+(oldest by insertion timestamp) are removed in a single `DELETE` + `ZREM`. The
+trim is not atomic with the write, which is fine: redundant evictions on the
+already-deleted keys are no-ops.
+
+**Lazy initialization:**
+The `QueryCache` is constructed on first call to `query_embed`, not at module
+startup. This avoids a startup-order coupling with `connect_db()` and lets the
+cache pick up the actual model name from the loaded `EmbeddingModel`.
