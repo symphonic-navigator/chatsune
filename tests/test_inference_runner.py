@@ -20,7 +20,9 @@ def mock_emit():
 
 @pytest.fixture
 def mock_save():
-    return AsyncMock()
+    # save_fn must return a message id string; a bare AsyncMock would
+    # return another AsyncMock and break pydantic validation downstream.
+    return AsyncMock(return_value="msg-id-123")
 
 
 def _make_stream(*events):
