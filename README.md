@@ -182,6 +182,29 @@ because of hot reload.
 For the LLM test harness, place your Ollama Cloud key in `.llm-test-key`
 (plain text, gitignored) in the project root.
 
+### Safeguards (background jobs)
+
+The background-job system enforces a set of hard safeguards that protect
+users from runaway cost caused by bugs, retries, or a misbehaving upstream
+provider. Every value can be tuned via environment variables and reloaded
+by restarting the backend — no redeploy required.
+
+| Variable | Purpose | Default | Acceptable values | When to change |
+|---|---|---|---|---|
+| `OLLAMA_CLOUD_EMERGENCY_STOP` | Global kill-switch for the Ollama Cloud provider. When enabled, the LLM adapter rejects all new Ollama Cloud requests immediately. | `false` | `true` / `false` | Flip to `true` in an emergency (upstream outage, unexpected cost spike). Takes effect on backend reload — no code redeploy needed. |
+| `JOB_RATE_LIMIT_WINDOW_SECONDS` | Rolling window used by the per-user/provider rate limiter. | `60` | Positive integer (seconds) | Lengthen for slower sustained limits, shorten for stricter bursts. |
+| `JOB_RATE_LIMIT_MAX_CALLS` | Maximum LLM calls a single user may issue against one provider within the window. | `50` | Non-negative integer; `0` disables the limiter | Lower for very small tester groups, raise once usage patterns are known. |
+| `JOB_QUEUE_CAP_PER_USER` | Maximum queued background jobs per user before new submits are rejected. | `10` | Non-negative integer; `0` disables the cap | Raise if legitimate bursts are being rejected; keep low during the initial test release. |
+| `JOB_DAILY_TOKEN_BUDGET` | Daily token budget per user across all background-job LLM calls. Counter resets at 00:00 UTC. | `5000000` | Non-negative integer; `0` disables the budget | Tighten for untrusted testers, loosen for power users once behaviour is understood. |
+| `JOB_CIRCUIT_FAILURE_THRESHOLD` | Failures tolerated within the circuit window before the provider circuit opens. | `5` | Non-negative integer; `0` disables the breaker | Raise if a flaky provider trips the breaker too eagerly. |
+| `JOB_CIRCUIT_WINDOW_SECONDS` | Rolling window over which circuit-breaker failures are counted. | `300` | Positive integer (seconds) | Lengthen to be more forgiving, shorten to react faster to sudden failure bursts. |
+| `JOB_CIRCUIT_OPEN_SECONDS` | How long the circuit stays open after tripping, during which new requests to the affected provider are rejected fast. | `900` | Positive integer (seconds) | Shorten for fast recovery, lengthen to give a struggling upstream more time to heal. |
+
+Note: `OLLAMA_CLOUD_EMERGENCY_STOP=true` is the fastest way to stop all
+Ollama Cloud traffic in an incident. Edit `.env`, reload the backend, and
+the adapter starts refusing new requests immediately — no code redeploy
+required.
+
 ---
 
 ## Development
