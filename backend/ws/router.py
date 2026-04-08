@@ -150,6 +150,9 @@ async def websocket_endpoint(
         # Trigger memory extraction for any sessions with pending messages
         try:
             await trigger_disconnect_extraction(user_id)
-        except Exception as e:
-            _log.error("Error triggering disconnect extraction for user %s: %s", user_id, e)
+        except Exception:
+            # H-003: do NOT swallow silently. The retry/buffer logic inside
+            # ``trigger_disconnect_extraction`` is the safety net; log loudly
+            # here so we notice if that safety net itself has broken.
+            _log.error("disconnect_extraction_failed user=%s", user_id, exc_info=True)
         await manager.disconnect(user_id, ws)

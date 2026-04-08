@@ -23,6 +23,7 @@ from backend.jobs import (
     submit,
     try_acquire_inflight_slot,
 )
+from backend.jobs._disconnect_retry import buffer_submit_payload
 from backend.database import get_db, get_redis
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
@@ -786,21 +787,49 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                     )
                     continue
 
-                await submit(
-                    job_type=JobType.MEMORY_EXTRACTION,
-                    user_id=user_id,
-                    model_unique_id=model_unique_id,
-                    payload={
+                submit_kwargs = {
+                    "job_type": JobType.MEMORY_EXTRACTION.value,
+                    "user_id": user_id,
+                    "model_unique_id": model_unique_id,
+                    "payload": {
                         "persona_id": persona_id,
                         "session_id": session_id,
                         "messages": message_contents,
                         "message_ids": message_ids,
                     },
-                )
-                _log.info(
-                    "Submitted disconnect-triggered extraction: user=%s persona=%s session=%s msg_count=%d",
-                    user_id, persona_id, session_id, len(message_ids),
-                )
+                }
+
+                # H-003: retry a handful of times before giving up, and if
+                # we still fail, buffer the payload in Redis so the recovery
+                # loop can replay it once the transient fault clears.
+                delays = [0.1, 0.5, 2.0]
+                last_exc: Exception | None = None
+                submitted = False
+                for delay in delays:
+                    try:
+                        await asyncio.sleep(delay)
+                        await submit(
+                            job_type=JobType.MEMORY_EXTRACTION,
+                            user_id=user_id,
+                            model_unique_id=model_unique_id,
+                            payload=submit_kwargs["payload"],
+                        )
+                        submitted = True
+                        break
+                    except Exception as exc:
+                        last_exc = exc
+
+                if submitted:
+                    _log.info(
+                        "Submitted disconnect-triggered extraction: user=%s persona=%s session=%s msg_count=%d",
+                        user_id, persona_id, session_id, len(message_ids),
+                    )
+                else:
+                    _log.error(
+                        "trigger_disconnect_extraction: submit failed after %d attempts, buffering for recovery (user=%s persona=%s)",
+                        len(delays), user_id, persona_id, exc_info=last_exc,
+                    )
+                    await buffer_submit_payload(redis, user_id, submit_kwargs)
 
             if cursor == 0:
                 break
