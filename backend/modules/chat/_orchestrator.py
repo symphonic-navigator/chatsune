@@ -524,17 +524,41 @@ async def run_inference(
         if soft_cot_on:
             upstream = wrap_with_soft_cot_parser(upstream)
 
-        first_chunk_seen = False
-        async for event in upstream:
-            if not first_chunk_seen:
-                first_chunk_seen = True
-                if held:
-                    await emit_fn(InferenceLockWaitEndedEvent(
-                        correlation_id=correlation_id,
-                        provider_id=provider_id,
-                        timestamp=datetime.now(timezone.utc),
-                    ))
-            yield event
+        # While waiting for the lock to be released the frontend cannot send
+        # heartbeats (it only starts pinging after chat.stream.started, which
+        # is not emitted until the first chunk arrives). Refresh the heartbeat
+        # from the server side every 10 s so the watchdog does not time out
+        # and cancel the chat silently.
+        async def _keep_heartbeat_alive_during_wait():
+            try:
+                while True:
+                    await asyncio.sleep(10)
+                    await record_heartbeat(user_id, correlation_id)
+            except asyncio.CancelledError:
+                pass
+
+        heartbeat_keeper: asyncio.Task | None = None
+        if held:
+            heartbeat_keeper = asyncio.create_task(_keep_heartbeat_alive_during_wait())
+
+        try:
+            first_chunk_seen = False
+            async for event in upstream:
+                if not first_chunk_seen:
+                    first_chunk_seen = True
+                    if heartbeat_keeper is not None:
+                        heartbeat_keeper.cancel()
+                        heartbeat_keeper = None
+                    if held:
+                        await emit_fn(InferenceLockWaitEndedEvent(
+                            correlation_id=correlation_id,
+                            provider_id=provider_id,
+                            timestamp=datetime.now(timezone.utc),
+                        ))
+                yield event
+        finally:
+            if heartbeat_keeper is not None:
+                heartbeat_keeper.cancel()
 
     async def save_fn(
         content: str,
