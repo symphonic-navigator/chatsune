@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from backend.modules.llm import _tracker
 from backend.modules.llm._concurrency import get_lock_registry
+from backend.modules.llm._registry import ADAPTER_REGISTRY as _ADAPTER_REGISTRY_REF
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
@@ -269,6 +270,30 @@ def active_inference_count() -> int:
     return _tracker.active_count()
 
 
+def get_adapter_class(provider_id: str):
+    """Return the adapter class for a provider_id, or None if not registered."""
+    return _ADAPTER_REGISTRY_REF.get(provider_id)
+
+
+def is_inference_lock_held(provider_id: str, user_id: str) -> tuple[bool, str | None]:
+    """Return (is_held, holder_source) for the provider's concurrency lock.
+
+    ``holder_source`` is derived from the in-flight tracker on a best-effort
+    basis (e.g. ``"chat"``, ``"job:memory_consolidation"``) and may be ``None``
+    if no matching tracker record is found.
+    """
+    adapter_cls = _ADAPTER_REGISTRY_REF.get(provider_id)
+    if adapter_cls is None:
+        return (False, None)
+    lock = get_lock_registry().lock_for(adapter_cls, user_id)
+    if lock is None or not lock.locked():
+        return (False, None)
+    for record in _tracker.snapshot():
+        if record.provider_id == provider_id:
+            return (True, record.source)
+    return (True, None)
+
+
 async def get_model_metadata(
     provider_id: str, model_slug: str,
 ) -> ModelMetaDto | None:
@@ -366,4 +391,6 @@ __all__ = [
     "track_inference",
     "ModelMetaDto",
     "refresh_all_providers",
+    "get_adapter_class",
+    "is_inference_lock_held",
 ]
