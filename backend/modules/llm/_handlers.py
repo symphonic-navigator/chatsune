@@ -454,9 +454,25 @@ async def refresh_providers_handler(
 
 @router.get("/provider-status")
 async def get_provider_status(user: dict = Depends(require_active_session)):
-    """Return current per-provider reachability snapshot."""
-    from backend.modules.llm._provider_status import get_all_statuses
+    """Return current per-provider reachability snapshot.
+
+    Reachability is derived directly from the model cache: a provider is
+    considered available iff its cached model list exists and is non-empty.
+    This avoids drift between the model-fetch path (``get_models``) and the
+    refresh-all path (``refresh_all_providers``) — both populate the same
+    cache, so both feed the same snapshot.
+    """
+    import json as _json
 
     redis = get_redis()
-    statuses = await get_all_statuses(redis, list(ADAPTER_REGISTRY.keys()))
+    statuses: dict[str, bool] = {}
+    for provider_id in ADAPTER_REGISTRY.keys():
+        cached = await redis.get(f"llm:models:{provider_id}")
+        if not cached:
+            statuses[provider_id] = False
+            continue
+        try:
+            statuses[provider_id] = len(_json.loads(cached)) > 0
+        except (ValueError, TypeError):
+            statuses[provider_id] = False
     return {"statuses": statuses}
