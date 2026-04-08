@@ -20,6 +20,8 @@ class Topics:
     LLM_USER_MODEL_CONFIG_UPDATED = "llm.user_model_config.updated"
     LLM_PROVIDER_STATUS_CHANGED = "llm.provider_status.changed"
     LLM_PROVIDER_STATUS_SNAPSHOT = "llm.provider_status.snapshot"
+    INFERENCE_LOCK_WAIT_STARTED = "inference.lock.wait_started"
+    INFERENCE_LOCK_WAIT_ENDED = "inference.lock.wait_ended"
     SETTING_UPDATED = "setting.updated"
     SETTING_DELETED = "setting.deleted"
     SETTING_SYSTEM_PROMPT_UPDATED = "setting.system_prompt.updated"
@@ -32,6 +34,7 @@ class Topics:
     CHAT_INFERENCE_ALIVE = "chat.inference.alive"
     CHAT_VISION_DESCRIPTION = "chat.vision.description"
     # Chat edit/regenerate
+    CHAT_MESSAGE_CREATED = "chat.message.created"
     CHAT_MESSAGES_TRUNCATED = "chat.messages.truncated"
     CHAT_MESSAGE_UPDATED = "chat.message.updated"
     CHAT_MESSAGE_DELETED = "chat.message.deleted"

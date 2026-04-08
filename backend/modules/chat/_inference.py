@@ -268,7 +268,11 @@ class InferenceRunner:
         # the worst possible outcome. The ``status`` still travels with
         # ``ChatStreamEndedEvent`` so the frontend can badge the message
         # appropriately.
-        if full_content or full_thinking:
+        # Only persist assistant messages with visible content. Thinking-only
+        # streams (e.g. aborted mid-thinking, or ollama_local interrupted by
+        # another request) are dropped so the user can simply regenerate.
+        # See docs/superpowers/specs/2026-04-08-ollama-local-and-chat-ui-fixes-design.md.
+        if full_content:
             message_id = await save_fn(
                 content=full_content,
                 thinking=full_thinking or None,

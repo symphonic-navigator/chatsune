@@ -4,6 +4,21 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class ChatMessageCreatedEvent(BaseModel):
+    type: str = "chat.message.created"
+    session_id: str
+    message_id: str
+    role: str
+    content: str
+    token_count: int
+    correlation_id: str
+    timestamp: datetime
+    # Set only for user messages that originated from an optimistic client
+    # entry. Echoed back so the frontend can atomically swap the optimistic
+    # store entry for the real MongoDB ID.
+    client_message_id: str | None = None
+
+
 class ChatStreamStartedEvent(BaseModel):
     type: str = "chat.stream.started"
     session_id: str

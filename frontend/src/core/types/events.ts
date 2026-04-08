@@ -48,6 +48,7 @@ export const Topics = {
   CHAT_STREAM_ERROR: "chat.stream.error",
   CHAT_VISION_DESCRIPTION: "chat.vision.description",
   CHAT_MESSAGES_TRUNCATED: "chat.messages.truncated",
+  CHAT_MESSAGE_CREATED: "chat.message.created",
   CHAT_MESSAGE_UPDATED: "chat.message.updated",
   CHAT_MESSAGE_DELETED: "chat.message.deleted",
   CHAT_SESSION_TITLE_UPDATED: "chat.session.title_updated",
@@ -100,6 +101,8 @@ export const Topics = {
   JOB_FAILED: "job.failed",
   JOB_RETRY: "job.retry",
   JOB_EXPIRED: "job.expired",
+  INFERENCE_LOCK_WAIT_STARTED: "inference.lock.wait_started",
+  INFERENCE_LOCK_WAIT_ENDED: "inference.lock.wait_ended",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

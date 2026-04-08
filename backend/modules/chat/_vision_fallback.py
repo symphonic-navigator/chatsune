@@ -20,6 +20,7 @@ from backend.modules.llm import (
     StreamDone,
     StreamError,
     get_api_key,
+    get_inference_lock,
     track_inference,
 )
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -112,19 +113,31 @@ async def describe_image(
             adapter = _get_adapter_for(model_unique_id)
             chunks: list[str] = []
 
+            # Vision fallback bypasses the public stream_completion wrapper,
+            # so honour the adapter's concurrency policy manually. Without
+            # this, a vision fallback against ollama_local runs concurrently
+            # with any in-flight chat/job inference and the engine drops one
+            # of them.
+            lock = get_inference_lock(provider_id, user_id)
             async with track_inference(
                 user_id=user_id,
                 provider_id=provider_id,
                 model_slug=model_slug,
                 source="vision_fallback",
             ):
-                async for event in adapter.stream_completion(api_key, request):
-                    if isinstance(event, ContentDelta):
-                        chunks.append(event.delta)
-                    elif isinstance(event, StreamDone):
-                        break
-                    elif isinstance(event, StreamError):
-                        raise VisionFallbackError(f"adapter stream error: {event.message}")
+                if lock is not None:
+                    await lock.acquire()
+                try:
+                    async for event in adapter.stream_completion(api_key, request):
+                        if isinstance(event, ContentDelta):
+                            chunks.append(event.delta)
+                        elif isinstance(event, StreamDone):
+                            break
+                        elif isinstance(event, StreamError):
+                            raise VisionFallbackError(f"adapter stream error: {event.message}")
+                finally:
+                    if lock is not None and lock.locked():
+                        lock.release()
 
             text = "".join(chunks).strip()
             if not text:

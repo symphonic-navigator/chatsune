@@ -30,7 +30,13 @@ from backend.modules.llm import (
     get_effective_context_window,
     get_model_supports_vision,
     get_model_supports_reasoning,
+    is_inference_lock_held,
     LlmCredentialNotFoundError,
+    LlmInferenceLockTimeoutError,
+)
+from shared.events.llm import (
+    InferenceLockWaitStartedEvent,
+    InferenceLockWaitEndedEvent,
 )
 from backend.modules.persona import get_persona
 from backend.modules.storage import (
@@ -497,15 +503,62 @@ async def run_inference(
         reasoning_enabled=reasoning_enabled,
     )
 
-    def stream_fn(extra_messages=None):
+    async def stream_fn(extra_messages=None):
         req = request
         if extra_messages:
             extended = list(request.messages) + extra_messages
             req = request.model_copy(update={"messages": extended})
+
+        # Emit a lock-wait event if the provider's concurrency lock is already
+        # held by another inference (e.g. a background memory consolidation job).
+        held, holder_source = is_inference_lock_held(provider_id, user_id)
+        if held:
+            await emit_fn(InferenceLockWaitStartedEvent(
+                correlation_id=correlation_id,
+                provider_id=provider_id,
+                holder_source=holder_source or "unknown",
+                timestamp=datetime.now(timezone.utc),
+            ))
+
         upstream = llm_stream_completion(user_id, provider_id, req)
         if soft_cot_on:
-            return wrap_with_soft_cot_parser(upstream)
-        return upstream
+            upstream = wrap_with_soft_cot_parser(upstream)
+
+        # While waiting for the lock to be released the frontend cannot send
+        # heartbeats (it only starts pinging after chat.stream.started, which
+        # is not emitted until the first chunk arrives). Refresh the heartbeat
+        # from the server side every 10 s so the watchdog does not time out
+        # and cancel the chat silently.
+        async def _keep_heartbeat_alive_during_wait():
+            try:
+                while True:
+                    await asyncio.sleep(10)
+                    await record_heartbeat(user_id, correlation_id)
+            except asyncio.CancelledError:
+                pass
+
+        heartbeat_keeper: asyncio.Task | None = None
+        if held:
+            heartbeat_keeper = asyncio.create_task(_keep_heartbeat_alive_during_wait())
+
+        try:
+            first_chunk_seen = False
+            async for event in upstream:
+                if not first_chunk_seen:
+                    first_chunk_seen = True
+                    if heartbeat_keeper is not None:
+                        heartbeat_keeper.cancel()
+                        heartbeat_keeper = None
+                    if held:
+                        await emit_fn(InferenceLockWaitEndedEvent(
+                            correlation_id=correlation_id,
+                            provider_id=provider_id,
+                            timestamp=datetime.now(timezone.utc),
+                        ))
+                yield event
+        finally:
+            if heartbeat_keeper is not None:
+                heartbeat_keeper.cancel()
 
     async def save_fn(
         content: str,
@@ -573,6 +626,24 @@ async def run_inference(
             error_code="credential_not_found",
             recoverable=False,
             user_message="No API key configured for this model's provider. Please add one in settings.",
+            timestamp=now,
+        ))
+        await emit_fn(ChatStreamEndedEvent(
+            correlation_id=correlation_id,
+            session_id=session_id,
+            status="error",
+            usage=None,
+            context_status="green",
+            context_fill_percentage=0.0,
+            timestamp=now,
+        ))
+    except LlmInferenceLockTimeoutError:
+        now = datetime.now(timezone.utc)
+        await emit_fn(ChatStreamErrorEvent(
+            correlation_id=correlation_id,
+            error_code="inference_lock_timeout",
+            recoverable=True,
+            user_message="The local model is still busy. Please try again shortly.",
             timestamp=now,
         ))
         await emit_fn(ChatStreamEndedEvent(
