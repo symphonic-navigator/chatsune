@@ -46,7 +46,12 @@ export function MessageList({
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
-  const canRegenerate = !isStreaming && lastAssistantIdx === messages.length - 1
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
+  const canRegenerate =
+    !isStreaming &&
+    lastMsg !== null &&
+    (lastMsg.role === 'assistant' || lastMsg.role === 'user')
+  const showStandaloneRegenerate = canRegenerate && lastMsg !== null && lastMsg.role === 'user'
   const thinkingExpandedRef = useRef(true)
 
   const visionDescriptions = useChatStore((s) => s.visionDescriptions)
@@ -166,6 +171,18 @@ export function MessageList({
             ) : (
               activeToolCalls.filter((tc) => tc.status === 'running').length === 0 && <StreamingIndicator accentColour={accentColour} />
             )}
+          </div>
+        )}
+
+        {showStandaloneRegenerate && (
+          <div className="flex justify-center py-2">
+            <button
+              type="button"
+              onClick={onRegenerate}
+              className="px-3 py-1 text-sm rounded-md border border-white/10 hover:bg-white/5 transition text-white/70 hover:text-white"
+            >
+              Generate response
+            </button>
           </div>
         )}
 
