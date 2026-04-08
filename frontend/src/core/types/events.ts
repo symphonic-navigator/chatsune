@@ -101,6 +101,8 @@ export const Topics = {
   JOB_FAILED: "job.failed",
   JOB_RETRY: "job.retry",
   JOB_EXPIRED: "job.expired",
+  INFERENCE_LOCK_WAIT_STARTED: "inference.lock.wait_started",
+  INFERENCE_LOCK_WAIT_ENDED: "inference.lock.wait_ended",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

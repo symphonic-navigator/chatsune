@@ -10,6 +10,18 @@ export function useChatStream(sessionId: string | null) {
 
     const getStore = useChatStore.getState
 
+    const handleInferenceLockEvent = (event: BaseEvent) => {
+      const p = event.payload as Record<string, unknown>
+      if (event.type === Topics.INFERENCE_LOCK_WAIT_STARTED) {
+        getStore().setWaitingForLock({
+          providerId: p.provider_id as string,
+          holderSource: p.holder_source as string,
+        })
+      } else if (event.type === Topics.INFERENCE_LOCK_WAIT_ENDED) {
+        getStore().clearWaitingForLock()
+      }
+    }
+
     const handleEvent = (event: BaseEvent) => {
       const p = event.payload as Record<string, unknown>
 
@@ -63,6 +75,7 @@ export function useChatStream(sessionId: string | null) {
         }
         case Topics.CHAT_STREAM_ENDED: {
           if (p.session_id !== sessionId) return
+          getStore().clearWaitingForLock()
           const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
           const fillPercentage = (p.context_fill_percentage as number) ?? 0
 
@@ -101,6 +114,7 @@ export function useChatStream(sessionId: string | null) {
           break
         }
         case Topics.CHAT_STREAM_ERROR: {
+          getStore().clearWaitingForLock()
           const errorCode = p.error_code as string
           // Session-level errors arrive outside a streaming context —
           // they carry their own correlation id that the frontend never
@@ -179,6 +193,10 @@ export function useChatStream(sessionId: string | null) {
     }
 
     const unsub = eventBus.on('chat.*', handleEvent)
-    return unsub
+    const unsubLock = eventBus.on('inference.*', handleInferenceLockEvent)
+    return () => {
+      unsub()
+      unsubLock()
+    }
   }, [sessionId])
 }
