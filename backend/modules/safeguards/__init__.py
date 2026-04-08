@@ -3,6 +3,7 @@
 Provides a thin safety-net layer that sits in front of every background-job
 LLM call. See ``docs/`` and INSIGHTS.md for rationale."""
 from ._config import SafeguardConfig
+from ._budget import BudgetExceededError, check_budget, record_tokens
 from ._rate_limiter import RateLimitExceededError, check_rate_limit
 
 
@@ -16,4 +17,7 @@ __all__ = [
     "is_emergency_stopped",
     "check_rate_limit",
     "RateLimitExceededError",
+    "check_budget",
+    "record_tokens",
+    "BudgetExceededError",
 ]
