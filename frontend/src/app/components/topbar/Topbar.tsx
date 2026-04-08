@@ -6,6 +6,7 @@ import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
 import { KnowledgeDropdown } from "../../../features/chat/KnowledgeDropdown"
+import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -32,6 +33,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
+  useProviderStatusBootstrap()
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
   const location = useLocation()
