@@ -50,6 +50,61 @@ artefact.
 - Multi-user fairness or queueing beyond FIFO lock acquisition.
 - Concurrency handling for providers other than ollama_local.
 
+### Note on `cancel_all_for_user`
+
+During design verification we confirmed that the chat orchestrator's
+`cancel_all_for_user` only tracks inferences started via
+`run_inference` (chat path). Background jobs call `llm_stream_completion`
+directly with `source="job:*"` and never enter the cancel registry, so
+they are already immune to chat-initiated cancellation. The perceived
+"job interrupted by chat" symptom is entirely explained by ollama_local
+serving only one generation at a time — a new request forces the running
+one to drop. Full serialisation via the lock (below) is the complete
+fix.
+
+## Bug 1a — Lock Wait Visibility
+
+### Context
+
+When a chat inference blocks on the ollama_local lock because a background
+job is holding it, the user sees nothing — the UI just feels stuck. We need
+a signal so the frontend can display "waiting for background task to
+finish".
+
+### Design
+
+Two new events in `shared/events/llm.py`:
+
+```python
+class InferenceLockWaitStartedEvent(BaseEvent):
+    type: Literal["inference.lock.wait_started"]
+    provider_id: str
+    holder_source: str   # e.g. "job:memory_consolidation"
+
+class InferenceLockWaitEndedEvent(BaseEvent):
+    type: Literal["inference.lock.wait_ended"]
+    provider_id: str
+```
+
+The lock acquisition path in `LlmService.stream_completion`:
+
+1. Try `lock.acquire()` non-blocking (`lock.locked()` check).
+2. If not immediately available: determine the current holder's source via
+   the tracker (best-effort; falls back to `"unknown"`), publish
+   `InferenceLockWaitStartedEvent` scoped to the waiting user's session,
+   then `await asyncio.wait_for(lock.acquire(), timeout=300)`.
+3. On acquisition, publish `InferenceLockWaitEndedEvent`.
+4. On timeout, emit `ChatStreamErrorEvent` as before (the lock_wait_ended
+   is not emitted since acquisition failed — frontend can clear the
+   waiting state from the error event).
+
+Topics added to `shared/topics.py`:
+`INFERENCE_LOCK_WAIT_STARTED`, `INFERENCE_LOCK_WAIT_ENDED`.
+
+Frontend: a small banner in the chat composer area shows "Waiting for
+background task to finish…" between the two events. Implementation detail
+for the plan, not the spec.
+
 ---
 
 ## Bug 1 — ollama_local Concurrency
