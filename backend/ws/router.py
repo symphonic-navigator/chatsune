@@ -136,23 +136,43 @@ async def websocket_endpoint(
     finally:
         if expiry_task is not None:
             expiry_task.cancel()
-        # Cancel any in-flight inferences for this user — they will never be
-        # observed now that the socket is gone, so the tokens would be wasted.
-        try:
-            cancelled = await cancel_all_for_user(user_id)
-            if cancelled > 0:
-                _log.info(
-                    "Cancelled %d in-flight inferences due to WS disconnect for user %s",
-                    cancelled, user_id,
-                )
-        except Exception as e:
-            _log.error("Error cancelling in-flight inferences for user %s: %s", user_id, e)
-        # Trigger memory extraction for any sessions with pending messages
-        try:
-            await trigger_disconnect_extraction(user_id)
-        except Exception:
-            # H-003: do NOT swallow silently. The retry/buffer logic inside
-            # ``trigger_disconnect_extraction`` is the safety net; log loudly
-            # here so we notice if that safety net itself has broken.
-            _log.error("disconnect_extraction_failed user=%s", user_id, exc_info=True)
+        # Drop this specific socket from the manager. The delayed-cancel
+        # task below checks whether the user still has any live sockets,
+        # so this must happen first.
         await manager.disconnect(user_id, ws)
+
+        # Give the user a short grace period to reconnect before cancelling
+        # in-flight inferences. Without this grace period, a flaky network
+        # (or a chat that is waiting on the ollama_local concurrency lock,
+        # which may take >30 s behind a background job) causes a momentary
+        # WS drop to kill the chat — even though the user never went away.
+        async def _delayed_disconnect_cleanup() -> None:
+            try:
+                await asyncio.sleep(10)
+                if manager.has_connections(user_id):
+                    # User reconnected in time — keep the inference alive.
+                    return
+                cancelled = await cancel_all_for_user(user_id)
+                if cancelled > 0:
+                    _log.info(
+                        "Cancelled %d in-flight inferences after disconnect grace period for user %s",
+                        cancelled, user_id,
+                    )
+                try:
+                    await trigger_disconnect_extraction(user_id)
+                except Exception:
+                    # H-003: do NOT swallow silently. The retry/buffer logic
+                    # inside ``trigger_disconnect_extraction`` is the safety
+                    # net; log loudly here so we notice if it breaks.
+                    _log.error(
+                        "disconnect_extraction_failed user=%s", user_id, exc_info=True,
+                    )
+            except Exception as exc:
+                _log.error(
+                    "Error in delayed disconnect cleanup for user %s: %s",
+                    user_id, exc,
+                )
+
+        cleanup_task = asyncio.create_task(_delayed_disconnect_cleanup())
+        _background_tasks.add(cleanup_task)
+        cleanup_task.add_done_callback(_background_tasks.discard)

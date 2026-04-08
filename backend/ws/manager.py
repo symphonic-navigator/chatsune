@@ -53,6 +53,10 @@ class ConnectionManager:
     def user_ids_by_role(self, role: str) -> list[str]:
         return [uid for uid, r in self._user_roles.items() if r == role]
 
+    def has_connections(self, user_id: str) -> bool:
+        """Return True if at least one live WebSocket exists for this user."""
+        return bool(self._connections.get(user_id))
+
     def update_role(self, user_id: str, role: str) -> None:
         """Update the cached role for a connected user (no-op if not connected)."""
         if user_id in self._connections:

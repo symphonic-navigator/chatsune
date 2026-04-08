@@ -112,6 +112,12 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.ARTEFACT_DELETED: ([], True),
     Topics.ARTEFACT_UNDO: ([], True),
     Topics.ARTEFACT_REDO: ([], True),
+    # Chat message creation — target user only (echoes optimistic ID for
+    # frontend swap; see docs/superpowers/specs/2026-04-08-ollama-local-…)
+    Topics.CHAT_MESSAGE_CREATED: ([], True),
+    # Inference lock wait — target user only, drives the wait banner
+    Topics.INFERENCE_LOCK_WAIT_STARTED: ([], True),
+    Topics.INFERENCE_LOCK_WAIT_ENDED: ([], True),
     # Debug — admins only, no target user
     Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
     Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
