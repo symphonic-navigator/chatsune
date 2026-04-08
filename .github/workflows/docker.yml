@@ -1,0 +1,231 @@
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "20 21 * * *"
+
+env:
+  REGISTRY: ghcr.io
+  FRONTEND_IMAGE: ghcr.io/symphonic-navigator/chatsune-frontend
+  BACKEND_IMAGE: ghcr.io/symphonic-navigator/chatsune-backend
+
+jobs:
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build-and-push.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.FRONTEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Sign the published Docker image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+      - name: Write build manifest
+        env:
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          cat > build-manifest.json << EOF
+          {
+            "schema": "chatsune-build/v1",
+            "built_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "trigger": "$TRIGGER",
+            "artifacts": [
+              {
+                "name": "frontend",
+                "type": "docker",
+                "version": "$SHORT_SHA",
+                "ref": "ghcr.io/symphonic-navigator/chatsune-frontend:sha-$SHORT_SHA"
+              }
+            ]
+          }
+          EOF
+
+      - name: Upload build manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-manifest-frontend
+          path: build-manifest.json
+          retention-days: 7
+
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      tags: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build-and-push.outputs.digest }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BACKEND_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Sign the published Docker image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+      - name: Write build manifest
+        env:
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          cat > build-manifest.json << EOF
+          {
+            "schema": "chatsune-build/v1",
+            "built_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "trigger": "$TRIGGER",
+            "artifacts": [
+              {
+                "name": "backend",
+                "type": "docker",
+                "version": "$SHORT_SHA",
+                "ref": "ghcr.io/symphonic-navigator/chatsune-backend:sha-$SHORT_SHA"
+              }
+            ]
+          }
+          EOF
+
+      - name: Upload build manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-manifest-backend
+          path: build-manifest.json
+          retention-days: 7
+
+  report:
+    name: Build Report
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-backend]
+    if: always()
+
+    steps:
+      - name: Summarize built images
+        run: |
+          echo "## Docker Build Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tags |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|------|" >> $GITHUB_STEP_SUMMARY
+
+          FRONTEND_TAGS="${{ needs.build-frontend.outputs.tags }}"
+          if [ -n "$FRONTEND_TAGS" ]; then
+            TAGS_FORMATTED=$(echo "$FRONTEND_TAGS" | tr '\n' '<br>' | sed 's/<br>$//')
+            echo "| \`frontend\` | $TAGS_FORMATTED |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| \`frontend\` | _(not pushed — PR or failed)_ |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          BACKEND_TAGS="${{ needs.build-backend.outputs.tags }}"
+          if [ -n "$BACKEND_TAGS" ]; then
+            TAGS_FORMATTED=$(echo "$BACKEND_TAGS" | tr '\n' '<br>' | sed 's/<br>$//')
+            echo "| \`backend\` | $TAGS_FORMATTED |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| \`backend\` | _(not pushed — PR or failed)_ |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Frontend job: \`${{ needs.build-frontend.result }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Backend job: \`${{ needs.build-backend.result }}\`" >> $GITHUB_STEP_SUMMARY
