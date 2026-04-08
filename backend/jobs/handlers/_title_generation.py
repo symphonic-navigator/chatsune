@@ -76,7 +76,9 @@ async def handle_title_generation(
 
     _log.debug("Sending title generation request to %s:%s", provider_id, model_slug)
     full_content = ""
-    async for event in llm_stream_completion(job.user_id, provider_id, request):
+    async for event in llm_stream_completion(
+        job.user_id, provider_id, request, source="job:title_generation",
+    ):
         match event:
             case ContentDelta(delta=delta):
                 full_content += delta

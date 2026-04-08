@@ -100,3 +100,7 @@ class Topics:
     ARTEFACT_DELETED = "artefact.deleted"
     ARTEFACT_UNDO = "artefact.undo"
     ARTEFACT_REDO = "artefact.redo"
+    # Admin debug — broadcast to admin role only
+    DEBUG_INFERENCE_STARTED = "debug.inference.started"
+    DEBUG_INFERENCE_FINISHED = "debug.inference.finished"
+    DEBUG_SNAPSHOT = "debug.snapshot"

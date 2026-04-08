@@ -27,6 +27,7 @@ from backend.modules.knowledge import (
 )
 from backend.modules.artefact import router as artefact_router, global_router as artefact_global_router, init_indexes as artefact_init_indexes
 from backend.modules.project import router as project_router, init_indexes as project_init_indexes
+from backend.modules.debug import router as debug_router
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -398,6 +399,7 @@ app.include_router(knowledge_router)
 app.include_router(artefact_router)
 app.include_router(artefact_global_router)
 app.include_router(project_router)
+app.include_router(debug_router)
 app.include_router(ws_router)
 
 

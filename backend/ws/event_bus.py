@@ -112,6 +112,10 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.ARTEFACT_DELETED: ([], True),
     Topics.ARTEFACT_UNDO: ([], True),
     Topics.ARTEFACT_REDO: ([], True),
+    # Debug — admins only, no target user
+    Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
+    Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
+    Topics.DEBUG_SNAPSHOT: (["admin", "master_admin"], False),
 }
 
 _BROADCAST_ALL: set[str] = {
@@ -127,6 +131,11 @@ _SKIP_PERSISTENCE: set[str] = {
     Topics.CHAT_TOOL_CALL_STARTED,
     Topics.CHAT_TOOL_CALL_COMPLETED,
     Topics.CHAT_WEB_SEARCH_CONTEXT,
+    # Debug events: high-frequency diagnostics, useless after the fact.
+    # Admins re-fetch a fresh snapshot on (re)connect via the HTTP route.
+    Topics.DEBUG_INFERENCE_STARTED,
+    Topics.DEBUG_INFERENCE_FINISHED,
+    Topics.DEBUG_SNAPSHOT,
 }
 
 _bus: "EventBus | None" = None

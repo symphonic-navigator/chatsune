@@ -3,8 +3,13 @@
 Public API: import only from this file.
 """
 
+import logging
+import time
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
+from uuid import uuid4
 
+from backend.modules.llm import _tracker
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
@@ -20,6 +25,7 @@ from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS
 from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.modules.llm._metadata import get_models, refresh_all_providers
 from backend.database import get_db, get_redis
+from shared.dtos.debug import ActiveInferenceDto
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
@@ -48,8 +54,15 @@ async def stream_completion(
     user_id: str,
     provider_id: str,
     request: CompletionRequest,
+    source: str = "chat",
 ) -> AsyncIterator[ProviderStreamEvent]:
     """Resolve user's API key, instantiate adapter, stream completion.
+
+    Every call is registered with the in-flight inference tracker
+    (``backend.modules.llm._tracker``) and a debug event is broadcast to
+    admins on start and finish. The ``source`` parameter is purely
+    informational ("chat", "job:<type>", etc.) and surfaces in the admin
+    debug overlay.
 
     Raises:
         LlmProviderNotFoundError: provider_id not in registry.
@@ -70,8 +83,163 @@ async def stream_completion(
         api_key = repo.get_raw_key(cred)
 
     adapter = adapter_cls(base_url=PROVIDER_BASE_URLS[provider_id])
-    async for event in adapter.stream_completion(api_key, request):
-        yield event
+    inference_id = _tracker.register(
+        user_id=user_id,
+        provider_id=provider_id,
+        model_slug=request.model,
+        source=source,
+    )
+    # Publish "started" so the admin debug overlay can update without polling.
+    # Done lazily to avoid pulling event-bus into the tracker module itself.
+    await _publish_inference_started(
+        inference_id=inference_id,
+        user_id=user_id,
+        provider_id=provider_id,
+        model_slug=request.model,
+        source=source,
+    )
+    started_at_perf = _now_perf()
+    try:
+        async for event in adapter.stream_completion(api_key, request):
+            yield event
+    finally:
+        _tracker.unregister(inference_id)
+        await _publish_inference_finished(
+            inference_id=inference_id,
+            user_id=user_id,
+            duration_seconds=_now_perf() - started_at_perf,
+        )
+
+
+_debug_log = logging.getLogger("chatsune.debug.inference_tracker")
+
+
+def _now_perf() -> float:
+    return time.monotonic()
+
+
+async def _publish_inference_started(
+    inference_id: str,
+    user_id: str,
+    provider_id: str,
+    model_slug: str,
+    source: str,
+) -> None:
+    """Best-effort fan-out: never raise out of the inference path."""
+    try:
+        from backend.ws.event_bus import get_event_bus
+        from shared.events.debug import DebugInferenceStartedEvent
+        from shared.topics import Topics
+
+        bus = get_event_bus()
+        username = await _resolve_username(user_id)
+        await bus.publish(
+            Topics.DEBUG_INFERENCE_STARTED,
+            DebugInferenceStartedEvent(
+                inference_id=inference_id,
+                user_id=user_id,
+                username=username,
+                provider_id=provider_id,
+                model_slug=model_slug,
+                model_unique_id=f"{provider_id}:{model_slug}",
+                source=source,
+                started_at=datetime.now(timezone.utc),
+                correlation_id=str(uuid4()),
+                timestamp=datetime.now(timezone.utc),
+            ),
+        )
+    except Exception:
+        _debug_log.warning("Failed to publish DEBUG_INFERENCE_STARTED", exc_info=True)
+
+
+async def _publish_inference_finished(
+    inference_id: str,
+    user_id: str,
+    duration_seconds: float,
+) -> None:
+    try:
+        from backend.ws.event_bus import get_event_bus
+        from shared.events.debug import DebugInferenceFinishedEvent
+        from shared.topics import Topics
+
+        bus = get_event_bus()
+        await bus.publish(
+            Topics.DEBUG_INFERENCE_FINISHED,
+            DebugInferenceFinishedEvent(
+                inference_id=inference_id,
+                user_id=user_id,
+                duration_seconds=duration_seconds,
+                correlation_id=str(uuid4()),
+                timestamp=datetime.now(timezone.utc),
+            ),
+        )
+    except Exception:
+        _debug_log.warning("Failed to publish DEBUG_INFERENCE_FINISHED", exc_info=True)
+
+
+async def _resolve_username(user_id: str) -> str | None:
+    try:
+        # Local import to avoid an import-time cycle (user → llm via handlers).
+        from backend.modules.user import get_username
+
+        return await get_username(user_id)
+    except Exception:
+        return None
+
+
+def get_active_inferences(
+    usernames: dict[str, str] | None = None,
+) -> list[ActiveInferenceDto]:
+    """Return a snapshot of every in-flight LLM inference inside this process.
+
+    Used by the admin debug overlay. ``usernames`` enriches the records
+    with display names — pass ``{user_id: username}``.
+    """
+    return _tracker.snapshot(usernames)
+
+
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def track_inference(
+    user_id: str,
+    provider_id: str,
+    model_slug: str,
+    source: str,
+):
+    """Context manager that registers/unregisters an inference + emits debug
+    events. Use this from call sites that talk to an adapter directly
+    instead of via :func:`stream_completion` (e.g. vision fallback).
+    """
+    inference_id = _tracker.register(
+        user_id=user_id,
+        provider_id=provider_id,
+        model_slug=model_slug,
+        source=source,
+    )
+    started_at_perf = _now_perf()
+    await _publish_inference_started(
+        inference_id=inference_id,
+        user_id=user_id,
+        provider_id=provider_id,
+        model_slug=model_slug,
+        source=source,
+    )
+    try:
+        yield inference_id
+    finally:
+        _tracker.unregister(inference_id)
+        await _publish_inference_finished(
+            inference_id=inference_id,
+            user_id=user_id,
+            duration_seconds=_now_perf() - started_at_perf,
+        )
+
+
+def active_inference_count() -> int:
+    """Return the number of in-flight LLM inferences."""
+    return _tracker.active_count()
 
 
 async def get_model_metadata(
@@ -165,6 +333,9 @@ __all__ = [
     "get_model_supports_vision",
     "get_model_supports_reasoning",
     "get_model_metadata",
+    "get_active_inferences",
+    "active_inference_count",
+    "track_inference",
     "ModelMetaDto",
     "refresh_all_providers",
 ]

@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react'
 import { UsersTab } from './UsersTab'
 import { ModelsTab } from './ModelsTab'
 import { SystemTab } from './SystemTab'
+import { DebugTab } from './DebugTab'
 
-export type AdminModalTab = 'users' | 'models' | 'system'
+export type AdminModalTab = 'users' | 'models' | 'system' | 'debug'
 
 interface Tab {
   id: AdminModalTab
@@ -14,6 +15,7 @@ const TABS: Tab[] = [
   { id: 'users', label: 'Users' },
   { id: 'models', label: 'Models' },
   { id: 'system', label: 'System' },
+  { id: 'debug', label: 'Debug' },
 ]
 
 interface AdminModalProps {
@@ -130,6 +132,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           {activeTab === 'users' && <UsersTab />}
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'system' && <SystemTab />}
+          {activeTab === 'debug' && <DebugTab />}
         </div>
       </div>
     </>

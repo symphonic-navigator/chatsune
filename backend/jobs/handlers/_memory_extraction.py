@@ -125,7 +125,9 @@ async def handle_memory_extraction(
 
         # Stream LLM response.
         full_content = ""
-        async for event in llm_stream_completion(job.user_id, provider_id, request):
+        async for event in llm_stream_completion(
+            job.user_id, provider_id, request, source="job:memory_extraction",
+        ):
             match event:
                 case ContentDelta(delta=delta):
                     full_content += delta

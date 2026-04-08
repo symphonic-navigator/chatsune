@@ -90,6 +90,16 @@ export const Topics = {
   ARTEFACT_DELETED: "artefact.deleted",
   ARTEFACT_UNDO: "artefact.undo",
   ARTEFACT_REDO: "artefact.redo",
+  // Admin debug overlay (admin role only)
+  DEBUG_INFERENCE_STARTED: "debug.inference.started",
+  DEBUG_INFERENCE_FINISHED: "debug.inference.finished",
+  DEBUG_SNAPSHOT: "debug.snapshot",
+  // Job lifecycle (already published, used here as cheap re-fetch triggers)
+  JOB_STARTED: "job.started",
+  JOB_COMPLETED: "job.completed",
+  JOB_FAILED: "job.failed",
+  JOB_RETRY: "job.retry",
+  JOB_EXPIRED: "job.expired",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

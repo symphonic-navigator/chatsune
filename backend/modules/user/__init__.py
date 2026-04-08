@@ -58,4 +58,42 @@ async def get_user_about_me(user_id: str) -> str | None:
     return await repo.get_about_me(user_id)
 
 
-__all__ = ["router", "init_indexes", "perform_token_refresh", "decode_access_token", "get_user_about_me"]
+async def get_username(user_id: str) -> str | None:
+    """Return the username for a user_id, or None if not found.
+
+    Intended for cross-module display lookups (e.g. admin debug overlay
+    enriching user IDs with human-readable names).
+    """
+    repo = UserRepository(get_db())
+    doc = await repo.find_by_id(user_id)
+    return doc.get("username") if doc else None
+
+
+async def get_usernames(user_ids: list[str]) -> dict[str, str]:
+    """Return a ``{user_id: username}`` map for the requested user IDs.
+
+    Missing users are simply omitted. Used by the admin debug overlay to
+    enrich snapshots with display names in a single round-trip.
+    """
+    if not user_ids:
+        return {}
+    repo = UserRepository(get_db())
+    out: dict[str, str] = {}
+    # Small N (typically < 10 connected users / queued jobs); per-id
+    # lookups are fine here and avoid leaking the collection abstraction.
+    for uid in set(user_ids):
+        doc = await repo.find_by_id(uid)
+        if doc and doc.get("username"):
+            out[uid] = doc["username"]
+    return out
+
+
+__all__ = [
+    "router",
+    "init_indexes",
+    "perform_token_refresh",
+    "decode_access_token",
+    "get_user_about_me",
+    "get_username",
+    "get_usernames",
+]

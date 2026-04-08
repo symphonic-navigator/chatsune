@@ -20,6 +20,7 @@ from backend.modules.llm import (
     StreamDone,
     StreamError,
     get_api_key,
+    track_inference,
 )
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 
@@ -103,19 +104,27 @@ async def describe_image(
 
     last_error: Exception | None = None
 
+    provider_id, _ = model_unique_id.split(":", 1)
+
     for attempt in range(1, 3):
         try:
             api_key = await _get_api_key_for(user_id, model_unique_id)
             adapter = _get_adapter_for(model_unique_id)
             chunks: list[str] = []
 
-            async for event in adapter.stream_completion(api_key, request):
-                if isinstance(event, ContentDelta):
-                    chunks.append(event.delta)
-                elif isinstance(event, StreamDone):
-                    break
-                elif isinstance(event, StreamError):
-                    raise VisionFallbackError(f"adapter stream error: {event.message}")
+            async with track_inference(
+                user_id=user_id,
+                provider_id=provider_id,
+                model_slug=model_slug,
+                source="vision_fallback",
+            ):
+                async for event in adapter.stream_completion(api_key, request):
+                    if isinstance(event, ContentDelta):
+                        chunks.append(event.delta)
+                    elif isinstance(event, StreamDone):
+                        break
+                    elif isinstance(event, StreamError):
+                        raise VisionFallbackError(f"adapter stream error: {event.message}")
 
             text = "".join(chunks).strip()
             if not text:
