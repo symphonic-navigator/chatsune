@@ -67,34 +67,33 @@ export function useChatStream(sessionId: string | null) {
           const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
           const fillPercentage = (p.context_fill_percentage as number) ?? 0
 
-          if (status === 'completed') {
-            const content = getStore().streamingContent
-            const thinking = getStore().streamingThinking
-            const webSearchContext = getStore().streamingWebSearchContext
-            const knowledgeContext = getStore().streamingKnowledgeContext
-            // Finish when there is anything to show — content OR a thinking
-            // block. A Soft-CoT reply can consist entirely of <think>...</think>
-            // with no answer, and we still want the thinking block to render.
-            if (content || thinking) {
-              getStore().finishStreaming(
-                {
-                  id: (p.message_id as string) ?? `streaming-${Date.now()}`,
-                  session_id: sessionId,
-                  role: 'assistant',
-                  content,
-                  thinking: thinking || null,
-                  token_count: 0,
-                  attachments: null,
-                  web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
-                  knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
-                  created_at: new Date().toISOString(),
-                },
-                contextStatus,
-                fillPercentage,
-              )
-            } else {
-              getStore().cancelStreaming()
-            }
+          // Finalise the streamed message whenever the backend persisted
+          // it — even on cancelled/error runs, the backend now saves the
+          // partial content so we do not throw away tokens the user has
+          // already seen. The ``status`` is still surfaced so the bubble
+          // can be badged as interrupted if we want to.
+          const backendMessageId = p.message_id as string | undefined
+          const content = getStore().streamingContent
+          const thinking = getStore().streamingThinking
+          const webSearchContext = getStore().streamingWebSearchContext
+          const knowledgeContext = getStore().streamingKnowledgeContext
+          if (backendMessageId && (content || thinking)) {
+            getStore().finishStreaming(
+              {
+                id: backendMessageId,
+                session_id: sessionId,
+                role: 'assistant',
+                content,
+                thinking: thinking || null,
+                token_count: 0,
+                attachments: null,
+                web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
+                knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
+                created_at: new Date().toISOString(),
+              },
+              contextStatus,
+              fillPercentage,
+            )
           } else {
             getStore().cancelStreaming()
           }
@@ -104,14 +103,26 @@ export function useChatStream(sessionId: string | null) {
         }
         case Topics.CHAT_STREAM_ERROR: {
           const errorCode = p.error_code as string
-          // Session-level errors arrive outside a streaming context
-          const isSessionError = errorCode === 'session_expired'
+          // Session-level errors arrive outside a streaming context —
+          // they carry their own correlation id that the frontend never
+          // saw, so we let them through unconditionally. This includes
+          // rejections from handle_chat_edit that fire before any stream
+          // has started (invalid_edit, session_busy, edit_target_missing,
+          // edit_failed).
+          const sessionLevelCodes = new Set([
+            'session_expired',
+            'invalid_edit',
+            'edit_target_missing',
+            'edit_failed',
+          ])
+          const isSessionError = sessionLevelCodes.has(errorCode)
           if (!isSessionError && event.correlation_id !== getStore().correlationId) return
           getStore().setError({
             errorCode,
             recoverable: p.recoverable as boolean,
             userMessage: p.user_message as string,
           })
+          getStore().setWaitingForResponse(false)
           break
         }
         case Topics.CHAT_MESSAGES_TRUNCATED: {

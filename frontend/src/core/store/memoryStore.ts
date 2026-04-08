@@ -114,7 +114,10 @@ export const useMemoryStore = create<MemoryState>((set, _get) => ({
         },
         committedEntries: {
           ...s.committedEntries,
-          [personaId]: [...(s.committedEntries[personaId] ?? []), committed],
+          [personaId]: [
+            ...(s.committedEntries[personaId] ?? []).filter((e) => e.id !== entry.id),
+            committed,
+          ],
         },
         toastCounter: { ...s.toastCounter, [personaId]: 0 },
       }
@@ -132,7 +135,10 @@ export const useMemoryStore = create<MemoryState>((set, _get) => ({
         },
         committedEntries: {
           ...s.committedEntries,
-          [personaId]: [...(s.committedEntries[personaId] ?? []), committed],
+          [personaId]: [
+            ...(s.committedEntries[personaId] ?? []).filter((e) => e.id !== entry.id),
+            committed,
+          ],
         },
         // No toastCounter reset for auto-commit
       }

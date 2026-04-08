@@ -67,6 +67,15 @@ async def process_one(redis: Redis, event_bus) -> bool:
     stream_id: str | None = None
     job: JobEntry | None = None
     for entry_id, fields in pending_entries:
+        # Zombie PEL entry: the stream entry was deleted (e.g. the whole
+        # ``jobs:pending`` stream was manually flushed) but the consumer
+        # group still has a dangling reference to this ID. XREADGROUP then
+        # returns an empty fields dict. Ack it so it disappears from the
+        # PEL and move on.
+        if "data" not in fields:
+            _log.warning("Dropping zombie PEL entry %s (no data field)", entry_id)
+            await redis.xack(_STREAM, _GROUP, entry_id)
+            continue
         candidate = JobEntry.model_validate_json(fields["data"])
         retry_state = await get_retry(redis, candidate.id)
         if _is_actionable(candidate, retry_state):

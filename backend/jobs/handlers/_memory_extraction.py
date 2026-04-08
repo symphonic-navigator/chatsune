@@ -82,6 +82,18 @@ async def handle_memory_extraction(
                 "No extractable content after filtering for persona %s, session %s",
                 persona_id, session_id,
             )
+            # Mark the source messages as extracted and reset the Redis
+            # tracking counter. Without this, the same non-extractable
+            # messages (e.g. pure code blocks) would be picked up by the
+            # periodic fallback loop forever and re-submitted every cycle.
+            if message_ids:
+                from backend.modules.chat import mark_messages_extracted
+                await mark_messages_extracted(message_ids)
+            tracking_key = f"memory:extraction:{job.user_id}:{persona_id}"
+            await redis.hset(tracking_key, mapping={
+                "last_extraction_at": datetime.now(UTC).isoformat(),
+                "messages_since_extraction": "0",
+            })
             await event_bus.publish(
                 Topics.MEMORY_EXTRACTION_COMPLETED,
                 MemoryExtractionCompletedEvent(

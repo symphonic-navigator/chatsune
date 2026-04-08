@@ -1,7 +1,26 @@
 import asyncio
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
+
+# Configure root logging as early as possible — before any module-level
+# loggers are created by imports below. Without this, Python falls back to
+# the WARNING-level "last resort" handler and every _log.info(...) call in
+# the backend is silently dropped, which makes debugging the job system
+# and inference pipeline effectively impossible.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+    stream=sys.stderr,
+    force=True,
+)
+# Tame noisy libraries so our own INFO output stays readable.
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("pymongo").setLevel(logging.WARNING)
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -262,11 +281,19 @@ async def lifespan(app: FastAPI):
                     )
                     from backend.jobs._submit import submit as _ext_submit
                     from backend.jobs._models import JobType as _ExtJobType
+                    from backend.jobs._dedup import (
+                        memory_extraction_slot_key as _ext_slot_key,
+                        try_acquire_inflight_slot as _ext_try_acquire,
+                    )
 
                     ext_redis = get_redis()
 
-                    # Scan for all extraction tracking keys
-                    cursor = "0"
+                    # Scan for all extraction tracking keys. redis-py returns
+                    # the cursor as an int — 0 marks the end of the scan.
+                    # Using a string "0" here previously caused the inner
+                    # while loop to never terminate, which in turn flooded
+                    # the queue with thousands of duplicate submissions.
+                    cursor = 0
                     while True:
                         cursor, keys = await ext_redis.scan(
                             cursor=cursor, match="memory:extraction:*", count=100,
@@ -309,6 +336,23 @@ async def lifespan(app: FastAPI):
                                 msg_ids = [m["_id"] for m in unextracted]
                                 msg_contents = [m["content"] for m in unextracted]
 
+                                # Dedup: skip if an extraction for this
+                                # persona is already queued / running /
+                                # retrying, or still inside the cooldown
+                                # window from a recent failure. Without
+                                # this the periodic loop floods the queue
+                                # every 15 min for personas whose messages
+                                # get filtered to empty in the handler.
+                                _slot_key = _ext_slot_key(uid, pid)
+                                if not await _ext_try_acquire(
+                                    ext_redis, _slot_key, ttl_seconds=3600,
+                                ):
+                                    _extraction_log.info(
+                                        "Skipping periodic extraction — already in flight: user=%s persona=%s",
+                                        uid, pid,
+                                    )
+                                    continue
+
                                 await _ext_submit(
                                     job_type=_ExtJobType.MEMORY_EXTRACTION,
                                     user_id=uid,
@@ -329,7 +373,7 @@ async def lifespan(app: FastAPI):
                                     "Failed to process extraction key %s", key, exc_info=True,
                                 )
 
-                        if cursor == "0":
+                        if cursor == 0:
                             break
                 except Exception:
                     _extraction_log.warning("Periodic extraction cycle failed", exc_info=True)

@@ -260,11 +260,15 @@ class InferenceRunner:
             ))
 
         message_id = None
-        # Save when the stream produced any useful output — either visible
-        # content or a thinking block. The latter covers the case where a
-        # Soft-CoT response consists entirely of <think>...</think> with no
-        # answer after it; we still want the thinking block to render.
-        if status == "completed" and (full_content or full_thinking):
+        # Save whenever the stream produced any useful output — visible
+        # content or a thinking block — regardless of whether the run
+        # ended cleanly, was cancelled (manual stop, heartbeat watchdog),
+        # or errored. Throwing away already-streamed tokens means the
+        # user sees them live and then loses them on refresh, which is
+        # the worst possible outcome. The ``status`` still travels with
+        # ``ChatStreamEndedEvent`` so the frontend can badge the message
+        # appropriately.
+        if full_content or full_thinking:
             message_id = await save_fn(
                 content=full_content,
                 thinking=full_thinking or None,

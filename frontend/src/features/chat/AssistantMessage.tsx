@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createMarkdownComponents } from './markdownComponents'
@@ -28,7 +28,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
     copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500)
   }, [content])
 
-  const components = createMarkdownComponents(highlighter)
+  const components = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
 
   return (
     <div className="animate-message-entrance">

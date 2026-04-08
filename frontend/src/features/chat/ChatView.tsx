@@ -451,7 +451,14 @@ export function ChatView({ persona }: ChatViewProps) {
           messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
         })
       } else {
-        useChatStore.getState().setWaitingForResponse(true)
+        // Optimistically reflect the edit in the store so the bubble does
+        // not flash the previous text between closing the editor and the
+        // backend's CHAT_MESSAGE_UPDATED arriving. The backend remains
+        // authoritative — the truncate/update events will reconcile this.
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true)
         sendMessage({
           type: 'chat.edit',
           session_id: effectiveSessionId,

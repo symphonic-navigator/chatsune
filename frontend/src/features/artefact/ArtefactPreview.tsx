@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Highlighter } from 'shiki'
@@ -13,12 +13,13 @@ const FILL_CLS = 'artefact-scroll'
 // ─── Markdown ────────────────────────────────────────────────────────────────
 
 function MarkdownPreview({ content, highlighter }: { content: string; highlighter: Highlighter | null }) {
+  const components = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
   return (
     <div style={FILL} className={`${FILL_CLS} p-4`}>
       <div className="markdown-preview">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          components={createMarkdownComponents(highlighter)}
+          components={components}
         >
           {content}
         </ReactMarkdown>

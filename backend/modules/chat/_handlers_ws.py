@@ -16,6 +16,7 @@ from backend.modules.chat._orchestrator import (
     _heartbeat_watchdogs,
     _last_heartbeat,
     _make_tool_executor,
+    cancel_all_for_user,
     emit_session_expired,
     record_heartbeat,
     run_inference,
@@ -68,8 +69,18 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
             await emit_session_expired(user_id, session_id)
             return
 
-        if session.get("state") != "idle":
-            return
+        # Per-user single-stream policy: a new user action cancels any
+        # in-flight inference the user still has running. The old run's
+        # finally block will release the per-user inference lock shortly
+        # after the cancel event fires; the new run_inference call below
+        # then acquires it. Partially streamed content from the old run
+        # is persisted by the runner (see _inference.py).
+        cancelled = cancel_all_for_user(user_id)
+        if cancelled:
+            _log.info(
+                "chat.send cancelled %d in-flight inference(s) for user=%s",
+                cancelled, user_id,
+            )
 
         text = "".join(
             part.get("text", "") for part in content_parts if part.get("type") == "text"
@@ -126,7 +137,38 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
     session_id = data.get("session_id")
     message_id = data.get("message_id")
     content_parts = data.get("content")
+    # Synthetic correlation id we can attach to any rejection error so the
+    # frontend can clear its "waiting for response" state. The happy path
+    # generates its own below once we know the edit is going through.
+    rejection_correlation_id = str(uuid4())
+
+    async def _reject(code: str, message: str) -> None:
+        """Emit a visible error instead of silently swallowing the edit.
+
+        Every failure branch below used to ``return`` silently, leaving
+        the UI stuck on its optimistic update with no way to recover.
+        """
+        event_bus = get_event_bus()
+        await event_bus.publish(
+            Topics.CHAT_STREAM_ERROR,
+            ChatStreamErrorEvent(
+                correlation_id=rejection_correlation_id,
+                error_code=code,
+                recoverable=False,
+                user_message=message,
+                timestamp=datetime.now(timezone.utc),
+            ),
+            scope=f"session:{session_id}" if session_id else "global",
+            target_user_ids=[user_id],
+            correlation_id=rejection_correlation_id,
+        )
+        _log.info(
+            "Rejected chat.edit: user=%s session=%s message=%s code=%s",
+            user_id, session_id, message_id, code,
+        )
+
     if not session_id or not message_id or not content_parts:
+        await _reject("invalid_edit", "The edit request was malformed.")
         return
 
     try:
@@ -137,8 +179,14 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
         if not session:
             await emit_session_expired(user_id, session_id)
             return
-        if session.get("state") != "idle":
-            return
+
+        # Per-user single-stream policy — see handle_chat_send.
+        cancelled = cancel_all_for_user(user_id)
+        if cancelled:
+            _log.info(
+                "chat.edit cancelled %d in-flight inference(s) for user=%s",
+                cancelled, user_id,
+            )
 
         # Validate message exists and belongs to this session
         messages = await repo.list_messages(session_id)
@@ -149,12 +197,17 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
                 break
 
         if target is None or target["role"] != "user":
+            await _reject(
+                "edit_target_missing",
+                "The message you tried to edit was not found.",
+            )
             return
 
         text = "".join(
             part.get("text", "") for part in content_parts if part.get("type") == "text"
         ).strip()
         if not text:
+            await _reject("invalid_edit", "Cannot save an empty message.")
             return
 
         correlation_id = str(uuid4())
@@ -165,6 +218,10 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
         token_count = count_tokens(text)
         ok = await repo.edit_message_atomic(session_id, message_id, text, token_count)
         if not ok:
+            await _reject(
+                "edit_failed",
+                "The message could not be saved. Please try again.",
+            )
             return
 
         await event_bus.publish(
@@ -215,8 +272,14 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
         if not session:
             await emit_session_expired(user_id, session_id)
             return
-        if session.get("state") != "idle":
-            return
+
+        # Per-user single-stream policy — see handle_chat_send.
+        cancelled = cancel_all_for_user(user_id)
+        if cancelled:
+            _log.info(
+                "chat.regenerate cancelled %d in-flight inference(s) for user=%s",
+                cancelled, user_id,
+            )
 
         last_msg = await repo.get_last_message(session_id)
         if last_msg is None or last_msg["role"] != "assistant":
