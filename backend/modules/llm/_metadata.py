@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
+from backend.modules.llm._provider_status import set_status
 from shared.dtos.llm import FaultyProviderDto, ModelMetaDto
 from shared.events.llm import (
     LlmModelsFetchCompletedEvent,
     LlmModelsFetchStartedEvent,
     LlmModelsRefreshedEvent,
+    LlmProviderStatusChangedEvent,
 )
 from shared.topics import Topics
 
@@ -109,11 +111,14 @@ async def refresh_all_providers(
 
     for provider_id in provider_ids:
         adapter = registry[provider_id](base_url=base_urls[provider_id])
+        models: list[ModelMetaDto] = []
+        provider_failed = False
         try:
             models = await _fetch_and_cache_provider(provider_id, redis, adapter)
             all_models.extend(models)
         except NotImplementedError:
             _log.debug("Provider %s has not implemented fetch_models", provider_id)
+            provider_failed = True
         except Exception as exc:
             _log.warning("Failed to fetch models from %s: %s", provider_id, exc)
             faulty.append(FaultyProviderDto(
@@ -121,6 +126,22 @@ async def refresh_all_providers(
                 display_name=display_names.get(provider_id, provider_id),
                 error_message=str(exc),
             ))
+            provider_failed = True
+
+        available = (not provider_failed) and len(models) > 0
+        flipped = await set_status(
+            redis, provider_id, available=available, model_count=len(models),
+        )
+        if flipped:
+            await event_bus.publish(
+                Topics.LLM_PROVIDER_STATUS_CHANGED,
+                LlmProviderStatusChangedEvent(
+                    provider_id=provider_id,
+                    available=available,
+                    model_count=len(models),
+                    timestamp=datetime.now(timezone.utc),
+                ),
+            )
 
     if not faulty:
         status = "success"
