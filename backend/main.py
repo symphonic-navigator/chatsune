@@ -293,6 +293,10 @@ async def lifespan(app: FastAPI):
                     # Using a string "0" here previously caused the inner
                     # while loop to never terminate, which in turn flooded
                     # the queue with thousands of duplicate submissions.
+                    #
+                    # Any exception mid-scan must reset the cursor back to 0
+                    # on the next cycle — otherwise a stale cursor would
+                    # silently skip keys forever (Finding C-003).
                     cursor = 0
                     while True:
                         cursor, keys = await ext_redis.scan(
@@ -343,6 +347,19 @@ async def lifespan(app: FastAPI):
                                 # this the periodic loop floods the queue
                                 # every 15 min for personas whose messages
                                 # get filtered to empty in the handler.
+                                # Per-user submit rate-limit (SG-004):
+                                # at most one periodic extraction submit per
+                                # user per 5 minutes, regardless of persona.
+                                rl_key = f"safeguard:extraction_submit:{uid}"
+                                if not await ext_redis.set(
+                                    rl_key, "1", nx=True, ex=300,
+                                ):
+                                    _extraction_log.debug(
+                                        "extraction_loop: rate-limited submit for user=%s",
+                                        uid,
+                                    )
+                                    continue
+
                                 _slot_key = _ext_slot_key(uid, pid)
                                 if not await _ext_try_acquire(
                                     ext_redis, _slot_key, ttl_seconds=3600,
@@ -376,7 +393,13 @@ async def lifespan(app: FastAPI):
                         if cursor == 0:
                             break
                 except Exception:
-                    _extraction_log.warning("Periodic extraction cycle failed", exc_info=True)
+                    # Cursor is a local var — it resets to 0 on next
+                    # iteration automatically. Brief sleep to avoid a
+                    # tight failure loop if Redis is temporarily down.
+                    _extraction_log.warning(
+                        "Periodic extraction cycle failed", exc_info=True,
+                    )
+                    await asyncio.sleep(5)
         except asyncio.CancelledError:
             _lifecycle_log.info("cancelled periodic_extraction_loop")
             raise
