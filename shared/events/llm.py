@@ -72,3 +72,17 @@ class LlmUserModelConfigUpdatedEvent(BaseModel):
     model_unique_id: str
     config: UserModelConfigDto
     timestamp: datetime
+
+
+class LlmProviderStatusChangedEvent(BaseModel):
+    type: str = "llm.provider_status.changed"
+    provider_id: str
+    available: bool
+    model_count: int
+    timestamp: datetime
+
+
+class LlmProviderStatusSnapshotEvent(BaseModel):
+    type: str = "llm.provider_status.snapshot"
+    statuses: dict[str, bool]
+    timestamp: datetime

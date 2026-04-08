@@ -37,4 +37,5 @@ dev = [
     "respx>=0.22.0",
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "fakeredis>=2.34.1",
 ]
