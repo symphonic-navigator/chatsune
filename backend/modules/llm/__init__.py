@@ -275,6 +275,19 @@ def get_adapter_class(provider_id: str):
     return _ADAPTER_REGISTRY_REF.get(provider_id)
 
 
+def get_inference_lock(provider_id: str, user_id: str):
+    """Return the asyncio.Lock for the provider's concurrency policy, or None.
+
+    Public wrapper over the internal lock registry so callers that bypass
+    :func:`stream_completion` (e.g. the vision fallback) can still honour
+    the adapter's concurrency policy without reaching into module internals.
+    """
+    adapter_cls = _ADAPTER_REGISTRY_REF.get(provider_id)
+    if adapter_cls is None:
+        return None
+    return get_lock_registry().lock_for(adapter_cls, user_id)
+
+
 def is_inference_lock_held(provider_id: str, user_id: str) -> tuple[bool, str | None]:
     """Return (is_held, holder_source) for the provider's concurrency lock.
 
@@ -393,4 +406,5 @@ __all__ = [
     "refresh_all_providers",
     "get_adapter_class",
     "is_inference_lock_held",
+    "get_inference_lock",
 ]

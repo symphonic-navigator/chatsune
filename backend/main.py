@@ -268,12 +268,20 @@ async def lifespan(app: FastAPI):
 
     _extraction_log = logging.getLogger("chatsune.extraction")
 
-    # Periodic fallback memory extraction (every 15 minutes)
+    # Periodic fallback memory extraction (default every 15 minutes; override
+    # via PERIODIC_EXTRACTION_INTERVAL_SECONDS for local testing).
+    _periodic_extraction_interval = int(
+        os.environ.get("PERIODIC_EXTRACTION_INTERVAL_SECONDS", "900")
+    )
+
     async def _periodic_extraction_loop() -> None:
-        _lifecycle_log.info("starting periodic_extraction_loop")
+        _lifecycle_log.info(
+            "starting periodic_extraction_loop interval=%ds",
+            _periodic_extraction_interval,
+        )
         try:
             while True:
-                await asyncio.sleep(900)
+                await asyncio.sleep(_periodic_extraction_interval)
                 try:
                     from backend.modules.chat import (
                         find_sessions_for_extraction,
