@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     avatar_root: str = "/data/avatars"
     upload_quota_bytes: int = 1_073_741_824  # 1 GB
 
+    embedding_cache_enabled: bool = True
+    embedding_cache_max_entries: int = 16384
+
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 30
 
