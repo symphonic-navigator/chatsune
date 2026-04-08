@@ -1,5 +1,6 @@
 import pytest
 
+from backend.modules.llm._adapters._ollama_cloud import OllamaCloudAdapter
 from backend.modules.llm._adapters._ollama_local import OllamaLocalAdapter
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
@@ -29,3 +30,8 @@ def test_local_adapter_registered():
     assert ADAPTER_REGISTRY["ollama_local"] is OllamaLocalAdapter
     assert PROVIDER_DISPLAY_NAMES["ollama_local"] == "Ollama Local"
     assert PROVIDER_BASE_URLS["ollama_local"].startswith("http://")
+
+
+def test_is_global_flags():
+    assert OllamaLocalAdapter.is_global is True
+    assert OllamaCloudAdapter.is_global is False

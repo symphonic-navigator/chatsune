@@ -58,16 +58,18 @@ async def stream_completion(
     if provider_id not in ADAPTER_REGISTRY:
         raise LlmProviderNotFoundError(f"Unknown provider: {provider_id}")
 
-    repo = CredentialRepository(get_db())
-    cred = await repo.find(user_id, provider_id)
-    if not cred:
-        raise LlmCredentialNotFoundError(
-            f"No API key configured for provider '{provider_id}'"
-        )
+    adapter_cls = ADAPTER_REGISTRY[provider_id]
+    api_key: str | None = None
+    if not adapter_cls.is_global:
+        repo = CredentialRepository(get_db())
+        cred = await repo.find(user_id, provider_id)
+        if not cred:
+            raise LlmCredentialNotFoundError(
+                f"No API key configured for provider '{provider_id}'"
+            )
+        api_key = repo.get_raw_key(cred)
 
-    api_key = repo.get_raw_key(cred)
-    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
-
+    adapter = adapter_cls(base_url=PROVIDER_BASE_URLS[provider_id])
     async for event in adapter.stream_completion(api_key, request):
         yield event
 

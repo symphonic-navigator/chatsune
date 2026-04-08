@@ -7,6 +7,7 @@ class OllamaLocalAdapter(OllamaBaseAdapter):
     provider_id = "ollama_local"
     provider_display_name = "Ollama Local"
     requires_key_for_listing: bool = False
+    is_global: bool = True
 
     def _auth_headers(self, api_key: str | None) -> dict:
         return {}
