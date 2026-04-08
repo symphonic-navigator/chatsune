@@ -36,6 +36,8 @@ export const Topics = {
   LLM_MODELS_FETCH_STARTED: "llm.models.fetch_started",
   LLM_MODELS_FETCH_COMPLETED: "llm.models.fetch_completed",
   LLM_USER_MODEL_CONFIG_UPDATED: "llm.user_model_config.updated",
+  LLM_PROVIDER_STATUS_CHANGED: "llm.provider_status.changed",
+  LLM_PROVIDER_STATUS_SNAPSHOT: "llm.provider_status.snapshot",
   SETTING_UPDATED: "setting.updated",
   SETTING_DELETED: "setting.deleted",
   SETTING_SYSTEM_PROMPT_UPDATED: "setting.system_prompt.updated",

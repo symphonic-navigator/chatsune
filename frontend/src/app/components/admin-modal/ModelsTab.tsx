@@ -111,8 +111,29 @@ export function ModelsTab() {
     )
   }
 
+  async function handleInvalidateAndRefresh() {
+    setLoading(true)
+    setError(null)
+    try {
+      await llmApi.refreshProviders()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh providers")
+      setLoading(false)
+    }
+  }
+
   return (
     <>
+      <div className="mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={handleInvalidateAndRefresh}
+          disabled={loading}
+          className="rounded-lg border border-gold/30 bg-gold/10 px-3 py-1.5 text-[11px] font-medium text-gold transition-colors hover:bg-gold/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Invalidate caches & refresh
+        </button>
+      </div>
       <ModelList models={models} onSelectModel={setSelectedModel} />
       {selectedModel && (
         <CurationModal

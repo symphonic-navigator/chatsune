@@ -177,6 +177,7 @@ because of hot reload.
 | `EMBEDDING_MODEL_DIR` | Where embedding model weights are cached | `./data/models` |
 | `EMBEDDING_BATCH_SIZE` | Batch size for the embedding worker | `8` |
 | `COOKIE_DOMAIN` | Optional parent domain for the refresh-token cookie | `.example.com` |
+| `OLLAMA_LOCAL_BASE_URL` | Optional. Base URL of a self-hosted Ollama daemon. If reachable, all of its locally pulled models become available to every authenticated user automatically as the "Ollama Local" provider — no per-user API key required. Leave unset if you do not run Ollama locally; the provider simply remains hidden in the UI. | `http://localhost:11434` |
 
 For the LLM test harness, place your Ollama Cloud key in `.llm-test-key`
 (plain text, gitignored) in the project root.

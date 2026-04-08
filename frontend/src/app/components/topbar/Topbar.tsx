@@ -6,6 +6,8 @@ import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
 import { KnowledgeDropdown } from "../../../features/chat/KnowledgeDropdown"
+import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
+import { ProviderPill } from "./ProviderPill"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -32,6 +34,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
+  useProviderStatusBootstrap()
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
   const location = useLocation()
@@ -133,6 +136,7 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
               {persona.model_unique_id.split(":").slice(1).join(":") || persona.model_unique_id}
             </span>
           )}
+          <ProviderPill provider="ollama_local" label="Local Ollama" />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
         </div>
       </header>
@@ -145,7 +149,8 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
   return (
     <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
       <span className="text-[13px] font-semibold text-white/60">{title}</span>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        <ProviderPill provider="ollama_local" label="Local Ollama" />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
       </div>
     </header>

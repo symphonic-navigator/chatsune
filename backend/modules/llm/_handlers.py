@@ -6,7 +6,7 @@ from backend.database import get_db, get_redis
 from backend.dependencies import require_active_session, require_admin
 from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._curation import CurationRepository
-from backend.modules.llm._metadata import get_models
+from backend.modules.llm._metadata import get_models, refresh_all_providers
 from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS, PROVIDER_DISPLAY_NAMES
 from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.ws.event_bus import EventBus, get_event_bus
@@ -55,7 +55,7 @@ async def list_providers(user: dict = Depends(require_active_session)):
                 ProviderCredentialDto(
                     provider_id=provider_id,
                     display_name=PROVIDER_DISPLAY_NAMES[provider_id],
-                    is_configured=False,
+                    is_configured=adapter_cls.is_global,
                     requires_key_for_listing=requires_key,
                 )
             )
@@ -430,3 +430,33 @@ async def admin_credential_status(user: dict = Depends(require_admin)):
         {"user_id": uid, "providers": providers}
         for uid, providers in by_user.items()
     ]
+
+
+@router.post("/admin/refresh-providers", status_code=200)
+async def refresh_providers_handler(
+    user: dict = Depends(require_admin),
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    """Wipe model caches for all providers and trigger a fresh fetch."""
+    redis = get_redis()
+    for provider_id in ADAPTER_REGISTRY.keys():
+        await redis.delete(f"llm:models:{provider_id}")
+
+    models = await refresh_all_providers(
+        redis=redis,
+        registry=ADAPTER_REGISTRY,
+        base_urls=PROVIDER_BASE_URLS,
+        display_names=PROVIDER_DISPLAY_NAMES,
+        event_bus=event_bus,
+    )
+    return {"status": "ok", "total_models": len(models)}
+
+
+@router.get("/provider-status")
+async def get_provider_status(user: dict = Depends(require_active_session)):
+    """Return current per-provider reachability snapshot."""
+    from backend.modules.llm._provider_status import get_all_statuses
+
+    redis = get_redis()
+    statuses = await get_all_statuses(redis, list(ADAPTER_REGISTRY.keys()))
+    return {"statuses": statuses}

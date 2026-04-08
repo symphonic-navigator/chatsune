@@ -11,6 +11,11 @@ class BaseAdapter(ABC):
 
     requires_key_for_listing: bool = True
 
+    # If True, the provider has no per-user credential and is shared across
+    # all users (e.g. a self-hosted local daemon). When set, neither listing
+    # nor inference performs a credential lookup.
+    is_global: bool = False
+
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 
