@@ -10,6 +10,10 @@ from uuid import uuid4
 
 from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
+from backend.jobs.handlers._budget_helpers import (
+    check_and_reserve_budget,
+    record_handler_tokens,
+)
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from backend.modules.llm._token_estimate import context_window_for, estimate_tokens
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -143,15 +147,22 @@ async def handle_memory_consolidation(
             supports_reasoning=supports_reasoning,
         )
 
+        # Reserve daily-budget headroom before spending tokens.
+        await check_and_reserve_budget(redis, job.user_id, system_prompt)
+
         # Stream LLM response.
         full_content = ""
+        stream_input_tokens: int | None = None
+        stream_output_tokens: int | None = None
         async for event in llm_stream_completion(
             job.user_id, provider_id, request, source="job:memory_consolidation",
         ):
             match event:
                 case ContentDelta(delta=delta):
                     full_content += delta
-                case StreamDone():
+                case StreamDone(input_tokens=in_tok, output_tokens=out_tok):
+                    stream_input_tokens = in_tok
+                    stream_output_tokens = out_tok
                     _log.debug(
                         "Consolidation stream completed for persona %s",
                         persona_id,
@@ -165,6 +176,15 @@ async def handle_memory_consolidation(
                     raise RuntimeError(
                         f"Memory consolidation failed: {err.error_code} — {err.message}"
                     )
+
+        await record_handler_tokens(
+            redis,
+            job.user_id,
+            system_prompt,
+            full_content,
+            input_tokens=stream_input_tokens,
+            output_tokens=stream_output_tokens,
+        )
 
         # Validate the result.
         if not validate_memory_body(full_content):

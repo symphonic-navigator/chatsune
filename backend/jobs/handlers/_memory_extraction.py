@@ -13,6 +13,10 @@ from backend.jobs._dedup import (
 )
 from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
+from backend.jobs.handlers._budget_helpers import (
+    check_and_reserve_budget,
+    record_handler_tokens,
+)
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.memory import (
@@ -151,15 +155,22 @@ async def handle_memory_extraction(
             supports_reasoning=supports_reasoning,
         )
 
+        # Reserve daily-budget headroom before spending tokens.
+        await check_and_reserve_budget(redis, job.user_id, system_prompt)
+
         # Stream LLM response.
         full_content = ""
+        stream_input_tokens: int | None = None
+        stream_output_tokens: int | None = None
         async for event in llm_stream_completion(
             job.user_id, provider_id, request, source="job:memory_extraction",
         ):
             match event:
                 case ContentDelta(delta=delta):
                     full_content += delta
-                case StreamDone():
+                case StreamDone(input_tokens=in_tok, output_tokens=out_tok):
+                    stream_input_tokens = in_tok
+                    stream_output_tokens = out_tok
                     _log.debug(
                         "Extraction stream completed for persona %s, session %s",
                         persona_id, session_id,
@@ -182,6 +193,15 @@ async def handle_memory_extraction(
                     raise RuntimeError(
                         f"Memory extraction failed: {err.error_code} — {err.message}"
                     )
+
+        await record_handler_tokens(
+            redis,
+            job.user_id,
+            system_prompt,
+            full_content,
+            input_tokens=stream_input_tokens,
+            output_tokens=stream_output_tokens,
+        )
 
         # Parse extraction output.
         parsed_entries = parse_extraction_output(full_content)
