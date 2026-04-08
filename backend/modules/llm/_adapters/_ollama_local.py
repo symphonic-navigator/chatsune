@@ -1,4 +1,5 @@
 from backend.modules.llm._adapters._ollama_base import OllamaBaseAdapter
+from backend.modules.llm._concurrency import ConcurrencyPolicy
 
 
 class OllamaLocalAdapter(OllamaBaseAdapter):
@@ -8,6 +9,8 @@ class OllamaLocalAdapter(OllamaBaseAdapter):
     provider_display_name = "Ollama Local"
     requires_key_for_listing: bool = False
     is_global: bool = True
+    # Local engine can only run one generation at a time — serialise.
+    concurrency_policy = ConcurrencyPolicy.GLOBAL
 
     def _auth_headers(self, api_key: str | None) -> dict:
         return {}

@@ -16,6 +16,12 @@ class BaseAdapter(ABC):
     # nor inference performs a credential lookup.
     is_global: bool = False
 
+    # Concurrency: adapters opt into serialisation by setting this.
+    # Default NONE — adapter handles as many parallel inferences as the
+    # caller throws at it (cloud providers, for example).
+    from backend.modules.llm._concurrency import ConcurrencyPolicy
+    concurrency_policy: ConcurrencyPolicy = ConcurrencyPolicy.NONE
+
     def __init__(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
 
