@@ -4,6 +4,12 @@ Provides a thin safety-net layer that sits in front of every background-job
 LLM call. See ``docs/`` and INSIGHTS.md for rationale."""
 from ._config import SafeguardConfig
 from ._budget import BudgetExceededError, check_budget, record_tokens
+from ._circuit_breaker import (
+    CircuitOpenError,
+    check_circuit,
+    record_failure,
+    record_success,
+)
 from ._rate_limiter import RateLimitExceededError, check_rate_limit
 
 
@@ -20,4 +26,8 @@ __all__ = [
     "check_budget",
     "record_tokens",
     "BudgetExceededError",
+    "check_circuit",
+    "record_failure",
+    "record_success",
+    "CircuitOpenError",
 ]
