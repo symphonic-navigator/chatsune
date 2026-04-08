@@ -7,6 +7,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -16,7 +17,12 @@ from backend.modules.chat._vision_fallback import describe_image, VisionFallback
 from backend.token_counter import count_tokens
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.chat._context import calculate_budget, select_message_pairs, get_ampel_status
-from backend.jobs import submit, JobType
+from backend.jobs import (
+    JobType,
+    memory_extraction_slot_key,
+    submit,
+    try_acquire_inflight_slot,
+)
 from backend.database import get_db, get_redis
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
@@ -48,11 +54,76 @@ _runner = InferenceRunner()
 # Active cancel events keyed by correlation_id
 _cancel_events: dict[str, asyncio.Event] = {}
 
+# Heartbeat bookkeeping for auto-cancelling orphaned inferences. The frontend
+# pings ``chat.inference.alive`` while the user is actively watching a stream;
+# if pings stop arriving (tab closed, network drop, reload) the watchdog sets
+# the cancel event so the inference tears itself down cleanly.
+_last_heartbeat: dict[str, float] = {}          # correlation_id -> monotonic timestamp
+_cancel_user_ids: dict[str, str] = {}           # correlation_id -> user_id
+_heartbeat_watchdogs: dict[str, asyncio.Task] = {}
+
 # In-flight idle extraction timers keyed by "user_id:persona_id"
 _idle_extraction_tasks: dict[str, asyncio.Task] = {}
 
 _DEFAULT_CONTEXT_WINDOW = 8192
 _IDLE_EXTRACTION_DELAY_SECONDS = 300  # 5 minutes
+_HEARTBEAT_TIMEOUT_SECONDS = 12.0
+_HEARTBEAT_CHECK_INTERVAL_SECONDS = 2.0
+
+
+async def _heartbeat_watchdog(correlation_id: str) -> None:
+    """Cancel the inference if no heartbeat arrives within the timeout window.
+
+    Polls every ``_HEARTBEAT_CHECK_INTERVAL_SECONDS``. Exits silently once the
+    correlation id is removed from ``_last_heartbeat`` (normal completion) or
+    when the task itself is cancelled by the orchestrator's finally block.
+    """
+    try:
+        while True:
+            await asyncio.sleep(_HEARTBEAT_CHECK_INTERVAL_SECONDS)
+            last = _last_heartbeat.get(correlation_id)
+            if last is None:
+                return
+            if time.monotonic() - last > _HEARTBEAT_TIMEOUT_SECONDS:
+                _log.warning(
+                    "Heartbeat timeout for inference %s - cancelling",
+                    correlation_id,
+                )
+                event = _cancel_events.get(correlation_id)
+                if event is not None:
+                    event.set()
+                return
+    except asyncio.CancelledError:
+        pass
+
+
+def record_heartbeat(user_id: str, correlation_id: str) -> bool:
+    """Refresh the heartbeat timestamp for an active inference.
+
+    Also verifies that the caller owns the inference. Without the user-id
+    check a malicious client could keep someone else's inference alive (or at
+    least spoof heartbeats) by guessing correlation ids, so we bind each id
+    to its originating user at inference start.
+    """
+    owner = _cancel_user_ids.get(correlation_id)
+    if owner is None or owner != user_id:
+        return False
+    _last_heartbeat[correlation_id] = time.monotonic()
+    return True
+
+
+def cancel_all_for_user(user_id: str) -> int:
+    """Cancel every in-flight inference belonging to the given user.
+
+    Used on WebSocket disconnect to avoid burning tokens on a response the
+    user will never see. Returns the number of inferences signalled.
+    """
+    targets = [cid for cid, uid in _cancel_user_ids.items() if uid == user_id]
+    for cid in targets:
+        event = _cancel_events.get(cid)
+        if event is not None:
+            event.set()
+    return len(targets)
 
 
 def _make_tool_executor(session: dict, persona: dict | None, correlation_id: str = ""):
@@ -340,6 +411,11 @@ async def run_inference(
     correlation_id = str(uuid4())
     cancel_event = asyncio.Event()
     _cancel_events[correlation_id] = cancel_event
+    _last_heartbeat[correlation_id] = time.monotonic()
+    _cancel_user_ids[correlation_id] = user_id
+    _heartbeat_watchdogs[correlation_id] = asyncio.create_task(
+        _heartbeat_watchdog(correlation_id)
+    )
 
     manager = get_manager()
     event_bus = get_event_bus()
@@ -500,6 +576,11 @@ async def run_inference(
         # and disconnect scenarios where the stream ends without exception.
         await repo.update_session_state(session_id, "idle")
         _cancel_events.pop(correlation_id, None)
+        _last_heartbeat.pop(correlation_id, None)
+        _cancel_user_ids.pop(correlation_id, None)
+        watchdog = _heartbeat_watchdogs.pop(correlation_id, None)
+        if watchdog is not None and not watchdog.done():
+            watchdog.cancel()
 
 
 async def emit_session_expired(user_id: str, session_id: str) -> None:
@@ -549,6 +630,19 @@ async def _schedule_idle_extraction(
 
         message_ids = [m["_id"] for m in unextracted]
         message_contents = [m["content"] for m in unextracted]
+
+        # Dedup: only one in-flight memory extraction per user+persona.
+        # If a previous extraction is still queued / running / retrying
+        # (or recently failed and the cooldown TTL has not expired), we
+        # skip this submission. Prevents queue flood when the provider
+        # is slow or unreachable.
+        slot_key = memory_extraction_slot_key(user_id, persona_id)
+        if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+            _log.info(
+                "Skipping idle extraction — another extraction is already in flight: user=%s persona=%s",
+                user_id, persona_id,
+            )
+            return
 
         await submit(
             job_type=JobType.MEMORY_EXTRACTION,
@@ -665,6 +759,17 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
 
                 message_ids = [m["_id"] for m in unextracted]
                 message_contents = [m["content"] for m in unextracted]
+
+                # Dedup: skip if an extraction for this persona is
+                # already in flight (queued / running / retrying), or
+                # still inside the cooldown window from a recent failure.
+                slot_key = memory_extraction_slot_key(user_id, persona_id)
+                if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+                    _log.info(
+                        "Skipping disconnect extraction — another extraction is already in flight: user=%s persona=%s",
+                        user_id, persona_id,
+                    )
+                    continue
 
                 await submit(
                     job_type=JobType.MEMORY_EXTRACTION,

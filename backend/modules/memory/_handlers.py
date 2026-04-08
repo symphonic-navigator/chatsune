@@ -9,7 +9,12 @@ from pydantic import BaseModel
 
 from backend.database import get_db, get_redis
 from backend.dependencies import require_active_session
-from backend.jobs import JobType, submit
+from backend.jobs import (
+    JobType,
+    memory_extraction_slot_key,
+    submit,
+    try_acquire_inflight_slot,
+)
 from backend.modules.chat import get_latest_user_messages_for_persona
 from backend.modules.memory._repository import MemoryRepository
 from backend.modules.persona import get_persona as get_persona_fn
@@ -404,6 +409,18 @@ async def trigger_extraction(
         raise HTTPException(status_code=400, detail="No user messages found in latest session")
 
     correlation_id = str(uuid4())
+
+    # Dedup: refuse the manual trigger if an extraction for this persona
+    # is already in flight (queued / running / retrying / cooling down).
+    # We return 409 so the UI can surface a sensible error to the user
+    # instead of silently stacking another submission on top.
+    redis = get_redis()
+    slot_key = memory_extraction_slot_key(user_id, persona_id)
+    if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+        raise HTTPException(
+            status_code=409,
+            detail="A memory extraction for this persona is already in progress or recently failed. Please try again later.",
+        )
 
     await submit(
         job_type=JobType.MEMORY_EXTRACTION,

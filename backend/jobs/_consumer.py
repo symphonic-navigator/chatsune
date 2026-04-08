@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from redis.asyncio import Redis
 
+from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._lock import get_job_lock
 from backend.jobs._models import JobEntry
 from backend.jobs._registry import JOB_REGISTRY
@@ -90,6 +91,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
     if config is None:
         _log.error("Unknown job type: %s — acknowledging and discarding", job.job_type)
         await redis.xack(_STREAM, _GROUP, stream_id)
+        await redis.xdel(_STREAM, stream_id)
         return True
 
     _log.info(
@@ -115,6 +117,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
         )
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
+        await redis.xdel(_STREAM, stream_id)
         return True
 
     # Retry timing and per-user lock were already checked in the
@@ -159,20 +162,30 @@ async def process_one(redis: Redis, event_bus) -> bool:
             )
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
+        await redis.xdel(_STREAM, stream_id)
         return True
 
     except TimeoutError:
         error_message = f"Execution timed out after {config.execution_timeout_seconds}s"
+        unrecoverable = False
         _log.error("Job %s timed out after %ds", job.id, config.execution_timeout_seconds)
+    except UnrecoverableJobError as exc:
+        error_message = str(exc)
+        unrecoverable = True
+        _log.warning(
+            "Job %s signalled unrecoverable failure — skipping retries: %s",
+            job.id, error_message,
+        )
     except Exception as exc:
         error_message = str(exc)
+        unrecoverable = False
         _log.exception("Job %s raised an exception", job.id)
 
     # Retry / failure logic (shared between TimeoutError and Exception)
     attempt = job.attempt + 1
     now = datetime.now(timezone.utc)
 
-    if attempt >= config.max_retries:
+    if unrecoverable or attempt >= config.max_retries:
         # Final failure
         should_notify = config.notify or config.notify_error
         if should_notify:
@@ -193,6 +206,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
             )
         await clear_retry(redis, job.id)
         await redis.xack(_STREAM, _GROUP, stream_id)
+        await redis.xdel(_STREAM, stream_id)
         _log.warning("Job %s failed after %d attempts: %s", job.id, attempt, error_message)
         return True
     else:

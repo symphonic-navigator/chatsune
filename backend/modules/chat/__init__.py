@@ -13,12 +13,16 @@ from backend.modules.chat._handlers import router
 from backend.modules.chat._handlers_ws import (
     handle_chat_cancel,
     handle_chat_edit,
+    handle_chat_inference_alive,
     handle_chat_regenerate,
     handle_chat_send,
     handle_incognito_send,
     update_session_title,
 )
-from backend.modules.chat._orchestrator import trigger_disconnect_extraction
+from backend.modules.chat._orchestrator import (
+    cancel_all_for_user,
+    trigger_disconnect_extraction,
+)
 from backend.modules.chat._prompt_assembler import assemble_preview
 from backend.modules.chat._repository import ChatRepository
 
@@ -127,8 +131,9 @@ async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[st
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
-    "handle_chat_cancel", "handle_incognito_send", "update_session_title",
-    "trigger_disconnect_extraction",
+    "handle_chat_cancel", "handle_chat_inference_alive",
+    "handle_incognito_send", "update_session_title",
+    "trigger_disconnect_extraction", "cancel_all_for_user",
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",

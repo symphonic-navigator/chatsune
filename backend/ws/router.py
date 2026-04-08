@@ -9,7 +9,16 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
 from backend.database import get_redis
-from backend.modules.chat import handle_chat_send, handle_chat_cancel, handle_chat_edit, handle_chat_regenerate, handle_incognito_send, trigger_disconnect_extraction
+from backend.modules.chat import (
+    cancel_all_for_user,
+    handle_chat_cancel,
+    handle_chat_edit,
+    handle_chat_inference_alive,
+    handle_chat_regenerate,
+    handle_chat_send,
+    handle_incognito_send,
+    trigger_disconnect_extraction,
+)
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
 
@@ -101,6 +110,8 @@ async def websocket_endpoint(
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
+            elif msg_type == "chat.inference.alive":
+                handle_chat_inference_alive(user_id, data)
             elif msg_type == "chat.edit":
                 task = asyncio.create_task(handle_chat_edit(user_id, data))
                 _background_tasks.add(task)
@@ -125,6 +136,17 @@ async def websocket_endpoint(
     finally:
         if expiry_task is not None:
             expiry_task.cancel()
+        # Cancel any in-flight inferences for this user — they will never be
+        # observed now that the socket is gone, so the tokens would be wasted.
+        try:
+            cancelled = cancel_all_for_user(user_id)
+            if cancelled > 0:
+                _log.info(
+                    "Cancelled %d in-flight inferences due to WS disconnect for user %s",
+                    cancelled, user_id,
+                )
+        except Exception as e:
+            _log.error("Error cancelling in-flight inferences for user %s: %s", user_id, e)
         # Trigger memory extraction for any sessions with pending messages
         try:
             await trigger_disconnect_extraction(user_id)

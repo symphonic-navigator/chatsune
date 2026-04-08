@@ -40,6 +40,13 @@ const SUBTABS: Subtab[] = [
 ]
 
 const POLL_INTERVAL_MS = 2000
+// Trailing-edge debounce window for event-driven refetches. A burst of
+// debug/job events (e.g. a stuck job retry-looping, or heavy embedding
+// traffic) would otherwise trigger dozens of setState calls per second,
+// re-rendering the tab constantly. Collapsing bursts into one fetch per
+// this window keeps the UI usable without losing fidelity in practice —
+// the 2s poll fallback ensures we still catch the final state.
+const EVENT_DEBOUNCE_MS = 750
 
 // Topics that should immediately trigger a re-fetch — anything that
 // changes job state or inference state.
@@ -80,24 +87,47 @@ export function DebugTab() {
     return promise
   }, [])
 
-  // Initial fetch + 2s polling fallback for non-event-driven state changes.
-  useEffect(() => {
-    fetchSnapshot()
-    const interval = setInterval(fetchSnapshot, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+  // Trailing-edge debounce: multiple calls within EVENT_DEBOUNCE_MS
+  // collapse into a single fetch fired at the end of the window.
+  const debounceTimerRef = useRef<number | null>(null)
+  const scheduleFetch = useCallback(() => {
+    if (debounceTimerRef.current !== null) return
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null
+      fetchSnapshot()
+    }, EVENT_DEBOUNCE_MS)
   }, [fetchSnapshot])
 
-  // Live event subscriptions: re-fetch on any debug.* or job.* event.
+  // Initial fetch + 2s polling fallback for non-event-driven state changes.
+  // Polling pauses when the document is hidden — no point hammering the
+  // backend when nobody is looking, and it also means the tab does not
+  // accumulate stale updates in the background.
+  useEffect(() => {
+    fetchSnapshot()
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") fetchSnapshot()
+    }, POLL_INTERVAL_MS)
+    return () => {
+      window.clearInterval(interval)
+      if (debounceTimerRef.current !== null) {
+        window.clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
+      }
+    }
+  }, [fetchSnapshot])
+
+  // Live event subscriptions: schedule a debounced re-fetch on any
+  // debug.* or job.* event. Bursts collapse into one fetch per window.
   useEffect(() => {
     const unsubs = TRIGGER_TOPICS.map((topic) =>
       eventBus.on(topic, () => {
-        fetchSnapshot()
+        scheduleFetch()
       }),
     )
     return () => {
       for (const u of unsubs) u()
     }
-  }, [fetchSnapshot])
+  }, [scheduleFetch])
 
   if (loading && !snapshot) {
     return (

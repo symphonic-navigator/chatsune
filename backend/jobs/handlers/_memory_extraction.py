@@ -7,6 +7,11 @@ creates journal entries in the memory module.
 import logging
 from datetime import UTC, datetime
 
+from backend.jobs._dedup import (
+    memory_extraction_slot_key,
+    release_inflight_slot,
+)
+from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -65,6 +70,8 @@ async def handle_memory_extraction(
         correlation_id=job.correlation_id,
     )
 
+    inflight_key = memory_extraction_slot_key(job.user_id, persona_id)
+    success = False
     try:
         # Filter technical content from messages.
         filtered = [strip_technical_content(m) for m in messages_raw]
@@ -87,6 +94,7 @@ async def handle_memory_extraction(
                 target_user_ids=[job.user_id],
                 correlation_id=job.correlation_id,
             )
+            success = True
             return
 
         db = get_db()
@@ -142,6 +150,15 @@ async def handle_memory_extraction(
                         "Extraction stream error for persona %s: %s — %s",
                         persona_id, err.error_code, err.message,
                     )
+                    # A genuinely unreachable provider (local Ollama daemon
+                    # not running → TCP connect refused) cannot be fixed by
+                    # retrying — surface that to the consumer so it skips
+                    # the retry chain instead of tying up a job slot for
+                    # the full max_retries * (exec + delay) window.
+                    if err.error_code == "provider_unavailable":
+                        raise UnrecoverableJobError(
+                            f"Provider unavailable: {err.message}"
+                        )
                     raise RuntimeError(
                         f"Memory extraction failed: {err.error_code} — {err.message}"
                     )
@@ -281,6 +298,7 @@ async def handle_memory_extraction(
             "Extraction completed: persona=%s session=%s entries_created=%d discarded=%d source_msgs=%d",
             persona_id, session_id, entries_created, discarded, len(messages_raw),
         )
+        success = True
 
     except Exception as exc:
         _log.error(
@@ -300,3 +318,10 @@ async def handle_memory_extraction(
             correlation_id=job.correlation_id,
         )
         raise
+    finally:
+        # Release the in-flight slot only on clean success. On exception
+        # we deliberately leave the slot held: its TTL then acts as a
+        # cooldown so a dead provider cannot flood the queue with retries
+        # and fresh submissions from the idle timer.
+        if success:
+            await release_inflight_slot(redis, inflight_key)

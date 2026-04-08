@@ -148,6 +148,20 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
 
+  // Heartbeat: while an inference is in flight, ping the backend every 5s so
+  // the server-side watchdog knows the user is still watching. If the tab is
+  // closed, reloaded, or the socket drops, pings stop and the watchdog will
+  // auto-cancel the inference after ~12s.
+  useEffect(() => {
+    if (!correlationId) return
+    const handle = window.setInterval(() => {
+      sendMessage({ type: 'chat.inference.alive', correlation_id: correlationId })
+    }, 5000)
+    return () => {
+      window.clearInterval(handle)
+    }
+  }, [correlationId])
+
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
