@@ -62,6 +62,13 @@ _last_heartbeat: dict[str, float] = {}          # correlation_id -> monotonic ti
 _cancel_user_ids: dict[str, str] = {}           # correlation_id -> user_id
 _heartbeat_watchdogs: dict[str, asyncio.Task] = {}
 
+# Guards concurrent mutation of the four dicts above. See BACKGROUND-JOBS-DEBT.md
+# C-002: record_heartbeat, the watchdog loop, cancel_all_for_user and the
+# run_inference finally block all mutate these dicts from different tasks,
+# causing KeyError races. Never await anything unrelated while holding this
+# lock — take a snapshot inside and do I/O outside.
+_heartbeat_lock = asyncio.Lock()
+
 # In-flight idle extraction timers keyed by "user_id:persona_id"
 _idle_extraction_tasks: dict[str, asyncio.Task] = {}
 
@@ -81,7 +88,8 @@ async def _heartbeat_watchdog(correlation_id: str) -> None:
     try:
         while True:
             await asyncio.sleep(_HEARTBEAT_CHECK_INTERVAL_SECONDS)
-            last = _last_heartbeat.get(correlation_id)
+            async with _heartbeat_lock:
+                last = _last_heartbeat.get(correlation_id)
             if last is None:
                 return
             if time.monotonic() - last > _HEARTBEAT_TIMEOUT_SECONDS:
@@ -89,7 +97,8 @@ async def _heartbeat_watchdog(correlation_id: str) -> None:
                     "Heartbeat timeout for inference %s - cancelling",
                     correlation_id,
                 )
-                event = _cancel_events.get(correlation_id)
+                async with _heartbeat_lock:
+                    event = _cancel_events.get(correlation_id)
                 if event is not None:
                     event.set()
                 return
@@ -97,7 +106,7 @@ async def _heartbeat_watchdog(correlation_id: str) -> None:
         pass
 
 
-def record_heartbeat(user_id: str, correlation_id: str) -> bool:
+async def record_heartbeat(user_id: str, correlation_id: str) -> bool:
     """Refresh the heartbeat timestamp for an active inference.
 
     Also verifies that the caller owns the inference. Without the user-id
@@ -105,22 +114,27 @@ def record_heartbeat(user_id: str, correlation_id: str) -> bool:
     least spoof heartbeats) by guessing correlation ids, so we bind each id
     to its originating user at inference start.
     """
-    owner = _cancel_user_ids.get(correlation_id)
-    if owner is None or owner != user_id:
-        return False
-    _last_heartbeat[correlation_id] = time.monotonic()
-    return True
+    async with _heartbeat_lock:
+        owner = _cancel_user_ids.get(correlation_id)
+        if owner is None or owner != user_id:
+            return False
+        _last_heartbeat[correlation_id] = time.monotonic()
+        return True
 
 
-def cancel_all_for_user(user_id: str) -> int:
+async def cancel_all_for_user(user_id: str) -> int:
     """Cancel every in-flight inference belonging to the given user.
 
     Used on WebSocket disconnect to avoid burning tokens on a response the
     user will never see. Returns the number of inferences signalled.
     """
-    targets = [cid for cid, uid in _cancel_user_ids.items() if uid == user_id]
-    for cid in targets:
-        event = _cancel_events.get(cid)
+    # Snapshot targets + their events under the lock, then fire event.set()
+    # outside the lock — Event.set() is synchronous but we still avoid holding
+    # the lock across any unnecessary work.
+    async with _heartbeat_lock:
+        targets = [cid for cid, uid in _cancel_user_ids.items() if uid == user_id]
+        events = [_cancel_events.get(cid) for cid in targets]
+    for event in events:
         if event is not None:
             event.set()
     return len(targets)
@@ -410,12 +424,12 @@ async def run_inference(
     # description events from inside the attachment loop.
     correlation_id = str(uuid4())
     cancel_event = asyncio.Event()
-    _cancel_events[correlation_id] = cancel_event
-    _last_heartbeat[correlation_id] = time.monotonic()
-    _cancel_user_ids[correlation_id] = user_id
-    _heartbeat_watchdogs[correlation_id] = asyncio.create_task(
-        _heartbeat_watchdog(correlation_id)
-    )
+    watchdog_task = asyncio.create_task(_heartbeat_watchdog(correlation_id))
+    async with _heartbeat_lock:
+        _cancel_events[correlation_id] = cancel_event
+        _last_heartbeat[correlation_id] = time.monotonic()
+        _cancel_user_ids[correlation_id] = user_id
+        _heartbeat_watchdogs[correlation_id] = watchdog_task
 
     manager = get_manager()
     event_bus = get_event_bus()
@@ -575,10 +589,11 @@ async def run_inference(
         # Always reset to idle — covers success (idempotent), cancel, error,
         # and disconnect scenarios where the stream ends without exception.
         await repo.update_session_state(session_id, "idle")
-        _cancel_events.pop(correlation_id, None)
-        _last_heartbeat.pop(correlation_id, None)
-        _cancel_user_ids.pop(correlation_id, None)
-        watchdog = _heartbeat_watchdogs.pop(correlation_id, None)
+        async with _heartbeat_lock:
+            _cancel_events.pop(correlation_id, None)
+            _last_heartbeat.pop(correlation_id, None)
+            _cancel_user_ids.pop(correlation_id, None)
+            watchdog = _heartbeat_watchdogs.pop(correlation_id, None)
         if watchdog is not None and not watchdog.done():
             watchdog.cancel()
 

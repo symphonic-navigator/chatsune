@@ -111,7 +111,7 @@ async def websocket_endpoint(
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
             elif msg_type == "chat.inference.alive":
-                handle_chat_inference_alive(user_id, data)
+                await handle_chat_inference_alive(user_id, data)
             elif msg_type == "chat.edit":
                 task = asyncio.create_task(handle_chat_edit(user_id, data))
                 _background_tasks.add(task)
@@ -139,7 +139,7 @@ async def websocket_endpoint(
         # Cancel any in-flight inferences for this user — they will never be
         # observed now that the socket is gone, so the tokens would be wasted.
         try:
-            cancelled = cancel_all_for_user(user_id)
+            cancelled = await cancel_all_for_user(user_id)
             if cancelled > 0:
                 _log.info(
                     "Cancelled %d in-flight inferences due to WS disconnect for user %s",

@@ -75,7 +75,7 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
         # after the cancel event fires; the new run_inference call below
         # then acquires it. Partially streamed content from the old run
         # is persisted by the runner (see _inference.py).
-        cancelled = cancel_all_for_user(user_id)
+        cancelled = await cancel_all_for_user(user_id)
         if cancelled:
             _log.info(
                 "chat.send cancelled %d in-flight inference(s) for user=%s",
@@ -181,7 +181,7 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
             return
 
         # Per-user single-stream policy — see handle_chat_send.
-        cancelled = cancel_all_for_user(user_id)
+        cancelled = await cancel_all_for_user(user_id)
         if cancelled:
             _log.info(
                 "chat.edit cancelled %d in-flight inference(s) for user=%s",
@@ -274,7 +274,7 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
             return
 
         # Per-user single-stream policy — see handle_chat_send.
-        cancelled = cancel_all_for_user(user_id)
+        cancelled = await cancel_all_for_user(user_id)
         if cancelled:
             _log.info(
                 "chat.regenerate cancelled %d in-flight inference(s) for user=%s",
@@ -319,12 +319,12 @@ def handle_chat_cancel(user_id: str, data: dict) -> None:
         _cancel_events[correlation_id].set()
 
 
-def handle_chat_inference_alive(user_id: str, data: dict) -> None:
+async def handle_chat_inference_alive(user_id: str, data: dict) -> None:
     """Handle a chat.inference.alive heartbeat from the frontend."""
     correlation_id = data.get("correlation_id")
     if not correlation_id:
         return
-    if not record_heartbeat(user_id, correlation_id):
+    if not await record_heartbeat(user_id, correlation_id):
         _log.debug(
             "Ignored heartbeat for unknown or unauthorised correlation_id=%s user=%s",
             correlation_id, user_id,
