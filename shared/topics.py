@@ -34,6 +34,7 @@ class Topics:
     CHAT_INFERENCE_ALIVE = "chat.inference.alive"
     CHAT_VISION_DESCRIPTION = "chat.vision.description"
     # Chat edit/regenerate
+    CHAT_MESSAGE_CREATED = "chat.message.created"
     CHAT_MESSAGES_TRUNCATED = "chat.messages.truncated"
     CHAT_MESSAGE_UPDATED = "chat.message.updated"
     CHAT_MESSAGE_DELETED = "chat.message.deleted"

@@ -6,6 +6,16 @@ from pydantic import BaseModel
 from shared.dtos.storage import AttachmentRefDto
 
 
+class ChatSendMessageDto(BaseModel):
+    session_id: str
+    content: list[dict]
+    attachment_ids: list[str] | None = None
+    # Frontend-generated optimistic ID ("optimistic-<uuid>"). Echoed back
+    # on the message.created event so the frontend can atomically swap
+    # the optimistic store entry for the real MongoDB ID.
+    client_message_id: str | None = None
+
+
 class ChatSessionDto(BaseModel):
     id: str
     user_id: str
