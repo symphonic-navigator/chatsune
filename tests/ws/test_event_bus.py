@@ -42,13 +42,14 @@ async def test_publish_calls_xadd_with_stream_key():
     assert redis.xadd.call_args[0][0] == "events:global"
 
 
-async def test_publish_calls_xtrim_for_24h_retention():
+async def test_publish_does_not_inline_trim():
+    # Stream trimming runs in a periodic background task (start_periodic_trim),
+    # NOT inline per publish. This test pins that contract so we do not
+    # accidentally regress into per-call xtrim pressure on Redis.
     redis = make_redis()
     bus = EventBus(redis=redis, manager=make_manager())
     await bus.publish(Topics.USER_CREATED, make_event())
-    redis.xtrim.assert_awaited_once()
-    call_kwargs = redis.xtrim.call_args
-    assert call_kwargs[0][0] == "events:global"
+    redis.xtrim.assert_not_awaited()
 
 
 async def test_publish_sets_sequence_from_stream_id():
@@ -152,4 +153,3 @@ async def test_publish_uses_custom_scope():
     bus = EventBus(redis=redis, manager=make_manager())
     await bus.publish(Topics.USER_CREATED, make_event(), scope="custom")
     assert redis.xadd.call_args[0][0] == "events:custom"
-    assert redis.xtrim.call_args[0][0] == "events:custom"
