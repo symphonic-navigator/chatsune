@@ -208,9 +208,12 @@ jobs:
           echo "| Image | Tags |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|------|" >> $GITHUB_STEP_SUMMARY
 
+          # Note: `tr '\n' '<br>'` does NOT work — tr is char-to-char, so it
+          # would only replace \n with `<`. Use bash parameter expansion.
           FRONTEND_TAGS="${{ needs.build-frontend.outputs.tags }}"
           if [ -n "$FRONTEND_TAGS" ]; then
-            TAGS_FORMATTED=$(echo "$FRONTEND_TAGS" | tr '\n' '<br>' | sed 's/<br>$//')
+            TAGS_FORMATTED="${FRONTEND_TAGS//$'\n'/<br>}"
+            TAGS_FORMATTED="${TAGS_FORMATTED%<br>}"
             echo "| \`frontend\` | $TAGS_FORMATTED |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| \`frontend\` | _(not pushed — PR or failed)_ |" >> $GITHUB_STEP_SUMMARY
@@ -218,7 +221,8 @@ jobs:
 
           BACKEND_TAGS="${{ needs.build-backend.outputs.tags }}"
           if [ -n "$BACKEND_TAGS" ]; then
-            TAGS_FORMATTED=$(echo "$BACKEND_TAGS" | tr '\n' '<br>' | sed 's/<br>$//')
+            TAGS_FORMATTED="${BACKEND_TAGS//$'\n'/<br>}"
+            TAGS_FORMATTED="${TAGS_FORMATTED%<br>}"
             echo "| \`backend\` | $TAGS_FORMATTED |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| \`backend\` | _(not pushed — PR or failed)_ |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,136 @@
+# docker-compose.prod.yml — production stack for Chatsune on a single VPS.
+#
+# Assumes Traefik is already running on the host and exposes an external
+# Docker network named `traefik` (rename the network below if yours differs).
+# See HOWTO-DEPLOY.md for the full walkthrough.
+#
+# Usage:
+#   cp .env.prod.example .env
+#   # fill in secrets
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+
+name: chatsune
+
+services:
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - internal
+    healthcheck:
+      # Self-initialising single-node replica set: the first health probe
+      # initiates rs0 if it is not already up, every subsequent probe just
+      # reports status. RS is a hard requirement for vector search and
+      # multi-document transactions.
+      test: >
+        mongosh --quiet --eval "
+          try {
+            rs.status().ok
+          } catch(e) {
+            rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]});
+            1;
+          }
+        "
+      interval: 10s
+      timeout: 10s
+      retries: 6
+      start_period: 20s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    image: ghcr.io/symphonic-navigator/chatsune-backend:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Infrastructure plumbing — these win over anything in .env (compose
+      # `environment` takes precedence over `env_file`). Keep secrets in .env,
+      # keep hard-coded container wiring here.
+      MONGODB_URI: "mongodb://mongodb:27017/chatsune?replicaSet=rs0&directConnection=true"
+      REDIS_URI: "redis://redis:6379/0"
+      UPLOAD_ROOT: /data/uploads
+      AVATAR_ROOT: /data/avatars
+      # CORS origin must match the public URL the frontend is served from.
+      # For a same-origin deploy (Option A in HOWTO-DEPLOY.md, recommended)
+      # this is the only origin needed.
+      CORS_ALLOWED_ORIGINS: '["https://${CHATSUNE_HOST}"]'
+    volumes:
+      - uploads_data:/data/uploads
+      - avatars_data:/data/avatars
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # /api/* and /ws* on the main host go to the backend. Priority > frontend
+      # so this matches first for those prefixes.
+      - "traefik.http.routers.chatsune-backend.rule=Host(`${CHATSUNE_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/ws`))"
+      - "traefik.http.routers.chatsune-backend.entrypoints=websecure"
+      - "traefik.http.routers.chatsune-backend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatsune-backend.priority=100"
+      - "traefik.http.services.chatsune-backend.loadbalancer.server.port=8000"
+
+  frontend:
+    image: ghcr.io/symphonic-navigator/chatsune-frontend:latest
+    restart: unless-stopped
+    environment:
+      # Same-origin deploy: leave empty so the bundle uses window.location
+      # for the API base and derives the WebSocket URL automatically. Only
+      # set these when the backend lives on a different host (Option B).
+      #
+      # CHANGING THESE at runtime requires `docker compose up -d
+      # --force-recreate frontend` — the entrypoint substitutes placeholders
+      # in-place and does not re-run on plain restarts.
+      VITE_API_URL: ""
+      VITE_WS_URL: ""
+    depends_on:
+      - backend
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.chatsune-frontend.rule=Host(`${CHATSUNE_HOST}`)"
+      - "traefik.http.routers.chatsune-frontend.entrypoints=websecure"
+      - "traefik.http.routers.chatsune-frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.chatsune-frontend.priority=1"
+      - "traefik.http.services.chatsune-frontend.loadbalancer.server.port=80"
+
+volumes:
+  mongodb_data:
+  redis_data:
+  uploads_data:
+  avatars_data:
+
+networks:
+  # Private network for backend ↔ mongo ↔ redis. Nothing here is exposed to
+  # the host or to Traefik.
+  internal:
+    driver: bridge
+  # Shared network with Traefik. Must already exist on the host — create it
+  # once with `docker network create traefik` if you don't have it.
+  traefik:
+    external: true
+    name: traefik
