@@ -63,7 +63,6 @@ export function useChatStream(sessionId: string | null) {
         }
         case Topics.CHAT_STREAM_ENDED: {
           if (p.session_id !== sessionId) return
-          const status = p.status as string
           const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
           const fillPercentage = (p.context_fill_percentage as number) ?? 0
 
@@ -123,6 +122,32 @@ export function useChatStream(sessionId: string | null) {
             userMessage: p.user_message as string,
           })
           getStore().setWaitingForResponse(false)
+          break
+        }
+        case Topics.CHAT_MESSAGE_CREATED: {
+          if (p.session_id !== sessionId) return
+          const clientId = p.client_message_id as string | undefined
+          if (clientId) {
+            const idx = getStore().messages.findIndex((m) => m.id === clientId)
+            if (idx !== -1) {
+              getStore().swapMessageId(clientId, p.message_id as string)
+              break
+            }
+          }
+          // Fallback: append if we have no matching optimistic entry
+          // (e.g. another tab, or a server-initiated user message).
+          getStore().appendMessage({
+            id: p.message_id as string,
+            session_id: sessionId,
+            role: p.role as 'user' | 'assistant',
+            content: p.content as string,
+            thinking: null,
+            token_count: (p.token_count as number) ?? 0,
+            attachments: null,
+            web_search_context: null,
+            knowledge_context: null,
+            created_at: new Date().toISOString(),
+          })
           break
         }
         case Topics.CHAT_MESSAGES_TRUNCATED: {

@@ -58,6 +58,7 @@ interface ChatState {
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
   updateMessage: (messageId: string, content: string, tokenCount: number) => void
+  swapMessageId: (clientId: string, realId: string) => void
   deleteMessage: (messageId: string) => void
   setError: (error: ChatError) => void
   clearError: () => void
@@ -149,6 +150,10 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       messages: s.messages.map((m) =>
         m.id === messageId ? { ...m, content, token_count: tokenCount } : m,
       ),
+    })),
+  swapMessageId: (clientId, realId) =>
+    set((s) => ({
+      messages: s.messages.map((m) => m.id === clientId ? { ...m, id: realId } : m),
     })),
   deleteMessage: (messageId) =>
     set((s) => ({ messages: s.messages.filter((m) => m.id !== messageId) })),

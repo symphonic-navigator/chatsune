@@ -389,8 +389,9 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleSend = useCallback(
     (text: string) => {
       if (!effectiveSessionId) return
+      const clientMessageId = `optimistic-${crypto.randomUUID()}`
       const optimisticMsg: ChatMessageDto = {
-        id: `optimistic-${crypto.randomUUID()}`,
+        id: clientMessageId,
         session_id: effectiveSessionId,
         role: 'user',
         content: text,
@@ -418,6 +419,7 @@ export function ChatView({ persona }: ChatViewProps) {
           type: 'chat.send',
           session_id: effectiveSessionId,
           content: [{ type: 'text', text }],
+          client_message_id: clientMessageId,
           ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
         })
         attachments.clearAttachments()
@@ -438,6 +440,10 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
       if (!effectiveSessionId) return
+      if (messageId.startsWith('optimistic-')) {
+        console.warn('Refusing to edit optimistic message — ID not yet swapped by server')
+        return
+      }
       if (isIncognito) {
         const store = useChatStore.getState()
         store.truncateAfter(messageId)
