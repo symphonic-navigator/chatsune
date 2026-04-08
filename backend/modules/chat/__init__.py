@@ -104,14 +104,18 @@ async def get_latest_user_messages_for_persona(
     return latest["_id"], user_messages[-limit:]
 
 
-async def mark_messages_extracted(message_ids: list[str]) -> int:
+async def mark_messages_extracted(
+    message_ids: list[str], *, session=None,
+) -> int:
     """Mark chat messages as having been processed by memory extraction.
 
     Public-API wrapper around the chat repository so other modules (memory
-    extraction job handler) do not need to import chat internals.
+    extraction job handler) do not need to import chat internals. Accepts an
+    optional MongoDB ``session`` so the caller can wrap the update in a
+    transaction alongside other writes.
     """
     repo = ChatRepository(get_db())
-    return await repo.mark_messages_extracted(message_ids)
+    return await repo.mark_messages_extracted(message_ids, session=session)
 
 
 async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:

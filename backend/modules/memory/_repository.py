@@ -32,6 +32,7 @@ class MemoryRepository:
         category: str | None,
         source_session_id: str,
         is_correction: bool = False,
+        session=None,
     ) -> str:
         now = datetime.now(UTC)
         doc = {
@@ -48,7 +49,7 @@ class MemoryRepository:
             "committed_at": None,
             "auto_committed": False,
         }
-        await self._entries.insert_one(doc)
+        await self._entries.insert_one(doc, session=session)
         return doc["_id"]
 
     async def list_journal_entries(

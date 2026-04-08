@@ -352,13 +352,16 @@ class ChatRepository:
         )
         return await cursor.to_list(length=limit)
 
-    async def mark_messages_extracted(self, message_ids: list[str]) -> int:
+    async def mark_messages_extracted(
+        self, message_ids: list[str], *, session=None,
+    ) -> int:
         """Set extracted_at on the given messages. Returns count of updated docs."""
         if not message_ids:
             return 0
         result = await self._messages.update_many(
             {"_id": {"$in": message_ids}},
             {"$set": {"extracted_at": datetime.now(UTC)}},
+            session=session,
         )
         return result.modified_count
 

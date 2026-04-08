@@ -223,39 +223,67 @@ async def handle_memory_extraction(
             len(deduped_entries), len(parsed_entries), persona_id,
         )
 
-        # Create journal entries in DB.
-        entries_created = 0
-        for entry_data in deduped_entries:
-            entry_id = await repo.create_journal_entry(
-                user_id=job.user_id,
-                persona_id=persona_id,
-                content=entry_data["content"],
-                category=entry_data["category"],
-                source_session_id=session_id,
-                is_correction=entry_data["is_correction"],
-            )
+        # Create journal entries and mark the source messages as extracted in
+        # a single MongoDB transaction so the two writes are atomic: either
+        # both land or neither does. Events are collected in-memory and only
+        # published after the transaction commits — a failed commit must not
+        # leak entry-created events to the frontend.
+        from backend.database import get_client
+        mongo_client = get_client()
 
-            now = datetime.now(UTC)
-            await event_bus.publish(
-                Topics.MEMORY_ENTRY_CREATED,
-                MemoryEntryCreatedEvent(
-                    entry=JournalEntryDto(
-                        id=entry_id,
+        pending_events: list[tuple[str, MemoryEntryCreatedEvent]] = []
+        async with await mongo_client.start_session() as mongo_session:
+            async with mongo_session.start_transaction():
+                for entry_data in deduped_entries:
+                    entry_id = await repo.create_journal_entry(
+                        user_id=job.user_id,
                         persona_id=persona_id,
                         content=entry_data["content"],
                         category=entry_data["category"],
-                        state="uncommitted",
+                        source_session_id=session_id,
                         is_correction=entry_data["is_correction"],
-                        created_at=now,
-                    ),
-                    correlation_id=job.correlation_id,
-                    timestamp=now,
-                ),
+                        session=mongo_session,
+                    )
+                    now = datetime.now(UTC)
+                    pending_events.append((
+                        entry_id,
+                        MemoryEntryCreatedEvent(
+                            entry=JournalEntryDto(
+                                id=entry_id,
+                                persona_id=persona_id,
+                                content=entry_data["content"],
+                                category=entry_data["category"],
+                                state="uncommitted",
+                                is_correction=entry_data["is_correction"],
+                                created_at=now,
+                            ),
+                            correlation_id=job.correlation_id,
+                            timestamp=now,
+                        ),
+                    ))
+                if message_ids:
+                    from backend.modules.chat import mark_messages_extracted
+                    await mark_messages_extracted(
+                        message_ids, session=mongo_session,
+                    )
+
+        # Transaction committed — now it is safe to publish and announce.
+        entries_created = 0
+        for _entry_id, ev in pending_events:
+            await event_bus.publish(
+                Topics.MEMORY_ENTRY_CREATED,
+                ev,
                 scope=f"persona:{persona_id}",
                 target_user_ids=[job.user_id],
                 correlation_id=job.correlation_id,
             )
             entries_created += 1
+
+        if message_ids:
+            _log.info(
+                "Marked %d messages as extracted: persona=%s session=%s ids=%s",
+                len(message_ids), persona_id, session_id, message_ids,
+            )
 
         # Enforce 50-entry cap on uncommitted entries.
         discarded = await repo.discard_oldest_uncommitted(
@@ -284,14 +312,8 @@ async def handle_memory_extraction(
                 correlation_id=job.correlation_id,
             )
 
-        # Mark source messages as extracted so they are not re-processed.
-        if message_ids:
-            from backend.modules.chat import mark_messages_extracted
-            marked = await mark_messages_extracted(message_ids)
-            _log.info(
-                "Marked %d/%d messages as extracted: persona=%s session=%s ids=%s",
-                marked, len(message_ids), persona_id, session_id, message_ids,
-            )
+        # Source messages were marked as extracted inside the transaction
+        # above, so nothing further is needed here.
 
         # Update Redis tracking state.
         tracking_key = f"memory:extraction:{job.user_id}:{persona_id}"
