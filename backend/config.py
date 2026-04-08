@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     cors_allowed_origins: list[str] = ["http://localhost:5173"]
     cookie_domain: str | None = None
 
+    # Periodic fallback memory extraction interval. 15 minutes in production,
+    # override via PERIODIC_EXTRACTION_INTERVAL_SECONDS for local testing.
+    periodic_extraction_interval_seconds: int = 900
+
     model_config = {"env_file": str(_PROJECT_ROOT / ".env"), "extra": "ignore"}
 
     @field_validator("encryption_key")

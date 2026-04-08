@@ -269,10 +269,9 @@ async def lifespan(app: FastAPI):
     _extraction_log = logging.getLogger("chatsune.extraction")
 
     # Periodic fallback memory extraction (default every 15 minutes; override
-    # via PERIODIC_EXTRACTION_INTERVAL_SECONDS for local testing).
-    _periodic_extraction_interval = int(
-        os.environ.get("PERIODIC_EXTRACTION_INTERVAL_SECONDS", "900")
-    )
+    # via PERIODIC_EXTRACTION_INTERVAL_SECONDS in .env for local testing).
+    from backend.config import settings as _cfg_settings
+    _periodic_extraction_interval = _cfg_settings.periodic_extraction_interval_seconds
 
     async def _periodic_extraction_loop() -> None:
         _lifecycle_log.info(
