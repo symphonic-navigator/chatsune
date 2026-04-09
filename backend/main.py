@@ -50,7 +50,7 @@ from backend.modules.debug import router as debug_router
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
-from backend.jobs import consumer_loop
+from backend.jobs import consumer_loop, jobs_http_router
 
 
 def _warn_if_ollama_local_under_multiworker() -> None:
@@ -556,6 +556,7 @@ app.include_router(artefact_router)
 app.include_router(artefact_global_router)
 app.include_router(project_router)
 app.include_router(debug_router)
+app.include_router(jobs_http_router)
 app.include_router(ws_router)
 
 

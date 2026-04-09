@@ -1,8 +1,18 @@
 from datetime import datetime, timezone
 
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
 from shared.dtos.jobs import JobLogEntryDto
+
+
+async def test_get_job_log_requires_auth() -> None:
+    from backend.main import app
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/jobs/log")
+    assert response.status_code in (401, 403)
 
 
 @pytest_asyncio.fixture
