@@ -12,6 +12,7 @@ raises VisionFallbackError.
 
 import base64
 import logging
+from contextlib import nullcontext
 
 from backend.modules.llm import (
     ADAPTER_REGISTRY,
@@ -118,16 +119,22 @@ async def describe_image(
             # this, a vision fallback against ollama_local runs concurrently
             # with any in-flight chat/job inference and the engine drops one
             # of them.
+            #
+            # The lock is nested INSIDE track_inference so that time spent
+            # waiting on the lock is not counted as inference time. We use
+            # ``async with`` (and ``nullcontext`` for the no-lock case) so
+            # that any exception or cancellation between acquire and the
+            # stream body cannot leave the lock stuck: Lock.__aexit__ only
+            # releases when __aenter__ actually acquired it.
             lock = get_inference_lock(provider_id, user_id)
+            lock_ctx = lock if lock is not None else nullcontext()
             async with track_inference(
                 user_id=user_id,
                 provider_id=provider_id,
                 model_slug=model_slug,
                 source="vision_fallback",
             ):
-                if lock is not None:
-                    await lock.acquire()
-                try:
+                async with lock_ctx:
                     async for event in adapter.stream_completion(api_key, request):
                         if isinstance(event, ContentDelta):
                             chunks.append(event.delta)
@@ -135,9 +142,6 @@ async def describe_image(
                             break
                         elif isinstance(event, StreamError):
                             raise VisionFallbackError(f"adapter stream error: {event.message}")
-                finally:
-                    if lock is not None and lock.locked():
-                        lock.release()
 
             text = "".join(chunks).strip()
             if not text:
