@@ -8,7 +8,7 @@ the call, not authoritative state.
 
 from __future__ import annotations
 
-import logging
+import structlog
 from datetime import datetime, timezone
 
 from redis.asyncio import Redis
@@ -17,7 +17,7 @@ from backend.jobs._lock import _job_locks, _user_locks
 from backend.jobs._models import JobEntry
 from backend.jobs._retry import get_retry
 
-_log = logging.getLogger("chatsune.debug.jobs_inspect")
+_log = structlog.get_logger("chatsune.debug.jobs_inspect")
 
 _STREAM = "jobs:pending"
 _GROUP = "workers"

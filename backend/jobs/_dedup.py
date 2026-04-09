@@ -15,7 +15,10 @@ acts as a cooldown before the next extraction is allowed, which is the
 desired behaviour in the queue-flood scenario.
 """
 
+import structlog
 from redis.asyncio import Redis
+
+_log = structlog.get_logger("chatsune.jobs.dedup")
 
 
 async def try_acquire_inflight_slot(
@@ -27,7 +30,12 @@ async def try_acquire_inflight_slot(
     False if another in-flight submission already holds it.
     """
     result = await redis.set(key, "1", nx=True, ex=ttl_seconds)
-    return result is True
+    if result is True:
+        _log.debug("job.dedup.key_written", redis_key=key, ttl_seconds=ttl_seconds)
+        _log.debug("job.dedup.miss", dedup_key=key)
+        return True
+    _log.info("job.dedup.hit", dedup_key=key)
+    return False
 
 
 async def release_inflight_slot(redis: Redis, key: str) -> None:
@@ -37,6 +45,7 @@ async def release_inflight_slot(redis: Redis, key: str) -> None:
     the slot was never acquired).
     """
     await redis.delete(key)
+    _log.debug("job.dedup.key_deleted", redis_key=key)
 
 
 def memory_extraction_slot_key(user_id: str, persona_id: str) -> str:

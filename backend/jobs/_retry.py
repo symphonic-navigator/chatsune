@@ -1,6 +1,9 @@
 from datetime import datetime
 
+import structlog
 from redis.asyncio import Redis
+
+_log = structlog.get_logger("chatsune.jobs.retry")
 
 _RETRY_TTL = 7200  # 2 hours
 
@@ -13,7 +16,9 @@ def compute_backoff(attempt: int, base: int = 15, cap: int = 300) -> int:
     """
     if attempt < 1:
         return base
-    return min(cap, base * (2 ** (attempt - 1)))
+    backoff = min(cap, base * (2 ** (attempt - 1)))
+    _log.info("job.retry.computed", attempt=attempt, base=base, cap=cap, backoff_seconds=backoff)
+    return backoff
 
 
 async def set_retry(

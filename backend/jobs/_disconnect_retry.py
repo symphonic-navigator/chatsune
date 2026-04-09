@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
+
+import structlog
 
 from backend.jobs._models import JobType
 from backend.jobs._submit import submit
 
-_log = logging.getLogger("chatsune.jobs.disconnect_retry")
+_log = structlog.get_logger("chatsune.jobs.disconnect_retry")
 
 BUFFER_KEY_PREFIX = "jobs:disconnect_retry:"
 DEAD_KEY_PREFIX = "jobs:disconnect_retry_dead:"
@@ -69,7 +70,8 @@ async def drain_disconnect_retry_buffer(redis) -> None:
                 submit_kwargs = json.loads(member)
             except Exception:
                 _log.error(
-                    "drain_disconnect_retry: undecodable member on %s, removing", key,
+                    "job.disconnect_retry.loop_error", redis_key=key,
+                    detail="undecodable member, removing",
                 )
                 await redis.zrem(key, member)
                 continue
@@ -77,37 +79,39 @@ async def drain_disconnect_retry_buffer(redis) -> None:
             try:
                 await _replay_submit(submit_kwargs)
                 await redis.zrem(key, member)
-                _log.info(
-                    "drain_disconnect_retry: replayed buffered submit user=%s", user_id,
-                )
+                _log.info("job.disconnect_retry.requeued", user_id=user_id)
             except Exception:
                 new_score = await redis.zincrby(key, 1, member)
                 if new_score >= MAX_ATTEMPTS:
                     await redis.zrem(key, member)
                     await redis.rpush(dead_key(user_id), member)
                     _log.error(
-                        "drain_disconnect_retry: dead-lettered after %d attempts user=%s",
-                        int(new_score), user_id, exc_info=True,
+                        "job.disconnect_retry.loop_error",
+                        user_id=user_id, attempts=int(new_score),
+                        detail="dead-lettered after max attempts",
+                        exc_info=True,
                     )
                 else:
                     _log.warning(
-                        "drain_disconnect_retry: replay failed user=%s attempt=%d",
-                        user_id, int(new_score), exc_info=True,
+                        "job.disconnect_retry.loop_error",
+                        user_id=user_id, attempt=int(new_score),
+                        detail="replay failed, will retry",
+                        exc_info=True,
                     )
 
 
 async def disconnect_retry_recovery_loop(redis) -> None:
     """Forever loop that calls :func:`drain_disconnect_retry_buffer` every minute."""
-    _log.info("starting disconnect_retry_recovery_loop")
+    _log.info("job.disconnect_retry.loop_started")
     try:
         while True:
             try:
                 await drain_disconnect_retry_buffer(redis)
             except Exception:
-                _log.exception("disconnect_retry_recovery_loop: drain pass failed")
+                _log.exception("job.disconnect_retry.loop_error")
             await asyncio.sleep(RECOVERY_INTERVAL_SECONDS)
     except asyncio.CancelledError:
-        _log.info("cancelled disconnect_retry_recovery_loop")
+        _log.info("job.disconnect_retry.loop_stopped", reason="cancelled")
         raise
     finally:
-        _log.info("stopped disconnect_retry_recovery_loop")
+        _log.info("job.disconnect_retry.loop_stopped", reason="finalised")
