@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     # override via PERIODIC_EXTRACTION_INTERVAL_SECONDS for local testing.
     periodic_extraction_interval_seconds: int = 900
 
+    # Logging
+    log_level: str = "INFO"
+    log_console: bool = True
+    log_console_format: str = "pretty"  # "pretty" or "json"
+    log_file: bool = True
+    log_file_path: str = "backend/logs/chatsune.log"
+    log_file_backup_count: int = 14
+    log_level_uvicorn_access: str = "WARNING"
+    log_level_third_party: str = "WARNING"
+
     model_config = {"env_file": str(_PROJECT_ROOT / ".env"), "extra": "ignore"}
 
     @field_validator("encryption_key")
