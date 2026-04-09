@@ -8,6 +8,7 @@ import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
 import { BookmarksTab } from './BookmarksTab'
 import { ModelsTab } from './ModelsTab'
+import { JobLogTab } from './JobLogTab'
 import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import type { ProviderCredentialDto } from '../../../core/types/llm'
@@ -22,6 +23,7 @@ export type UserModalTab =
   | 'uploads'
   | 'artefacts'
   | 'models'
+  | 'job-log'
   | 'settings'
   | 'api-keys'
 
@@ -40,6 +42,7 @@ const TABS: Tab[] = [
   { id: 'uploads', label: 'Uploads' },
   { id: 'artefacts', label: 'Artefacts' },
   { id: 'models', label: 'Models' },
+  { id: 'job-log', label: 'Job-Log' },
   { id: 'settings', label: 'Settings' },
   { id: 'api-keys', label: 'API-Keys' },
 ]
@@ -177,6 +180,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'uploads' && <UploadsTab />}
           {activeTab === 'artefacts' && <ArtefactsTab onClose={onClose} />}
           {activeTab === 'models' && <ModelsTab />}
+          {activeTab === 'job-log' && <JobLogTab />}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
         </div>
