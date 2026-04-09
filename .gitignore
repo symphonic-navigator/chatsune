@@ -44,3 +44,6 @@ obsidian/.obsidian/graph.json
 data/
 data/models/
 docker-compose.worktree.yml
+
+# Runtime log files
+backend/logs/
