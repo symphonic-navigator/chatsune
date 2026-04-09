@@ -105,6 +105,26 @@ export function disconnect() {
   useEventStore.getState().setStatus("disconnected")
 }
 
+/**
+ * Check whether the WebSocket is currently healthy and reconnect if not.
+ *
+ * Called on `visibilitychange` when the tab becomes visible again. Mobile
+ * browsers (especially iOS Safari) may silently let a backgrounded WebSocket
+ * rot without firing `onclose` — so the client only finds out at the next
+ * failed ping (up to 30 s later). Forcing a fresh connect on resume closes
+ * that gap. Sequence-based catchup via `?since=<lastSequence>` covers any
+ * events missed while the tab was in the background.
+ *
+ * Cheap no-op when the socket is already OPEN.
+ */
+export function ensureConnected() {
+  if (intentionalClose) return
+  if (!useAuthStore.getState().accessToken) return
+  if (ws && ws.readyState === WebSocket.OPEN) return
+  // connect() disarms any stale socket and reconnects cleanly
+  connect()
+}
+
 export function sendPing() {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "ping" }))

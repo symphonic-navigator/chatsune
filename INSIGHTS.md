@@ -375,3 +375,116 @@ already-deleted keys are no-ops.
 The `QueryCache` is constructed on first call to `query_embed`, not at module
 startup. This avoids a startup-order coupling with `connect_db()` and lets the
 cache pick up the actual model name from the loaded `EmbeddingModel`.
+
+---
+
+## INS-014 — Responsive Design: Two Layout Stages, Not Three
+
+**Decision:** Chatsune's frontend uses exactly **two layout stages**, split at
+Tailwind's `lg:` breakpoint (1024 px): "compact" (< `lg:`, for phone and
+tablet) and "desktop" (≥ `lg:`). Tablet is intentionally treated as a larger
+phone, not as its own distinct layout.
+
+**Why two and not three:**
+Primary target devices are phones. Tablet is "mitgedacht" but not a first-class
+citizen — a third layout stage would have doubled the surface area of the
+responsive rewrite for marginal gain. Treating tablet as compact means each
+component only has two states to reason about, and visual reduction (see
+below) applies cleanly at one boundary.
+
+**Visual reduction under `lg:`:**
+Effects that contribute to the opulent "prototype style" on desktop —
+`backdrop-blur`, decorative `bg-gradient-*`, large custom `shadow-[…]` — are
+scoped with `lg:` prefixes so they only appear on desktop. Mobile and tablet
+get flat surfaces with solid fallback colours. The colour palette itself
+(persona chakras, gold accents, brand gradients like the avatar
+`from-purple to-gold`) is **information-bearing and unchanged** across
+viewports. This keeps brand identity intact while letting the small screen
+breathe.
+
+**Font options stay everywhere:**
+Serif / Sans-serif / white-script toggles in `SettingsTab.tsx` are reachable
+on all viewports via the mobilised `UserModal` Sheet. White-script exists
+specifically for users without OLED displays where pure-white text on pure
+black would smear — it is not a visual polish option, it is an accessibility
+feature.
+
+**Component primitives:**
+- `useViewport` (`frontend/src/core/hooks/useViewport.ts`) — `matchMedia`
+  wrapper exposing `isMobile` / `isDesktop` / breakpoint flags. Single source
+  of truth for any JS-side viewport branching.
+- `useDrawerStore` (`frontend/src/core/store/drawerStore.ts`) — sidebar open
+  state on mobile. Not persisted; drawer starts closed on every load.
+- `<Sheet>` (`frontend/src/core/components/Sheet.tsx`) — eigene Portal-based
+  modal; full-screen under `lg:`, centred dialog above. Hand-rolled to avoid
+  a new dependency (Vaul / Radix were considered and rejected). Swipe-to-
+  dismiss is deliberately **not** implemented — `disableSwipeToDismiss` is
+  kept in the prop interface so a later implementation can land without an
+  API break.
+- `bodyScrollLock` helper (`frontend/src/core/utils/bodyScrollLock.ts`) —
+  counter-based `document.body.style.overflow` guard. Multiple consumers
+  (drawer + sheet) can lock concurrently without stepping on each other.
+
+**Overlays split between Sheet-migrated and CSS-scoped:**
+Five overlays (`ModelConfigModal`, `CurationModal`, `LibraryEditorModal`,
+`BookmarkModal`, `AvatarCropModal`) were migrated to `<Sheet>`. Three
+(`UserModal`, `AdminModal`, `PersonaOverlay`) were **not** — they render
+inside `<main>` (not as portals) on desktop, deliberately leaving the sidebar
+and topbar visible around them. Migrating them to `<Sheet>` would have
+changed their desktop framing. Instead they got `lg:`-scoped classes
+(`inset-0 lg:inset-4`, `rounded-none lg:rounded-xl`) so mobile gets
+full-screen behaviour and desktop is byte-identical to before.
+
+**PWA as a deliberate minimum:**
+Chatsune is installable as a PWA (manifest, service worker, install prompt,
+update flow via `vite-plugin-pwa`) but the service worker **only caches the
+app shell**. No runtime caching of API or WebSocket data. Offline chat was
+explicitly rejected because it would break Chatsune's event-first
+architecture — state changes must flow through events to stay coherent across
+tabs and devices. The app opens offline, shows its shell, and waits for the
+connection; that is the intended offline experience.
+
+**Trade-off accepted:**
+`vite-plugin-pwa` 1.2.0 lists vite ^7 as a peer but the repo is on vite 8.
+Build works fine; peer warning is tolerated until the plugin updates.
+
+---
+
+## INS-015 — WebSocket Reconnect on Tab Resume
+
+**Decision:** The WebSocket client listens for `visibilitychange` and `focus`
+events and calls `ensureConnected()` whenever the tab becomes visible or
+regains focus. `ensureConnected()` is a cheap no-op if the socket is already
+`OPEN`; otherwise it disarms any stale socket and calls `connect()`, which
+picks up sequence-based catchup via `?since=<lastSequence>`.
+
+**Why this matters:**
+Mobile browsers — iOS Safari in particular — will silently let a backgrounded
+WebSocket rot without firing `onclose`. The ping loop (30 s interval) would
+eventually notice, but that leaves a window of up to 30 seconds where the
+client believes it is connected while events are dropping. On desktop the
+same symptom appears after a laptop lid-close.
+
+Prior to this fix, the reconnect path only ran as a reaction to `onclose` /
+`onerror`. Tab resume was not an event the client listened for at all. That
+was fine in Prototype 2 (desktop-only) but became a real gap once Chatsune
+became PWA-installable, because PWA users background the app aggressively.
+
+**Sequence catchup carries the state:**
+When `connect()` runs, it appends `?since=<lastSequence>` to the WebSocket
+URL. The backend replays any events the client missed from Redis Streams
+(24h TTL). This means a tab that was backgrounded for an hour wakes up,
+detects the stale socket on resume, reconnects, and receives the full
+backlog — no client-side state merging, no explicit "refresh" button, no
+user-visible hiccup beyond a brief `reconnecting` status.
+
+**What this is not:**
+It is not a heartbeat or keep-alive. The existing 30 s ping stays. It is
+also not a general retry on `navigator.onLine` — that API is unreliable
+(especially on iOS) and was deliberately avoided. Only explicit viewport
+signals (`visibilitychange`, `focus`) trigger the check.
+
+**When to revisit:**
+If Chatsune later adds background-sync-style features (deferred message
+queueing while offline), this logic needs to coordinate with whatever state
+the queue holds before forcing a fresh connection.
