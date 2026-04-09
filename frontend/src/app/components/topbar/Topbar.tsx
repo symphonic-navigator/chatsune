@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
-import { useChatStore } from "../../../core/store/chatStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
+import { llmApi } from "../../../core/api/llm"
+import type { ProviderCredentialDto } from "../../../core/types/llm"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
 import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
@@ -39,9 +40,13 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [showAvatar, setShowAvatar] = useState(false)
+  const [providers, setProviders] = useState<ProviderCredentialDto[]>([])
+
+  useEffect(() => {
+    llmApi.listProviders().then(setProviders).catch(() => {})
+  }, [])
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
-  const sessionTitle = useChatStore((s) => s.sessionTitle)
 
   const isLive = wsStatus === "connected"
 
@@ -105,19 +110,21 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
             </div>
           </div>
         )}
-        <span className="text-white/15">/</span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-white/32">
-          {sessionTitle ?? (chatMatch.params.sessionId ? "Continued session" : "New chat")}
-        </span>
-        <div className="flex-shrink-0 flex items-center gap-1.5">
-          {persona && (
+        {persona && (() => {
+          const [providerId, ...slugParts] = persona.model_unique_id.split(":")
+          const slug = slugParts.join(":") || persona.model_unique_id
+          const providerName = providers.find((p) => p.provider_id === providerId)?.display_name
+          const pillText = providerName ? `${providerName}: ${slug}` : slug
+          return (
             <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold">
-              {persona.model_unique_id.split(":").slice(1).join(":") || persona.model_unique_id}
+              {pillText}
             </span>
-          )}
-          <ProviderPill provider="ollama_local" label="Local Ollama" />
+          )
+        })()}
+        <div className="ml-auto flex-shrink-0 flex items-center gap-1.5">
           <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
+          <ProviderPill provider="ollama_local" label="Local Ollama" />
         </div>
       </header>
     )
@@ -130,9 +137,9 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
     <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
       <span className="text-[13px] font-semibold text-white/60">{title}</span>
       <div className="ml-auto flex items-center gap-2">
-        <ProviderPill provider="ollama_local" label="Local Ollama" />
         <JobsPill personas={personas} />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
+        <ProviderPill provider="ollama_local" label="Local Ollama" />
       </div>
     </header>
   )
