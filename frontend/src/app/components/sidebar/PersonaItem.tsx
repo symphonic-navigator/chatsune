@@ -121,7 +121,7 @@ export function PersonaItem({
         title="More options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/60 opacity-0 transition-all hover:bg-white/10 hover:text-white/85 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100"
+        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/60 opacity-0 transition-all hover:bg-white/10 hover:text-white/85 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
         onClick={(e) => { e.stopPropagation(); setMenuOpen(true) }}
       >
         ···

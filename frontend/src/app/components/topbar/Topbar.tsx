@@ -55,7 +55,7 @@ function BurgerButton({ hasProblem }: { hasProblem: boolean }) {
       title={label}
       aria-label={label}
       aria-expanded={drawerOpen}
-      className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/70 transition-colors hover:bg-white/8 hover:text-white/90 lg:hidden"
+      className="relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-white/70 transition-colors hover:bg-white/8 hover:text-white/90 lg:hidden"
     >
       {drawerOpen ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

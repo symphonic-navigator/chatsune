@@ -10,6 +10,7 @@ import {
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { zoomModifiers } from "../../core/utils/dndZoomModifier"
+import { useDndSensors } from "../../core/hooks/useDndSensors"
 import type { BookmarkDto } from '../../core/types/bookmark'
 import { bookmarksApi } from '../../core/api/bookmarks'
 
@@ -24,6 +25,7 @@ interface ChatBookmarkListProps {
 export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksReordered, onBookmarkUpdated }: ChatBookmarkListProps) {
   const [dragActiveId, setDragActiveId] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const dndSensors = useDndSensors()
 
   // Close on outside click — but not when clicking portal menus
   useEffect(() => {
@@ -60,7 +62,7 @@ export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksRe
       ref={panelRef}
       className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-white/10 bg-elevated shadow-xl"
     >
-      <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <SortableContext items={bookmarks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
           <div className="py-1 max-h-[300px] overflow-y-auto">
             {bookmarks.map((bm) => (
@@ -208,7 +210,7 @@ function SortableBookmarkItem({ bookmark, onScrollTo, onClose, onUpdated }: {
           if (rect) setMenuPos({ x: rect.right, y: rect.bottom + 4 })
           setMenuOpen(true)
         }}
-        className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-[10px] text-white/25 opacity-0 group-hover:opacity-100 transition-all hover:text-white/50"
+        className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded text-[10px] text-white/25 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-all hover:text-white/50"
       >
         ···
       </button>

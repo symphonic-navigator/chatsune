@@ -15,6 +15,7 @@ import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { bookmarksApi } from '../../../core/api/bookmarks'
 import { useBookmarks } from '../../../core/hooks/useBookmarks'
 import { usePersonas } from '../../../core/hooks/usePersonas'
+import { useDndSensors } from '../../../core/hooks/useDndSensors'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 import type { BookmarkDto } from '../../../core/types/bookmark'
@@ -107,6 +108,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
   const [dragActiveId, setDragActiveId] = useState<string | null>(null)
   const dragActive = dragActiveId ? filtered.find((b) => b.id === dragActiveId) : null
 
+  const dndSensors = useDndSensors()
   function handleDragStart(event: DragStartEvent) { setDragActiveId(event.active.id as string) }
   function handleDragEnd(event: DragEndEvent) {
     setDragActiveId(null)
@@ -166,7 +168,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
             </p>
           </div>
         )}
-        <DndContext collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map((b) => b.id)} strategy={verticalListSortingStrategy}>
             {grouped.map(([group, groupBookmarks]) => (
               <div key={group}>

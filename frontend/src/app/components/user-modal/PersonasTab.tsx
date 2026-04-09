@@ -10,6 +10,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities'
 import { zoomModifiers } from '../../../core/utils/dndZoomModifier'
 import { usePersonas } from '../../../core/hooks/usePersonas'
+import { useDndSensors } from '../../../core/hooks/useDndSensors'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
@@ -23,6 +24,7 @@ interface PersonasTabProps {
 export function PersonasTab({ onOpenPersonaOverlay }: PersonasTabProps) {
   const { personas, update, reorder } = usePersonas()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  const dndSensors = useDndSensors()
 
   const visible = useMemo(() => {
     const filtered = isSanitised ? personas.filter((p) => !p.nsfw) : personas
@@ -55,7 +57,7 @@ export function PersonasTab({ onOpenPersonaOverlay }: PersonasTabProps) {
 
   return (
     <div className="flex flex-col gap-2 p-4">
-      <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={zoomModifiers}>
+      <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={zoomModifiers}>
         <SortableContext items={visible.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           {visible.map((persona) => (
             <SortablePersonaRow

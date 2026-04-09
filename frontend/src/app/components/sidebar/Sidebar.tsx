@@ -17,6 +17,7 @@ import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 import { useViewport } from "../../../core/hooks/useViewport"
+import { useDndSensors } from "../../../core/hooks/useDndSensors"
 import { useAuth } from "../../../core/hooks/useAuth"
 import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { NavRow } from "./NavRow"
@@ -66,7 +67,7 @@ function IconBtn({
       title={title}
       aria-label={title}
       className={[
-        "flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8",
+        "flex h-11 w-11 lg:h-8 lg:w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8",
         isActive ? "text-gold" : "text-white/60",
         className,
       ].join(" ")}
@@ -226,6 +227,8 @@ export function Sidebar({
     if (unpinnedPersonas.some((p) => p.id === id)) return "unpinned"
     return null
   }
+
+  const dndSensors = useDndSensors()
 
   function handleDragStart(event: DragStartEvent) {
     setDragActiveId(event.active.id as string)
@@ -708,6 +711,7 @@ export function Sidebar({
         )}
 
         <DndContext
+          sensors={dndSensors}
           collisionDetection={pointerWithin}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
@@ -836,6 +840,7 @@ export function Sidebar({
         )}
 
         <DndContext
+          sensors={dndSensors}
           collisionDetection={pointerWithin}
           onDragStart={handleHistoryDragStart}
           onDragEnd={handleHistoryDragEnd}

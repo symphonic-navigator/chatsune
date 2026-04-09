@@ -12,6 +12,7 @@ import { useNavigate, useOutletContext } from "react-router-dom"
 import PersonaCard from "../components/persona-card/PersonaCard"
 import AddPersonaCard from "../components/persona-card/AddPersonaCard"
 import { usePersonas } from "../../core/hooks/usePersonas"
+import { useDndSensors } from "../../core/hooks/useDndSensors"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import type { PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
@@ -25,6 +26,7 @@ export default function PersonasPage() {
     openPersonaOverlay: (personaId: string | null, tab?: PersonaOverlayTab) => void
   }>()
   const [activeId, setActiveId] = useState<string | null>(null)
+  const dndSensors = useDndSensors()
 
   const filtered = isSanitised ? personas.filter((p) => !p.nsfw) : personas
   const activePersona = filtered.find((p) => p.id === activeId)
@@ -74,6 +76,7 @@ export default function PersonasPage() {
   return (
     <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-10">
       <DndContext
+        sensors={dndSensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}

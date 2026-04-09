@@ -154,7 +154,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isStreaming || disabled}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
+          className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
           title="Attach file"
           aria-label="Attach file"
         >
@@ -192,7 +192,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             onClick={onCancel}
             title="Cancel response"
             aria-label="Cancel response"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
+            className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -206,7 +206,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             disabled={!text.trim() || disabled || hasPendingUploads}
             title="Send message"
             aria-label="Send message"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
+            className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />

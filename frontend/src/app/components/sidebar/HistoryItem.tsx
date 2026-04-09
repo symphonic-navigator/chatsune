@@ -98,7 +98,7 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
       <button
         type="button"
         aria-label="More options"
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/30 opacity-0 transition-all hover:bg-white/10 hover:text-white/70 group-hover:opacity-100"
+        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/30 opacity-0 transition-all hover:bg-white/10 hover:text-white/70 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         onClick={(e) => { e.stopPropagation(); setMenuOpen(true) }}
       >
         ···
