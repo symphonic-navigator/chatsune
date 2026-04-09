@@ -22,7 +22,7 @@ available; otherwise fall back to the conservative estimator.
 """
 from __future__ import annotations
 
-import logging
+import structlog
 
 from redis.asyncio import Redis
 
@@ -35,7 +35,7 @@ from backend.modules.safeguards._budget import (
     record_tokens,
 )
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger(__name__)
 
 
 async def check_and_reserve_budget(

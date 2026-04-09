@@ -1,4 +1,4 @@
-import logging
+import structlog
 
 from backend.jobs._models import JobConfig, JobEntry
 from backend.jobs.handlers._budget_helpers import (
@@ -8,7 +8,7 @@ from backend.jobs.handlers._budget_helpers import (
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger(__name__)
 
 _MAX_TITLE_LENGTH = 64
 

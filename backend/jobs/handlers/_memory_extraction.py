@@ -4,7 +4,7 @@ Extracts facts, preferences, and corrections from user messages and
 creates journal entries in the memory module.
 """
 
-import logging
+import structlog
 from datetime import UTC, datetime
 
 from backend.jobs._dedup import (
@@ -29,7 +29,7 @@ from shared.events.memory import (
 from shared.dtos.memory import JournalEntryDto
 from shared.topics import Topics
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger(__name__)
 
 
 async def handle_memory_extraction(

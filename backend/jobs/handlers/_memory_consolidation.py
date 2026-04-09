@@ -4,7 +4,7 @@ Takes committed journal entries and integrates them into the persona's
 persistent memory body via LLM-driven consolidation.
 """
 
-import logging
+import structlog
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -24,7 +24,7 @@ from shared.events.memory import (
 )
 from shared.topics import Topics
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger(__name__)
 
 
 async def handle_memory_consolidation(
