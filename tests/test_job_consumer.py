@@ -162,3 +162,89 @@ async def test_consumer_retries_then_fails(redis):
         assert "job.failed" in topics
     finally:
         JOB_REGISTRY[JobType.TITLE_GENERATION] = original
+
+
+async def test_job_started_event_carries_notify_and_persona_id(redis):
+    """JOB_STARTED publish must include notify from config and persona_id from payload."""
+    from unittest.mock import AsyncMock
+    from backend.jobs._consumer import ensure_consumer_group, process_one
+    from backend.jobs._models import JobConfig, JobType
+    from backend.jobs._registry import JOB_REGISTRY
+
+    captured: list = []
+
+    class CapturingBus:
+        async def publish(self, topic, event, **kwargs):
+            captured.append((topic, event))
+
+    handler = AsyncMock()
+    original = JOB_REGISTRY[JobType.MEMORY_EXTRACTION]
+    JOB_REGISTRY[JobType.MEMORY_EXTRACTION] = JobConfig(
+        handler=handler,
+        max_retries=original.max_retries,
+        retry_delay_seconds=original.retry_delay_seconds,
+        queue_timeout_seconds=original.queue_timeout_seconds,
+        execution_timeout_seconds=original.execution_timeout_seconds,
+        reasoning_enabled=original.reasoning_enabled,
+        notify=original.notify,
+        notify_error=original.notify_error,
+    )
+    try:
+        await _enqueue_job(
+            redis,
+            job_type="memory_extraction",
+            payload={"persona_id": "persona-42", "session_id": "sess-1"},
+        )
+        await ensure_consumer_group(redis)
+        await process_one(redis, CapturingBus())
+
+        started = [ev for topic, ev in captured if topic == "job.started"]
+        assert len(started) == 1
+        assert started[0].notify is original.notify
+        assert started[0].persona_id == "persona-42"
+    finally:
+        JOB_REGISTRY[JobType.MEMORY_EXTRACTION] = original
+
+
+async def test_job_started_event_notify_false_for_title_generation(redis):
+    """Title generation has notify=False; the emitted event must reflect that."""
+    from unittest.mock import AsyncMock
+    from backend.jobs._consumer import ensure_consumer_group, process_one
+    from backend.jobs._models import JobConfig, JobType
+    from backend.jobs._registry import JOB_REGISTRY
+
+    captured: list = []
+
+    class CapturingBus:
+        async def publish(self, topic, event, **kwargs):
+            captured.append((topic, event))
+
+    assert JOB_REGISTRY[JobType.TITLE_GENERATION].notify is False
+
+    handler = AsyncMock()
+    original = JOB_REGISTRY[JobType.TITLE_GENERATION]
+    JOB_REGISTRY[JobType.TITLE_GENERATION] = JobConfig(
+        handler=handler,
+        max_retries=original.max_retries,
+        retry_delay_seconds=original.retry_delay_seconds,
+        queue_timeout_seconds=original.queue_timeout_seconds,
+        execution_timeout_seconds=original.execution_timeout_seconds,
+        reasoning_enabled=original.reasoning_enabled,
+        notify=original.notify,
+        notify_error=original.notify_error,
+    )
+    try:
+        await _enqueue_job(
+            redis,
+            job_type="title_generation",
+            payload={"persona_id": "persona-7", "session_id": "sess-2"},
+        )
+        await ensure_consumer_group(redis)
+        await process_one(redis, CapturingBus())
+
+        started = [ev for topic, ev in captured if topic == "job.started"]
+        assert len(started) == 1
+        assert started[0].notify is False
+        assert started[0].persona_id == "persona-7"
+    finally:
+        JOB_REGISTRY[JobType.TITLE_GENERATION] = original
