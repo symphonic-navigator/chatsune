@@ -41,6 +41,10 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      # Structured logging: JSON on stdout, no rotating file sink in container.
+      LOG_CONSOLE_FORMAT: json
+      LOG_FILE: "0"
     depends_on:
       mongodb:
         condition: service_healthy
