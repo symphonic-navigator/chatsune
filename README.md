@@ -249,6 +249,57 @@ uv run python -m backend.llm_harness --from tests/llm_scenarios/simple_hello.jso
 
 ---
 
+## Logging
+
+Chatsune uses [structlog](https://www.structlog.org/) with two sinks that
+can run simultaneously:
+
+- **Console** — pretty, colourful output in local dev; JSON lines in
+  Docker (picked up by Grafana/Loki). Controlled by `LOG_CONSOLE` and
+  `LOG_CONSOLE_FORMAT`.
+- **Rotating file** — JSON lines at `backend/logs/chatsune.log`, rotated
+  daily with 14 backups retained. Off by default inside Docker.
+  Controlled by `LOG_FILE`, `LOG_FILE_PATH`, `LOG_FILE_BACKUP_COUNT`.
+  Ideal for `lnav` or `jq`.
+
+Every record carries `timestamp`, `level`, `logger` (dotted namespace
+such as `chatsune.jobs.consumer`), `event` (stable short identifier such
+as `job.enqueued`), plus any bound context (`correlation_id`, `job_id`,
+`job_type`, `user_id`, `lock_key`). Context is propagated automatically
+via `structlog.contextvars`, so downstream log lines inherit it without
+needing to repeat the fields at every call site.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | Root log level |
+| `LOG_CONSOLE` | `1` | Enable console sink |
+| `LOG_CONSOLE_FORMAT` | `pretty` | `pretty` or `json` |
+| `LOG_FILE` | `1` | Enable rotating file sink |
+| `LOG_FILE_PATH` | `backend/logs/chatsune.log` | File path |
+| `LOG_FILE_BACKUP_COUNT` | `14` | Daily rotations retained |
+| `LOG_LEVEL_UVICORN_ACCESS` | `WARNING` | HTTP access noise threshold |
+| `LOG_LEVEL_THIRD_PARTY` | `WARNING` | `httpx`, `httpcore`, `pymongo` |
+
+Docker compose files override `LOG_CONSOLE_FORMAT=json` and `LOG_FILE=0`
+for the backend service.
+
+### Filtering examples
+
+```bash
+# Everything from the job consumer
+jq 'select(.logger=="chatsune.jobs.consumer")' backend/logs/chatsune.log
+
+# One specific job end-to-end
+jq 'select(.job_id=="abc123")' backend/logs/chatsune.log
+
+# Lock contention only
+jq 'select(.event=="job.lock.contended")' backend/logs/chatsune.log
+```
+
+---
+
 ## Licence
 
 GPL-3.0 — see [LICENSE](LICENSE).
