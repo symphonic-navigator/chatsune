@@ -10,7 +10,7 @@ export function ArtefactRail() {
     <button
       type="button"
       onClick={toggleSidebar}
-      className="flex w-10 flex-shrink-0 flex-col items-center gap-2 border-l border-white/6 bg-white/[0.01] pt-4 transition-colors hover:bg-white/[0.03] cursor-pointer"
+      className="hidden lg:flex w-10 flex-shrink-0 flex-col items-center gap-2 border-l border-white/6 bg-white/[0.01] pt-4 transition-colors hover:bg-white/[0.03] cursor-pointer"
       title="Toggle artefact panel"
     >
       <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-gold/60">

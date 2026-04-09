@@ -116,12 +116,14 @@ export function ArtefactOverlay() {
 
   return (
     <>
-      {/* Backdrop — same pattern as PersonaOverlay / UserModal */}
+      {/* Backdrop — same pattern as PersonaOverlay / UserModal. On mobile the
+          overlay is full-screen so the backdrop is effectively hidden behind
+          the panel, but we keep it for consistency and future edge insets. */}
       <div className="fixed inset-0 bg-black/50 z-10" onClick={closeOverlay} />
 
-      {/* Panel — absolute inside nearest relative ancestor */}
+      {/* Panel — full-screen on mobile, absolute-inset-4 card on desktop. */}
       <div
-        className="absolute inset-4 z-20 flex flex-col bg-elevated border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+        className="fixed inset-0 lg:absolute lg:inset-4 z-20 flex flex-col bg-elevated border border-white/10 rounded-none lg:rounded-xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
@@ -142,7 +144,7 @@ export function ArtefactOverlay() {
               <span className="shrink-0 text-[10px] font-mono text-white/30">{artefact.language}</span>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto">
             <button type="button" onClick={() => setMode('preview')}
               className={`${BTN_BASE} ${mode === 'preview' ? BTN_ACTIVE : BTN_INACTIVE}`}>Preview</button>
             <button type="button" onClick={() => { setMode('edit'); setEditContent(artefact?.content ?? '') }}

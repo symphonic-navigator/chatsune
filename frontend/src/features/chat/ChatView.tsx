@@ -239,6 +239,7 @@ export function ChatView({ persona }: ChatViewProps) {
   useArtefactEvents(effectiveSessionId ?? null)
   const artefactSidebarOpen = useArtefactStore((s) => s.sidebarOpen)
   const artefactCount = useArtefactStore((s) => s.artefacts.length)
+  const toggleArtefactSidebar = useArtefactStore((s) => s.toggleSidebar)
 
   useEffect(() => {
     const store = useChatStore.getState()
@@ -616,6 +617,23 @@ export function ChatView({ persona }: ChatViewProps) {
               )}
             </div>
           )}
+          {/* Mobile-only entry button to open the artefact sheet. Hidden on
+              desktop, where ArtefactRail provides the same affordance. */}
+          {artefactCount > 0 && (
+            <button
+              type="button"
+              onClick={toggleArtefactSidebar}
+              className="lg:hidden flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/30 transition-colors hover:text-white/50"
+              title="Show artefacts"
+              aria-label={`Show ${artefactCount} artefact${artefactCount === 1 ? '' : 's'}`}
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
+                <path d="M2.5 2.5H9L11.5 5V11.5H2.5V2.5Z" />
+                <path d="M9 2.5V5H11.5" />
+              </svg>
+              {artefactCount}
+            </button>
+          )}
           {persona && <JournalBadge personaId={persona.id} />}
           <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
         </div>
@@ -789,10 +807,13 @@ export function ChatView({ persona }: ChatViewProps) {
           />
           <ArtefactOverlay />
         </div>
-        {artefactSidebarOpen ? (
-          <ArtefactSidebar sessionId={effectiveSessionId!} />
-        ) : (
-          artefactCount > 0 && <ArtefactRail />
+        {/* Desktop rail: visible only when sidebar is collapsed. ArtefactRail
+            itself is scoped to `lg:` so it stays hidden on mobile. */}
+        {!artefactSidebarOpen && artefactCount > 0 && <ArtefactRail />}
+        {/* Sidebar: in-flow panel on desktop, right-sheet overlay on mobile.
+            Always rendered when open — the component handles its own layout. */}
+        {artefactSidebarOpen && effectiveSessionId && (
+          <ArtefactSidebar sessionId={effectiveSessionId} />
         )}
       </div>
 

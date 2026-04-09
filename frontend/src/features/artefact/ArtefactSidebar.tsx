@@ -1,7 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
 import type { ArtefactSummary } from '../../core/types/artefact'
+import { useViewport } from '../../core/hooks/useViewport'
+import { lockBodyScroll, unlockBodyScroll } from '../../core/utils/bodyScrollLock'
 
 const TYPE_COLOURS: Record<string, string> = {
   markdown: '180,180,220',
@@ -41,8 +43,24 @@ interface ArtefactSidebarProps {
 }
 
 export function ArtefactSidebar({ sessionId }: ArtefactSidebarProps) {
+  const { isDesktop } = useViewport()
   const artefacts = useArtefactStore((s) => s.artefacts)
   const toggleSidebar = useArtefactStore((s) => s.toggleSidebar)
+  const setSidebarOpen = useArtefactStore((s) => s.setSidebarOpen)
+
+  // Mobile sheet behaviours: body-scroll-lock while open, Esc closes.
+  useEffect(() => {
+    if (isDesktop) return
+    lockBodyScroll()
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('keydown', handleKey)
+      unlockBodyScroll()
+    }
+  }, [isDesktop, setSidebarOpen])
   const openOverlay = useArtefactStore((s) => s.openOverlay)
   const removeArtefact = useArtefactStore((s) => s.removeArtefact)
   const updateArtefact = useArtefactStore((s) => s.updateArtefact)
@@ -134,8 +152,22 @@ export function ArtefactSidebar({ sessionId }: ArtefactSidebarProps) {
 
   return (
     <>
-      {/* Sidebar panel */}
-      <div className="flex w-[280px] flex-shrink-0 flex-col border-l border-white/6 bg-white/[0.01]">
+      {/* Mobile-only backdrop: click to dismiss the right-sheet. */}
+      {!isDesktop && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      {/* Sidebar panel: in-flow on desktop, right-sheet on mobile. */}
+      <div
+        className={
+          isDesktop
+            ? 'flex w-[280px] flex-shrink-0 flex-col border-l border-white/6 bg-white/[0.01]'
+            : 'fixed inset-y-0 right-0 z-40 flex w-[92vw] max-w-[440px] flex-col border-l border-white/10 bg-elevated shadow-2xl'
+        }
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-3 py-2">
           <span className="text-[11px] font-mono text-white/40 tracking-wider uppercase">Artefacts</span>
