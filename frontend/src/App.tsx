@@ -4,6 +4,7 @@ import { useAuthStore } from "./core/store/authStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
+import ChangePasswordPage from "./app/pages/ChangePasswordPage"
 import PersonasPage from "./app/pages/PersonasPage"
 import ChatPage from "./app/pages/ChatPage"
 import ProjectsPage from "./app/pages/ProjectsPage"
@@ -30,7 +31,32 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isInitialising) return null
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (mustChangePassword) return <Navigate to="/login" replace />
+  if (mustChangePassword) return <Navigate to="/change-password" replace />
+
+  return <>{children}</>
+}
+
+function LoginRedirect({ children }: { children: React.ReactNode }) {
+  const isInitialising = useAuthStore((s) => s.isInitialising)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const mustChangePassword = useAuthStore((s) => s.user?.must_change_password)
+
+  if (isInitialising) return null
+  if (isAuthenticated && mustChangePassword)
+    return <Navigate to="/change-password" replace />
+  if (isAuthenticated) return <Navigate to="/personas" replace />
+
+  return <>{children}</>
+}
+
+function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
+  const isInitialising = useAuthStore((s) => s.isInitialising)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const mustChangePassword = useAuthStore((s) => s.user?.must_change_password)
+
+  if (isInitialising) return null
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (!mustChangePassword) return <Navigate to="/personas" replace />
 
   return <>{children}</>
 }
@@ -42,7 +68,22 @@ function AppRoutes() {
     <>
       <LastRouteTracker />
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/login"
+          element={
+            <LoginRedirect>
+              <LoginPage />
+            </LoginRedirect>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <ChangePasswordGuard>
+              <ChangePasswordPage />
+            </ChangePasswordGuard>
+          }
+        />
         <Route
           element={
             <AuthGuard>
