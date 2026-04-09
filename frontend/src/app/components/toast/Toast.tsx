@@ -85,7 +85,7 @@ export function Toast({ notification }: ToastProps) {
 
   return (
     <div
-      className={`pointer-events-auto flex max-w-md items-center gap-3 rounded-lg px-4 py-3 shadow-lg backdrop-blur-sm ${exiting ? "animate-toast-exit" : "animate-toast-enter"}`}
+      className={`pointer-events-auto flex max-w-md items-center gap-3 rounded-lg px-4 py-3 shadow-lg lg:backdrop-blur-sm ${exiting ? "animate-toast-exit" : "animate-toast-enter"}`}
       style={{
         background: `rgba(${rgb}, 0.08)`,
         border: `1px solid rgba(${rgb}, 0.25)`,

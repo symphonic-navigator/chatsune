@@ -41,11 +41,11 @@ function CollapsibleCode({ codeStr, children }: { codeStr: string; children: Rea
     return (
       <div className="relative max-h-[240px] overflow-hidden">
         {children}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#1a1528] to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-[#1a1528] lg:bg-gradient-to-t lg:from-[#1a1528] lg:to-transparent" />
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-elevated/80 px-3 py-1 font-mono text-[11px] text-white/50 backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-white/70"
+          className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-elevated lg:bg-elevated/80 px-3 py-1 font-mono text-[11px] text-white/50 lg:backdrop-blur-sm transition-colors hover:bg-white/10 hover:text-white/70"
         >
           {lineCount} lines — expand
         </button>

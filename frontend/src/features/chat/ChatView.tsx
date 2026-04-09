@@ -553,7 +553,7 @@ export function ChatView({ persona }: ChatViewProps) {
                 <div
                   role="dialog"
                   aria-label="Incognito mode explained"
-                  className="absolute left-0 top-full mt-2 z-50 w-72 rounded-md border border-gold/25 bg-[#0b0a08]/95 backdrop-blur-sm shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2.5 text-[12px] text-white/70 font-mono leading-relaxed"
+                  className="absolute left-0 top-full mt-2 z-50 w-72 rounded-md border border-gold/25 bg-[#0b0a08] lg:bg-[#0b0a08]/95 lg:backdrop-blur-sm shadow-sm lg:shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2.5 text-[12px] text-white/70 font-mono leading-relaxed"
                 >
                   <div className="mb-1 text-[10px] uppercase tracking-widest text-gold">Incognito mode</div>
                   <p className="mb-1.5">This conversation is ephemeral. Nothing is persisted:</p>
