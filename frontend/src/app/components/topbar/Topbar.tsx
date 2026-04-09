@@ -8,6 +8,7 @@ import type { PersonaDto } from "../../../core/types/persona"
 import { KnowledgeDropdown } from "../../../features/chat/KnowledgeDropdown"
 import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
 import { ProviderPill } from "./ProviderPill"
+import { JobsPill } from "./JobsPill"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -137,6 +138,7 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
             </span>
           )}
           <ProviderPill provider="ollama_local" label="Local Ollama" />
+          <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
         </div>
       </header>
@@ -151,6 +153,7 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
       <span className="text-[13px] font-semibold text-white/60">{title}</span>
       <div className="ml-auto flex items-center gap-2">
         <ProviderPill provider="ollama_local" label="Local Ollama" />
+        <JobsPill personas={personas} />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
       </div>
     </header>
