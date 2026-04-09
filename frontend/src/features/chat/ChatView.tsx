@@ -166,7 +166,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
-  const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll(isStreaming)
+  const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll()
 
   // Scroll to a specific message by ID (used for bookmarks and ?msg= param)
   const scrollToMessage = useCallback((messageId: string) => {
