@@ -9,6 +9,8 @@ class JobStartedEvent(BaseModel):
     job_type: str
     correlation_id: str
     timestamp: datetime
+    notify: bool = True
+    persona_id: str | None = None
 
 
 class JobCompletedEvent(BaseModel):
@@ -39,6 +41,7 @@ class JobRetryEvent(BaseModel):
     attempt: int
     next_retry_at: datetime
     timestamp: datetime
+    notify: bool = True
 
 
 class JobExpiredEvent(BaseModel):
