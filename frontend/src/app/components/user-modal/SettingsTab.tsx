@@ -1,4 +1,5 @@
 import { useDisplaySettings } from '../../../core/store/displaySettingsStore'
+import { useHapticsStore } from '../../../core/store/hapticsStore'
 import {
   UI_SCALE_OPTIONS,
   FONT_FAMILY_VALUES,
@@ -42,6 +43,8 @@ function ButtonGroup<T extends string | number>({ options, selected, onChange }:
 
 export function SettingsTab() {
   const { settings, update } = useDisplaySettings()
+  const hapticsEnabled = useHapticsStore((s) => s.enabled)
+  const setHapticsEnabled = useHapticsStore((s) => s.setEnabled)
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-xl">
@@ -124,6 +127,26 @@ export function SettingsTab() {
           ].join(' ')}
         >
           {settings.whiteScript ? 'On' : 'Off'}
+        </button>
+      </div>
+
+      <div>
+        <label className={LABEL}>Vibration</label>
+        <p className="text-[11px] text-white/40 font-mono mb-2 leading-relaxed">
+          Short tactile feedback on send, errors and drag start. Silently
+          ignored on devices without vibration support (iOS, most desktops).
+        </p>
+        <button
+          type="button"
+          onClick={() => setHapticsEnabled(!hapticsEnabled)}
+          className={[
+            'px-3.5 py-1.5 rounded-lg text-[11px] font-mono transition-all border',
+            hapticsEnabled
+              ? 'border-gold/60 bg-gold/12 text-gold'
+              : 'border-white/8 bg-transparent text-white/40 hover:text-white/65 hover:border-white/20',
+          ].join(' ')}
+        >
+          {hapticsEnabled ? 'On' : 'Off'}
         </button>
       </div>
     </div>

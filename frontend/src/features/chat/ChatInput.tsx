@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { hapticTap } from '../../core/utils/haptics'
 
 const LONG_PASTE_THRESHOLD = 500
 
@@ -16,6 +17,9 @@ interface ChatInputProps {
 
 export interface ChatInputHandle {
   focus: () => void
+  /** Open the native camera picker (mobile). On desktop the OS file picker
+   *  opens instead because the `capture` attribute is ignored there. */
+  openCamera: () => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -25,9 +29,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const [pendingPaste, setPendingPaste] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
+    openCamera: () => cameraInputRef.current?.click(),
   }))
 
   useEffect(() => {
@@ -45,6 +51,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     const trimmed = text.trim()
     if (!trimmed || isStreaming || disabled || hasPendingUploads) return
     setPendingPaste(null)
+    hapticTap()
     onSend(trimmed)
     setText('')
   }, [text, isStreaming, disabled, hasPendingUploads, onSend])
@@ -119,6 +126,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
       onDrop={handleDrop}
     >
       <input ref={fileInputRef} type="file" multiple accept="*/*" className="hidden"
+        onChange={(e) => { if (e.target.files?.length) { onFilesSelected(Array.from(e.target.files)); e.target.value = '' } }} />
+      {/* Camera input: `capture="environment"` hints mobile browsers to open
+          the rear camera directly. Desktop browsers ignore the attribute and
+          fall back to the normal file picker — which is why this input is
+          only reachable via the mobile tool tray. */}
+      <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden"
         onChange={(e) => { if (e.target.files?.length) { onFilesSelected(Array.from(e.target.files)); e.target.value = '' } }} />
       {toolBar && (
         <div className="mx-auto mb-2 max-w-3xl">{toolBar}</div>

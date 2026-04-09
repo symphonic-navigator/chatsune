@@ -786,6 +786,26 @@ export function ChatView({ persona }: ChatViewProps) {
                         </svg>
                         Browse uploads
                       </button>
+                      {/* Camera capture — delegates to the hidden camera input
+                          inside ChatInput via its imperative handle. Kept in
+                          the tray rather than next to the attach button to
+                          preserve the narrow-viewport space we regained in
+                          Stage 6. */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          chatInputRef.current?.openCamera()
+                          setMobileToolsOpen(false)
+                        }}
+                        className="mb-2 flex w-full items-center gap-2 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
+                        aria-label="Take photo"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
+                          <path d="M2 5.5C2 4.95 2.45 4.5 3 4.5H5L6 3H10L11 4.5H13C13.55 4.5 14 4.95 14 5.5V12C14 12.55 13.55 13 13 13H3C2.45 13 2 12.55 2 12V5.5Z" />
+                          <circle cx="8" cy="8.5" r="2.5" />
+                        </svg>
+                        Take photo
+                      </button>
                       <div className="overflow-x-auto">
                       <ToolToggles
                         sessionId={effectiveSessionId}

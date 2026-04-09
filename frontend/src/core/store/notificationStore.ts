@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { hapticError } from "../utils/haptics"
 
 export interface NotificationAction {
   label: string
@@ -30,7 +31,10 @@ const MAX_NOTIFICATIONS = 20
 export const useNotificationStore = create<NotificationState>((set) => ({
   notifications: [],
 
-  addNotification: (n) =>
+  addNotification: (n) => {
+    // Buzz on error-level notifications so the user feels something went
+    // wrong even if they are not looking at the toast region.
+    if (n.level === "error") hapticError()
     set((state) => ({
       notifications: [
         {
@@ -41,7 +45,8 @@ export const useNotificationStore = create<NotificationState>((set) => ({
         },
         ...state.notifications,
       ].slice(0, MAX_NOTIFICATIONS),
-    })),
+    }))
+  },
 
   dismissToast: (id) =>
     set((state) => ({

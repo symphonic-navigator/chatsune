@@ -6,6 +6,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core"
 import { zoomModifiers } from "../../core/utils/dndZoomModifier"
+import { hapticLongPress } from "../../core/utils/haptics"
 import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable"
 import { useState } from "react"
 import { useNavigate, useOutletContext } from "react-router-dom"
@@ -32,6 +33,7 @@ export default function PersonasPage() {
   const activePersona = filtered.find((p) => p.id === activeId)
 
   const handleDragStart = (event: DragStartEvent) => {
+    hapticLongPress()
     setActiveId(event.active.id as string)
   }
 

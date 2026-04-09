@@ -15,6 +15,7 @@ import { useAuthStore } from "../../../core/store/authStore"
 import { useNotificationStore } from "../../../core/store/notificationStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
+import { hapticLongPress } from "../../../core/utils/haptics"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 import { useViewport } from "../../../core/hooks/useViewport"
 import { useDndSensors } from "../../../core/hooks/useDndSensors"
@@ -231,6 +232,7 @@ export function Sidebar({
   const dndSensors = useDndSensors()
 
   function handleDragStart(event: DragStartEvent) {
+    hapticLongPress()
     setDragActiveId(event.active.id as string)
   }
 
@@ -325,6 +327,7 @@ export function Sidebar({
   }
 
   function handleHistoryDragStart(event: DragStartEvent) {
+    hapticLongPress()
     setHistoryDragActiveId(event.active.id as string)
   }
 
