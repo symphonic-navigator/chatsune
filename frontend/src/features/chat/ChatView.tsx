@@ -443,7 +443,16 @@ export function ChatView({ persona }: ChatViewProps) {
     (messageId: string, newContent: string) => {
       if (!effectiveSessionId) return
       if (messageId.startsWith('optimistic-')) {
+        // The server has not yet confirmed this message, so we cannot reference
+        // it by its final ID. The edit affordance is normally disabled in this
+        // state (see UserBubble), but surface a visible notice as a safety net.
         console.warn('Refusing to edit optimistic message — ID not yet swapped by server')
+        useNotificationStore.getState().addNotification({
+          level: 'info',
+          title: 'Please wait',
+          message: 'Message is still syncing, please wait a moment.',
+          duration: 4000,
+        })
         return
       }
       if (isIncognito) {

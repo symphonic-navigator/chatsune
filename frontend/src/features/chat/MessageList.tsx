@@ -109,7 +109,7 @@ export function MessageList({
                   visionDescriptionsUsed={msg.vision_descriptions_used}
                   liveVisionDescriptions={liveDescriptionsForMessage(msg.id)}
                   onEdit={(newContent) => onEdit(msg.id, newContent)}
-                  isEditable={!isStreaming}
+                  isEditable={!isStreaming && !msg.id.startsWith('optimistic-')}
                   isBookmarked={isBm}
                   onBookmark={() => onBookmark(msg.id)}
                 />
