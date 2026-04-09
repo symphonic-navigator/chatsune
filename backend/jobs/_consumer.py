@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 import structlog
 from datetime import datetime, timezone, timedelta
 
@@ -6,9 +7,11 @@ from redis.asyncio import Redis
 
 from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._lock import get_job_lock
+from backend.jobs._log import append_job_log_entry
 from backend.jobs._models import JobEntry
 from backend.jobs._registry import JOB_REGISTRY
 from backend.jobs._retry import set_retry, get_retry, clear_retry, compute_backoff
+from shared.dtos.jobs import JobLogEntryDto, JobLogStatus
 from backend.modules.safeguards import (
     BudgetExceededError,
     CircuitOpenError,
@@ -57,6 +60,33 @@ async def ensure_consumer_group(redis: Redis) -> None:
             pass  # Group already exists
         else:
             raise
+
+
+async def _log_job_transition(
+    redis: Redis,
+    *,
+    user_id: str,
+    job: JobEntry,
+    status: JobLogStatus,
+    silent: bool,
+    ts: datetime,
+    attempt: int = 0,
+    duration_ms: int | None = None,
+    error_message: str | None = None,
+) -> None:
+    entry = JobLogEntryDto(
+        entry_id=str(uuid.uuid4()),
+        job_id=job.id,
+        job_type=job.job_type,
+        persona_id=job.payload.get("persona_id"),
+        status=status,
+        attempt=attempt,
+        silent=silent,
+        ts=ts,
+        duration_ms=duration_ms,
+        error_message=error_message,
+    )
+    await append_job_log_entry(redis, user_id=user_id, entry=entry)
 
 
 async def process_one(redis: Redis, event_bus) -> bool:
@@ -162,6 +192,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
         job_type=job.job_type.value,
         attempt=job.attempt,
     )
+    execution_started_at: datetime | None = None
     try:
         # Execute the job
         try:
@@ -185,6 +216,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
 
             async with asyncio.timeout(config.execution_timeout_seconds):
                 async with lock:
+                    execution_started_at = datetime.now(timezone.utc)
                     await event_bus.publish(
                         Topics.JOB_STARTED,
                         JobStartedEvent(
@@ -197,6 +229,14 @@ async def process_one(redis: Redis, event_bus) -> bool:
                         ),
                         target_user_ids=[job.user_id],
                         correlation_id=job.correlation_id,
+                    )
+                    await _log_job_transition(
+                        redis,
+                        user_id=job.user_id,
+                        job=job,
+                        status="started",
+                        silent=not config.notify,
+                        ts=execution_started_at,
                     )
                     try:
                         await config.handler(
@@ -238,6 +278,21 @@ async def process_one(redis: Redis, event_bus) -> bool:
                     target_user_ids=[job.user_id],
                     correlation_id=job.correlation_id,
                 )
+            completed_at = datetime.now(timezone.utc)
+            duration_ms = (
+                int((completed_at - execution_started_at).total_seconds() * 1000)
+                if execution_started_at is not None
+                else None
+            )
+            await _log_job_transition(
+                redis,
+                user_id=job.user_id,
+                job=job,
+                status="completed",
+                silent=not config.notify,
+                ts=completed_at,
+                duration_ms=duration_ms,
+            )
             await clear_retry(redis, job.id)
             await redis.xack(_STREAM, _GROUP, stream_id)
             await redis.xdel(_STREAM, stream_id)
@@ -287,6 +342,23 @@ async def process_one(redis: Redis, event_bus) -> bool:
                     target_user_ids=[job.user_id],
                     correlation_id=job.correlation_id,
                 )
+            failed_at = datetime.now(timezone.utc)
+            failure_duration_ms = (
+                int((failed_at - execution_started_at).total_seconds() * 1000)
+                if execution_started_at is not None
+                else None
+            )
+            await _log_job_transition(
+                redis,
+                user_id=job.user_id,
+                job=job,
+                status="failed",
+                silent=not (config.notify or config.notify_error),
+                ts=failed_at,
+                attempt=attempt,
+                duration_ms=failure_duration_ms,
+                error_message=error_message,
+            )
             await clear_retry(redis, job.id)
             await redis.xack(_STREAM, _GROUP, stream_id)
             await redis.xdel(_STREAM, stream_id)
@@ -313,6 +385,16 @@ async def process_one(redis: Redis, event_bus) -> bool:
                 ),
                 target_user_ids=[job.user_id],
                 correlation_id=job.correlation_id,
+            )
+            await _log_job_transition(
+                redis,
+                user_id=job.user_id,
+                job=job,
+                status="retry",
+                silent=not config.notify,
+                ts=now,
+                attempt=attempt,
+                error_message=error_message,
             )
             _log.info("job.retry.scheduled", attempt=attempt, max_retries=config.max_retries, next_retry_at=next_retry_at.isoformat())
             return False
