@@ -18,6 +18,7 @@ import { UserModal, type UserModalTab } from "../components/user-modal/UserModal
 import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
 import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 import { ToastContainer } from "../components/toast/ToastContainer"
+import { InstallHint } from "../components/pwa/InstallHint"
 import { Topics } from "../../core/types/events"
 import { llmApi } from "../../core/api/llm"
 import { personasApi } from "../../core/api/personas"
@@ -290,6 +291,7 @@ export default function AppLayout() {
         </main>
       </div>
       <ToastContainer />
+      <InstallHint />
     </div>
   )
 }
