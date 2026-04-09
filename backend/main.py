@@ -4,30 +4,30 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-# Configure root logging as early as possible — before any module-level
-# loggers are created by imports below. Without this, Python falls back to
-# the WARNING-level "last resort" handler and every _log.info(...) call in
-# the backend is silently dropped, which makes debugging the job system
-# and inference pipeline effectively impossible.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-5s %(name)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S%z",
-    stream=sys.stderr,
-    force=True,
+# Configure structured logging before any module-level loggers are created
+# by imports further down. Without this, early imports create loggers that
+# cache the default handler and INFO lines from those modules get silently
+# dropped.
+from backend.config import settings
+from backend._logging import configure_logging
+
+configure_logging(
+    level=settings.log_level,
+    console=settings.log_console,
+    console_format=settings.log_console_format,
+    file=settings.log_file,
+    file_path=settings.log_file_path,
+    file_backup_count=settings.log_file_backup_count,
+    uvicorn_access_level=settings.log_level_uvicorn_access,
+    third_party_level=settings.log_level_third_party,
 )
-# Tame noisy libraries so our own INFO output stays readable.
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("pymongo").setLevel(logging.WARNING)
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.config import settings
 from backend.database import connect_db, disconnect_db, get_db, get_redis
 from backend.modules.user import router as user_router, init_indexes as user_init_indexes
 from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
