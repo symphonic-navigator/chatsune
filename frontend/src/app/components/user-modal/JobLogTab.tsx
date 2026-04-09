@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchJobLog } from '../../../core/api/jobsLog'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { eventBus } from '../../../core/websocket/eventBus'
-import type { BaseEvent } from '../../../core/types/events'
+import { Topics, type BaseEvent } from '../../../core/types/events'
 import type { JobLogEntry, JobLogStatus } from '../../../core/types/jobLog'
 
 const MAX_ENTRIES = 200
@@ -61,10 +61,10 @@ interface JobEventPayload {
 }
 
 function statusFromEventType(type: string): JobLogStatus | null {
-  if (type === 'job.started') return 'started'
-  if (type === 'job.completed') return 'completed'
-  if (type === 'job.failed') return 'failed'
-  if (type === 'job.retry') return 'retry'
+  if (type === Topics.JOB_STARTED) return 'started'
+  if (type === Topics.JOB_COMPLETED) return 'completed'
+  if (type === Topics.JOB_FAILED) return 'failed'
+  if (type === Topics.JOB_RETRY) return 'retry'
   return null
 }
 
