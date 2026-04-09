@@ -26,6 +26,7 @@ dependencies = [
     "transformers>=5.5.0",
     "huggingface-hub>=1.9.0",
     "numpy>=2.4.4",
+    "structlog>=24.1",
 ]
 
 [tool.pytest.ini_options]
