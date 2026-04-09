@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lockBodyScroll, unlockBodyScroll } from "../../core/utils/bodyScrollLock"
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useDrawerStore } from "../../core/store/drawerStore"
 import { useViewport } from "../../core/hooks/useViewport"
@@ -54,15 +55,13 @@ export default function AppLayout() {
     return () => window.removeEventListener("keydown", onKey)
   }, [isDesktop, drawerOpen, closeDrawer])
 
-  // Lock background scroll while the drawer is open on mobile — prevents
-  // the page behind the drawer from scrolling on touch devices.
+  // Lock background scroll while the drawer is open on mobile. Uses the
+  // shared ref-counted helper so this lock composes cleanly with Sheet
+  // components that also lock the body scroll.
   useEffect(() => {
     if (isDesktop || !drawerOpen) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = previous
-    }
+    lockBodyScroll()
+    return () => unlockBodyScroll()
   }, [isDesktop, drawerOpen])
 
   const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()

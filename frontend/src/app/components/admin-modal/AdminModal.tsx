@@ -80,7 +80,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
         aria-modal="true"
         aria-label="Admin Area"
         tabIndex={-1}
-        className="absolute inset-4 z-20 flex flex-col bg-surface border border-white/8 rounded-xl shadow-2xl overflow-hidden outline-none"
+        className="absolute inset-0 lg:inset-4 z-20 flex flex-col bg-surface border-0 lg:border lg:border-white/8 rounded-none lg:rounded-xl shadow-2xl overflow-hidden outline-none"
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/6 flex-shrink-0">
           <div className="flex items-center gap-2">

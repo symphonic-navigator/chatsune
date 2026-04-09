@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useId } from "react"
+import { useState, useRef, useId } from "react"
 import type { EnrichedModelDto, SetUserModelConfigRequest } from "../../../core/types/llm"
 import { llmApi } from "../../../core/api/llm"
 import { slugWithoutProvider } from "./modelFilters"
 import { useFocusTrap } from "../../hooks/useFocusTrap"
+import { Sheet } from "../../../core/components/Sheet"
 
 const SYSTEM_PROMPT_LIMIT = 4000
 const NOTES_LIMIT = 2000
@@ -57,7 +58,6 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   const [customContextWindow, setCustomContextWindow] = useState<number | null>(
     model.user_config?.custom_context_window ?? null,
   )
-  const backdropRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
   useFocusTrap(dialogRef, true)
@@ -70,17 +70,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
         Math.abs(s - effectiveContext) < Math.abs(steps[closest] - effectiveContext) ? i : closest, 0)
     : 0
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
-
-  function handleBackdropClick(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose()
-  }
+  // Esc handling + backdrop click are provided by <Sheet>.
 
   async function handleSave() {
     setSaving(true)
@@ -112,18 +102,8 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   const paramInfo = [model.parameter_count, model.quantisation_level].filter(Boolean).join(" ")
 
   return (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdropClick}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60"
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full sm:max-w-lg rounded-xl border border-white/8 bg-surface shadow-2xl"
-      >
+    <Sheet isOpen={true} onClose={onClose} size="lg" ariaLabel="Model configuration" className="border border-white/8 bg-surface shadow-2xl">
+      <div ref={dialogRef} aria-labelledby={titleId} className="flex flex-1 flex-col overflow-y-auto lg:flex-none lg:overflow-visible">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <div className="min-w-0 flex-1">
@@ -377,6 +357,6 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
           </button>
         </div>
       </div>
-    </div>
+    </Sheet>
   )
 }

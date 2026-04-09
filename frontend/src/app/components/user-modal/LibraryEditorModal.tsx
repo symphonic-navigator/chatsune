@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
+import { Sheet } from '../../../core/components/Sheet'
 
 interface LibraryEditorModalProps {
   initial?: { name: string; description: string; nsfw: boolean }
@@ -72,23 +73,9 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') attemptClose()
-  }
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) attemptClose() }}
-      onKeyDown={handleKeyDown}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full sm:max-w-md rounded-xl border border-white/8 bg-elevated shadow-2xl"
-      >
+    <Sheet isOpen={true} onClose={attemptClose} size="md" ariaLabel={isEdit ? 'Edit library' : 'New library'} className="border border-white/8 bg-elevated shadow-2xl">
+      <div ref={dialogRef} aria-labelledby={titleId} className="flex flex-1 flex-col overflow-y-auto lg:flex-none lg:overflow-visible">
         {/* Header */}
         <div className="border-b border-white/6 px-5 py-4">
           <h2 id={titleId} className="text-[13px] font-mono uppercase tracking-wider text-white/60">
@@ -218,6 +205,6 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
           </div>
         </div>
       </div>
-    </div>
+    </Sheet>
   )
 }

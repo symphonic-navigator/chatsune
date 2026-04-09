@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { ProfileCrop } from '../../../core/types/persona'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { Sheet } from '../../../core/components/Sheet'
 
 interface AvatarCropModalProps {
   isOpen: boolean
@@ -250,28 +251,16 @@ export function AvatarCropModal({
     }
   }
 
-  // Escape key
-  useEffect(() => {
-    if (!isOpen) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
+  // Esc handling is provided by <Sheet>.
 
   const borderColour = accentColour + '26'
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/60 z-30" onClick={onClose} aria-hidden />
-
+    <Sheet isOpen={isOpen} onClose={onClose} size="sm" ariaLabel="Profile picture">
       <div
         ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
         aria-labelledby={titleId}
-        className="fixed z-40 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col rounded-xl shadow-2xl overflow-hidden w-[calc(100vw-2rem)] sm:w-[340px]"
+        className="flex flex-1 flex-col overflow-y-auto lg:flex-none lg:overflow-visible"
         style={{ backgroundColor: '#13101e', border: `1px solid ${borderColour}` }}
       >
         {/* Header */}
@@ -363,6 +352,6 @@ export function AvatarCropModal({
           </button>
         </div>
       </div>
-    </>
+    </Sheet>
   )
 }

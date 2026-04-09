@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useId } from "react"
+import { useState, useRef, useId } from "react"
 import type { ModelMetaDto, ModelRating, SetModelCurationRequest } from "../../../core/types/llm"
 import { llmApi } from "../../../core/api/llm"
 import { useFocusTrap } from "../../hooks/useFocusTrap"
+import { Sheet } from "../../../core/components/Sheet"
 
 interface CurationModalProps {
   model: ModelMetaDto
@@ -21,22 +22,9 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
   const [description, setDescription] = useState(model.curation?.admin_description ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const backdropRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
   useFocusTrap(dialogRef, true)
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose()
-    }
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
-
-  function handleBackdropClick(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose()
-  }
 
   async function handleSave() {
     setSaving(true)
@@ -60,18 +48,8 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
   const paramInfo = [model.parameter_count, model.quantisation_level].filter(Boolean).join(" ")
 
   return (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="w-full sm:max-w-md rounded-xl border border-white/8 bg-surface shadow-2xl"
-      >
+    <Sheet isOpen={true} onClose={onClose} size="md" ariaLabel="Model curation" className="border border-white/8 bg-surface shadow-2xl">
+      <div ref={dialogRef} aria-labelledby={titleId} className="flex flex-1 flex-col overflow-y-auto lg:flex-none lg:overflow-visible">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <div className="min-w-0 flex-1">
@@ -187,6 +165,6 @@ export function CurationModal({ model, onCurationSaved, onClose }: CurationModal
           </button>
         </div>
       </div>
-    </div>
+    </Sheet>
   )
 }

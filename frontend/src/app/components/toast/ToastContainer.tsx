@@ -20,7 +20,7 @@ export function ToastContainer() {
   if (displayed.length === 0) return null
 
   return (
-    <div className="pointer-events-none fixed top-14 left-1/2 z-50 flex -translate-x-1/2 flex-col gap-3 p-4">
+    <div className="pointer-events-none fixed top-14 left-1/2 z-[60] flex -translate-x-1/2 flex-col gap-3 p-4">
       {displayed.map((n) => (
         <Toast key={n.id} notification={n} />
       ))}

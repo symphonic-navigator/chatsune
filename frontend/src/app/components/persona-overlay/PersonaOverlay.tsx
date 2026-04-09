@@ -119,7 +119,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
         aria-modal="true"
         aria-label={isCreating ? 'New Persona' : `Persona: ${resolved.name}`}
         tabIndex={-1}
-        className="absolute inset-4 z-20 flex flex-col rounded-xl shadow-2xl overflow-hidden outline-none"
+        className="absolute inset-0 lg:inset-4 z-20 flex flex-col rounded-none lg:rounded-xl shadow-2xl overflow-hidden outline-none"
         style={{
           background: 'linear-gradient(160deg, #13101e 0%, #0f0d16 100%)',
           border: `1px solid ${borderColour}`,
