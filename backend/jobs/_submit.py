@@ -1,4 +1,4 @@
-import logging
+import structlog
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -12,7 +12,7 @@ from backend.modules.safeguards import (
     is_emergency_stopped,
 )
 
-_log = logging.getLogger(__name__)
+_log = structlog.get_logger("chatsune.jobs.submit")
 
 _STREAM_KEY = "jobs:pending"
 
@@ -68,12 +68,19 @@ async def submit(
     )
     if evicted:
         _log.warning(
-            "job.queue_cap.evicted user=%s count=%d ids=%s",
-            user_id, len(evicted), evicted,
+            "job.queue_cap.evicted",
+            user_id=user_id,
+            evicted_count=len(evicted),
+            evicted_ids=evicted,
         )
 
     _log.info(
-        "Submitted job %s (type=%s, model=%s, user=%s, correlation=%s)",
-        job_id, job_type.value, model_unique_id, user_id, corr_id,
+        "job.enqueued",
+        job_id=job_id,
+        job_type=job_type.value,
+        model_unique_id=model_unique_id,
+        user_id=user_id,
+        correlation_id=corr_id,
+        stream=_STREAM_KEY,
     )
     return job_id
