@@ -67,18 +67,74 @@ async def websocket_endpoint(
 
     try:
         if since is not None:
-            # Phase 1: replay from global scope only; future scopes (persona, session) extend this
+            # Replay across all scopes (global, session:<id>, persona:<id>,
+            # user:<id>, ...). Each persisted stream entry carries the
+            # fan-out targeting (roles + target user ids) it was published
+            # with, so we can securely filter replay per-user without
+            # leaking events across users. Entries are merged in
+            # stream-id order, which is time-ordered, so sequence
+            # monotonicity on the frontend is preserved.
             if not _STREAM_ID_RE.match(since):
                 _log.warning("Ignoring invalid 'since' stream id from client: %r", since)
             else:
+                redis = get_redis()
+                collected: list[tuple[str, dict]] = []
                 try:
-                    entries = await get_redis().xrange(
-                        "events:global", min=f"({since}", max="+",
-                    )
+                    async for key in redis.scan_iter(match="events:*"):
+                        try:
+                            entries = await redis.xrange(
+                                key, min=f"({since}", max="+",
+                            )
+                        except Exception:
+                            _log.exception(
+                                "Failed to xrange replay stream %r for user %s",
+                                key, user_id,
+                            )
+                            continue
+                        for stream_id, data in entries:
+                            roles_field = data.get("roles", "")
+                            targets_field = data.get("targets", "")
+                            roles_list = [r for r in roles_field.split(",") if r]
+                            targets_list = [t for t in targets_field.split(",") if t]
+                            # Allow-rules, in priority order:
+                            #   1. Broadcast-all (roles contains "*")
+                            #   2. User is in explicit target user ids
+                            #   3. User's role matches an authorised role
+                            #   4. Legacy entry with no targeting metadata
+                            #      AND scope == "global" (backwards compat
+                            #      during the deployment window while old
+                            #      entries from before this change are
+                            #      still within the 24h retention).
+                            authorised = False
+                            if "*" in roles_list:
+                                authorised = True
+                            elif user_id in targets_list:
+                                authorised = True
+                            elif role in roles_list:
+                                authorised = True
+                            elif not roles_list and not targets_list and key == "events:global":
+                                authorised = True
+                            if not authorised:
+                                continue
+                            collected.append((stream_id, data))
                 except Exception:
-                    _log.exception("Failed to xrange replay stream for user %s", user_id)
-                    entries = []
-                for stream_id, data in entries:
+                    _log.exception(
+                        "Failed to scan replay streams for user %s", user_id
+                    )
+
+                # Merge by stream id — Redis stream ids are "<ms>-<seq>"
+                # and time-ordered across streams, so lexicographic sort
+                # on the (ms, seq) tuple yields the correct delivery order.
+                def _sort_key(item: tuple[str, dict]) -> tuple[int, int]:
+                    sid = item[0]
+                    ms_str, _, seq_str = sid.partition("-")
+                    try:
+                        return (int(ms_str), int(seq_str) if seq_str else 0)
+                    except ValueError:
+                        return (0, 0)
+
+                collected.sort(key=_sort_key)
+                for stream_id, data in collected:
                     try:
                         envelope = json.loads(data["envelope"])
                         envelope["sequence"] = stream_id

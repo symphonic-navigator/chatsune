@@ -180,8 +180,26 @@ class EventBus:
 
         if topic not in _SKIP_PERSISTENCE:
             stream_key = f"events:{scope}"
+            # Persist fan-out targeting alongside the envelope so that
+            # reconnect/replay can determine which users are legitimately
+            # allowed to receive each historical event — without leaking
+            # across users. See backend/ws/router.py replay path.
+            if topic in _BROADCAST_ALL:
+                replay_roles: list[str] = ["*"]
+                replay_targets: list[str] = []
+            else:
+                roles_rule, send_to_targets = _FANOUT.get(topic, ([], False))
+                replay_roles = list(roles_rule)
+                replay_targets = (
+                    list(target_user_ids or []) if send_to_targets else []
+                )
             stream_id = await self._redis.xadd(
-                stream_key, {"envelope": envelope.model_dump_json()}
+                stream_key,
+                {
+                    "envelope": envelope.model_dump_json(),
+                    "roles": ",".join(replay_roles),
+                    "targets": ",".join(replay_targets),
+                },
             )
             # Redis stream IDs have the form "<ms>-<seq>"; BaseEvent.sequence is str.
             envelope.sequence = stream_id
