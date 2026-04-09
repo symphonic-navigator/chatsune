@@ -64,7 +64,7 @@ export function KnowledgeDropdown({
 
       {/* Dropdown panel */}
       <div
-        className="absolute right-0 top-full z-20 mt-1.5 w-72 rounded-lg shadow-xl overflow-hidden"
+        className="absolute left-0 top-full z-20 mt-1.5 w-72 rounded-lg shadow-xl overflow-hidden"
         style={{
           background: 'rgba(26, 21, 40, 0.98)',
           border: '1px solid rgba(140,118,215,0.2)',

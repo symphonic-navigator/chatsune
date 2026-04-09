@@ -1,6 +1,4 @@
-import { useOutletContext } from 'react-router-dom'
 import { memoryApi, type JournalEntryDto } from '../../core/api/memory'
-import { useMemoryStore } from '../../core/store/memoryStore'
 import { useEscapeKey } from '../../app/hooks/useEscapeKey'
 
 interface JournalDropdownProps {
@@ -22,32 +20,9 @@ function relativeTime(isoString: string): string {
 }
 
 export function JournalDropdown({ personaId, entries, canTriggerExtraction, onClose }: JournalDropdownProps) {
-  const { openPersonaOverlay } = useOutletContext<{
-    openPersonaOverlay: (personaId: string | null, tab?: string) => void
-  }>()
-  const store = useMemoryStore.getState
-
   useEscapeKey(onClose)
 
   const visibleEntries = entries.slice(0, 10)
-
-  const handleCommit = async (entry: JournalEntryDto) => {
-    try {
-      await memoryApi.commitEntries(personaId, [entry.id])
-      store().commitEntry(personaId, entry)
-    } catch {
-      // silently fail — WS event will correct state
-    }
-  }
-
-  const handleDelete = async (entry: JournalEntryDto) => {
-    try {
-      await memoryApi.deleteEntries(personaId, [entry.id])
-      store().removeEntry(personaId, entry.id)
-    } catch {
-      // silently fail — WS event will correct state
-    }
-  }
 
   const handleExtract = async () => {
     try {
@@ -59,9 +34,6 @@ export function JournalDropdown({ personaId, entries, canTriggerExtraction, onCl
 
   return (
     <>
-      {/* Backdrop to close on outside click */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-
       <div className="absolute right-0 top-full z-50 mt-1 w-80 rounded-lg border border-white/10 bg-elevated shadow-xl">
         <div className="border-b border-white/8 px-3 py-2">
           <span className="text-[11px] font-medium uppercase tracking-wide text-white/40">
@@ -80,34 +52,16 @@ export function JournalDropdown({ personaId, entries, canTriggerExtraction, onCl
                 <div className="mb-1 flex items-start justify-between gap-2">
                   <p className="flex-1 text-[12px] leading-relaxed text-white/70">{entry.content}</p>
                 </div>
-                <div className="flex items-center justify-between">
+                <div className="flex items-center">
                   <span className="text-[10px] text-white/25">{relativeTime(entry.created_at)}</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleCommit(entry)}
-                      className="rounded px-1.5 py-0.5 text-[10px] text-green-400/70 hover:bg-green-500/10 hover:text-green-400 transition-colors"
-                      title="Commit entry"
-                    >
-                      Commit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(entry)}
-                      className="rounded px-1.5 py-0.5 text-[10px] text-white/30 hover:bg-red-500/10 hover:text-red-400/70 transition-colors"
-                      title="Delete entry"
-                    >
-                      Delete
-                    </button>
-                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        <div className="border-t border-white/8 px-3 py-2 flex items-center justify-between gap-2">
-          {canTriggerExtraction && (
+        {canTriggerExtraction && (
+          <div className="border-t border-white/8 px-3 py-2 flex items-center">
             <button
               type="button"
               onClick={handleExtract}
@@ -115,15 +69,8 @@ export function JournalDropdown({ personaId, entries, canTriggerExtraction, onCl
             >
               Extract Now
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => { openPersonaOverlay(personaId, 'memories'); onClose() }}
-            className="ml-auto text-[11px] text-white/30 hover:text-white/50 transition-colors"
-          >
-            Open Memories →
-          </button>
-        </div>
+          </div>
+        )}
       </div>
     </>
   )

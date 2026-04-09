@@ -630,8 +630,16 @@ export function Sidebar({
 
       {/* Logo */}
       <div className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/5 px-3.5">
-        <span className="text-[17px]">🦊</span>
-        <span className="flex-1 text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
+        <button
+          type="button"
+          onClick={() => { onCloseModal(); navigate("/personas") }}
+          title="All personas"
+          aria-label="Open personas"
+          className="flex flex-1 items-center gap-2.5 rounded-md -mx-1 px-1 py-0.5 text-left transition-colors hover:bg-white/5"
+        >
+          <span className="text-[17px]">🦊</span>
+          <span className="flex-1 text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
+        </button>
         <button
           type="button"
           onClick={() => { setHistorySearch(""); toggleCollapsed() }}

@@ -22,6 +22,7 @@ import { useNotificationStore } from '../../core/store/notificationStore'
 import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
+import { KnowledgeDropdown } from './KnowledgeDropdown'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
 import { InferenceWaitBanner } from './InferenceWaitBanner'
 import { ArtefactRail } from '../artefact/ArtefactRail'
@@ -50,6 +51,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [resolveAttempt, setResolveAttempt] = useState(0)
+  const [showKnowledge, setShowKnowledge] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
   // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
   // Requires plumbing through MessageList/UserMessage; deferred — top-level error banner already exists.
@@ -562,6 +564,26 @@ export function ChatView({ persona }: ChatViewProps) {
               )}
             </div>
           )}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowKnowledge((v) => !v)}
+              className="flex items-center justify-center w-6 h-6 rounded text-[13px] transition-colors"
+              style={{ background: 'rgba(140,118,215,0.1)' }}
+              title="Ad-hoc Knowledge"
+            >
+              🎓
+            </button>
+            {persona && effectiveSessionId && (
+              <KnowledgeDropdown
+                personaId={persona.id}
+                personaName={persona.name}
+                sessionId={effectiveSessionId}
+                isOpen={showKnowledge}
+                onClose={() => setShowKnowledge(false)}
+              />
+            )}
+          </div>
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>

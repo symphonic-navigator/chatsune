@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { memoryApi } from '../../core/api/memory'
 import { useMemoryStore } from '../../core/store/memoryStore'
 import { JournalDropdown } from './JournalDropdown'
@@ -31,6 +32,9 @@ function badgeTextColour(count: number): string {
 const EMPTY_ENTRIES: import('../../core/api/memory').JournalEntryDto[] = []
 
 export function JournalBadge({ personaId }: JournalBadgeProps) {
+  const { openPersonaOverlay } = useOutletContext<{
+    openPersonaOverlay: (personaId: string | null, tab?: string) => void
+  }>()
   const [open, setOpen] = useState(false)
   const [isPulsing, setIsPulsing] = useState(false)
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -72,12 +76,16 @@ export function JournalBadge({ personaId }: JournalBadgeProps) {
   const count = entries.length
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => openPersonaOverlay(personaId, 'memories')}
         className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors ${badgeBorderColour(count)} bg-white/3 ${badgeTextColour(count)} hover:bg-white/5`}
-        title={`${count} uncommitted journal entries`}
+        title={`Open memories for this persona`}
       >
         <span
           className={`h-1.5 w-1.5 rounded-full ${badgeColour(count)} ${isPulsing ? 'animate-pulse' : ''}`}
