@@ -23,6 +23,7 @@ from backend.jobs import (
     submit,
     try_acquire_inflight_slot,
 )
+from backend.jobs._dedup import MEMORY_EXTRACTION_SLOT_TTL_SECONDS
 from backend.jobs._disconnect_retry import buffer_submit_payload
 from backend.database import get_db, get_redis
 from backend.modules.llm import (
@@ -642,7 +643,7 @@ async def _schedule_idle_extraction(
         # skip this submission. Prevents queue flood when the provider
         # is slow or unreachable.
         slot_key = memory_extraction_slot_key(user_id, persona_id)
-        if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+        if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=MEMORY_EXTRACTION_SLOT_TTL_SECONDS):
             _log.info(
                 "Skipping idle extraction — another extraction is already in flight: user=%s persona=%s",
                 user_id, persona_id,
@@ -776,7 +777,7 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                 # already in flight (queued / running / retrying), or
                 # still inside the cooldown window from a recent failure.
                 slot_key = memory_extraction_slot_key(user_id, persona_id)
-                if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+                if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=MEMORY_EXTRACTION_SLOT_TTL_SECONDS):
                     _log.info(
                         "Skipping disconnect extraction — another extraction is already in flight: user=%s persona=%s",
                         user_id, persona_id,

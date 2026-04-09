@@ -16,6 +16,7 @@ from backend.jobs import (
     submit,
     try_acquire_inflight_slot,
 )
+from backend.jobs._dedup import MEMORY_EXTRACTION_SLOT_TTL_SECONDS
 from backend.modules.chat import get_latest_user_messages_for_persona
 from backend.modules.memory._repository import MemoryRepository
 from backend.modules.persona import get_persona as get_persona_fn
@@ -417,7 +418,9 @@ async def trigger_extraction(
     # instead of silently stacking another submission on top.
     redis = get_redis()
     slot_key = memory_extraction_slot_key(user_id, persona_id)
-    if not await try_acquire_inflight_slot(redis, slot_key, ttl_seconds=3600):
+    if not await try_acquire_inflight_slot(
+        redis, slot_key, ttl_seconds=MEMORY_EXTRACTION_SLOT_TTL_SECONDS,
+    ):
         raise HTTPException(
             status_code=409,
             detail="A memory extraction for this persona is already in progress or recently failed. Please try again later.",

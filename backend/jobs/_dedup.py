@@ -7,16 +7,29 @@ a slow upstream provider (e.g. a cold local Ollama) failed retry chains
 can otherwise stack up faster than they drain, flooding the queue.
 
 This helper provides a tiny Redis-backed slot: a caller tries to acquire
-a slot before submitting, and releases it after the handler has finished
-successfully. The slot is set with ``SET NX EX`` — the TTL is a safety
-net so a crashed worker cannot block the scope forever. On a failed
-retry chain we deliberately do **not** release the slot: the TTL then
-acts as a cooldown before the next extraction is allowed, which is the
-desired behaviour in the queue-flood scenario.
+a slot before submitting, and the handler releases it once the job
+reaches a terminal state. The slot is set with ``SET NX EX`` — the TTL
+is a safety net so a crashed worker cannot block the scope forever, and
+it must comfortably cover the full retry chain of the guarded job type.
+
+The slot also doubles as a short cooldown window: when the handler hits
+a ``ProviderUnavailableError``, it refreshes the TTL to the cooldown
+duration and leaves the slot held, so a dead upstream provider cannot
+flood the queue with fresh submissions while it recovers. On any other
+terminal failure the handler is expected to release the slot and mark
+the affected work items so they do not loop back into the queue.
 """
 
 import structlog
 from redis.asyncio import Redis
+
+# Default lifetime for the in-flight slot. Must be long enough to cover
+# the full retry chain of the guarded handler (memory extraction:
+# max_retries * (execution_timeout + retry_delay) plus headroom). At the
+# same time it should not be so long that a truly abandoned slot blocks
+# the scope for hours — callers applying a provider cooldown shorten
+# the TTL via ``redis.expire`` at that point.
+MEMORY_EXTRACTION_SLOT_TTL_SECONDS = 1800  # 30 minutes
 
 _log = structlog.get_logger("chatsune.jobs.dedup")
 

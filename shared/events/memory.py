@@ -30,6 +30,24 @@ class MemoryExtractionFailedEvent(BaseModel):
     timestamp: datetime
 
 
+class MemoryExtractionSkippedEvent(BaseModel):
+    """Emitted when an extraction gave up after exhausting retries.
+
+    The source messages have been marked as extracted to stop them
+    looping through the queue forever, but no journal entries were
+    created from them — effectively a controlled data drop. The UI is
+    expected to surface ``user_message`` so the user knows something
+    went wrong and can decide whether to re-trigger manually.
+    """
+    type: str = "memory.extraction.skipped"
+    persona_id: str
+    skipped_message_count: int
+    reason: str            # dev/logging detail
+    user_message: str      # shown in the UI
+    correlation_id: str
+    timestamp: datetime
+
+
 class MemoryEntryCreatedEvent(BaseModel):
     type: str = "memory.entry.created"
     entry: JournalEntryDto

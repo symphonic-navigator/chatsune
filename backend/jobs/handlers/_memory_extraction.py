@@ -11,7 +11,7 @@ from backend.jobs._dedup import (
     memory_extraction_slot_key,
     release_inflight_slot,
 )
-from backend.jobs._errors import UnrecoverableJobError
+from backend.jobs._errors import ProviderUnavailableError, UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
 from backend.jobs.handlers._budget_helpers import (
     check_and_reserve_budget,
@@ -24,6 +24,7 @@ from shared.events.memory import (
     MemoryEntryCreatedEvent,
     MemoryExtractionCompletedEvent,
     MemoryExtractionFailedEvent,
+    MemoryExtractionSkippedEvent,
     MemoryExtractionStartedEvent,
 )
 from shared.dtos.memory import JournalEntryDto
@@ -189,7 +190,7 @@ async def handle_memory_extraction(
                     # the retry chain instead of tying up a job slot for
                     # the full max_retries * (exec + delay) window.
                     if err.error_code == "provider_unavailable":
-                        raise UnrecoverableJobError(
+                        raise ProviderUnavailableError(
                             f"Provider unavailable: {err.message}"
                         )
                     raise RuntimeError(
@@ -381,11 +382,145 @@ async def handle_memory_extraction(
             target_user_ids=[job.user_id],
             correlation_id=job.correlation_id,
         )
+        await _on_extraction_failure(
+            exc=exc,
+            job=job,
+            config=config,
+            redis=redis,
+            event_bus=event_bus,
+            persona_id=persona_id,
+            session_id=session_id,
+            message_ids=message_ids,
+            inflight_key=inflight_key,
+        )
         raise
     finally:
-        # Release the in-flight slot only on clean success. On exception
-        # we deliberately leave the slot held: its TTL then acts as a
-        # cooldown so a dead provider cannot flood the queue with retries
-        # and fresh submissions from the idle timer.
         if success:
             await release_inflight_slot(redis, inflight_key)
+
+
+# Cooldown applied to the in-flight slot when the upstream provider is
+# definitively down. Kept deliberately short — the provider usually
+# recovers within minutes, and a longer window would strand the user's
+# memory extraction for no reason.
+_PROVIDER_COOLDOWN_SECONDS = 900  # 15 minutes
+
+
+async def _on_extraction_failure(
+    *,
+    exc: Exception,
+    job: JobEntry,
+    config: JobConfig,
+    redis,
+    event_bus,
+    persona_id: str,
+    session_id: str,
+    message_ids: list[str],
+    inflight_key: str,
+) -> None:
+    """Apply the correct terminal-failure semantics.
+
+    Three cases:
+
+    - **Provider unavailable** (``ProviderUnavailableError``): the job
+      is terminal, but retrying *later* will work. Refresh the inflight
+      slot to a short cooldown TTL and leave it held so fresh
+      submissions are skipped during the cooldown window. Do NOT mark
+      the source messages — they should be picked up again once the
+      provider is back.
+
+    - **Other unrecoverable / last retry attempt exhausted**: the job
+      is terminal and replaying the same input would fail again. Mark
+      the source messages as ``extracted`` so they stop looping through
+      the queue, release the inflight slot, and emit a skipped event so
+      the UI can surface a banner.
+
+    - **Retryable exception, not yet on last attempt**: leave the slot
+      held (the TTL safety net covers the whole retry chain) and do
+      nothing else — the consumer will retry, and a later attempt will
+      either succeed (release on success path) or hit the terminal
+      branch above.
+    """
+    if isinstance(exc, ProviderUnavailableError):
+        try:
+            await redis.expire(inflight_key, _PROVIDER_COOLDOWN_SECONDS)
+        except Exception:
+            _log.exception("job.extraction.cooldown_refresh_failed", key=inflight_key)
+        _log.info(
+            "job.extraction.provider_cooldown",
+            persona_id=persona_id,
+            cooldown_seconds=_PROVIDER_COOLDOWN_SECONDS,
+        )
+        return
+
+    is_unrecoverable = isinstance(exc, UnrecoverableJobError)
+    is_last_attempt = (job.attempt + 1) >= config.max_retries
+    is_terminal = is_unrecoverable or is_last_attempt
+    if not is_terminal:
+        # Non-final retryable failure — consumer will retry this job.
+        # Leave the slot held; the safety-net TTL covers the whole
+        # retry chain (see JOB_REGISTRY memory_extraction config).
+        return
+
+    # Terminal non-provider failure: mark source messages as extracted
+    # so they stop being re-submitted, publish a user-visible skipped
+    # event, and release the slot so the next trigger can proceed.
+    reason = str(exc) or type(exc).__name__
+    _log.warning(
+        "job.extraction.terminal_failure",
+        persona_id=persona_id,
+        session_id=session_id,
+        message_count=len(message_ids),
+        reason=reason,
+    )
+
+    if message_ids:
+        try:
+            from backend.modules.chat import mark_messages_extracted
+            await mark_messages_extracted(message_ids)
+        except Exception:
+            _log.exception(
+                "job.extraction.mark_extracted_failed",
+                persona_id=persona_id,
+                message_ids=message_ids,
+            )
+
+    # Reset the per-scope tracking counter so the fallback loop does
+    # not immediately re-submit another extraction for the same scope.
+    try:
+        tracking_key = f"memory:extraction:{job.user_id}:{persona_id}"
+        await redis.hset(tracking_key, mapping={
+            "last_extraction_at": datetime.now(UTC).isoformat(),
+            "messages_since_extraction": "0",
+        })
+    except Exception:
+        _log.exception(
+            "job.extraction.tracking_reset_failed", persona_id=persona_id,
+        )
+
+    try:
+        await event_bus.publish(
+            Topics.MEMORY_EXTRACTION_SKIPPED,
+            MemoryExtractionSkippedEvent(
+                persona_id=persona_id,
+                skipped_message_count=len(message_ids),
+                reason=reason,
+                user_message=(
+                    "Memory extraction failed and has been skipped for "
+                    f"{len(message_ids)} message(s). You can trigger a "
+                    "manual extraction from the persona menu if you "
+                    "want to try again."
+                ),
+                correlation_id=job.correlation_id,
+                timestamp=datetime.now(UTC),
+            ),
+            scope=f"persona:{persona_id}",
+            target_user_ids=[job.user_id],
+            correlation_id=job.correlation_id,
+        )
+    except Exception:
+        _log.exception(
+            "job.extraction.skipped_event_failed", persona_id=persona_id,
+        )
+
+    await release_inflight_slot(redis, inflight_key)

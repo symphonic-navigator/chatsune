@@ -9,12 +9,19 @@ queue action (skip retries, publish a specific event, etc.).
 class UnrecoverableJobError(Exception):
     """Raised by a handler when the failure cannot be fixed by retrying.
 
-    Typical cause: the upstream provider is definitively unreachable
-    (e.g. local Ollama daemon not running — TCP connect refused). Unlike
-    a slow first-load or a transient network blip, retrying will not
-    change the outcome, so the consumer skips the retry chain and goes
-    straight to the final-failure path. This prevents a dead provider
-    from holding job slots open for the full ``max_retries * (exec +
-    delay)`` window and flooding the queue with retries that cannot
-    succeed.
+    Typical causes: budget exceeded, unparseable LLM output, or any
+    input-dependent failure where replaying the exact same job would
+    produce the exact same result. The consumer skips the retry chain
+    and goes straight to the final-failure path.
+    """
+
+
+class ProviderUnavailableError(UnrecoverableJobError):
+    """Raised when the upstream LLM provider is definitively unreachable.
+
+    Separate subclass so the terminal-failure handler can tell
+    input-dependent poison (retry pointless, give up and move on) apart
+    from environmental faults (retry pointless right now, but will work
+    again once the provider is back — apply a cooldown instead of
+    discarding the work).
     """

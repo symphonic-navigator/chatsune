@@ -71,6 +71,7 @@ class Topics:
     MEMORY_EXTRACTION_STARTED = "memory.extraction.started"
     MEMORY_EXTRACTION_COMPLETED = "memory.extraction.completed"
     MEMORY_EXTRACTION_FAILED = "memory.extraction.failed"
+    MEMORY_EXTRACTION_SKIPPED = "memory.extraction.skipped"
     MEMORY_ENTRY_CREATED = "memory.entry.created"
     MEMORY_ENTRY_COMMITTED = "memory.entry.committed"
     MEMORY_ENTRY_UPDATED = "memory.entry.updated"
