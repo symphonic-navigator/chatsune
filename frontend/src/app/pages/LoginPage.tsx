@@ -103,8 +103,8 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base">
-      <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-8 shadow-2xl">
+    <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
           <span className="text-3xl">🦊</span>
           <h1 className="mt-2 text-xl font-semibold text-white/85">Welcome</h1>
@@ -252,8 +252,8 @@ function SetupForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base">
-      <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-8 shadow-2xl">
+    <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
           <span className="text-3xl">🦊</span>
           <h1 className="mt-2 text-xl font-semibold text-white/85">First Time Setup</h1>

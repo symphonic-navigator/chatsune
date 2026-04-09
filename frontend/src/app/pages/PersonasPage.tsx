@@ -72,7 +72,7 @@ export default function PersonasPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-10">
+    <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-10">
       <DndContext
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
@@ -80,7 +80,7 @@ export default function PersonasPage() {
       >
         <SortableContext items={filtered.map((p) => p.id)} strategy={rectSortingStrategy}>
           <div
-            className="flex flex-wrap justify-center gap-6"
+            className="flex flex-wrap justify-center gap-4 sm:gap-6"
             style={{ maxWidth: "1200px", margin: "0 auto" }}
           >
             {filtered.map((persona, index) => (
