@@ -57,7 +57,8 @@ interface JobsPillProps {
 }
 
 export function JobsPill({ personas }: JobsPillProps) {
-  const jobs = useJobStore((s) => Object.values(s.jobs))
+  const jobsMap = useJobStore((s) => s.jobs)
+  const jobs = Object.values(jobsMap)
   const [isOpen, setIsOpen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const containerRef = useRef<HTMLDivElement>(null)

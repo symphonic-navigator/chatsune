@@ -21,7 +21,7 @@ JOB_REGISTRY: dict[JobType, JobConfig] = {
         queue_timeout_seconds=3600.0,
         execution_timeout_seconds=120.0,
         reasoning_enabled=False,
-        notify=False,
+        notify=True,
         notify_error=True,
     ),
     JobType.MEMORY_CONSOLIDATION: JobConfig(
