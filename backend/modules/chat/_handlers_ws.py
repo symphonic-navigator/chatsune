@@ -12,17 +12,12 @@ from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._orchestrator import (
     _cancel_events,
     _cancel_user_ids,
-    _heartbeat_watchdog,
-    _heartbeat_watchdogs,
-    _last_heartbeat,
     _make_tool_executor,
     cancel_all_for_user,
     emit_session_expired,
-    record_heartbeat,
     run_inference,
     track_extraction_trigger,
 )
-import time as _time
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.chat._repository import ChatRepository
 from backend.token_counter import count_tokens
@@ -357,18 +352,6 @@ def handle_chat_cancel(user_id: str, data: dict) -> None:
         _cancel_events[correlation_id].set()
 
 
-async def handle_chat_inference_alive(user_id: str, data: dict) -> None:
-    """Handle a chat.inference.alive heartbeat from the frontend."""
-    correlation_id = data.get("correlation_id")
-    if not correlation_id:
-        return
-    if not await record_heartbeat(user_id, correlation_id):
-        _log.debug(
-            "Ignored heartbeat for unknown or unauthorised correlation_id=%s user=%s",
-            correlation_id, user_id,
-        )
-
-
 async def update_session_title(session_id: str, title: str, user_id: str, correlation_id: str) -> None:
     """Update a session's title and publish the change event."""
     db = get_db()
@@ -455,11 +438,7 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
         correlation_id = str(uuid4())
         cancel_event = asyncio.Event()
         _cancel_events[correlation_id] = cancel_event
-        _last_heartbeat[correlation_id] = _time.monotonic()
         _cancel_user_ids[correlation_id] = user_id
-        _heartbeat_watchdogs[correlation_id] = asyncio.create_task(
-            _heartbeat_watchdog(correlation_id)
-        )
 
         event_bus = get_event_bus()
 
@@ -536,10 +515,6 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
             ))
         finally:
             _cancel_events.pop(correlation_id, None)
-            _last_heartbeat.pop(correlation_id, None)
             _cancel_user_ids.pop(correlation_id, None)
-            watchdog = _heartbeat_watchdogs.pop(correlation_id, None)
-            if watchdog is not None and not watchdog.done():
-                watchdog.cancel()
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)

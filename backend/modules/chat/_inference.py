@@ -262,8 +262,8 @@ class InferenceRunner:
         message_id = None
         # Save whenever the stream produced any useful output — visible
         # content or a thinking block — regardless of whether the run
-        # ended cleanly, was cancelled (manual stop, heartbeat watchdog),
-        # or errored. Throwing away already-streamed tokens means the
+        # ended cleanly, was cancelled (manual stop, WS disconnect), or
+        # errored. Throwing away already-streamed tokens means the
         # user sees them live and then loses them on refresh, which is
         # the worst possible outcome. The ``status`` still travels with
         # ``ChatStreamEndedEvent`` so the frontend can badge the message

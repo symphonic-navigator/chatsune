@@ -13,7 +13,6 @@ from backend.modules.chat import (
     cancel_all_for_user,
     handle_chat_cancel,
     handle_chat_edit,
-    handle_chat_inference_alive,
     handle_chat_regenerate,
     handle_chat_send,
     handle_incognito_send,
@@ -166,8 +165,6 @@ async def websocket_endpoint(
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
-            elif msg_type == "chat.inference.alive":
-                await handle_chat_inference_alive(user_id, data)
             elif msg_type == "chat.edit":
                 task = asyncio.create_task(handle_chat_edit(user_id, data))
                 _background_tasks.add(task)
