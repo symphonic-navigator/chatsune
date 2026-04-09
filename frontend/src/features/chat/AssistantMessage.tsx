@@ -34,7 +34,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
       {thinking && (
         <ThinkingBubble content={thinking} isStreaming={isStreaming && !content} accentColour={accentColour} />
       )}
-      <div className="max-w-[85%]">
+      <div className="max-w-[92%] lg:max-w-[85%] min-w-0 break-words [overflow-wrap:anywhere]">
         <div className="chat-text chat-prose text-white/80">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
             {content}

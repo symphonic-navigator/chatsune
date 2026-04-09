@@ -52,6 +52,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const [showKnowledge, setShowKnowledge] = useState(false)
+  // Mobile-only expandable tray for Tool-Toggles (< lg:). Desktop renders them inline.
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
   // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
   // Requires plumbing through MessageList/UserMessage; deferred — top-level error banner already exists.
@@ -721,17 +723,52 @@ export function ChatView({ persona }: ChatViewProps) {
               <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
             ) : undefined}
             toolBar={effectiveSessionId ? (
-              <ToolToggles
-                sessionId={effectiveSessionId}
-                disabledToolGroups={disabledToolGroups}
-                onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
-                disabled={isStreaming}
-                modelSupportsTools={modelSupportsTools}
-                modelSupportsReasoning={modelSupportsReasoning}
-                reasoningOverride={reasoningOverride}
-                personaReasoningDefault={personaReasoningDefault}
-                onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
-              />
+              <>
+                {/* Desktop: inline tool toggles. */}
+                <div className="hidden lg:block">
+                  <ToolToggles
+                    sessionId={effectiveSessionId}
+                    disabledToolGroups={disabledToolGroups}
+                    onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                    disabled={isStreaming}
+                    modelSupportsTools={modelSupportsTools}
+                    modelSupportsReasoning={modelSupportsReasoning}
+                    reasoningOverride={reasoningOverride}
+                    personaReasoningDefault={personaReasoningDefault}
+                    onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+                  />
+                </div>
+                {/* Mobile: collapsible tray triggered by a Tools button. */}
+                <div className="lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMobileToolsOpen((v) => !v)}
+                    className="flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-mono uppercase tracking-wide text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
+                    aria-expanded={mobileToolsOpen}
+                    aria-label="Toggle tool tray"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2.5 4H11.5M2.5 7H11.5M2.5 10H11.5" />
+                    </svg>
+                    Tools
+                  </button>
+                  {mobileToolsOpen && (
+                    <div className="mt-2 overflow-x-auto rounded border border-white/8 bg-white/4 px-3 py-2">
+                      <ToolToggles
+                        sessionId={effectiveSessionId}
+                        disabledToolGroups={disabledToolGroups}
+                        onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                        disabled={isStreaming}
+                        modelSupportsTools={modelSupportsTools}
+                        modelSupportsReasoning={modelSupportsReasoning}
+                        reasoningOverride={reasoningOverride}
+                        personaReasoningDefault={personaReasoningDefault}
+                        onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
             ) : undefined}
           />
           <ArtefactOverlay />

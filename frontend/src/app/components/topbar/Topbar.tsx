@@ -162,12 +162,12 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
           const providerName = providers.find((p) => p.provider_id === providerId)?.display_name
           const pillText = providerName ? `${providerName}: ${slug}` : slug
           return (
-            <span className="hidden rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold md:inline">
+            <span className="hidden rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold lg:inline">
               {pillText}
             </span>
           )
         })()}
-        <div className="ml-auto hidden flex-shrink-0 items-center gap-1.5 md:flex">
+        <div className="ml-auto hidden flex-shrink-0 items-center gap-1.5 lg:flex">
           <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
           <ProviderPill provider="ollama_local" label="Local Ollama" />
@@ -183,7 +183,7 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
     <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
       <BurgerButton hasProblem={hasApiKeyProblem} />
       <span className="min-w-0 truncate text-[13px] font-semibold text-white/60">{title}</span>
-      <div className="ml-auto hidden items-center gap-2 md:flex">
+      <div className="ml-auto hidden items-center gap-2 lg:flex">
         <JobsPill personas={personas} />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
         <ProviderPill provider="ollama_local" label="Local Ollama" />

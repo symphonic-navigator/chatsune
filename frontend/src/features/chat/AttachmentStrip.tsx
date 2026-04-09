@@ -9,9 +9,9 @@ export function AttachmentStrip({ attachments, onRemove }: AttachmentStripProps)
   if (attachments.length === 0) return null
 
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+    <div className="flex flex-nowrap gap-2 overflow-x-auto pb-2 scrollbar-thin snap-x snap-mandatory lg:snap-none">
       {attachments.map((att) => (
-        <div key={att.localId} className="group relative flex-shrink-0">
+        <div key={att.localId} className="group relative flex-shrink-0 snap-start">
           <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/4">
             {att.status === 'uploading' && (
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60" />

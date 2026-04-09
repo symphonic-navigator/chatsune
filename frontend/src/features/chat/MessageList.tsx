@@ -87,7 +87,7 @@ export function MessageList({
 
   return (
     <div className="relative flex-1">
-      <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-4 py-6">
+      <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-3 py-6 lg:px-4">
       <style>{scrollbarStyle}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.length === 0 && !isStreaming && !isWaitingForResponse && (

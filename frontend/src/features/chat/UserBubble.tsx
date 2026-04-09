@@ -46,7 +46,7 @@ export function UserBubble({ content, attachments, visionDescriptionsUsed, liveV
   if (isEditing) {
     return (
       <div data-testid="user-bubble" className="flex justify-end animate-message-entrance">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-sm border border-white/10 bg-white/8 px-4 py-2.5">
+        <div className="max-w-[92%] lg:max-w-[80%] min-w-0 break-words [overflow-wrap:anywhere] rounded-2xl rounded-tr-sm border border-white/10 bg-white/8 px-4 py-2.5">
           <textarea ref={textareaRef} value={editText} onChange={(e) => setEditText(e.target.value)} onKeyDown={handleKeyDown} rows={1}
             className="chat-text w-full min-w-[200px] resize-none bg-transparent text-white/90 outline-none" />
           <div className="mt-2 flex justify-end gap-2">
@@ -63,7 +63,7 @@ export function UserBubble({ content, attachments, visionDescriptionsUsed, liveV
 
   return (
     <div data-testid="user-bubble" className="flex justify-end animate-message-entrance">
-      <div className="max-w-[80%]">
+      <div className="max-w-[92%] lg:max-w-[80%] min-w-0 break-words [overflow-wrap:anywhere]">
         <div className="rounded-2xl rounded-tr-sm bg-white/8 px-4 py-2.5">
           <p className="chat-text whitespace-pre-wrap text-white/90">{content}</p>
           {attachments && attachments.length > 0 && (
