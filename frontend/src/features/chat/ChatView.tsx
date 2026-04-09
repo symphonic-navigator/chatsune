@@ -753,7 +753,22 @@ export function ChatView({ persona }: ChatViewProps) {
                     Tools
                   </button>
                   {mobileToolsOpen && (
-                    <div className="mt-2 overflow-x-auto rounded border border-white/8 bg-white/4 px-3 py-2">
+                    <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUploadBrowser((v) => !v)
+                          setMobileToolsOpen(false)
+                        }}
+                        className="mb-2 flex w-full items-center gap-2 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
+                        aria-label="Browse uploads"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                          <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                        </svg>
+                        Browse uploads
+                      </button>
+                      <div className="overflow-x-auto">
                       <ToolToggles
                         sessionId={effectiveSessionId}
                         disabledToolGroups={disabledToolGroups}
@@ -765,6 +780,7 @@ export function ChatView({ persona }: ChatViewProps) {
                         personaReasoningDefault={personaReasoningDefault}
                         onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
                       />
+                      </div>
                     </div>
                   )}
                 </div>

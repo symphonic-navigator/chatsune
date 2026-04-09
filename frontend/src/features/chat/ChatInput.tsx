@@ -166,7 +166,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           type="button"
           onClick={onToggleBrowser}
           disabled={isStreaming || disabled}
-          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
+          className="hidden h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30 lg:flex"
           title="Browse uploads"
           aria-label="Browse uploads"
         >
