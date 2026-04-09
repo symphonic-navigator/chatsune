@@ -168,6 +168,10 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
 
         Every failure branch below used to ``return`` silently, leaving
         the UI stuck on its optimistic update with no way to recover.
+
+        Requires a ``session_id`` — without it we have no scope to publish
+        under and no tab to display the error in, so the caller must guard
+        that case separately (see the early-return below).
         """
         event_bus = get_event_bus()
         await event_bus.publish(
@@ -179,7 +183,7 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
                 user_message=message,
                 timestamp=datetime.now(timezone.utc),
             ),
-            scope=f"session:{session_id}" if session_id else "global",
+            scope=f"session:{session_id}",
             target_user_ids=[user_id],
             correlation_id=rejection_correlation_id,
         )
@@ -188,7 +192,16 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
             user_id, session_id, message_id, code,
         )
 
-    if not session_id or not message_id or not content_parts:
+    if not session_id:
+        # The client sent a chat.edit with no session id at all — we have
+        # no scope to route an error event to and no UI tab to show it in.
+        # Drop silently with a warning; this only happens for buggy clients.
+        _log.warning(
+            "Dropping chat.edit with no session_id: user=%s message=%s",
+            user_id, message_id,
+        )
+        return
+    if not message_id or not content_parts:
         await _reject("invalid_edit", "The edit request was malformed.")
         return
 
