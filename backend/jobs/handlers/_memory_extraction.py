@@ -69,22 +69,24 @@ async def handle_memory_extraction(
         persona_id, session_id, len(messages_raw), message_ids, provider_id, model_slug,
     )
 
-    # Publish started event.
-    await event_bus.publish(
-        Topics.MEMORY_EXTRACTION_STARTED,
-        MemoryExtractionStartedEvent(
-            persona_id=persona_id,
-            correlation_id=job.correlation_id,
-            timestamp=datetime.now(UTC),
-        ),
-        scope=f"persona:{persona_id}",
-        target_user_ids=[job.user_id],
-        correlation_id=job.correlation_id,
-    )
-
+    # Compute the in-flight key up front so the finally block can release
+    # it no matter where the handler fails — including before the first
+    # event publish below.
     inflight_key = memory_extraction_slot_key(job.user_id, persona_id)
     success = False
     try:
+        # Publish started event.
+        await event_bus.publish(
+            Topics.MEMORY_EXTRACTION_STARTED,
+            MemoryExtractionStartedEvent(
+                persona_id=persona_id,
+                correlation_id=job.correlation_id,
+                timestamp=datetime.now(UTC),
+            ),
+            scope=f"persona:{persona_id}",
+            target_user_ids=[job.user_id],
+            correlation_id=job.correlation_id,
+        )
         # Filter technical content from messages.
         filtered = [strip_technical_content(m) for m in messages_raw]
         filtered = [m for m in filtered if m.strip()]

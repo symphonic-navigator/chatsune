@@ -19,6 +19,7 @@ from backend.modules.chat._context import calculate_budget, select_message_pairs
 from backend.jobs import (
     JobType,
     memory_extraction_slot_key,
+    release_inflight_slot,
     submit,
     try_acquire_inflight_slot,
 )
@@ -648,17 +649,24 @@ async def _schedule_idle_extraction(
             )
             return
 
-        await submit(
-            job_type=JobType.MEMORY_EXTRACTION,
-            user_id=user_id,
-            model_unique_id=model_unique_id,
-            payload={
-                "persona_id": persona_id,
-                "session_id": session_id,
-                "messages": message_contents,
-                "message_ids": message_ids,
-            },
-        )
+        # Catch BaseException (including CancelledError) so a cancel or a
+        # raising submit() does not leak the slot. Without this the 1h TTL
+        # would block this persona even though no job was ever queued.
+        try:
+            await submit(
+                job_type=JobType.MEMORY_EXTRACTION,
+                user_id=user_id,
+                model_unique_id=model_unique_id,
+                payload={
+                    "persona_id": persona_id,
+                    "session_id": session_id,
+                    "messages": message_contents,
+                    "message_ids": message_ids,
+                },
+            )
+        except BaseException:
+            await release_inflight_slot(redis, slot_key)
+            raise
         _log.info(
             "Submitted idle-triggered extraction: user=%s persona=%s session=%s msg_count=%d msg_ids=%s",
             user_id, persona_id, session_id, len(message_ids), message_ids,
@@ -775,6 +783,7 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                     )
                     continue
 
+                slot_released = False
                 submit_kwargs = {
                     "job_type": JobType.MEMORY_EXTRACTION.value,
                     "user_id": user_id,
@@ -793,31 +802,49 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                 delays = [0.1, 0.5, 2.0]
                 last_exc: Exception | None = None
                 submitted = False
-                for delay in delays:
-                    try:
-                        await asyncio.sleep(delay)
-                        await submit(
-                            job_type=JobType.MEMORY_EXTRACTION,
-                            user_id=user_id,
-                            model_unique_id=model_unique_id,
-                            payload=submit_kwargs["payload"],
-                        )
-                        submitted = True
-                        break
-                    except Exception as exc:
-                        last_exc = exc
+                try:
+                    for delay in delays:
+                        try:
+                            await asyncio.sleep(delay)
+                            await submit(
+                                job_type=JobType.MEMORY_EXTRACTION,
+                                user_id=user_id,
+                                model_unique_id=model_unique_id,
+                                payload=submit_kwargs["payload"],
+                            )
+                            submitted = True
+                            break
+                        except Exception as exc:
+                            last_exc = exc
 
-                if submitted:
-                    _log.info(
-                        "Submitted disconnect-triggered extraction: user=%s persona=%s session=%s msg_count=%d",
-                        user_id, persona_id, session_id, len(message_ids),
-                    )
-                else:
-                    _log.error(
-                        "trigger_disconnect_extraction: submit failed after %d attempts, buffering for recovery (user=%s persona=%s)",
-                        len(delays), user_id, persona_id, exc_info=last_exc,
-                    )
-                    await buffer_submit_payload(redis, user_id, submit_kwargs)
+                    if submitted:
+                        _log.info(
+                            "Submitted disconnect-triggered extraction: user=%s persona=%s session=%s msg_count=%d",
+                            user_id, persona_id, session_id, len(message_ids),
+                        )
+                    else:
+                        _log.error(
+                            "trigger_disconnect_extraction: submit failed after %d attempts, buffering for recovery (user=%s persona=%s)",
+                            len(delays), user_id, persona_id, exc_info=last_exc,
+                        )
+                        try:
+                            await buffer_submit_payload(redis, user_id, submit_kwargs)
+                        except Exception:
+                            # Nothing has been queued and nothing has been
+                            # buffered — release the slot so the next trigger
+                            # (or recovery loop) is not blocked for an hour.
+                            _log.exception(
+                                "trigger_disconnect_extraction: buffering also failed, releasing inflight slot: user=%s persona=%s",
+                                user_id, persona_id,
+                            )
+                            await release_inflight_slot(redis, slot_key)
+                            slot_released = True
+                except BaseException:
+                    # Cancellation or any unexpected error between acquire
+                    # and submit/buffer must not leak the slot.
+                    if not slot_released:
+                        await release_inflight_slot(redis, slot_key)
+                    raise
 
             if cursor == 0:
                 break

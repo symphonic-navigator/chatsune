@@ -12,6 +12,7 @@ from backend.dependencies import require_active_session
 from backend.jobs import (
     JobType,
     memory_extraction_slot_key,
+    release_inflight_slot,
     submit,
     try_acquire_inflight_slot,
 )
@@ -422,17 +423,23 @@ async def trigger_extraction(
             detail="A memory extraction for this persona is already in progress or recently failed. Please try again later.",
         )
 
-    await submit(
-        job_type=JobType.MEMORY_EXTRACTION,
-        user_id=user_id,
-        model_unique_id=model_unique_id,
-        payload={
-            "persona_id": persona_id,
-            "session_id": latest_session_id,
-            "messages": [m["content"] for m in recent_user_messages],
-        },
-        correlation_id=correlation_id,
-    )
+    # If submit() itself raises, release the slot — otherwise the 1h
+    # cooldown TTL would block the persona even though nothing was queued.
+    try:
+        await submit(
+            job_type=JobType.MEMORY_EXTRACTION,
+            user_id=user_id,
+            model_unique_id=model_unique_id,
+            payload={
+                "persona_id": persona_id,
+                "session_id": latest_session_id,
+                "messages": [m["content"] for m in recent_user_messages],
+            },
+            correlation_id=correlation_id,
+        )
+    except BaseException:
+        await release_inflight_slot(redis, slot_key)
+        raise
 
     _log.info(
         "Manual extraction triggered for persona=%s user=%s correlation=%s",
