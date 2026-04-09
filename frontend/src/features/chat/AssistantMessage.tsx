@@ -8,12 +8,11 @@ import type { Highlighter } from 'shiki'
 interface AssistantMessageProps {
   content: string; thinking: string | null; isStreaming: boolean;
   accentColour: string; highlighter: Highlighter | null;
-  thinkingDefaultExpanded?: boolean; onThinkingToggle?: (expanded: boolean) => void;
   isBookmarked?: boolean; onBookmark?: () => void;
   canRegenerate?: boolean; onRegenerate?: () => void;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, thinkingDefaultExpanded, onThinkingToggle, isBookmarked, onBookmark, canRegenerate, onRegenerate }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -33,8 +32,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
   return (
     <div className="animate-message-entrance">
       {thinking && (
-        <ThinkingBubble content={thinking} isStreaming={isStreaming && !content} accentColour={accentColour}
-          defaultExpanded={thinkingDefaultExpanded} onToggle={onThinkingToggle} />
+        <ThinkingBubble content={thinking} isStreaming={isStreaming && !content} accentColour={accentColour} />
       )}
       <div className="max-w-[85%]">
         <div className="chat-text chat-prose text-white/80">

@@ -92,18 +92,27 @@ export function useAutoScroll() {
       })
     }
 
-    const observer = new MutationObserver(scheduleScroll)
-    observer.observe(el, {
+    const mutationObserver = new MutationObserver(scheduleScroll)
+    mutationObserver.observe(el, {
       childList: true,
       subtree: true,
       characterData: true,
     })
 
+    // Also observe element *sizes* inside the scroll container. A
+    // MutationObserver catches React DOM changes, but not async layout
+    // growth from things that don't mutate the DOM: Shiki highlighting
+    // that replaces inner HTML on a deferred microtask, images finishing
+    // to load, web fonts swapping, etc. ResizeObserver closes that gap.
+    const resizeObserver = new ResizeObserver(scheduleScroll)
+    resizeObserver.observe(el)
+
     // Kick off once so the first render after mount lands at the bottom.
     scheduleScroll()
 
     return () => {
-      observer.disconnect()
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
       if (rafId !== 0) cancelAnimationFrame(rafId)
     }
   }, [mounted])

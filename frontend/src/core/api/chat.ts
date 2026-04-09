@@ -85,7 +85,11 @@ export const chatApi = {
     api.get<ChatSessionDto>(`/api/chat/sessions/${sessionId}`),
 
   getMessages: (sessionId: string) =>
-    api.get<ChatMessageDto[]>(`/api/chat/sessions/${sessionId}/messages`),
+    api.get<{
+      messages: ChatMessageDto[]
+      context_status: 'green' | 'yellow' | 'orange' | 'red'
+      context_fill_percentage: number
+    }>(`/api/chat/sessions/${sessionId}/messages`),
 
   deleteSession: (sessionId: string) =>
     api.delete<{ status: string }>(`/api/chat/sessions/${sessionId}`),

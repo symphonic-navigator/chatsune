@@ -26,6 +26,11 @@ class ChatSessionDto(BaseModel):
     disabled_tool_groups: list[str] = []
     reasoning_override: bool | None = None
     pinned: bool = False
+    # Last-known context window utilisation, persisted at stream-end so
+    # the UI can show a non-zero indicator when revisiting an existing
+    # chat without having to wait for the next inference to complete.
+    context_status: Literal["green", "yellow", "orange", "red"] = "green"
+    context_fill_percentage: float = 0.0
     created_at: datetime
     updated_at: datetime
 
@@ -56,3 +61,15 @@ class ChatMessageDto(BaseModel):
     knowledge_context: list[dict] | None = None
     vision_descriptions_used: list[VisionDescriptionSnapshotDto] | None = None
     created_at: datetime
+
+
+class ChatMessagesBundleDto(BaseModel):
+    """Response for GET /sessions/{id}/messages.
+
+    Carries the persisted message list plus the last-known context
+    metrics so the frontend can hydrate the context pill without
+    waiting for the next inference.
+    """
+    messages: list[ChatMessageDto]
+    context_status: Literal["green", "yellow", "orange", "red"] = "green"
+    context_fill_percentage: float = 0.0

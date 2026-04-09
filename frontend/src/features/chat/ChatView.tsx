@@ -255,9 +255,14 @@ export function ChatView({ persona }: ChatViewProps) {
     setIsLoading(true)
     chatApi
       .getMessages(sessionId)
-      .then((msgs: ChatMessageDto[]) => {
+      .then((bundle) => {
         if (cancelled) return
-        useChatStore.getState().setMessages(msgs)
+        useChatStore.getState().setMessages(bundle.messages)
+        // Hydrate the context-window indicator from the session's
+        // persisted metrics so a long chat does not show 0% when
+        // revisited without running a new inference.
+        useChatStore.getState().setContextStatus(bundle.context_status)
+        useChatStore.getState().setContextFillPercentage(bundle.context_fill_percentage)
       })
       .catch((err) => {
         if (cancelled) return
@@ -357,10 +362,13 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [error, personaId, sessionId, isIncognito, navigate])
 
-  // Scroll to specific message or bottom after loading
+  // Scroll to specific message or bottom after loading. Depends on
+  // `highlighter` so the scroll fires once Shiki is ready — otherwise
+  // code-block highlighting lands asynchronously *after* the initial
+  // scroll and leaves the viewport above the true bottom.
   const prevIsLoadingRef = useRef(false)
   useEffect(() => {
-    if (prevIsLoadingRef.current && !isLoading && messages.length > 0) {
+    if (prevIsLoadingRef.current && !isLoading && messages.length > 0 && highlighter) {
       const targetMsg = searchParams.get('msg')
       if (targetMsg) {
         scrollToMessage(targetMsg)
@@ -370,7 +378,7 @@ export function ChatView({ persona }: ChatViewProps) {
       chatInputRef.current?.focus()
     }
     prevIsLoadingRef.current = isLoading
-  }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams])
+  }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams, highlighter])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 

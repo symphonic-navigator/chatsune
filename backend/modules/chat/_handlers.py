@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
+from shared.dtos.chat import ChatMessagesBundleDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
@@ -136,13 +137,19 @@ async def get_session(session_id: str, user: dict = Depends(require_active_sessi
 
 
 @router.get("/sessions/{session_id}/messages")
-async def list_messages(session_id: str, user: dict = Depends(require_active_session)):
+async def list_messages(
+    session_id: str, user: dict = Depends(require_active_session),
+) -> ChatMessagesBundleDto:
     repo = _chat_repo()
     session = await repo.get_session(session_id, user["sub"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = await repo.list_messages(session_id)
-    return [ChatRepository.message_to_dto(m) for m in messages]
+    return ChatMessagesBundleDto(
+        messages=[ChatRepository.message_to_dto(m) for m in messages],
+        context_status=session.get("context_status", "green"),
+        context_fill_percentage=float(session.get("context_fill_percentage", 0.0)),
+    )
 
 
 @router.get("/sessions/{session_id}/knowledge")

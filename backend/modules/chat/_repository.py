@@ -442,8 +442,26 @@ class ChatRepository:
             disabled_tool_groups=doc.get("disabled_tool_groups", []),
             reasoning_override=doc.get("reasoning_override"),
             pinned=doc.get("pinned", False),
+            context_status=doc.get("context_status", "green"),
+            context_fill_percentage=float(doc.get("context_fill_percentage", 0.0)),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+        )
+
+    async def update_session_context_metrics(
+        self, session_id: str, status: str, fill_percentage: float,
+    ) -> None:
+        """Persist the last-known context window utilisation on the session.
+
+        Called at stream-end so that reopening the chat later can hydrate the
+        context pill without waiting for the next inference to complete.
+        """
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {
+                "context_status": status,
+                "context_fill_percentage": float(fill_percentage),
+            }},
         )
 
     @staticmethod

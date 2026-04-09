@@ -4,17 +4,42 @@ interface ThinkingBubbleProps {
   content: string
   isStreaming: boolean
   accentColour: string
-  defaultExpanded?: boolean
-  onToggle?: (expanded: boolean) => void
 }
 
-export function ThinkingBubble({ content, isStreaming, accentColour, defaultExpanded = true, onToggle }: ThinkingBubbleProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
+/**
+ * Thinking bubble with an explicit open/close state machine:
+ *
+ *   - While the model is actively streaming thinking tokens
+ *     (``isStreaming === true``), the bubble is forced open so the
+ *     user can see the thought process as it arrives.
+ *   - The moment the model switches to producing response content
+ *     (``isStreaming`` flips to false), the bubble auto-collapses.
+ *   - Once the stream is fully over, the persisted message still
+ *     renders the bubble closed by default.
+ *   - The user can override either state at any time via the
+ *     toggle button. A manual override sticks until the next
+ *     thinking burst starts (next ``isStreaming === true``
+ *     transition), which resets the override back to the automatic
+ *     behaviour.
+ */
+export function ThinkingBubble({ content, isStreaming, accentColour }: ThinkingBubbleProps) {
+  const [isExpanded, setIsExpanded] = useState(isStreaming)
+  const userToggledRef = useRef(false)
   const contentRef = useRef<HTMLDivElement>(null)
   const [measuredHeight, setMeasuredHeight] = useState<number>(0)
 
   useEffect(() => {
-    if (isStreaming) setIsExpanded(true)
+    if (isStreaming) {
+      // New thinking burst — reset any previous manual override and
+      // open the bubble so the user sees the tokens as they arrive.
+      userToggledRef.current = false
+      setIsExpanded(true)
+    } else if (!userToggledRef.current) {
+      // Model stopped thinking (either it is now producing content or
+      // the stream is done). Auto-collapse unless the user has
+      // explicitly chosen to keep it open.
+      setIsExpanded(false)
+    }
   }, [isStreaming])
 
   useEffect(() => {
@@ -29,14 +54,11 @@ export function ThinkingBubble({ content, isStreaming, accentColour, defaultExpa
   }, [])
 
   const toggle = useCallback(() => {
-    if (!isStreaming) {
-      setIsExpanded((prev) => {
-        const next = !prev
-        onToggle?.(next)
-        return next
-      })
-    }
-  }, [isStreaming, onToggle])
+    setIsExpanded((prev) => {
+      userToggledRef.current = true
+      return !prev
+    })
+  }, [])
 
   if (!content && !isStreaming) return null
 

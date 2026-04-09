@@ -530,6 +530,17 @@ async def run_inference(
             context_fill_percentage=fill_ratio,
             tool_executor_fn=_make_tool_executor(session, persona, correlation_id) if active_tools else None,
         )
+        # Persist the latest context-window utilisation on the session so
+        # that opening the chat later can hydrate the indicator without
+        # waiting for the next inference to complete.
+        try:
+            await repo.update_session_context_metrics(
+                session_id, context_status, fill_ratio,
+            )
+        except Exception:
+            _log.exception(
+                "Failed to persist context metrics for session %s", session_id,
+            )
     except LlmCredentialNotFoundError:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamErrorEvent(

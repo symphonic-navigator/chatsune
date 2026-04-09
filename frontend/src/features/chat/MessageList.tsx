@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
@@ -52,7 +52,6 @@ export function MessageList({
     lastMsg !== null &&
     (lastMsg.role === 'assistant' || lastMsg.role === 'user')
   const showStandaloneRegenerate = canRegenerate && lastMsg !== null && lastMsg.role === 'user'
-  const thinkingExpandedRef = useRef(true)
 
   const visionDescriptions = useChatStore((s) => s.visionDescriptions)
   const correlationId = useChatStore((s) => s.correlationId)
@@ -128,8 +127,6 @@ export function MessageList({
                 )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
-                  thinkingDefaultExpanded={thinkingExpandedRef.current}
-                  onThinkingToggle={(v) => { thinkingExpandedRef.current = v }}
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
                   canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate} />
               </div>
@@ -165,9 +162,7 @@ export function MessageList({
             )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
-                isStreaming={true} accentColour={accentColour} highlighter={highlighter}
-                thinkingDefaultExpanded={thinkingExpandedRef.current}
-                onThinkingToggle={(v) => { thinkingExpandedRef.current = v }} />
+                isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
             ) : (
               activeToolCalls.filter((tc) => tc.status === 'running').length === 0 && <StreamingIndicator accentColour={accentColour} />
             )}
