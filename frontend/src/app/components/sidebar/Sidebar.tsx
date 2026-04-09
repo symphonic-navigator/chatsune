@@ -285,24 +285,37 @@ export function Sidebar({
     }
   }
 
+  // On mobile the sidebar lives in an off-canvas drawer; once the user has
+  // picked something, collapse it automatically so the chat is visible.
+  // Desktop keeps the sidebar open — there is enough room for both.
+  function closeDrawerIfMobile() {
+    if (!isDesktop) {
+      useDrawerStore.getState().close()
+    }
+  }
+
   function handlePersonaSelect(persona: PersonaDto) {
     onCloseModal()
+    closeDrawerIfMobile()
     navigate(`/chat/${persona.id}`)
   }
 
   function handleNewChat(persona: PersonaDto) {
     onCloseModal()
+    closeDrawerIfMobile()
     navigate(`/chat/${persona.id}?new=1`)
   }
 
   function handleSessionClick(session: ChatSessionDto) {
     onCloseModal()
+    closeDrawerIfMobile()
     navigate(`/chat/${session.persona_id}/${session.id}`)
   }
 
   function handleContinue() {
     if (!lastSession) return
     onCloseModal()
+    closeDrawerIfMobile()
     navigate(`/chat/${lastSession.persona_id}/${lastSession.id}`)
   }
 
