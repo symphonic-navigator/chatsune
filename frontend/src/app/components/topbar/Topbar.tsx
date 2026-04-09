@@ -9,6 +9,7 @@ import type { PersonaDto } from "../../../core/types/persona"
 import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
 import { ProviderPill } from "./ProviderPill"
 import { JobsPill } from "./JobsPill"
+import { useDrawerStore } from "../../../core/store/drawerStore"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -32,9 +33,53 @@ function LivePill({ isLive, wsStatus }: { isLive: boolean; wsStatus: string }) {
 interface TopbarProps {
   personas: PersonaDto[]
   onOpenPersonaOverlay?: (personaId: string) => void
+  /**
+   * Forwarded from `AppLayout`. On mobile the Provider/Jobs/Live pills are
+   * hidden; the burger instead surfaces a small red dot when there is an
+   * API-key issue so the user still notices it.
+   */
+  hasApiKeyProblem?: boolean
 }
 
-export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
+/**
+ * Burger button shown only below `lg`. Toggles the off-canvas sidebar drawer.
+ */
+function BurgerButton({ hasProblem }: { hasProblem: boolean }) {
+  const drawerOpen = useDrawerStore((s) => s.sidebarOpen)
+  const toggle = useDrawerStore((s) => s.toggle)
+  const label = drawerOpen ? "Navigation schliessen" : "Navigation öffnen"
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={label}
+      aria-label={label}
+      aria-expanded={drawerOpen}
+      className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/70 transition-colors hover:bg-white/8 hover:text-white/90 lg:hidden"
+    >
+      {drawerOpen ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      )}
+      {hasProblem && (
+        <span
+          aria-hidden="true"
+          className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-surface"
+        />
+      )}
+    </button>
+  )
+}
+
+export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = false }: TopbarProps) {
   useProviderStatusBootstrap()
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
@@ -58,8 +103,9 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
 
     return (
       <header className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/6 bg-surface px-4">
+        <BurgerButton hasProblem={hasApiKeyProblem} />
         {persona && (
-          <div className="flex items-center gap-1">
+          <div className="flex min-w-0 items-center gap-1">
             <button
               type="button"
               onClick={() => navigate("/personas")}
@@ -81,10 +127,10 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
               <button
                 type="button"
                 onClick={() => onOpenPersonaOverlay?.(persona.id)}
-                className="flex items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/8"
+                className="flex min-w-0 items-center gap-2 rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[13px] font-medium text-white/75 transition-colors hover:bg-white/8"
               >
-                <span className="h-2 w-2 rounded-full bg-purple" />
-                {persona.name}
+                <span className="h-2 w-2 flex-shrink-0 rounded-full bg-purple" />
+                <span className="min-w-0 truncate">{persona.name}</span>
               </button>
 
               {/* Avatar popup on hover */}
@@ -116,12 +162,12 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
           const providerName = providers.find((p) => p.provider_id === providerId)?.display_name
           const pillText = providerName ? `${providerName}: ${slug}` : slug
           return (
-            <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold">
+            <span className="hidden rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold md:inline">
               {pillText}
             </span>
           )
         })()}
-        <div className="ml-auto flex-shrink-0 flex items-center gap-1.5">
+        <div className="ml-auto hidden flex-shrink-0 items-center gap-1.5 md:flex">
           <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
           <ProviderPill provider="ollama_local" label="Local Ollama" />
@@ -135,8 +181,9 @@ export function Topbar({ personas, onOpenPersonaOverlay }: TopbarProps) {
 
   return (
     <header className="flex h-[50px] flex-shrink-0 items-center gap-4 border-b border-white/6 bg-surface px-4">
-      <span className="text-[13px] font-semibold text-white/60">{title}</span>
-      <div className="ml-auto flex items-center gap-2">
+      <BurgerButton hasProblem={hasApiKeyProblem} />
+      <span className="min-w-0 truncate text-[13px] font-semibold text-white/60">{title}</span>
+      <div className="ml-auto hidden items-center gap-2 md:flex">
         <JobsPill personas={personas} />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
         <ProviderPill provider="ollama_local" label="Local Ollama" />

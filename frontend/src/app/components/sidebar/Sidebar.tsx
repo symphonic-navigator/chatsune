@@ -15,6 +15,8 @@ import { useAuthStore } from "../../../core/store/authStore"
 import { useNotificationStore } from "../../../core/store/notificationStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
+import { useDrawerStore } from "../../../core/store/drawerStore"
+import { useViewport } from "../../../core/hooks/useViewport"
 import { useAuth } from "../../../core/hooks/useAuth"
 import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { NavRow } from "./NavRow"
@@ -143,6 +145,11 @@ export function Sidebar({
   const user = useAuthStore((s) => s.user)
   const { isSanitised, toggle: toggleSanitised } = useSanitisedMode()
   const { isCollapsed, toggle: toggleCollapsed } = useSidebarStore()
+  const { isDesktop } = useViewport()
+  const drawerOpen = useDrawerStore((s) => s.sidebarOpen)
+  // Rail/full toggle is a desktop-only affordance. Below `lg` the sidebar is
+  // always rendered in its full form inside the off-canvas drawer.
+  const renderCollapsed = isDesktop && isCollapsed
   const { logout } = useAuth()
   const navigate = useNavigate()
   const addNotification = useNotificationStore((s) => s.addNotification)
@@ -395,7 +402,7 @@ export function Sidebar({
   const initial = displayName.charAt(0).toUpperCase()
 
   // ── Collapsed view ──────────────────────────────────────────────
-  if (isCollapsed) {
+  if (renderCollapsed) {
     return (
       <aside className="flex h-full w-[50px] flex-shrink-0 flex-col items-center border-r border-white/6 bg-base py-2 gap-0.5">
         {/* Logo — expand */}
@@ -626,7 +633,19 @@ export function Sidebar({
 
   // ── Expanded view ───────────────────��─────────────────────��─────
   return (
-    <aside className="flex h-full w-[232px] flex-shrink-0 flex-col border-r border-white/6 bg-base">
+    <aside
+      className={[
+        // Mobile / tablet: off-canvas drawer. Transform slides it in from
+        // the left; `fixed` lifts it out of the flex flow so the main
+        // content takes the full width beneath the backdrop.
+        "fixed inset-y-0 left-0 z-40 flex h-full w-[85vw] max-w-[320px] flex-col border-r border-white/6 bg-base transition-transform duration-200 ease-out",
+        drawerOpen ? "translate-x-0" : "-translate-x-full",
+        // Desktop (`lg` and up): permanent in-flow sidebar, identical to
+        // the pre-responsive layout. `lg:transform-none` cancels the mobile
+        // translate so the desktop sidebar never slides.
+        "lg:static lg:z-auto lg:w-[232px] lg:max-w-none lg:flex-shrink-0 lg:translate-x-0 lg:transform-none lg:transition-none",
+      ].join(" ")}
+    >
 
       {/* Logo */}
       <div className="flex h-[50px] flex-shrink-0 items-center gap-2.5 border-b border-white/5 px-3.5">

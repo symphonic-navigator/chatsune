@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Outlet, useMatch, useNavigate } from "react-router-dom"
+import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
+import { useDrawerStore } from "../../core/store/drawerStore"
+import { useViewport } from "../../core/hooks/useViewport"
 import { useWebSocket } from "../../core/hooks/useWebSocket"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
@@ -26,6 +28,42 @@ export default function AppLayout() {
   useKnowledgeEvents()
   useJobEvents()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { isDesktop } = useViewport()
+  const drawerOpen = useDrawerStore((s) => s.sidebarOpen)
+  const closeDrawer = useDrawerStore((s) => s.close)
+
+  // Close the drawer on every route change while on mobile. This covers all
+  // in-drawer navigation (persona clicks, session clicks, NewChat, NavRow),
+  // so individual components do not need to dismiss the drawer themselves.
+  useEffect(() => {
+    if (!isDesktop && drawerOpen) {
+      closeDrawer()
+    }
+    // Intentionally scoped to path changes only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname])
+
+  // Close the drawer on `Esc` while it is open (mobile only).
+  useEffect(() => {
+    if (isDesktop || !drawerOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeDrawer()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [isDesktop, drawerOpen, closeDrawer])
+
+  // Lock background scroll while the drawer is open on mobile — prevents
+  // the page behind the drawer from scrolling on touch devices.
+  useEffect(() => {
+    if (isDesktop || !drawerOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [isDesktop, drawerOpen])
 
   const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()
   const { sessions, updateSession: updateChatSession } = useChatSessions()
@@ -175,6 +213,14 @@ export default function AppLayout() {
       >
         Skip to content
       </a>
+      {/* Backdrop behind the off-canvas drawer (mobile only). */}
+      {drawerOpen && !isDesktop && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={closeDrawer}
+          aria-hidden="true"
+        />
+      )}
       <nav aria-label="Primary navigation" className="contents">
       <Sidebar
         personas={personas}
@@ -201,7 +247,11 @@ export default function AppLayout() {
       />
       </nav>
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <Topbar personas={personas} onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")} />
+        <Topbar
+          personas={personas}
+          onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")}
+          hasApiKeyProblem={hasApiKeyProblem}
+        />
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto bg-surface">
           <Outlet context={{ openPersonaOverlay }} />
           {modalTab !== null && (
