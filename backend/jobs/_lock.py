@@ -1,5 +1,8 @@
 import asyncio
 import weakref
+import structlog
+
+_log = structlog.get_logger("chatsune.jobs.lock")
 
 _user_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 _job_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -21,15 +24,49 @@ def get_user_lock(user_id: str) -> asyncio.Lock:
     return lock
 
 
-def get_job_lock(user_id: str) -> asyncio.Lock:
+class _InstrumentedJobLock:
+    """Thin wrapper around asyncio.Lock that emits structured log events on
+    acquire, contention, and release."""
+
+    def __init__(self, user_id: str) -> None:
+        self._user_id = user_id
+        self._lock = asyncio.Lock()
+
+    def locked(self) -> bool:
+        return self._lock.locked()
+
+    async def __aenter__(self):
+        lock_key = f"job_lock:{self._user_id}"
+        if self._lock.locked():
+            _log.info("job.lock.contended", lock_key=lock_key, holder=self._user_id)
+        await self._lock.acquire()
+        _log.info("job.lock.acquired", lock_key=lock_key, holder=self._user_id)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        lock_key = f"job_lock:{self._user_id}"
+        if not self._lock.locked():
+            # Lock was already released — should not happen under normal operation
+            _log.warning("job.lock.expired", lock_key=lock_key)
+            return
+        self._lock.release()
+        _log.info("job.lock.released", lock_key=lock_key, holder=self._user_id)
+
+
+_instrumented_job_locks: weakref.WeakValueDictionary[str, _InstrumentedJobLock] = (
+    weakref.WeakValueDictionary()
+)
+
+
+def get_job_lock(user_id: str) -> _InstrumentedJobLock:
     """Per-user lock for background jobs only.
 
     Serialises background jobs for the same user (so two memory-extraction
     runs do not race against each other) but does NOT block on foreground
     chat inference.
     """
-    lock = _job_locks.get(user_id)
+    lock = _instrumented_job_locks.get(user_id)
     if lock is None:
-        lock = asyncio.Lock()
-        _job_locks[user_id] = lock
+        lock = _InstrumentedJobLock(user_id)
+        _instrumented_job_locks[user_id] = lock
     return lock
