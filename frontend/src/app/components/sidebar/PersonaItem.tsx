@@ -102,7 +102,7 @@ export function PersonaItem({
       </div>
 
       <span
-        className={`flex-1 truncate text-[13px] transition-colors
+        className={`min-w-0 flex-1 truncate text-[13px] transition-colors
           ${isActive ? "text-white/90" : "text-white/50 group-hover:text-white/75"}`}
       >
         {persona.name}
