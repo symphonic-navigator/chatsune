@@ -29,10 +29,10 @@ export function AttachmentStrip({ attachments, onRemove }: AttachmentStripProps)
           <button
             type="button"
             onClick={() => onRemove(att.localId)}
-            className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-white/15 text-white/60 transition-colors hover:bg-white/25 group-hover:flex"
+            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-white/70 transition-colors hover:bg-white/35 hover:text-white/90"
           >
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-              <path d="M1 1L7 7M7 1L1 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            <svg width="9" height="9" viewBox="0 0 8 8" fill="none">
+              <path d="M1 1L7 7M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
 
