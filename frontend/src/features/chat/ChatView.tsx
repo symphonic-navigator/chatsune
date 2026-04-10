@@ -37,6 +37,8 @@ interface ChatViewProps {
   persona: PersonaDto | null
 }
 
+const EMPTY_MEMORY_ENTRIES: never[] = []
+
 export function ChatView({ persona }: ChatViewProps) {
   const { personaId, sessionId } = useParams<{ personaId: string; sessionId?: string }>()
   const [searchParams] = useSearchParams()
@@ -241,7 +243,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const artefactSidebarOpen = useArtefactStore((s) => s.sidebarOpen)
   const artefactCount = useArtefactStore((s) => s.artefacts.length)
   const toggleArtefactSidebar = useArtefactStore((s) => s.toggleSidebar)
-  const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? [])
+  const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? EMPTY_MEMORY_ENTRIES)
   const memoryCount = memoryEntries.length
   const { openPersonaOverlay } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
