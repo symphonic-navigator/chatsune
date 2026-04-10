@@ -83,7 +83,6 @@ function loadMermaid(): Promise<typeof import('mermaid')> {
 }
 
 function MermaidBlock({ code }: { code: string }) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -135,7 +134,6 @@ function MermaidBlock({ code }: { code: string }) {
   // Mermaid render() output is sanitised via its built-in DOMPurify integration
   return (
     <div
-      ref={containerRef}
       className="my-2 flex justify-center overflow-x-auto rounded-lg bg-elevated p-4 [&_svg]:max-w-full"
       dangerouslySetInnerHTML={{ __html: svg }}
     />
