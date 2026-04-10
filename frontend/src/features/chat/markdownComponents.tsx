@@ -6,8 +6,10 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 
-export const remarkPlugins = [remarkGfm, remarkMath]
-export const rehypePlugins = [[rehypeKatex, { throwOnError: false }]]
+import type { PluggableList } from 'unified'
+
+export const remarkPlugins: PluggableList = [remarkGfm, remarkMath]
+export const rehypePlugins: PluggableList = [[rehypeKatex, { throwOnError: false }]]
 
 const COLLAPSE_LINE_THRESHOLD = 15
 

@@ -400,6 +400,27 @@ body {
   accent-color: var(--color-gold);
 }
 
+/* KaTeX dark-theme overrides — KaTeX defaults to black text */
+.chat-prose .katex { color: rgba(255, 255, 255, 0.85); }
+.chat-prose .katex .mord,
+.chat-prose .katex .mbin,
+.chat-prose .katex .mrel,
+.chat-prose .katex .mopen,
+.chat-prose .katex .mclose,
+.chat-prose .katex .mpunct,
+.chat-prose .katex .minner { color: inherit; }
+.chat-prose .katex-display { margin: 0.75em 0; overflow-x: auto; }
+
+.markdown-preview .katex { color: rgba(232, 224, 212, 0.85); }
+.markdown-preview .katex .mord,
+.markdown-preview .katex .mbin,
+.markdown-preview .katex .mrel,
+.markdown-preview .katex .mopen,
+.markdown-preview .katex .mclose,
+.markdown-preview .katex .mpunct,
+.markdown-preview .katex .minner { color: inherit; }
+.markdown-preview .katex-display { margin: 0.75em 0; overflow-x: auto; }
+
 /* Artefact preview scrollbar — gold accent, matching chat scroll */
 .artefact-scroll::-webkit-scrollbar { width: 8px; }
 .artefact-scroll::-webkit-scrollbar-track { background: transparent; }
