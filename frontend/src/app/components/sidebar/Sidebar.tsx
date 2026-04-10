@@ -680,7 +680,7 @@ export function Sidebar({
         // Mobile / tablet: off-canvas drawer. Transform slides it in from
         // the left; `fixed` lifts it out of the flex flow so the main
         // content takes the full width beneath the backdrop.
-        "fixed inset-y-0 left-0 z-40 flex h-full w-[85vw] max-w-[320px] flex-col border-r border-white/6 bg-base transition-transform duration-200 ease-out",
+        "fixed inset-y-0 left-0 z-40 flex h-full w-[85vw] max-w-[320px] flex-col overflow-y-auto border-r border-white/6 bg-base transition-transform duration-200 ease-out lg:overflow-y-hidden",
         drawerOpen ? "translate-x-0" : "-translate-x-full",
         // Desktop (`lg` and up): permanent in-flow sidebar, identical to
         // the pre-responsive layout. `lg:transform-none` cancels the mobile
@@ -712,9 +712,11 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Everything below the logo scrolls as one block so the sidebar
-          is usable in landscape on very small devices. */}
-      <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+      {/* Scrollable middle zone: personas, projects, history.
+          On desktop this is the only scrollable region so the bottom nav
+          stays pinned. On mobile the entire aside scrolls instead (see
+          the lg:overflow-hidden on the aside). */}
+      <div className="min-h-0 flex-1 lg:overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
 
       {/* Admin banner */}
       {isAdmin && (
@@ -977,8 +979,10 @@ export function Sidebar({
 
       </div>
 
-      {/* Bottom */}
-      <div className="border-t border-white/5">
+      </div>{/* end scroll container */}
+
+      {/* Bottom — pinned on desktop, scrolls with content on mobile */}
+      <div className="lg:flex-shrink-0 border-t border-white/5">
         {/* Knowledge */}
         <NavRow
           icon="🎓"
@@ -1085,8 +1089,6 @@ export function Sidebar({
           <span>Log out</span>
         </button>
       </div>
-
-      </div>{/* end scroll container */}
 
     </aside>
   )
