@@ -103,29 +103,18 @@ export function ModelBrowser({
 
   const selectionMode = onSelect != null
 
-  // Determine if any models are favourited — auto-activate favourites tab
+  // If the favourites filter is on but no favourites remain (e.g. user just
+  // unfavourited the last one), turn the filter off so the user is not left
+  // staring at an empty list.
   const hasFavourites = useMemo(
     () => allModels.some((m) => m.user_config?.is_favourite),
     [allModels],
   )
-
-  // If the favourites filter is on but no favourites remain (e.g. user just
-  // unfavourited the last one), turn the filter off so the user is not left
-  // staring at an empty list.
   useEffect(() => {
     if (filters.favouritesOnly && !hasFavourites) {
       setFilters((f) => ({ ...f, favouritesOnly: false }))
     }
   }, [filters.favouritesOnly, hasFavourites])
-
-  // Auto-activate favourites filter on first load when user has favourites
-  const [initialFavSet, setInitialFavSet] = useState(false)
-  useEffect(() => {
-    if (!initialFavSet && hasFavourites && allModels.length > 0) {
-      setFilters((f) => ({ ...f, favouritesOnly: true }))
-      setInitialFavSet(true)
-    }
-  }, [hasFavourites, allModels.length, initialFavSet])
 
   // allModels are already filtered (hidden removed) by the hook or parent
   const visibleModels = allModels
