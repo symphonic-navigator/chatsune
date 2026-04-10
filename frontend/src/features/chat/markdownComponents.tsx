@@ -159,22 +159,35 @@ function MermaidBlock({ code }: { code: string }) {
   )
 }
 
-function LatexBlock({ code }: { code: string }) {
-  const html = (() => {
-    try {
-      return katex.renderToString(code, { displayMode: true, throwOnError: false })
-    } catch {
-      return null
+/**
+ * Strip outer math delimiters that LLMs often include inside a ```latex fence:
+ *   $$ ... $$   →   ...
+ *   \[ ... \]   →   ...
+ *   \( ... \)   →   ...
+ *   $ ... $     →   ...
+ * KaTeX expects the raw expression without delimiters.
+ */
+function stripMathDelimiters(src: string): string {
+  const trimmed = src.trim()
+  const pairs: Array<[string, string]> = [
+    ['$$', '$$'],
+    ['\\[', '\\]'],
+    ['\\(', '\\)'],
+    ['$', '$'],
+  ]
+  for (const [open, close] of pairs) {
+    if (trimmed.startsWith(open) && trimmed.endsWith(close) && trimmed.length >= open.length + close.length) {
+      return trimmed.slice(open.length, trimmed.length - close.length).trim()
     }
-  })()
-
-  if (!html) {
-    return (
-      <pre className="overflow-x-auto rounded-lg bg-elevated p-4 text-[13px] border border-amber-500/20">
-        <code>{code}</code>
-      </pre>
-    )
   }
+  return trimmed
+}
+
+function LatexBlock({ code }: { code: string }) {
+  const expression = stripMathDelimiters(code)
+  // katex.renderToString with throwOnError: false produces the error HTML itself
+  // (red source display) rather than throwing — so no try/catch fallback is needed.
+  const html = katex.renderToString(expression, { displayMode: true, throwOnError: false })
 
   // nosec: katex.renderToString produces sanitised library output, not user-controlled HTML
   return (
