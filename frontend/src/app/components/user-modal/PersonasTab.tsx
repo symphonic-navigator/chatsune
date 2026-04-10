@@ -105,7 +105,7 @@ function PersonaRow({ persona, onOpen, onTogglePin, dragAttributes, dragListener
     <div
       data-testid="persona-row"
       data-persona-id={persona.id}
-      className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
+      className="relative flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
       style={{ border: `1px solid ${chakra.hex}22` }}
     >
       <span
@@ -158,7 +158,7 @@ function PersonaRow({ persona, onOpen, onTogglePin, dragAttributes, dragListener
       {persona.nsfw && (
         <span
           data-testid="persona-nsfw-indicator"
-          className="text-[14px]"
+          className="absolute top-1 right-1 text-[10px] leading-none"
           aria-label="NSFW"
           title="NSFW"
         >

@@ -215,7 +215,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
       )}
 
       <div className="px-4 pt-3">
-        <div className="grid grid-cols-[1fr_1fr_6rem_6rem] gap-2 border-b border-white/6 px-3 py-2">
+        <div className="hidden sm:grid grid-cols-[1fr_1fr_6rem_6rem] gap-2 border-b border-white/6 px-3 py-2">
           <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Provider</span>
           <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Key</span>
           <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono">Status</span>
@@ -231,62 +231,66 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
             <div key={k.provider.provider_id}>
               <div
                 className={[
-                  'grid grid-cols-[1fr_1fr_6rem_6rem] gap-2 items-center px-3 py-2.5 border-b border-white/6 transition-colors group',
+                  'flex flex-col sm:grid sm:grid-cols-[1fr_1fr_6rem_6rem] gap-1 sm:gap-2 sm:items-center px-3 py-2.5 border-b border-white/6 transition-colors group',
                   isFailed ? 'bg-red-400/[0.03]' : 'hover:bg-white/4',
                 ].join(' ')}
               >
-                <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/80' : 'text-white/40'}`}>
-                  {k.provider.display_name}
-                </span>
+                <div className="flex items-center justify-between sm:contents">
+                  <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/80' : 'text-white/40'}`}>
+                    {k.provider.display_name}
+                  </span>
 
-                <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/60 tracking-[2px]' : 'text-white/60 italic'}`} aria-label={k.provider.is_configured ? 'API key set' : 'No API key configured'}>
-                  {k.provider.is_configured ? '••••••••••••' : 'not configured'}
-                </span>
-
-                <div>
-                  {status && STATUS_BADGE[status] ? (
-                    <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider border font-mono ${STATUS_BADGE[status].className}`}>
-                      {status === 'testing' && (
-                        <span className="inline-block h-2 w-2 animate-spin rounded-full border border-yellow-400/30 border-t-yellow-400" />
-                      )}
-                      {STATUS_BADGE[status].label}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-white/15">—</span>
-                  )}
+                  <span className={`text-[12px] font-mono ${k.provider.is_configured ? 'text-white/60 tracking-[2px]' : 'text-white/60 italic'}`} aria-label={k.provider.is_configured ? 'API key set' : 'No API key configured'}>
+                    {k.provider.is_configured ? '••••••••••••' : 'not configured'}
+                  </span>
                 </div>
 
-                <div className="flex gap-1 justify-end">
-                  {k.provider.is_configured ? (
-                    <>
-                      <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Edit API key for ${k.provider.display_name}`} title="Edit API key" className={BTN_NEUTRAL}>
-                        EDIT
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTest(k.provider.provider_id)}
-                        disabled={status === 'testing'}
-                        aria-label={`Test API key for ${k.provider.display_name}`}
-                        title="Test connectivity"
-                        className={`${BTN_NEUTRAL} ${status === 'testing' ? 'opacity-30 cursor-not-allowed' : ''}`}
-                      >
-                        TEST
-                      </button>
-                      {k.confirmDelete ? (
-                        <button type="button" onClick={() => handleDelete(k.provider.provider_id)} aria-label={`Confirm delete API key for ${k.provider.display_name}`} title="Confirm delete" className={BTN_RED}>
-                          SURE?
+                <div className="flex items-center justify-between sm:contents">
+                  <div>
+                    {status && STATUS_BADGE[status] ? (
+                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] uppercase tracking-wider border font-mono ${STATUS_BADGE[status].className}`}>
+                        {status === 'testing' && (
+                          <span className="inline-block h-2 w-2 animate-spin rounded-full border border-yellow-400/30 border-t-yellow-400" />
+                        )}
+                        {STATUS_BADGE[status].label}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-white/15">—</span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-1 justify-end">
+                    {k.provider.is_configured ? (
+                      <>
+                        <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Edit API key for ${k.provider.display_name}`} title="Edit API key" className={BTN_NEUTRAL}>
+                          EDIT
                         </button>
-                      ) : (
-                        <button type="button" onClick={() => startDeleteConfirm(k.provider.provider_id)} aria-label={`Delete API key for ${k.provider.display_name}`} title="Delete API key" className={BTN_NEUTRAL}>
-                          DEL
+                        <button
+                          type="button"
+                          onClick={() => handleTest(k.provider.provider_id)}
+                          disabled={status === 'testing'}
+                          aria-label={`Test API key for ${k.provider.display_name}`}
+                          title="Test connectivity"
+                          className={`${BTN_NEUTRAL} ${status === 'testing' ? 'opacity-30 cursor-not-allowed' : ''}`}
+                        >
+                          TEST
                         </button>
-                      )}
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Set API key for ${k.provider.display_name}`} title="Set API key" className={BTN_GOLD}>
-                      SET
-                    </button>
-                  )}
+                        {k.confirmDelete ? (
+                          <button type="button" onClick={() => handleDelete(k.provider.provider_id)} aria-label={`Confirm delete API key for ${k.provider.display_name}`} title="Confirm delete" className={BTN_RED}>
+                            SURE?
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => startDeleteConfirm(k.provider.provider_id)} aria-label={`Delete API key for ${k.provider.display_name}`} title="Delete API key" className={BTN_NEUTRAL}>
+                            DEL
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <button type="button" onClick={() => startEdit(k.provider.provider_id)} aria-label={`Set API key for ${k.provider.display_name}`} title="Set API key" className={BTN_GOLD}>
+                        SET
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -47,7 +47,7 @@ export function SettingsTab() {
   const setHapticsEnabled = useHapticsStore((s) => s.setEnabled)
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-xl">
+    <div className="flex flex-col gap-6 p-6 max-w-xl overflow-y-auto">
       <div>
         <label className={LABEL}>Chat Font</label>
         <ButtonGroup<DisplaySettings['chatFontFamily']>

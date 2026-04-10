@@ -189,39 +189,41 @@ export function ArtefactsTab({ onClose }: ArtefactsTabProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Filters */}
-      <div className="px-4 pt-4 pb-2 flex-shrink-0 flex gap-2">
+      <div className="px-4 pt-4 pb-2 flex-shrink-0 flex flex-col sm:flex-row gap-2">
+        <div className="flex gap-2 sm:order-2">
+          <select
+            value={personaFilter}
+            onChange={(e) => setPersonaFilter(e.target.value)}
+            aria-label="Filter by persona"
+            className={`${SELECT_CLASSES} flex-1 sm:flex-none`}
+            style={SELECT_STYLE}
+          >
+            <option value="all">All Personas</option>
+            {filterPersonas.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as ArtefactType | 'all')}
+            aria-label="Filter by type"
+            className={`${SELECT_CLASSES} flex-1 sm:flex-none`}
+            style={SELECT_STYLE}
+          >
+            <option value="all">All Types</option>
+            {ARTEFACT_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search artefacts..."
           aria-label="Search artefacts"
-          className="flex-1 bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none focus:border-gold/30 transition-colors font-mono"
+          className="flex-1 sm:order-1 bg-white/[0.04] border border-white/8 rounded-lg px-3 py-2 text-[13px] text-white/75 placeholder:text-white/30 outline-none focus:border-gold/30 transition-colors font-mono"
         />
-        <select
-          value={personaFilter}
-          onChange={(e) => setPersonaFilter(e.target.value)}
-          aria-label="Filter by persona"
-          className={SELECT_CLASSES}
-          style={SELECT_STYLE}
-        >
-          <option value="all">All Personas</option>
-          {filterPersonas.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as ArtefactType | 'all')}
-          aria-label="Filter by type"
-          className={SELECT_CLASSES}
-          style={SELECT_STYLE}
-        >
-          <option value="all">All Types</option>
-          {ARTEFACT_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
       </div>
 
       {/* List */}
