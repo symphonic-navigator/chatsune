@@ -129,7 +129,7 @@ export default function PersonaCard({
       </div>
 
       {/* Pin button + NSFW indicator */}
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+      <div className={`absolute top-2 z-10 flex items-center gap-1.5 ${isLandscape ? 'right-12' : 'right-2'}`}>
         {onTogglePin && (
           <button
             className="flex h-5 w-5 items-center justify-center rounded-full transition-all duration-200"
