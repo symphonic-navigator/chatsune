@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Highlighter } from 'shiki'
-import { createMarkdownComponents, remarkPlugins, rehypePlugins } from '../chat/markdownComponents'
+import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from '../chat/markdownComponents'
 import { useHighlighter } from '../chat/useMarkdown'
 import type { ArtefactType } from '../../core/types/artefact'
 
@@ -21,7 +21,7 @@ function MarkdownPreview({ content, highlighter }: { content: string; highlighte
           rehypePlugins={rehypePlugins}
           components={components}
         >
-          {content}
+          {preprocessMath(content)}
         </ReactMarkdown>
       </div>
     </div>

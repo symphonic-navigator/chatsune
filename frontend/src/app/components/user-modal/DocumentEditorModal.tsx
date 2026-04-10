@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { createMarkdownComponents, remarkPlugins, rehypePlugins } from '../../../features/chat/markdownComponents'
+import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from '../../../features/chat/markdownComponents'
 import { useHighlighter } from '../../../features/chat/useMarkdown'
 
 interface DocumentEditorModalProps {
@@ -214,7 +214,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
             <div className="markdown-preview w-1/2 overflow-y-auto px-5 py-4">
               {content ? (
                 <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
-                  {content}
+                  {preprocessMath(content)}
                 </ReactMarkdown>
               ) : (
                 <p className="text-white/20 font-mono text-[12px]">Nothing to preview</p>

@@ -4,12 +4,29 @@ import type { Highlighter } from "shiki"
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import katex from 'katex'
 import 'katex/dist/katex.min.css'
 
 import type { PluggableList } from 'unified'
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkMath]
 export const rehypePlugins: PluggableList = [[rehypeKatex, { throwOnError: false }]]
+
+/**
+ * Preprocess markdown to normalise math delimiters that remark-math does not
+ * handle natively:
+ *   \( ... \)  →  $ ... $    (inline)
+ *   \[ ... \]  →  $$ ... $$  (display)
+ *
+ * Runs before the string reaches ReactMarkdown so remark-math can parse them.
+ */
+export function preprocessMath(src: string): string {
+  // \[ ... \]  → $$ ... $$ (display — may span multiple lines)
+  let out = src.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner: string) => `$$${inner}$$`)
+  // \( ... \)  → $ ... $ (inline — single line only)
+  out = out.replace(/\\\((.+?)\\\)/g, (_m, inner: string) => `$${inner}$`)
+  return out
+}
 
 const COLLAPSE_LINE_THRESHOLD = 15
 
@@ -140,6 +157,32 @@ function MermaidBlock({ code }: { code: string }) {
   )
 }
 
+function LatexBlock({ code }: { code: string }) {
+  const html = (() => {
+    try {
+      return katex.renderToString(code, { displayMode: true, throwOnError: false })
+    } catch {
+      return null
+    }
+  })()
+
+  if (!html) {
+    return (
+      <pre className="overflow-x-auto rounded-lg bg-elevated p-4 text-[13px] border border-amber-500/20">
+        <code>{code}</code>
+      </pre>
+    )
+  }
+
+  // nosec: katex.renderToString produces sanitised library output, not user-controlled HTML
+  return (
+    <div
+      className="my-2 overflow-x-auto"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
+}
+
 export function createMarkdownComponents(highlighter: Highlighter | null): Components {
   return {
     code(props: ComponentPropsWithoutRef<"code">) {
@@ -158,6 +201,10 @@ export function createMarkdownComponents(highlighter: Highlighter | null): Compo
 
       if (lang === 'mermaid') {
         return <MermaidBlock code={codeStr} />
+      }
+
+      if (lang === 'latex' || lang === 'tex') {
+        return <LatexBlock code={codeStr} />
       }
 
       if (highlighter) {

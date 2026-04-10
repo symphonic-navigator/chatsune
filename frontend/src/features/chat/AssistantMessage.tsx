@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { createMarkdownComponents, remarkPlugins, rehypePlugins } from './markdownComponents'
+import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from './markdownComponents'
 import { ThinkingBubble } from './ThinkingBubble'
 import type { Highlighter } from 'shiki'
 
@@ -36,7 +36,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
       <div className="max-w-[92%] lg:max-w-[85%] min-w-0 break-words [overflow-wrap:anywhere]">
         <div className="chat-text chat-prose text-white/80">
           <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-            {content}
+            {preprocessMath(content)}
           </ReactMarkdown>
         </div>
         {!isStreaming && content && (
