@@ -31,6 +31,7 @@ class Topics:
     CHAT_THINKING_DELTA = "chat.thinking.delta"
     CHAT_STREAM_ENDED = "chat.stream.ended"
     CHAT_STREAM_ERROR = "chat.stream.error"
+    CHAT_STREAM_SLOW = "chat.stream.slow"
     CHAT_VISION_DESCRIPTION = "chat.vision.description"
     # Chat edit/regenerate
     CHAT_MESSAGE_CREATED = "chat.message.created"

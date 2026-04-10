@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from shared.dtos.chat import ChatSessionDto, ChatMessageDto
 from shared.events.chat import (
     ChatStreamStartedEvent, ChatContentDeltaEvent, ChatThinkingDeltaEvent,
-    ChatStreamEndedEvent, ChatStreamErrorEvent,
+    ChatStreamEndedEvent, ChatStreamErrorEvent, ChatStreamSlowEvent,
 )
 from shared.topics import Topics
 
@@ -71,3 +71,30 @@ def test_chat_topics_exist():
     assert Topics.CHAT_THINKING_DELTA == "chat.thinking.delta"
     assert Topics.CHAT_STREAM_ENDED == "chat.stream.ended"
     assert Topics.CHAT_STREAM_ERROR == "chat.stream.error"
+
+
+def test_chat_stream_slow_event_shape():
+    ev = ChatStreamSlowEvent(
+        correlation_id="corr-1",
+        timestamp=datetime.now(timezone.utc),
+    )
+    dumped = ev.model_dump(mode="json")
+    assert dumped["type"] == "chat.stream.slow"
+    assert dumped["correlation_id"] == "corr-1"
+    assert "timestamp" in dumped
+
+
+def test_chat_stream_ended_event_accepts_aborted_status():
+    ev = ChatStreamEndedEvent(
+        correlation_id="corr-1",
+        session_id="sess-1",
+        status="aborted",
+        context_status="green",
+        timestamp=datetime.now(timezone.utc),
+    )
+    assert ev.status == "aborted"
+
+
+def test_chat_stream_slow_topic_constant_matches_type():
+    assert Topics.CHAT_STREAM_SLOW == "chat.stream.slow"
+    assert ChatStreamSlowEvent.model_fields["type"].default == Topics.CHAT_STREAM_SLOW

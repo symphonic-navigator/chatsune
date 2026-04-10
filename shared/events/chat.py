@@ -26,6 +26,12 @@ class ChatStreamStartedEvent(BaseModel):
     timestamp: datetime
 
 
+class ChatStreamSlowEvent(BaseModel):
+    type: str = "chat.stream.slow"
+    correlation_id: str
+    timestamp: datetime
+
+
 class ChatContentDeltaEvent(BaseModel):
     type: str = "chat.content.delta"
     correlation_id: str
@@ -43,7 +49,7 @@ class ChatStreamEndedEvent(BaseModel):
     correlation_id: str
     session_id: str
     message_id: str | None = None
-    status: Literal["completed", "cancelled", "error"]
+    status: Literal["completed", "cancelled", "error", "aborted"]
     usage: dict | None = None
     context_status: Literal["green", "yellow", "orange", "red"]
     context_fill_percentage: float = 0.0
