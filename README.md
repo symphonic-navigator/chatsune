@@ -178,6 +178,7 @@ because of hot reload.
 | `EMBEDDING_BATCH_SIZE` | Batch size for the embedding worker | `8` |
 | `COOKIE_DOMAIN` | Optional parent domain for the refresh-token cookie | `.example.com` |
 | `OLLAMA_LOCAL_BASE_URL` | Optional. Base URL of a self-hosted Ollama daemon. If reachable, all of its locally pulled models become available to every authenticated user automatically as the "Ollama Local" provider — no per-user API key required. Leave unset if you do not run Ollama locally; the provider simply remains hidden in the UI. | `http://localhost:11434` |
+| `LLM_STREAM_ABORT_SECONDS` | Maximum idle time in seconds the LLM upstream stream may stay silent before we declare it aborted and surface an error toast. Must be larger than 30 (the hard-coded slow-phase threshold). Increase if you use large cloud models on slow providers. | `120` |
 
 For the LLM test harness, place your Ollama Cloud key in `.llm-test-key`
 (plain text, gitignored) in the project root.
@@ -199,6 +200,7 @@ by restarting the backend — no redeploy required.
 | `JOB_CIRCUIT_FAILURE_THRESHOLD` | Failures tolerated within the circuit window before the provider circuit opens. | `5` | Non-negative integer; `0` disables the breaker | Raise if a flaky provider trips the breaker too eagerly. |
 | `JOB_CIRCUIT_WINDOW_SECONDS` | Rolling window over which circuit-breaker failures are counted. | `300` | Positive integer (seconds) | Lengthen to be more forgiving, shorten to react faster to sudden failure bursts. |
 | `JOB_CIRCUIT_OPEN_SECONDS` | How long the circuit stays open after tripping, during which new requests to the affected provider are rejected fast. | `900` | Positive integer (seconds) | Shorten for fast recovery, lengthen to give a struggling upstream more time to heal. |
+| `LLM_STREAM_ABORT_SECONDS` | Idle-timeout before a silent LLM stream is aborted. | `120` | Positive integer (seconds); must exceed 30 | Increase if long artefact generations trip the abort on slow cloud providers. |
 
 Note: `OLLAMA_CLOUD_EMERGENCY_STOP=true` is the fastest way to stop all
 Ollama Cloud traffic in an incident. Edit `.env`, reload the backend, and

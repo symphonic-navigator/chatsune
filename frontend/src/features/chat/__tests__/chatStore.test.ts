@@ -125,4 +125,38 @@ describe('chatStore', () => {
     useChatStore.getState().reset()
     expect(useChatStore.getState().activeSessionId).toBeNull()
   })
+
+  it('streamingSlow defaults to false', () => {
+    const state = useChatStore.getState()
+    expect(state.streamingSlow).toBe(false)
+  })
+
+  it('setStreamingSlow sets the flag to true', () => {
+    useChatStore.getState().setStreamingSlow(true)
+    expect(useChatStore.getState().streamingSlow).toBe(true)
+  })
+
+  it('appendStreamingContent clears streamingSlow', () => {
+    useChatStore.getState().setStreamingSlow(true)
+    useChatStore.getState().appendStreamingContent('hi')
+    expect(useChatStore.getState().streamingSlow).toBe(false)
+  })
+
+  it('appendStreamingThinking clears streamingSlow', () => {
+    useChatStore.getState().setStreamingSlow(true)
+    useChatStore.getState().appendStreamingThinking('thought')
+    expect(useChatStore.getState().streamingSlow).toBe(false)
+  })
+
+  it('startStreaming resets streamingSlow', () => {
+    useChatStore.getState().setStreamingSlow(true)
+    useChatStore.getState().startStreaming('corr-2')
+    expect(useChatStore.getState().streamingSlow).toBe(false)
+  })
+
+  it('cancelStreaming clears streamingSlow', () => {
+    useChatStore.getState().setStreamingSlow(true)
+    useChatStore.getState().cancelStreaming()
+    expect(useChatStore.getState().streamingSlow).toBe(false)
+  })
 })

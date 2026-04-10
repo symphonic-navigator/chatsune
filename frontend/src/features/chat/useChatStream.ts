@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
 import { eventBus } from '../../core/websocket/eventBus'
 import { useChatStore } from '../../core/store/chatStore'
+import { useNotificationStore } from '../../core/store/notificationStore'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
+import { sendMessage } from '../../core/websocket/connection'
 
 export function useChatStream(sessionId: string | null) {
   useEffect(() => {
@@ -39,6 +41,11 @@ export function useChatStream(sessionId: string | null) {
         case Topics.CHAT_THINKING_DELTA: {
           if (event.correlation_id !== getStore().correlationId) return
           getStore().appendStreamingThinking(p.delta as string)
+          break
+        }
+        case Topics.CHAT_STREAM_SLOW: {
+          if (event.correlation_id !== getStore().correlationId) return
+          getStore().setStreamingSlow(true)
           break
         }
         case Topics.CHAT_VISION_DESCRIPTION: {
@@ -78,6 +85,9 @@ export function useChatStream(sessionId: string | null) {
           getStore().clearWaitingForLock()
           const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
           const fillPercentage = (p.context_fill_percentage as number) ?? 0
+          const status = (p.status as 'completed' | 'cancelled' | 'error' | 'aborted') ?? 'completed'
+          const messageStatus: 'completed' | 'aborted' =
+            status === 'aborted' ? 'aborted' : 'completed'
 
           // Finalise the streamed message whenever the backend persisted
           // it — even on cancelled/error runs, the backend now saves the
@@ -102,6 +112,7 @@ export function useChatStream(sessionId: string | null) {
                 web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
                 knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
                 created_at: new Date().toISOString(),
+                status: messageStatus,
               },
               contextStatus,
               fillPercentage,
@@ -130,12 +141,43 @@ export function useChatStream(sessionId: string | null) {
           ])
           const isSessionError = sessionLevelCodes.has(errorCode)
           if (!isSessionError && event.correlation_id !== getStore().correlationId) return
+
+          const recoverable = p.recoverable as boolean
+          const userMessage = p.user_message as string
           getStore().setError({
             errorCode,
-            recoverable: p.recoverable as boolean,
-            userMessage: p.user_message as string,
+            recoverable,
+            userMessage,
           })
           getStore().setWaitingForResponse(false)
+
+          // Session-level errors have their own banner path (ChatView
+          // renders them inline above the composer); everything else
+          // surfaces through the toast system so the user is not left
+          // staring at a silently broken reply. Recoverable errors get
+          // an inline Regenerate action bound to the session that was
+          // current when the error arrived.
+          if (!isSessionError) {
+            const sessionIdAtError = sessionId
+            const title = recoverable ? 'Response interrupted' : 'Error'
+            const action = recoverable && sessionIdAtError
+              ? {
+                  label: 'Regenerate',
+                  onClick: () => {
+                    sendMessage({
+                      type: 'chat.regenerate',
+                      session_id: sessionIdAtError,
+                    })
+                  },
+                }
+              : undefined
+            useNotificationStore.getState().addNotification({
+              level: 'error',
+              title,
+              message: userMessage,
+              action,
+            })
+          }
           break
         }
         case Topics.CHAT_MESSAGE_CREATED: {

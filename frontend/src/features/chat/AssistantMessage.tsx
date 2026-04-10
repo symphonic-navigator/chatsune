@@ -9,9 +9,10 @@ interface AssistantMessageProps {
   accentColour: string; highlighter: Highlighter | null;
   isBookmarked?: boolean; onBookmark?: () => void;
   canRegenerate?: boolean; onRegenerate?: () => void;
+  status?: 'completed' | 'aborted';
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed' }: AssistantMessageProps) {
   const [copied, setCopied] = useState(false)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -39,6 +40,30 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
             {preprocessMath(content)}
           </ReactMarkdown>
         </div>
+        {status === 'aborted' && !isStreaming && (
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2">
+            <svg
+              width="14" height="14" viewBox="0 0 14 14" fill="none"
+              className="text-amber-400 mt-0.5 shrink-0"
+              aria-hidden="true"
+            >
+              <path
+                d="M7 1.5L13 12.5H1L7 1.5Z"
+                stroke="currentColor" strokeWidth="1.2"
+                strokeLinecap="round" strokeLinejoin="round"
+              />
+              <path
+                d="M7 5.5V8.5M7 10.5V10.51"
+                stroke="currentColor" strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="text-[11px] leading-snug text-amber-200/90">
+              This response was interrupted and may be incomplete.
+              Click <strong>Regenerate</strong> to produce a fresh response.
+            </div>
+          </div>
+        )}
         {!isStreaming && content && (
           <div className="mt-2.5 flex gap-3 border-t border-white/6 pt-2">
             <button type="button" onClick={handleCopy}

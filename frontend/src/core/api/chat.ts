@@ -42,6 +42,7 @@ interface ChatMessageDto {
   knowledge_context: RetrievedChunkDto[] | null
   vision_descriptions_used?: VisionDescriptionSnapshot[] | null
   created_at: string
+  status?: "completed" | "aborted"
 }
 
 interface ToolGroupDto {

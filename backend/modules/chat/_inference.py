@@ -5,11 +5,19 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 
 from backend.jobs import get_user_lock
-from backend.modules.llm import ContentDelta, StreamDone, StreamError, ThinkingDelta, ToolCallEvent
+from backend.modules.llm import (
+    ContentDelta,
+    StreamAborted,
+    StreamDone,
+    StreamError,
+    StreamSlow,
+    ThinkingDelta,
+    ToolCallEvent,
+)
 from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
-    ChatStreamStartedEvent, ChatThinkingDeltaEvent,
+    ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
     ChatToolCallCompletedEvent, ChatToolCallStartedEvent,
     ChatWebSearchContextEvent, WebSearchContextItem,
 )
@@ -130,12 +138,32 @@ class InferenceRunner:
                                 timestamp=datetime.now(timezone.utc),
                             ))
 
+                        case StreamSlow():
+                            await emit_fn(ChatStreamSlowEvent(
+                                correlation_id=correlation_id,
+                                timestamp=datetime.now(timezone.utc),
+                            ))
+
+                        case StreamAborted() as ab:
+                            _log.warning(
+                                "chat.stream.aborted session=%s correlation_id=%s reason=%s",
+                                session_id, correlation_id, ab.reason,
+                            )
+                            status = "aborted"
+                            await emit_fn(ChatStreamErrorEvent(
+                                correlation_id=correlation_id,
+                                error_code="stream_aborted",
+                                recoverable=True,
+                                user_message="The response was interrupted. Please regenerate.",
+                                timestamp=datetime.now(timezone.utc),
+                            ))
+
                 # Accumulate content/thinking across iterations
                 full_content += iter_content
                 if iter_thinking:
                     full_thinking += iter_thinking
 
-                if cancelled or status == "error":
+                if cancelled or status in ("error", "aborted"):
                     break
 
                 # No tool calls or no executor → we are done
@@ -279,6 +307,9 @@ class InferenceRunner:
                 usage=usage,
                 web_search_context=web_search_context or None,
                 knowledge_context=knowledge_context or None,
+                # Cancelled and error runs collapse to "completed" — only
+                # gutter aborts deserve the warning badge in the UI.
+                status="aborted" if status == "aborted" else "completed",
             )
 
         await emit_fn(ChatStreamEndedEvent(

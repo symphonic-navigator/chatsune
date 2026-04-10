@@ -46,5 +46,34 @@ class StreamError(BaseModel):
     message: str
 
 
+class StreamSlow(BaseModel):
+    """Emitted when the upstream stream has been idle for longer than
+    ``GUTTER_SLOW_SECONDS`` but has not yet been declared aborted.
+
+    Purely informational — the chat layer propagates a
+    ``ChatStreamSlowEvent`` and the frontend shows a subtle "model still
+    working" hint until the next content or thinking delta arrives.
+    """
+
+
+class StreamAborted(BaseModel):
+    """Emitted when the upstream stream has been idle for longer than
+    ``GUTTER_ABORT_SECONDS``. The stream is dead — any previously
+    accumulated content should be persisted with ``status="aborted"``.
+    """
+
+    # Known values:
+    #   "gutter_timeout" — idle abort triggered by the adapter's gutter timer
+    reason: str = "gutter_timeout"
+
+
 # Union type used as the return type for adapter stream generators.
-ProviderStreamEvent = ContentDelta | ThinkingDelta | ToolCallEvent | StreamDone | StreamError
+ProviderStreamEvent = (
+    ContentDelta
+    | ThinkingDelta
+    | ToolCallEvent
+    | StreamDone
+    | StreamError
+    | StreamSlow
+    | StreamAborted
+)

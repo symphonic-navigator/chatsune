@@ -1,5 +1,6 @@
 from backend.modules.llm._adapters._events import (
     ContentDelta, ThinkingDelta, ToolCallEvent, StreamDone, StreamError,
+    StreamSlow, StreamAborted, ProviderStreamEvent,
 )
 
 
@@ -36,3 +37,24 @@ def test_stream_error():
     e = StreamError(error_code="invalid_api_key", message="Bad key")
     assert e.error_code == "invalid_api_key"
     assert e.message == "Bad key"
+
+
+def test_stream_slow_is_instantiable_and_has_no_payload():
+    ev = StreamSlow()
+    assert isinstance(ev, StreamSlow)
+    # Truly no payload — guards against accidental field additions.
+    assert StreamSlow.model_fields == {}
+    # Union membership check.
+    sample: ProviderStreamEvent = ev
+    assert sample is ev
+
+
+def test_stream_aborted_carries_reason_with_default():
+    ev = StreamAborted()
+    assert ev.reason == "gutter_timeout"
+
+    custom = StreamAborted(reason="upstream_silence")
+    assert custom.reason == "upstream_silence"
+
+    sample: ProviderStreamEvent = custom
+    assert sample is custom

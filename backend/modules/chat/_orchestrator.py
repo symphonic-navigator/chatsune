@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import uuid4
 
 from backend.modules.chat._inference import InferenceRunner
@@ -303,6 +304,14 @@ async def run_inference(
 
     # Load message history
     history_docs = await repo.list_messages(session_id)
+    # Aborted assistant messages pollute the LLM context with
+    # half-finished thoughts or truncated code — strip them before
+    # context pair selection. The matching user prompts remain in place
+    # so a regenerate still has the user's input to work with.
+    history_docs = [
+        d for d in history_docs
+        if d.get("status", "completed") != "aborted"
+    ]
 
     # The last message should be the user's new message
     new_msg_tokens = history_docs[-1]["token_count"] if history_docs else 0
@@ -479,6 +488,7 @@ async def run_inference(
         usage: dict | None,
         web_search_context: list[dict] | None = None,
         knowledge_context: list[dict] | None = None,
+        status: Literal["completed", "aborted"] = "completed",
     ) -> str | None:
         token_count = count_tokens(content)
         doc = await repo.save_message(
@@ -489,6 +499,7 @@ async def run_inference(
             thinking=thinking,
             web_search_context=web_search_context,
             knowledge_context=knowledge_context,
+            status=status,
         )
         await repo.update_session_state(session_id, "idle")
 

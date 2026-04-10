@@ -40,6 +40,7 @@ interface ChatState {
   contextStatus: ContextStatus
   contextFillPercentage: number
   error: ChatError | null
+  streamingSlow: boolean
   sessionTitle: string | null
   disabledToolGroups: string[]
   reasoningOverride: boolean | null
@@ -62,6 +63,7 @@ interface ChatState {
   deleteMessage: (messageId: string) => void
   setError: (error: ChatError) => void
   clearError: () => void
+  setStreamingSlow: (slow: boolean) => void
   setSessionTitle: (title: string | null) => void
   setDisabledToolGroups: (groups: string[]) => void
   setContextStatus: (status: ContextStatus) => void
@@ -88,6 +90,7 @@ const INITIAL_STATE = {
   contextStatus: 'green' as ContextStatus,
   contextFillPercentage: 0,
   error: null as ChatError | null,
+  streamingSlow: false,
   sessionTitle: null as string | null,
   disabledToolGroups: [] as string[],
   reasoningOverride: null as boolean | null,
@@ -106,11 +109,12 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], visionDescriptions: {}, error: null,
+      streamingSlow: false,
     }),
   appendStreamingContent: (delta) =>
-    set((s) => ({ streamingContent: s.streamingContent + delta })),
+    set((s) => ({ streamingContent: s.streamingContent + delta, streamingSlow: false })),
   appendStreamingThinking: (delta) =>
-    set((s) => ({ streamingThinking: s.streamingThinking + delta })),
+    set((s) => ({ streamingThinking: s.streamingThinking + delta, streamingSlow: false })),
   setStreamingWebSearchContext: (items) =>
     set({ streamingWebSearchContext: items }),
   setStreamingKnowledgeContext: (items) =>
@@ -135,6 +139,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
+      streamingSlow: false,
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
     })),
   cancelStreaming: () =>
@@ -142,6 +147,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
+      streamingSlow: false,
     }),
   truncateAfter: (messageId) =>
     set((s) => {
@@ -163,6 +169,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((s) => ({ messages: s.messages.filter((m) => m.id !== messageId) })),
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
+  setStreamingSlow: (slow) => set({ streamingSlow: slow }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
   setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
   setContextStatus: (status) => set({ contextStatus: status }),

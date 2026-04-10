@@ -16,8 +16,10 @@ from backend.modules.llm._registry import ADAPTER_REGISTRY as _ADAPTER_REGISTRY_
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
+    StreamAborted,
     StreamDone,
     StreamError,
+    StreamSlow,
     ThinkingDelta,
     ToolCallEvent,
 )
@@ -385,8 +387,10 @@ __all__ = [
     "stream_completion",
     "ContentDelta",
     "ThinkingDelta",
+    "StreamAborted",
     "StreamDone",
     "StreamError",
+    "StreamSlow",
     "ProviderStreamEvent",
     "ToolCallEvent",
     "LlmCredentialNotFoundError",
