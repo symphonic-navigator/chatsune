@@ -11,6 +11,11 @@ class BaseAdapter(ABC):
 
     requires_key_for_listing: bool = True
 
+    # If True, this provider needs user-facing setup (API key configuration).
+    # Providers that work transparently (e.g. local daemons) set this to False
+    # and are hidden from the API-Keys UI.
+    requires_setup: bool = True
+
     # If True, the provider has no per-user credential and is shared across
     # all users (e.g. a self-hosted local daemon). When set, neither listing
     # nor inference performs a credential lookup.

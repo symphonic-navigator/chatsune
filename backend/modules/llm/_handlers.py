@@ -45,10 +45,11 @@ async def list_providers(user: dict = Depends(require_active_session)):
     result = []
     for provider_id, adapter_cls in ADAPTER_REGISTRY.items():
         requires_key = adapter_cls.requires_key_for_listing
+        requires_setup = adapter_cls.requires_setup
         doc = configured.get(provider_id)
         if doc:
             dto = CredentialRepository.to_dto(doc, PROVIDER_DISPLAY_NAMES[provider_id])
-            dto = dto.model_copy(update={"requires_key_for_listing": requires_key})
+            dto = dto.model_copy(update={"requires_key_for_listing": requires_key, "requires_setup": requires_setup})
             result.append(dto)
         else:
             result.append(
@@ -57,6 +58,7 @@ async def list_providers(user: dict = Depends(require_active_session)):
                     display_name=PROVIDER_DISPLAY_NAMES[provider_id],
                     is_configured=adapter_cls.is_global,
                     requires_key_for_listing=requires_key,
+                    requires_setup=requires_setup,
                 )
             )
     return result

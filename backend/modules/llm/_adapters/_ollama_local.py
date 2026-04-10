@@ -8,6 +8,7 @@ class OllamaLocalAdapter(OllamaBaseAdapter):
     provider_id = "ollama_local"
     provider_display_name = "Ollama Local"
     requires_key_for_listing: bool = False
+    requires_setup: bool = False
     is_global: bool = True
     # Local engine can only run one generation at a time — serialise.
     concurrency_policy = ConcurrencyPolicy.GLOBAL

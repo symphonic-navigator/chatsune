@@ -3,6 +3,7 @@ export interface ProviderCredentialDto {
   display_name: string
   is_configured: boolean
   requires_key_for_listing: boolean
+  requires_setup: boolean
   test_status: "untested" | "valid" | "failed" | null
   last_test_error: string | null
   created_at: string | null

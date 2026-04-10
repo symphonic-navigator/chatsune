@@ -32,8 +32,9 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
   const [error, setError] = useState<string | null>(null)
   const deleteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const announceId = useId()
-  const configuredCount = useMemo(() => keys.filter((k) => k.provider.is_configured).length, [keys])
-  const anyConfirming = useMemo(() => keys.some((k) => k.confirmDelete), [keys])
+  const visibleKeys = useMemo(() => keys.filter((k) => k.provider.requires_setup !== false), [keys])
+  const configuredCount = useMemo(() => visibleKeys.filter((k) => k.provider.is_configured).length, [visibleKeys])
+  const anyConfirming = useMemo(() => visibleKeys.some((k) => k.confirmDelete), [visibleKeys])
 
   const fetchProviders = useCallback(async () => {
     try {
@@ -185,7 +186,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
     )
   }
 
-  if (error && keys.length === 0) {
+  if (error && visibleKeys.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 py-20">
         <p className="text-[12px] text-red-400">{error}</p>
@@ -222,7 +223,7 @@ export function ApiKeysTab({ onProvidersLoaded }: { onProvidersLoaded?: (provide
           <span className="text-[10px] uppercase tracking-wider text-white/60 font-mono text-right">Ops</span>
         </div>
 
-        {keys.map((k) => {
+        {visibleKeys.map((k) => {
           const status = getDisplayStatus(k)
           const errorMsg = getDisplayError(k)
           const isFailed = status === 'failed'
