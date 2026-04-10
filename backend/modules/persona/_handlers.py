@@ -287,20 +287,55 @@ async def delete_persona(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ):
+    user_id = user["sub"]
     repo = _persona_repo()
-    deleted = await repo.delete(persona_id, user["sub"])
-    if not deleted:
+
+    # Verify persona exists and belongs to user
+    persona = await repo.find_by_id(persona_id, user_id)
+    if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
+
+    # Cascade: find session IDs for artefact cleanup
+    db = await get_db()
+    cursor = db["chat_sessions"].find(
+        {"user_id": user_id, "persona_id": persona_id},
+        projection={"_id": 1},
+    )
+    session_ids = [doc["_id"] async for doc in cursor]
+
+    # Cascade: artefacts (must happen before sessions are deleted)
+    from backend.modules.artefact import delete_by_session_ids as delete_artefacts
+    await delete_artefacts(session_ids)
+
+    # Cascade: chat sessions + messages
+    from backend.modules.chat import delete_by_persona as delete_chats
+    await delete_chats(user_id, persona_id)
+
+    # Cascade: memory
+    from backend.modules.memory import delete_by_persona as delete_memories
+    await delete_memories(user_id, persona_id)
+
+    # Cascade: storage files
+    from backend.modules.storage import delete_by_persona as delete_storage
+    await delete_storage(user_id, persona_id)
+
+    # Cascade: avatar file
+    if persona.get("profile_image"):
+        avatar_store = AvatarStore()
+        avatar_store.delete(persona["profile_image"])
+
+    # Delete the persona itself
+    await repo.delete(persona_id, user_id)
 
     await event_bus.publish(
         Topics.PERSONA_DELETED,
         PersonaDeletedEvent(
             persona_id=persona_id,
-            user_id=user["sub"],
+            user_id=user_id,
             timestamp=datetime.now(timezone.utc),
         ),
         scope=f"persona:{persona_id}",
-        target_user_ids=[user["sub"]],
+        target_user_ids=[user_id],
     )
 
     return {"status": "ok"}
