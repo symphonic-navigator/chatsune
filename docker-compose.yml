@@ -5,6 +5,8 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - mongodb_mongot:/data/mongot
     environment:
       - MONGODB_INITDB_ROOT_USERNAME=
       - MONGODB_INITDB_ROOT_PASSWORD=
@@ -29,5 +31,7 @@ services:
 
 volumes:
   mongodb_data:
+  mongodb_config:
+  mongodb_mongot:
   redis_data:
   uploads_data:

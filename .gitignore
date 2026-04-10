@@ -47,3 +47,6 @@ docker-compose.worktree.yml
 
 # Runtime log files
 backend/logs/
+
+# tidesson-net deployment
+tidesson-net/

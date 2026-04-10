@@ -17,6 +17,13 @@ dependencies = [
     "tiktoken>=0.9",
     "pillow>=11.0",
     "structlog>=24.1",
+    "python-multipart>=0.0.18",
+    "httpx>=0.28",
+    "huggingface-hub>=0.27",
+    "numpy>=1.26",
+    "onnxruntime>=1.20",
+    "transformers>=4.47",
+    "grapheme>=0.6",
 ]
 
 [project.optional-dependencies]
