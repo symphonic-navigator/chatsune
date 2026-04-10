@@ -144,7 +144,11 @@ class InferenceRunner:
                                 timestamp=datetime.now(timezone.utc),
                             ))
 
-                        case StreamAborted():
+                        case StreamAborted() as ab:
+                            _log.warning(
+                                "chat.stream.aborted session=%s correlation_id=%s reason=%s",
+                                session_id, correlation_id, ab.reason,
+                            )
                             status = "aborted"
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
@@ -303,6 +307,8 @@ class InferenceRunner:
                 usage=usage,
                 web_search_context=web_search_context or None,
                 knowledge_context=knowledge_context or None,
+                # Cancelled and error runs collapse to "completed" — only
+                # gutter aborts deserve the warning badge in the UI.
                 status="aborted" if status == "aborted" else "completed",
             )
 

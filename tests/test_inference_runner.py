@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.modules.chat._inference import InferenceRunner
-from backend.modules.llm._adapters._events import ContentDelta, StreamAborted, StreamDone, StreamError, StreamSlow, ThinkingDelta
+from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamSlow, ThinkingDelta
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
