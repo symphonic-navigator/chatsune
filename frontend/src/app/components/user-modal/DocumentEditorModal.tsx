@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { createMarkdownComponents } from '../../../features/chat/markdownComponents'
+import { createMarkdownComponents, remarkPlugins, rehypePlugins } from '../../../features/chat/markdownComponents'
 import { useHighlighter } from '../../../features/chat/useMarkdown'
 
 interface DocumentEditorModalProps {
@@ -214,7 +213,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
           {preview && isMarkdown && (
             <div className="markdown-preview w-1/2 overflow-y-auto px-5 py-4">
               {content ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={markdownComponents}>
                   {content}
                 </ReactMarkdown>
               ) : (

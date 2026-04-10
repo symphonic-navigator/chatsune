@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import type { Highlighter } from 'shiki'
-import { createMarkdownComponents } from '../chat/markdownComponents'
+import { createMarkdownComponents, remarkPlugins, rehypePlugins } from '../chat/markdownComponents'
 import { useHighlighter } from '../chat/useMarkdown'
 import type { ArtefactType } from '../../core/types/artefact'
 
@@ -18,7 +17,8 @@ function MarkdownPreview({ content, highlighter }: { content: string; highlighte
     <div style={FILL} className={`${FILL_CLS} p-4`}>
       <div className="markdown-preview">
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={remarkPlugins}
+          rehypePlugins={rehypePlugins}
           components={components}
         >
           {content}
