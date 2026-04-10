@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.modules.chat._inference import InferenceRunner
-from backend.modules.llm._adapters._events import ContentDelta, StreamDone, StreamError, ThinkingDelta
+from backend.modules.llm._adapters._events import ContentDelta, StreamAborted, StreamDone, StreamError, StreamSlow, ThinkingDelta
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
-    ChatStreamStartedEvent, ChatThinkingDeltaEvent,
+    ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
 )
 
 
@@ -163,3 +163,89 @@ async def test_per_user_serialisation(runner, mock_emit, mock_save):
 
     await asyncio.gather(task_a, task_b)
     assert call_order.index("a_end") < call_order.index("b_start")
+
+
+async def test_stream_slow_propagates_as_chat_stream_slow_event(
+    runner, mock_emit, mock_save,
+):
+    """StreamSlow from the adapter must surface as a ChatStreamSlowEvent
+    on the emit channel without changing the run's status. The tool
+    loop continues normally."""
+    stream_fn = _make_stream(
+        ContentDelta(delta="partial "),
+        StreamSlow(),
+        ContentDelta(delta="recovered"),
+        StreamDone(input_tokens=5, output_tokens=3),
+    )
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+    )
+
+    emitted = [call.args[0] for call in mock_emit.call_args_list]
+    slow_events = [e for e in emitted if isinstance(e, ChatStreamSlowEvent)]
+    assert len(slow_events) == 1
+    assert slow_events[0].correlation_id == "corr-1"
+
+    # Final status is still "completed" — StreamSlow is informational.
+    ended = [e for e in emitted if isinstance(e, ChatStreamEndedEvent)][0]
+    assert ended.status == "completed"
+
+    # Both content chunks made it into the saved message.
+    save_args = mock_save.call_args
+    assert save_args.kwargs["content"] == "partial recovered"
+    assert save_args.kwargs["status"] == "completed"
+
+
+async def test_stream_aborted_with_content_saves_as_aborted(
+    runner, mock_emit, mock_save,
+):
+    """StreamAborted with prior content sets the run's status to
+    'aborted', emits a recoverable ChatStreamErrorEvent, persists the
+    partial content with status='aborted', and ends the run."""
+    stream_fn = _make_stream(
+        ContentDelta(delta="I was writing a "),
+        StreamAborted(reason="gutter_timeout"),
+    )
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+    )
+
+    emitted = [call.args[0] for call in mock_emit.call_args_list]
+
+    error_events = [e for e in emitted if isinstance(e, ChatStreamErrorEvent)]
+    assert len(error_events) == 1
+    assert error_events[0].error_code == "stream_aborted"
+    assert error_events[0].recoverable is True
+
+    ended = [e for e in emitted if isinstance(e, ChatStreamEndedEvent)][0]
+    assert ended.status == "aborted"
+
+    save_args = mock_save.call_args
+    assert save_args.kwargs["content"] == "I was writing a "
+    assert save_args.kwargs["status"] == "aborted"
+
+
+async def test_stream_aborted_without_content_does_not_save(
+    runner, mock_emit, mock_save,
+):
+    """StreamAborted with no prior content must not call save_fn at
+    all (the existing 'if full_content' guard preserves this)."""
+    stream_fn = _make_stream(
+        StreamAborted(reason="gutter_timeout"),
+    )
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+    )
+
+    mock_save.assert_not_awaited()
+    ended = [
+        call.args[0] for call in mock_emit.call_args_list
+        if isinstance(call.args[0], ChatStreamEndedEvent)
+    ][0]
+    assert ended.status == "aborted"
