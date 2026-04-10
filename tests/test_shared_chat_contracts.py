@@ -81,7 +81,7 @@ def test_chat_stream_slow_event_shape():
     dumped = ev.model_dump(mode="json")
     assert dumped["type"] == "chat.stream.slow"
     assert dumped["correlation_id"] == "corr-1"
-    assert "timestamp" in dumped
+    assert isinstance(dumped["timestamp"], str)
 
 
 def test_chat_stream_ended_event_accepts_aborted_status():
