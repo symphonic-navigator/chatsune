@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { suggestColour } from '../../../core/utils/suggestColour'
+import { personasApi } from '../../../core/api/personas'
+import { useNotificationStore } from '../../../core/store/notificationStore'
 import { OverviewTab } from './OverviewTab'
 import { EditTab } from './EditTab'
 import { KnowledgeTab } from './KnowledgeTab'
@@ -99,6 +101,20 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
       previousFocus?.focus()
     }
   }, [onClose])
+
+  const addNotification = useNotificationStore((s) => s.addNotification)
+
+  const handleDeletePersona = async () => {
+    if (!resolved?.id) return
+    await personasApi.remove(resolved.id)
+    onClose()
+    onNavigate?.('/personas')
+    addNotification({
+      level: 'success',
+      title: 'Persona deleted',
+      message: `${resolved.name} has been permanently deleted.`,
+    })
+  }
 
   if (!resolved) return null
 
@@ -230,6 +246,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
               }}
               chatCount={(sessions ?? []).filter((s) => s.persona_id === resolved.id).length}
               onGoToHistory={() => onTabChange('history')}
+              onDelete={handleDeletePersona}
             />
           )}
           {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}

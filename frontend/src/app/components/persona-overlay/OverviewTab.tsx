@@ -16,12 +16,15 @@ interface OverviewTabProps {
   hasLastChat: boolean
   chatCount: number
   onGoToHistory: () => void
+  onDelete: () => Promise<void>
 }
 
-export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat, chatCount, onGoToHistory }: OverviewTabProps) {
+export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncognitoChat, hasLastChat, chatCount, onGoToHistory, onDelete }: OverviewTabProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
   const [cropOpen, setCropOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const createdDate = new Date(persona.created_at).toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -55,6 +58,16 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
   async function handleAvatarRemove() {
     await personasApi.deleteAvatar(persona.id)
     setCropOpen(false)
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await onDelete()
+    } catch {
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
   }
 
   return (
@@ -227,6 +240,44 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
       <p className="text-[11px] text-white/60 font-mono">
         created {createdDate}
       </p>
+
+      {/* Danger zone — delete */}
+      <div className="w-full max-w-sm mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        {!confirmDelete ? (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="w-full rounded-lg py-2 text-[12px] font-medium text-red-400/60 transition-colors hover:bg-red-400/8 hover:text-red-400/80"
+            style={{ border: '1px solid rgba(248,113,113,0.15)' }}
+          >
+            Delete persona
+          </button>
+        ) : (
+          <div className="rounded-lg p-3" style={{ border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.06)' }}>
+            <p className="text-[12px] text-red-300/70 mb-3">
+              This will permanently delete <strong className="text-red-300/90">{persona.name}</strong>, all chat history, memories, uploads and artefacts. This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-lg py-2 text-[12px] font-medium text-white bg-red-500/80 hover:bg-red-500 transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete permanently'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="px-3 rounded-lg py-2 text-[12px] text-white/50 hover:text-white/70 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
