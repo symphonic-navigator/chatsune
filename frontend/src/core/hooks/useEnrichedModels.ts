@@ -26,9 +26,12 @@ export function useEnrichedModels() {
       ])
 
       const configured = providers.filter((p) => p.is_configured)
-      const modelLists = await Promise.all(
+      const results = await Promise.allSettled(
         configured.map((p) => llmApi.listModels(p.provider_id)),
       )
+      const modelLists = results
+        .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof llmApi.listModels>>> => r.status === "fulfilled")
+        .map((r) => r.value)
 
       const configMap = new Map<string, UserModelConfigDto>()
       for (const c of userConfigs) configMap.set(c.model_unique_id, c)

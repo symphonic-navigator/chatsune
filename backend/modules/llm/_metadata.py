@@ -41,6 +41,9 @@ async def get_models(
         models = await adapter.fetch_models()
     except NotImplementedError:
         return []
+    except Exception as exc:
+        _log.warning("Failed to fetch models for %s: %s", provider_id, exc)
+        return []
 
     await redis.set(
         cache_key,
