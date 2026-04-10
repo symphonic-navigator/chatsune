@@ -295,12 +295,12 @@ export function ModelBrowser({
         </select>
       </div>
 
-      {/* Column headers */}
+      {/* Column headers — hidden on mobile (card layout used instead) */}
       <div className={[
-        "grid items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30",
+        "hidden md:grid items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30",
         selectionMode
-          ? "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
-          : "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
+          ? "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
+          : "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
       ].join(" ")}>
         <span title="Favourite">Fav</span>
         {SORT_FIELDS.map((sf) => (
@@ -349,94 +349,173 @@ export function ModelBrowser({
             (model.user_config.system_prompt_addition != null && model.user_config.system_prompt_addition.length > 0)
           )
 
+          const isSelected = model.unique_id === currentModelId
+          const isHidden = model.user_config?.is_hidden
+
           return (
-            <div
-              key={model.unique_id}
-              onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
-              className={[
-                `grid items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors`,
-                selectionMode
-                  ? "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
-                  : "grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
-                "cursor-pointer hover:bg-white/4",
-                model.unique_id === currentModelId ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
-                model.user_config?.is_hidden ? "opacity-45" : "",
-              ].join(" ")}
-            >
-              {/* Favourite star */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleFavourite?.(model)
-                }}
+            <div key={model.unique_id}>
+              {/* Desktop row — grid layout */}
+              <div
+                onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
                 className={[
-                  "text-[13px] transition-colors cursor-pointer",
-                  isFav ? "text-gold" : "text-white/15 hover:text-white/30",
+                  `hidden md:grid items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors`,
+                  selectionMode
+                    ? "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
+                    : "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
+                  "cursor-pointer hover:bg-white/4",
+                  isSelected ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
+                  isHidden ? "opacity-45" : "",
                 ].join(" ")}
-                title={isFav ? "Remove from favourites" : "Add to favourites"}
               >
-                {isFav ? "\u2605" : "\u2606"}
-              </button>
-
-              {/* Name + customisation indicator */}
-              <div className="min-w-0 flex items-center gap-1.5">
-                <span className="truncate text-[12px] text-white/80">
-                  {model.user_config?.custom_display_name ?? model.display_name}
-                </span>
-                {hasConfig && (
-                  <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
-                )}
-                {model.user_config?.custom_display_name && (
-                  <span className="truncate text-[9px] text-white/25 italic flex-shrink-0">
-                    {model.display_name}
-                  </span>
-                )}
-                {model.user_config?.is_hidden && (
-                  <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
-                )}
-              </div>
-
-              {/* Provider */}
-              <span className="truncate text-[11px] text-white/40">{model.provider_display_name}</span>
-
-              {/* Params */}
-              <span className="text-[11px] text-white/55">
-                {model.parameter_count ? (
-                  <>
-                    {model.parameter_count}
-                    {model.quantisation_level && (
-                      <span className="ml-1 text-[9px] text-white/25">{model.quantisation_level}</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-white/20">--</span>
-                )}
-              </span>
-
-              {/* Context */}
-              <span className="text-[11px] text-white/40">{formatContext(model.context_window)}</span>
-
-              {/* Capabilities */}
-              {capabilityIcons(model)}
-
-              {/* Rating */}
-              {ratingBadge(model)}
-
-              {/* Edit config button (selection mode only) */}
-              {selectionMode && (
+                {/* Favourite star */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
-                    onEditConfig?.(model)
+                    onToggleFavourite?.(model)
                   }}
-                  className="text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer text-center"
-                  title="Configure model"
+                  className={[
+                    "text-[13px] transition-colors cursor-pointer",
+                    isFav ? "text-gold" : "text-white/15 hover:text-white/30",
+                  ].join(" ")}
+                  title={isFav ? "Remove from favourites" : "Add to favourites"}
                 >
-                  &#x2026;
+                  {isFav ? "\u2605" : "\u2606"}
                 </button>
-              )}
+
+                {/* Name + customisation indicator */}
+                <div className="min-w-0 flex items-center gap-1.5">
+                  <span className="truncate text-[12px] text-white/80">
+                    {model.user_config?.custom_display_name ?? model.display_name}
+                  </span>
+                  {hasConfig && (
+                    <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
+                  )}
+                  {model.user_config?.custom_display_name && (
+                    <span className="truncate text-[9px] text-white/25 italic flex-shrink-0">
+                      {model.display_name}
+                    </span>
+                  )}
+                  {isHidden && (
+                    <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
+                  )}
+                </div>
+
+                {/* Provider */}
+                <span className="truncate text-[11px] text-white/40">{model.provider_display_name}</span>
+
+                {/* Params */}
+                <span className="text-[11px] text-white/55">
+                  {model.parameter_count ? (
+                    <>
+                      {model.parameter_count}
+                      {model.quantisation_level && (
+                        <span className="ml-1 text-[9px] text-white/25">{model.quantisation_level}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-white/20">--</span>
+                  )}
+                </span>
+
+                {/* Context */}
+                <span className="text-[11px] text-white/40">{formatContext(model.context_window)}</span>
+
+                {/* Capabilities */}
+                {capabilityIcons(model)}
+
+                {/* Rating */}
+                {ratingBadge(model)}
+
+                {/* Edit config button (selection mode only) */}
+                {selectionMode && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEditConfig?.(model)
+                    }}
+                    className="text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer text-center"
+                    title="Configure model"
+                  >
+                    &#x2026;
+                  </button>
+                )}
+              </div>
+
+              {/* Mobile row — two-line card layout */}
+              <div
+                onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
+                className={[
+                  "md:hidden flex flex-col gap-1 border-b border-white/6 px-4 py-2.5 transition-colors",
+                  "cursor-pointer hover:bg-white/4",
+                  isSelected ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
+                  isHidden ? "opacity-45" : "",
+                ].join(" ")}
+              >
+                {/* Line 1: Star + Name + Edit */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleFavourite?.(model)
+                    }}
+                    className={[
+                      "text-[13px] transition-colors cursor-pointer flex-shrink-0",
+                      isFav ? "text-gold" : "text-white/15 hover:text-white/30",
+                    ].join(" ")}
+                    title={isFav ? "Remove from favourites" : "Add to favourites"}
+                  >
+                    {isFav ? "\u2605" : "\u2606"}
+                  </button>
+                  <span className="truncate text-[12px] text-white/80 min-w-0">
+                    {model.user_config?.custom_display_name ?? model.display_name}
+                  </span>
+                  {hasConfig && (
+                    <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
+                  )}
+                  {isHidden && (
+                    <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
+                  )}
+                  {selectionMode && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onEditConfig?.(model)
+                      }}
+                      className="ml-auto text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer flex-shrink-0"
+                      title="Configure model"
+                    >
+                      &#x2026;
+                    </button>
+                  )}
+                </div>
+
+                {/* Line 2: Provider | Params | Context | Caps | Rating */}
+                <div className="flex items-center gap-2.5 pl-[21px] text-[11px]">
+                  <span className="truncate text-white/40">{model.provider_display_name}</span>
+                  <span className="text-white/10">|</span>
+                  <span className="text-white/55 flex-shrink-0">
+                    {model.parameter_count ? (
+                      <>
+                        {model.parameter_count}
+                        {model.quantisation_level && (
+                          <span className="ml-0.5 text-[9px] text-white/25">{model.quantisation_level}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-white/20">--</span>
+                    )}
+                  </span>
+                  <span className="text-white/10">|</span>
+                  <span className="text-white/40 flex-shrink-0">{formatContext(model.context_window)}</span>
+                  <span className="text-white/10">|</span>
+                  {capabilityIcons(model)}
+                  <span className="ml-auto flex-shrink-0">{ratingBadge(model)}</span>
+                </div>
+              </div>
             </div>
           )
         })}

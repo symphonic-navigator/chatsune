@@ -110,7 +110,7 @@ export function ModelSelectionModal({
         onClick={handleBackdropClick}
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       >
-        <div className="flex h-[80vh] w-full max-w-3xl flex-col rounded-xl border border-white/8 bg-surface shadow-2xl">
+        <div className="flex h-full w-full flex-col bg-surface md:h-[80vh] md:max-w-3xl md:rounded-xl md:border md:border-white/8 md:shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
             <span className="text-[13px] font-semibold text-white/80">Select Model</span>
