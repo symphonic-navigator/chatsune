@@ -296,7 +296,7 @@ async def delete_persona(
         raise HTTPException(status_code=404, detail="Persona not found")
 
     # Cascade: find session IDs for artefact cleanup
-    db = await get_db()
+    db = get_db()
     cursor = db["chat_sessions"].find(
         {"user_id": user_id, "persona_id": persona_id},
         projection={"_id": 1},

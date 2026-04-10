@@ -36,7 +36,7 @@ async def delete_by_persona(user_id: str, persona_id: str) -> int:
     from backend.modules.memory._repository import MemoryRepository
     from backend.database import get_db
 
-    repo = MemoryRepository(await get_db())
+    repo = MemoryRepository(get_db())
     return await repo.delete_by_persona(user_id, persona_id)
 
 
