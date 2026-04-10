@@ -31,4 +31,13 @@ async def get_memory_context(user_id: str, persona_id: str) -> str | None:
     )
 
 
-__all__ = ["router", "init_indexes", "get_memory_context", "MemoryRepository"]
+async def delete_by_persona(user_id: str, persona_id: str) -> int:
+    """Delete all memory data for a persona."""
+    from backend.modules.memory._repository import MemoryRepository
+    from backend.database import get_db
+
+    repo = MemoryRepository(await get_db())
+    return await repo.delete_by_persona(user_id, persona_id)
+
+
+__all__ = ["router", "init_indexes", "get_memory_context", "MemoryRepository", "delete_by_persona"]

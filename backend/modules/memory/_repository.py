@@ -90,6 +90,16 @@ class MemoryRepository:
         result = await self._entries.delete_one({"_id": entry_id, "user_id": user_id})
         return result.deleted_count > 0
 
+    async def delete_by_persona(self, user_id: str, persona_id: str) -> int:
+        """Delete all journal entries and memory bodies for a persona."""
+        entries_result = await self._entries.delete_many(
+            {"user_id": user_id, "persona_id": persona_id}
+        )
+        await self._bodies.delete_many(
+            {"user_id": user_id, "persona_id": persona_id}
+        )
+        return entries_result.deleted_count
+
     async def auto_commit_old_entries(self, *, max_age_hours: int = 48) -> list[dict]:
         """Find uncommitted entries older than cutoff and commit them automatically."""
         cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)
