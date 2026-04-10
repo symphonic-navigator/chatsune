@@ -1,5 +1,6 @@
 from backend.modules.llm._adapters._events import (
     ContentDelta, ThinkingDelta, ToolCallEvent, StreamDone, StreamError,
+    StreamSlow, StreamAborted, ProviderStreamEvent,
 )
 
 
@@ -39,20 +40,16 @@ def test_stream_error():
 
 
 def test_stream_slow_is_instantiable_and_has_no_payload():
-    from backend.modules.llm._adapters._events import StreamSlow, ProviderStreamEvent
-
     ev = StreamSlow()
     assert isinstance(ev, StreamSlow)
-    # Union membership check — if the type is missing from the union,
-    # mypy or a careful runtime check would notice; this is a minimal
-    # guard that the union accepts the instance.
+    # Truly no payload — guards against accidental field additions.
+    assert StreamSlow.model_fields == {}
+    # Union membership check.
     sample: ProviderStreamEvent = ev
     assert sample is ev
 
 
 def test_stream_aborted_carries_reason_with_default():
-    from backend.modules.llm._adapters._events import StreamAborted, ProviderStreamEvent
-
     ev = StreamAborted()
     assert ev.reason == "gutter_timeout"
 

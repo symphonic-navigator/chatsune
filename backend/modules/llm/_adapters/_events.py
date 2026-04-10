@@ -62,6 +62,8 @@ class StreamAborted(BaseModel):
     accumulated content should be persisted with ``status="aborted"``.
     """
 
+    # Known values:
+    #   "gutter_timeout" — idle abort triggered by the adapter's gutter timer
     reason: str = "gutter_timeout"
 
 
