@@ -294,6 +294,18 @@ export function Sidebar({
     }
   }
 
+  /** Open a modal tab and dismiss the mobile drawer. */
+  function openModalAndClose(tab: UserModalTab) {
+    closeDrawerIfMobile()
+    onOpenModal(tab)
+  }
+
+  /** Open the persona overlay and dismiss the mobile drawer. */
+  function openOverlayAndClose(personaId: string, tab?: string) {
+    closeDrawerIfMobile()
+    onOpenOverlay?.(personaId, tab)
+  }
+
   function handlePersonaSelect(persona: PersonaDto) {
     onCloseModal()
     closeDrawerIfMobile()
@@ -693,7 +705,7 @@ export function Sidebar({
       {isAdmin && (
         <button
           type="button"
-          onClick={onOpenAdmin}
+          onClick={() => { closeDrawerIfMobile(); onOpenAdmin() }}
           className={[
             "mx-2 mt-2 flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors",
             isAdminOpen
@@ -710,8 +722,8 @@ export function Sidebar({
       {/* New Chat */}
       <NewChatRow personas={personas} onCloseModal={onCloseModal} />
 
-      {/* PERSONAS */}
-      <div className="mt-1.5 flex-shrink-0">
+      {/* Scrollable middle zone: personas + projects + history */}
+      <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
         <NavRow icon="💞" label="Personas" onClick={() => { onCloseModal(); navigate("/personas") }} />
 
         {/* Continue last session */}
@@ -743,10 +755,10 @@ export function Sidebar({
                     isActive={p.id === activePersonaId}
                     onSelect={handlePersonaSelect}
                     onNewChat={handleNewChat}
-                    onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                    onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                    onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                    onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
                     onUnpin={(persona) => onTogglePin?.(persona.id, false)}
-                    onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                    onOpenOverlay={() => openOverlayAndClose(p.id)}
                   />
                 )) : (
                   <p className="px-4 py-1 text-[12px] text-white/50">No pinned personas</p>
@@ -778,10 +790,10 @@ export function Sidebar({
                           isActive={p.id === activePersonaId}
                           onSelect={handlePersonaSelect}
                           onNewChat={handleNewChat}
-                          onNewIncognitoChat={(persona) => { onCloseModal(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                          onEdit={(persona) => onOpenOverlay?.(persona.id, 'edit')}
+                          onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                          onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
                           onPin={(persona) => onTogglePin?.(persona.id, true)}
-                          onOpenOverlay={() => onOpenOverlay?.(p.id)}
+                          onOpenOverlay={() => openOverlayAndClose(p.id)}
                         />
                       ))}
                     </div>
@@ -800,19 +812,15 @@ export function Sidebar({
             ) : null}
           </DragOverlay>
         </DndContext>
-      </div>
 
       <div className="mx-2 my-1.5 h-px bg-white/4" />
-
-      {/* Shared scroll zone: Projects + History */}
-      <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
 
         {/* PROJECTS */}
         <NavRow
           icon="🔭"
           label="Projects"
           isActive={isTabActive('projects')}
-          onClick={() => onOpenModal('projects')}
+          onClick={() => openModalAndClose('projects')}
           actions={
             <>
               <button
@@ -839,7 +847,7 @@ export function Sidebar({
           icon="📖"
           label="History"
           isActive={isTabActive('history')}
-          onClick={() => onOpenModal('history')}
+          onClick={() => openModalAndClose('history')}
           actions={null}
         />
 
@@ -935,7 +943,7 @@ export function Sidebar({
           icon="🎓"
           label="Knowledge"
           isActive={isTabActive('knowledge')}
-          onClick={() => onOpenModal('knowledge')}
+          onClick={() => openModalAndClose('knowledge')}
         />
 
         {/* Bookmarks */}
@@ -943,7 +951,7 @@ export function Sidebar({
           icon="🔖"
           label="Bookmarks"
           isActive={isTabActive('bookmarks')}
-          onClick={() => onOpenModal('bookmarks')}
+          onClick={() => openModalAndClose('bookmarks')}
         />
 
         {/* Uploads */}
@@ -951,7 +959,7 @@ export function Sidebar({
           icon="📂"
           label="Uploads"
           isActive={isTabActive('uploads')}
-          onClick={() => onOpenModal('uploads')}
+          onClick={() => openModalAndClose('uploads')}
         />
 
         {/* Artefacts */}
@@ -959,7 +967,7 @@ export function Sidebar({
           icon="🧪"
           label="Artefacts"
           isActive={isTabActive('artefacts')}
-          onClick={() => onOpenModal('artefacts')}
+          onClick={() => openModalAndClose('artefacts')}
         />
 
         <div className="mx-2 my-1.5 h-px bg-white/4" />
@@ -992,7 +1000,7 @@ export function Sidebar({
         >
           <button
             type="button"
-            onClick={() => onOpenModal(avatarTab)}
+            onClick={() => openModalAndClose(avatarTab)}
             className="flex flex-1 items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity"
             title="Your profile"
           >
@@ -1016,7 +1024,7 @@ export function Sidebar({
           {/* Settings shortcut */}
           <button
             type="button"
-            onClick={() => onOpenModal('settings')}
+            onClick={() => openModalAndClose('settings')}
             title="Settings"
             aria-label="Settings"
             className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
