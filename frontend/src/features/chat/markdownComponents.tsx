@@ -22,9 +22,11 @@ export const rehypePlugins: PluggableList = [[rehypeKatex, { throwOnError: false
  */
 export function preprocessMath(src: string): string {
   // \[ ... \]  → $$ ... $$ (display — may span multiple lines)
-  let out = src.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner: string) => `$$${inner}$$`)
-  // \( ... \)  → $ ... $ (inline — single line only)
-  out = out.replace(/\\\((.+?)\\\)/g, (_m, inner: string) => `$${inner}$`)
+  let out = src.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner: string) => `$$${inner.trim()}$$`)
+  // \( ... \)  → $ ... $ (inline — content may contain \, \int etc. so match lazily across lines)
+  // Inner must be trimmed: remark-math v6 rejects inline math that starts or ends
+  // with whitespace (anti-currency heuristic), so `$ x $` would not be recognised.
+  out = out.replace(/\\\(([\s\S]+?)\\\)/g, (_m, inner: string) => `$${inner.trim()}$`)
   return out
 }
 
