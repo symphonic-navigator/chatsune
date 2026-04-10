@@ -87,6 +87,23 @@ class ArtefactRepository:
             await self._versions.delete_many({"artefact_id": artefact_id})
         return result.deleted_count > 0
 
+    async def delete_by_session_ids(self, session_ids: list[str]) -> int:
+        """Delete all artefacts and their versions for the given sessions."""
+        if not session_ids:
+            return 0
+        cursor = self._artefacts.find(
+            {"session_id": {"$in": session_ids}},
+            projection={"_id": 1},
+        )
+        artefact_ids = [str(doc["_id"]) async for doc in cursor]
+        if not artefact_ids:
+            return 0
+        await self._versions.delete_many({"artefact_id": {"$in": artefact_ids}})
+        result = await self._artefacts.delete_many(
+            {"_id": {"$in": [ObjectId(aid) for aid in artefact_ids]}}
+        )
+        return result.deleted_count
+
     async def save_version(self, artefact_id: str, version: int, content: str, title: str) -> None:
         await self._versions.insert_one({
             "artefact_id": artefact_id,

@@ -157,6 +157,12 @@ async def list_artefacts(*, session_id: str) -> list[dict]:
     return await repo.list_by_session(session_id)
 
 
+async def delete_by_session_ids(session_ids: list[str]) -> int:
+    """Delete all artefacts for the given session IDs."""
+    repo = ArtefactRepository(get_db())
+    return await repo.delete_by_session_ids(session_ids)
+
+
 __all__ = [
     "router",
     "global_router",
@@ -165,4 +171,5 @@ __all__ = [
     "update_artefact",
     "read_artefact",
     "list_artefacts",
+    "delete_by_session_ids",
 ]
