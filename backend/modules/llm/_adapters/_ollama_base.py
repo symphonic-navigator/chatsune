@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import os
+import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
@@ -10,8 +12,10 @@ from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
+    StreamAborted,
     StreamDone,
     StreamError,
+    StreamSlow,
     ThinkingDelta,
     ToolCallEvent,
 )
@@ -22,10 +26,13 @@ _log = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 
-# H-004: if the upstream stalls mid-stream (no new NDJSON chunk arrives for this
-# long), abort rather than wait on the enclosing job-level timeout. Module-level
-# so tests can monkeypatch it to a short value.
-GUTTER_TIMEOUT_SECONDS = 30.0
+# Two-stage NDJSON idle thresholds. At GUTTER_SLOW_SECONDS of silence we
+# emit a StreamSlow (informational); at GUTTER_ABORT_SECONDS we give up
+# and emit StreamAborted. Module-level so tests can monkey-patch them.
+# The abort threshold is sourced from LLM_STREAM_ABORT_SECONDS so that
+# operators can extend it without a code change.
+GUTTER_SLOW_SECONDS: float = 30.0
+GUTTER_ABORT_SECONDS: float = float(os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"))
 
 
 def _parse_parameter_size(value: str) -> int | None:
@@ -183,24 +190,58 @@ class OllamaBaseAdapter(BaseAdapter):
                     return
 
                 stream_iter = resp.aiter_lines().__aiter__()
+                line_start = time.monotonic()
+                slow_fired = False
+                pending_next: asyncio.Task | None = None
+
                 while True:
-                    try:
-                        line = await asyncio.wait_for(
-                            stream_iter.__anext__(),
-                            timeout=GUTTER_TIMEOUT_SECONDS,
-                        )
-                    except asyncio.TimeoutError:
+                    elapsed = time.monotonic() - line_start
+                    if slow_fired:
+                        budget = GUTTER_ABORT_SECONDS - elapsed
+                    else:
+                        budget = GUTTER_SLOW_SECONDS - elapsed
+
+                    if budget <= 0:
+                        if not slow_fired:
+                            _log.info(
+                                "ollama_base.gutter_slow model=%s idle=%.1fs",
+                                payload.get("model"), elapsed,
+                            )
+                            yield StreamSlow()
+                            slow_fired = True
+                            continue  # re-evaluate against the abort deadline
                         _log.warning(
-                            "ollama_base.gutter_timeout model=%s aborting stream after %.1fs idle",
-                            payload.get("model"), GUTTER_TIMEOUT_SECONDS,
+                            "ollama_base.gutter_abort model=%s idle=%.1fs",
+                            payload.get("model"), elapsed,
                         )
-                        if not seen_done:
-                            # H-004: yielding on gutter timeout; no detail field on StreamDone
-                            yield StreamDone()
-                            seen_done = True
-                        break
+                        if pending_next is not None:
+                            pending_next.cancel()
+                        yield StreamAborted(reason="gutter_timeout")
+                        return
+
+                    # Reuse the in-flight __anext__ task across timeout retries so
+                    # that wait_for cancellation does not advance the iterator state.
+                    if pending_next is None:
+                        pending_next = asyncio.ensure_future(stream_iter.__anext__())
+
+                    done, _ = await asyncio.wait({pending_next}, timeout=budget)
+
+                    if not done:
+                        continue  # timed out — loop back, recompute budget
+
+                    task = done.pop()
+                    pending_next = None
+                    try:
+                        line = task.result()
                     except StopAsyncIteration:
                         break
+
+                    # Successful line — reset the window. slow_fired is
+                    # cleared so a subsequent silence phase will re-announce.
+                    # The frontend also clears its slow flag implicitly on
+                    # any subsequent content/thinking delta.
+                    line_start = time.monotonic()
+                    slow_fired = False
 
                     line = line.strip()
                     if not line:
