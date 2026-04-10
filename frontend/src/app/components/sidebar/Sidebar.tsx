@@ -701,6 +701,10 @@ export function Sidebar({
         </button>
       </div>
 
+      {/* Everything below the logo scrolls as one block so the sidebar
+          is usable in landscape on very small devices. */}
+      <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+
       {/* Admin banner */}
       {isAdmin && (
         <button
@@ -722,8 +726,8 @@ export function Sidebar({
       {/* New Chat */}
       <NewChatRow personas={personas} onCloseModal={onCloseModal} />
 
-      {/* Scrollable middle zone: personas + projects + history */}
-      <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+      {/* PERSONAS */}
+      <div className="mt-1.5">
         <NavRow icon="💞" label="Personas" onClick={() => { onCloseModal(); navigate("/personas") }} />
 
         {/* Continue last session */}
@@ -937,7 +941,7 @@ export function Sidebar({
       </div>
 
       {/* Bottom */}
-      <div className="flex-shrink-0 border-t border-white/5">
+      <div className="border-t border-white/5">
         {/* Knowledge */}
         <NavRow
           icon="🎓"
@@ -1044,6 +1048,8 @@ export function Sidebar({
           <span>Log out</span>
         </button>
       </div>
+
+      </div>{/* end scroll container */}
 
     </aside>
   )
