@@ -97,7 +97,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           </button>
         </div>
 
-        <div role="tablist" aria-label="Admin sections" className="flex border-b border-white/6 px-4 flex-shrink-0">
+        <div role="tablist" aria-label="Admin sections" className="flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
           {TABS.map((tab) => {
             const selected = activeTab === tab.id
             return (

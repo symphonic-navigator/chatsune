@@ -20,6 +20,8 @@ export interface ChatInputHandle {
   /** Open the native camera picker (mobile). On desktop the OS file picker
    *  opens instead because the `capture` attribute is ignored there. */
   openCamera: () => void
+  /** Open the native file picker for attaching files. */
+  openFilePicker: () => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -34,6 +36,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
     openCamera: () => cameraInputRef.current?.click(),
+    openFilePicker: () => fileInputRef.current?.click(),
   }))
 
   useEffect(() => {
@@ -167,7 +170,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isStreaming || disabled}
-          className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30"
+          className="hidden h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30 lg:flex"
           title="Attach file"
           aria-label="Attach file"
         >

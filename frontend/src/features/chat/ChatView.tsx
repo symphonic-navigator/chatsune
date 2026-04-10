@@ -756,68 +756,75 @@ export function ChatView({ persona }: ChatViewProps) {
                     onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
                   />
                 </div>
-                {/* Mobile: collapsible tray triggered by a Tools button. */}
+                {/* Mobile: icon-only button row + collapsible tool toggles. */}
                 <div className="lg:hidden">
-                  <button
-                    type="button"
-                    onClick={() => setMobileToolsOpen((v) => !v)}
-                    className="flex items-center gap-1.5 rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-mono uppercase tracking-wide text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
-                    aria-expanded={mobileToolsOpen}
-                    aria-label="Toggle tool tray"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2.5 4H11.5M2.5 7H11.5M2.5 10H11.5" />
-                    </svg>
-                    Tools
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {/* Tools toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setMobileToolsOpen((v) => !v)}
+                      className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
+                        mobileToolsOpen
+                          ? 'border-gold/30 bg-gold/10 text-gold shadow-[0_0_8px_rgba(249,226,175,0.3)]'
+                          : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/85'
+                      }`}
+                      aria-expanded={mobileToolsOpen}
+                      aria-label="Toggle tool tray"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9.5 2.8L13.2 6.5L6.5 13.2L2.1 13.9L2.8 9.5L9.5 2.8Z" />
+                        <path d="M8.5 4L12 7.5" />
+                      </svg>
+                    </button>
+                    {/* Attach file */}
+                    <button
+                      type="button"
+                      onClick={() => chatInputRef.current?.openFilePicker()}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
+                      aria-label="Attach file"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M7.5 2C5 2 3 4 3 6.5V11C3 13.5 5 15.5 7.5 15.5C10 15.5 12 13.5 12 11V5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                    {/* Camera capture */}
+                    <button
+                      type="button"
+                      onClick={() => chatInputRef.current?.openCamera()}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
+                      aria-label="Take photo"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
+                        <path d="M2 5.5C2 4.95 2.45 4.5 3 4.5H5L6 3H10L11 4.5H13C13.55 4.5 14 4.95 14 5.5V12C14 12.55 13.55 13 13 13H3C2.45 13 2 12.55 2 12V5.5Z" />
+                        <circle cx="8" cy="8.5" r="2.5" />
+                      </svg>
+                    </button>
+                    {/* Browse uploads */}
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadBrowser((v) => !v)}
+                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
+                      aria-label="Browse uploads"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
                   {mobileToolsOpen && (
                     <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowUploadBrowser((v) => !v)
-                          setMobileToolsOpen(false)
-                        }}
-                        className="mb-2 flex w-full items-center gap-2 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
-                        aria-label="Browse uploads"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                          <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                        </svg>
-                        Browse uploads
-                      </button>
-                      {/* Camera capture — delegates to the hidden camera input
-                          inside ChatInput via its imperative handle. Kept in
-                          the tray rather than next to the attach button to
-                          preserve the narrow-viewport space we regained in
-                          Stage 6. */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          chatInputRef.current?.openCamera()
-                          setMobileToolsOpen(false)
-                        }}
-                        className="mb-2 flex w-full items-center gap-2 rounded border border-white/10 bg-white/5 px-2 py-1.5 text-[12px] text-white/70 transition-colors hover:bg-white/10 hover:text-white/90"
-                        aria-label="Take photo"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
-                          <path d="M2 5.5C2 4.95 2.45 4.5 3 4.5H5L6 3H10L11 4.5H13C13.55 4.5 14 4.95 14 5.5V12C14 12.55 13.55 13 13 13H3C2.45 13 2 12.55 2 12V5.5Z" />
-                          <circle cx="8" cy="8.5" r="2.5" />
-                        </svg>
-                        Take photo
-                      </button>
-                      <div className="overflow-x-auto">
-                      <ToolToggles
-                        sessionId={effectiveSessionId}
-                        disabledToolGroups={disabledToolGroups}
-                        onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
-                        disabled={isStreaming}
-                        modelSupportsTools={modelSupportsTools}
-                        modelSupportsReasoning={modelSupportsReasoning}
-                        reasoningOverride={reasoningOverride}
-                        personaReasoningDefault={personaReasoningDefault}
-                        onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
-                      />
+                      <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-2">
+                        <ToolToggles
+                          sessionId={effectiveSessionId}
+                          disabledToolGroups={disabledToolGroups}
+                          onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                          disabled={isStreaming}
+                          modelSupportsTools={modelSupportsTools}
+                          modelSupportsReasoning={modelSupportsReasoning}
+                          reasoningOverride={reasoningOverride}
+                          personaReasoningDefault={personaReasoningDefault}
+                          onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+                        />
                       </div>
                     </div>
                   )}

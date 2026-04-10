@@ -158,7 +158,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
 
         {/* Tab bar */}
         <div
-          className="flex px-4 flex-shrink-0"
+          className="flex flex-wrap px-4 flex-shrink-0"
           role="tablist"
           aria-label="Persona sections"
           style={{ borderBottom: `1px solid ${borderColour}` }}

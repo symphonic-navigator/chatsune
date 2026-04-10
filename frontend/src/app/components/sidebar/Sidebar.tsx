@@ -680,7 +680,7 @@ export function Sidebar({
         </button>
         <button
           type="button"
-          onClick={() => { setHistorySearch(""); toggleCollapsed() }}
+          onClick={() => { setHistorySearch(""); if (isDesktop) { toggleCollapsed() } else { useDrawerStore.getState().close() } }}
           title="Collapse sidebar"
           aria-label="Collapse sidebar"
           className="flex h-5 w-5 items-center justify-center rounded text-[13px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"

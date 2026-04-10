@@ -136,7 +136,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
         </div>
 
         {/* Tab bar */}
-        <div role="tablist" aria-label="User area sections" className="flex overflow-x-auto border-b border-white/6 px-4 flex-shrink-0">
+        <div role="tablist" aria-label="User area sections" className="flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
           {TABS.map((tab) => {
             const selected = activeTab === tab.id
             return (
