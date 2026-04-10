@@ -55,6 +55,7 @@ export function MessageList({
 
   const visionDescriptions = useChatStore((s) => s.visionDescriptions)
   const correlationId = useChatStore((s) => s.correlationId)
+  const streamingSlow = useChatStore((s) => s.streamingSlow)
 
   // Live vision descriptions only apply to the most recent user message while
   // a stream is active; persisted messages render from their own snapshots.
@@ -128,7 +129,8 @@ export function MessageList({
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
-                  canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate} />
+                  canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate}
+                  status={msg.status ?? 'completed'} />
               </div>
             )
           }
@@ -165,6 +167,11 @@ export function MessageList({
                 isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
             ) : (
               <StreamingIndicator accentColour={accentColour} />
+            )}
+            {streamingSlow && (
+              <div className="mt-1 text-[11px] italic text-white/45">
+                Model still working…
+              </div>
             )}
           </div>
         )}
