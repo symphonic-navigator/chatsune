@@ -170,6 +170,17 @@ export function Sidebar({
     safeLocalStorage.setItem("chatsune_projects_open", String(next))
   }
 
+  const [historyOpen, setHistoryOpen] = useState(() => {
+    const stored = safeLocalStorage.getItem("chatsune_history_open")
+    return stored === null ? true : stored === "true"
+  })
+
+  function toggleHistory() {
+    const next = !historyOpen
+    setHistoryOpen(next)
+    safeLocalStorage.setItem("chatsune_history_open", String(next))
+  }
+
   const hasPinnedPersonas = personas.some((p) => p.pinned)
   const hasExplicitUnpinnedPref = safeLocalStorage.hasItem("chatsune_unpinned_open")
   const [unpinnedOpen, setUnpinnedOpen] = useState(() => {
@@ -852,91 +863,117 @@ export function Sidebar({
           label="History"
           isActive={isTabActive('history')}
           onClick={() => openModalAndClose('history')}
-          actions={null}
+          actions={
+            <>
+              <button
+                type="button"
+                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
+                onClick={(e) => { e.stopPropagation(); toggleHistory() }}
+                aria-label={historyOpen ? "Collapse history" : "Expand history"}
+                title={historyOpen ? "Collapse history" : "Expand history"}
+              >
+                {historyOpen ? "∨" : "›"}
+              </button>
+            </>
+          }
         />
 
-        {sessions.length > 0 && (
-          <div className="mx-2 mt-0.5 mb-1">
-            <input
-              type="text"
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="Filter sessions..."
-              className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/55 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
-            />
-          </div>
+        {historyOpen && (
+          <>
+            {sessions.length > 0 && (
+              <div className="mx-2 mt-0.5 mb-1">
+                <input
+                  type="text"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Filter sessions..."
+                  className="w-full rounded-md border border-white/6 bg-white/4 px-2 py-1 text-[11px] text-white/70 placeholder-white/55 outline-none transition-colors focus:border-white/12 focus:bg-white/6"
+                />
+              </div>
+            )}
+
+            <DndContext
+              sensors={dndSensors}
+              collisionDetection={pointerWithin}
+              onDragStart={handleHistoryDragStart}
+              onDragEnd={handleHistoryDragEnd}
+            >
+              <div className="mt-0.5 pb-2">
+                {/* Pinned sessions */}
+                <DroppableZone id="pinned-sessions-zone">
+                  <div className="min-h-[4px]">
+                    {pinnedSessions.map((s) => {
+                      const persona = personas.find((p) => p.id === s.persona_id)
+                      return (
+                        <DraggableHistoryItem
+                          key={s.id}
+                          session={s}
+                          isPinned={true}
+                          isActive={s.id === activeSessionId}
+                          monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                          colourScheme={persona?.colour_scheme}
+                          onClick={handleSessionClick}
+                          onDelete={handleDeleteSession}
+                          onTogglePin={handleToggleSessionPin}
+                        />
+                      )
+                    })}
+                  </div>
+                </DroppableZone>
+
+                {pinnedSessions.length > 0 && <div className="mx-3 my-1 h-px bg-white/4" />}
+
+                {/* Unpinned sessions */}
+                <DroppableZone id="unpinned-sessions-zone">
+                  <div className="min-h-[4px]">
+                    {unpinnedSessions.slice(0, 8).map((s) => {
+                      const persona = personas.find((p) => p.id === s.persona_id)
+                      return (
+                        <DraggableHistoryItem
+                          key={s.id}
+                          session={s}
+                          isPinned={false}
+                          isActive={s.id === activeSessionId}
+                          monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                          colourScheme={persona?.colour_scheme}
+                          onClick={handleSessionClick}
+                          onDelete={handleDeleteSession}
+                          onTogglePin={handleToggleSessionPin}
+                        />
+                      )
+                    })}
+                  </div>
+                </DroppableZone>
+
+                {unpinnedSessions.length > 8 && (
+                  <button
+                    type="button"
+                    onClick={() => openModalAndClose('history')}
+                    className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
+                  >
+                    <span>+{unpinnedSessions.length - 8} more</span>
+                  </button>
+                )}
+
+                {sessions.length === 0 && (
+                  <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
+                )}
+                {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
+                  <p className="px-4 py-1 text-[12px] text-white/60">No matching sessions</p>
+                )}
+              </div>
+
+              {/* History drag overlay */}
+              <DragOverlay modifiers={zoomModifiers}>
+                {historyDragActiveSession ? (
+                  <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
+                    {historyDragActiveSession.title ?? 'Untitled session'}
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </>
         )}
-
-        <DndContext
-          sensors={dndSensors}
-          collisionDetection={pointerWithin}
-          onDragStart={handleHistoryDragStart}
-          onDragEnd={handleHistoryDragEnd}
-        >
-          <div className="mt-0.5 pb-2">
-            {/* Pinned sessions */}
-            <DroppableZone id="pinned-sessions-zone">
-              <div className="min-h-[4px]">
-                {pinnedSessions.map((s) => {
-                  const persona = personas.find((p) => p.id === s.persona_id)
-                  return (
-                    <DraggableHistoryItem
-                      key={s.id}
-                      session={s}
-                      isPinned={true}
-                      isActive={s.id === activeSessionId}
-                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                      colourScheme={persona?.colour_scheme}
-                      onClick={handleSessionClick}
-                      onDelete={handleDeleteSession}
-                      onTogglePin={handleToggleSessionPin}
-                    />
-                  )
-                })}
-              </div>
-            </DroppableZone>
-
-            {pinnedSessions.length > 0 && <div className="mx-3 my-1 h-px bg-white/4" />}
-
-            {/* Unpinned sessions */}
-            <DroppableZone id="unpinned-sessions-zone">
-              <div className="min-h-[4px]">
-                {unpinnedSessions.map((s) => {
-                  const persona = personas.find((p) => p.id === s.persona_id)
-                  return (
-                    <DraggableHistoryItem
-                      key={s.id}
-                      session={s}
-                      isPinned={false}
-                      isActive={s.id === activeSessionId}
-                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                      colourScheme={persona?.colour_scheme}
-                      onClick={handleSessionClick}
-                      onDelete={handleDeleteSession}
-                      onTogglePin={handleToggleSessionPin}
-                    />
-                  )
-                })}
-              </div>
-            </DroppableZone>
-
-            {sessions.length === 0 && (
-              <p className="px-4 py-1 text-[12px] text-white/50">No history yet</p>
-            )}
-            {sessions.length > 0 && pinnedSessions.length === 0 && unpinnedSessions.length === 0 && (
-              <p className="px-4 py-1 text-[12px] text-white/60">No matching sessions</p>
-            )}
-          </div>
-
-          {/* History drag overlay */}
-          <DragOverlay modifiers={zoomModifiers}>
-            {historyDragActiveSession ? (
-              <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
-                {historyDragActiveSession.title ?? 'Untitled session'}
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
 
       </div>
 
