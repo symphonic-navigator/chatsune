@@ -51,6 +51,17 @@ async def store_vision_description(
     await repo.store_vision_description(file_id, user_id, model_id, text)
 
 
+async def delete_by_persona(user_id: str, persona_id: str) -> int:
+    """Delete all storage files (DB + physical) for a persona."""
+    db = get_db()
+    repo = StorageRepository(db)
+    file_ids = await repo.delete_by_persona(user_id, persona_id)
+    blob_store = BlobStore()
+    for file_id in file_ids:
+        blob_store.delete(user_id, file_id)
+    return len(file_ids)
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -58,4 +69,5 @@ __all__ = [
     "get_files_by_ids",
     "get_cached_vision_description",
     "store_vision_description",
+    "delete_by_persona",
 ]

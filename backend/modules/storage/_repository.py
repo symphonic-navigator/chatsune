@@ -56,6 +56,18 @@ class StorageRepository:
         result = await self._col.delete_one({"_id": file_id, "user_id": user_id})
         return result.deleted_count > 0
 
+    async def delete_by_persona(self, user_id: str, persona_id: str) -> list[str]:
+        """Return file IDs belonging to the persona and remove their DB records."""
+        cursor = self._col.find(
+            {"user_id": user_id, "persona_id": persona_id},
+            projection={"_id": 1},
+        )
+        file_ids = [doc["_id"] async for doc in cursor]
+        if not file_ids:
+            return []
+        await self._col.delete_many({"_id": {"$in": file_ids}})
+        return file_ids
+
     async def get_quota_used(self, user_id: str) -> int:
         pipeline = [
             {"$match": {"user_id": user_id}},
