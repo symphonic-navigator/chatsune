@@ -151,3 +151,49 @@ async def test_gutter_slow_clears_when_tokens_resume(
     # Both deltas arrived.
     deltas = [e for e in events if isinstance(e, ContentDelta)]
     assert [d.delta for d in deltas] == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_external_cancel_during_pending_read_does_not_leak_task(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Cancelling stream_completion from outside while a read task is in
+    flight must cancel the pending task cleanly. Without the fix, this
+    leaves a leaked task that emits a 'never retrieved' warning when the
+    socket closes underneath it."""
+    import logging
+
+    monkeypatch.setattr(_ollama_base, "GUTTER_SLOW_SECONDS", 5.0)
+    monkeypatch.setattr(_ollama_base, "GUTTER_ABORT_SECONDS", 10.0)
+
+    adapter = OllamaCloudAdapter(base_url="https://test.ollama.com")
+    adapter._client = _FakeClient(_HangingAiter())  # type: ignore[assignment]
+
+    events: list = []
+
+    async def _drive() -> None:
+        async for event in adapter.stream_completion("test-key", _make_request()):
+            events.append(event)
+
+    task = asyncio.create_task(_drive())
+    # Yield control so the consumer enters its first await.
+    await asyncio.sleep(0.05)
+    task.cancel()
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    # Drain pending callbacks so any "Task exception was never retrieved"
+    # warning that the event loop would emit has a chance to fire.
+    await asyncio.sleep(0)
+
+    leak_warnings = [
+        rec for rec in caplog.records
+        if "Task exception was never retrieved" in rec.getMessage()
+    ]
+    assert leak_warnings == [], (
+        "Pending NDJSON read task was leaked on external cancel:\n"
+        + "\n".join(rec.getMessage() for rec in leak_warnings)
+    )

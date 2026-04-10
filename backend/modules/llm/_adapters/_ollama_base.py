@@ -166,6 +166,7 @@ class OllamaBaseAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         payload = self._build_chat_payload(request)
         seen_done = False
+        pending_next: asyncio.Task | None = None
         try:
             async with self._client.stream(
                 "POST",
@@ -192,7 +193,6 @@ class OllamaBaseAdapter(BaseAdapter):
                 stream_iter = resp.aiter_lines().__aiter__()
                 line_start = time.monotonic()
                 slow_fired = False
-                pending_next: asyncio.Task | None = None
 
                 while True:
                     elapsed = time.monotonic() - line_start
@@ -219,8 +219,13 @@ class OllamaBaseAdapter(BaseAdapter):
                         yield StreamAborted(reason="gutter_timeout")
                         return
 
-                    # Reuse the in-flight __anext__ task across timeout retries so
-                    # that wait_for cancellation does not advance the iterator state.
+                    # Reuse the in-flight __anext__ task across timeout retries.
+                    # asyncio.wait_for would cancel the wrapped coroutine on
+                    # timeout, which interrupts the underlying httpx read mid-
+                    # buffer; the next __anext__ call would then either skip
+                    # data or fail on a partially consumed read state. Holding
+                    # a single task across iterations and observing it via
+                    # asyncio.wait avoids that hazard entirely.
                     if pending_next is None:
                         pending_next = asyncio.ensure_future(stream_iter.__anext__())
 
@@ -278,6 +283,11 @@ class OllamaBaseAdapter(BaseAdapter):
             # Audit trail for H-002: when a job timeout cancels us mid-stream,
             # the enclosing ``async with`` will close the socket and abort the
             # billable upstream inference. Log it so we can correlate cost.
+            # Also cancel the pending NDJSON read task explicitly so it does
+            # not linger and produce "Task exception was never retrieved"
+            # warnings as the socket closes underneath it.
+            if pending_next is not None and not pending_next.done():
+                pending_next.cancel()
             _log.warning(
                 "Upstream stream cancelled mid-flight (model=%s) — closing socket",
                 payload.get("model"),
