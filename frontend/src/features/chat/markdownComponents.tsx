@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ComponentPropsWithoutRef } from "react"
 import type { Components } from "react-markdown"
 import type { Highlighter } from "shiki"
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
+
+export const remarkPlugins = [remarkGfm, remarkMath]
+export const rehypePlugins = [[rehypeKatex, { throwOnError: false }]]
 
 const COLLAPSE_LINE_THRESHOLD = 15
 
@@ -67,6 +74,72 @@ function CollapsibleCode({ codeStr, children }: { codeStr: string; children: Rea
   )
 }
 
+let mermaidPromise: Promise<typeof import('mermaid')> | null = null
+function loadMermaid(): Promise<typeof import('mermaid')> {
+  if (!mermaidPromise) mermaidPromise = import('mermaid')
+  return mermaidPromise
+}
+
+function MermaidBlock({ code }: { code: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [svg, setSvg] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    loadMermaid().then((mod) => {
+      if (cancelled) return
+      const mermaid = mod.default
+      mermaid.initialize({ startOnLoad: false, theme: 'dark' })
+
+      const id = `mermaid-inline-${Math.random().toString(36).slice(2)}`
+      mermaid
+        .render(id, code)
+        .then(({ svg: rendered }) => {
+          if (!cancelled) {
+            setSvg(rendered)
+            setError(null)
+          }
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : 'Failed to render diagram')
+          }
+        })
+    })
+
+    return () => { cancelled = true }
+  }, [code])
+
+  if (error) {
+    return (
+      <div className="relative" title={error}>
+        <pre className="overflow-x-auto rounded-lg bg-elevated p-4 text-[13px] border border-amber-500/20">
+          <code>{code}</code>
+        </pre>
+      </div>
+    )
+  }
+
+  if (!svg) {
+    return (
+      <div className="flex items-center justify-center rounded-lg bg-elevated p-8">
+        <span className="text-[12px] text-white/30 font-mono">Rendering diagram...</span>
+      </div>
+    )
+  }
+
+  // Mermaid render() output is sanitised via its built-in DOMPurify integration
+  return (
+    <div
+      ref={containerRef}
+      className="my-2 flex justify-center overflow-x-auto rounded-lg bg-elevated p-4 [&_svg]:max-w-full"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  )
+}
+
 export function createMarkdownComponents(highlighter: Highlighter | null): Components {
   return {
     code(props: ComponentPropsWithoutRef<"code">) {
@@ -81,6 +154,10 @@ export function createMarkdownComponents(highlighter: Highlighter | null): Compo
             {children}
           </code>
         )
+      }
+
+      if (lang === 'mermaid') {
+        return <MermaidBlock code={codeStr} />
       }
 
       if (highlighter) {
