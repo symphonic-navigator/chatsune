@@ -284,6 +284,19 @@ class ChatRepository:
         await self._messages.delete_many({"session_id": {"$in": ids}})
         return ids
 
+    async def delete_by_persona(self, user_id: str, persona_id: str) -> int:
+        """Hard-delete all sessions and their messages for a persona."""
+        cursor = self._sessions.find(
+            {"user_id": user_id, "persona_id": persona_id},
+            projection={"_id": 1},
+        )
+        session_ids = [doc["_id"] async for doc in cursor]
+        if not session_ids:
+            return 0
+        await self._messages.delete_many({"session_id": {"$in": session_ids}})
+        result = await self._sessions.delete_many({"_id": {"$in": session_ids}})
+        return result.deleted_count
+
     async def save_message(
         self,
         session_id: str,

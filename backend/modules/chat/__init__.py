@@ -117,6 +117,12 @@ async def mark_messages_extracted(
     return await repo.mark_messages_extracted(message_ids, session=session)
 
 
+async def delete_by_persona(user_id: str, persona_id: str) -> int:
+    """Delete all chat sessions and messages for a persona."""
+    repo = ChatRepository(get_db())
+    return await repo.delete_by_persona(user_id, persona_id)
+
+
 async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:
     """Return ``{session_id: {"title": str | None, "persona_id": str}}`` for the given ids.
 
@@ -140,5 +146,5 @@ __all__ = [
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
-    "get_session_summaries",
+    "get_session_summaries", "delete_by_persona",
 ]
