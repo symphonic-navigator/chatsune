@@ -1,5 +1,6 @@
 import re
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -309,6 +310,7 @@ class ChatRepository:
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
         vision_descriptions_used: list[dict] | None = None,
+        status: Literal["completed", "aborted"] = "completed",
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -319,6 +321,7 @@ class ChatRepository:
             "thinking": thinking,
             "token_count": token_count,
             "created_at": now,
+            "status": status,
         }
         if web_search_context:
             doc["web_search_context"] = web_search_context
@@ -535,4 +538,5 @@ class ChatRepository:
             knowledge_context=doc.get("knowledge_context"),
             vision_descriptions_used=vision_snaps,
             created_at=doc["created_at"],
+            status=doc.get("status", "completed"),
         )

@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from uuid import uuid4
+
 import pytest
 from backend.database import connect_db, disconnect_db, get_db
 from backend.modules.chat._repository import ChatRepository
@@ -74,3 +77,38 @@ async def test_soft_delete_session_hides_it(repo):
     deleted = await repo.soft_delete_session(sid, "user-1")
     assert deleted is True
     assert await repo.get_session(sid, "user-1") is None
+
+
+async def test_save_message_with_aborted_status(repo):
+    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    sid = session["_id"]
+    await repo.save_message(
+        session_id=sid, role="assistant", content="partial", token_count=1,
+        status="aborted",
+    )
+    msgs = await repo.list_messages(sid)
+    assert len(msgs) == 1
+    assert msgs[0]["status"] == "aborted"
+    dto = repo.message_to_dto(msgs[0])
+    assert dto.status == "aborted"
+
+
+async def test_legacy_message_without_status_defaults_to_completed(repo):
+    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    sid = session["_id"]
+    # Simulate a legacy document: insert directly into MongoDB without
+    # going through save_message, so we bypass the new default kwarg.
+    await repo._messages.insert_one({
+        "_id": str(uuid4()),
+        "session_id": sid,
+        "role": "assistant",
+        "content": "legacy",
+        "thinking": None,
+        "token_count": 1,
+        "created_at": datetime.now(UTC),
+    })
+    msgs = await repo.list_messages(sid)
+    assert len(msgs) == 1
+    # Repo returns raw dicts from MongoDB; DTO conversion must default.
+    dto = repo.message_to_dto(msgs[0])
+    assert dto.status == "completed"
