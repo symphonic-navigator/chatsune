@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { llmApi } from '../../core/api/llm'
 import { sendMessage } from '../../core/websocket/connection'
@@ -24,6 +24,7 @@ import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
 import { KnowledgeDropdown } from './KnowledgeDropdown'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
+import { useMemoryStore } from '../../core/store/memoryStore'
 import { InferenceWaitBanner } from './InferenceWaitBanner'
 import { ArtefactRail } from '../artefact/ArtefactRail'
 import { ArtefactSidebar } from '../artefact/ArtefactSidebar'
@@ -240,6 +241,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const artefactSidebarOpen = useArtefactStore((s) => s.sidebarOpen)
   const artefactCount = useArtefactStore((s) => s.artefacts.length)
   const toggleArtefactSidebar = useArtefactStore((s) => s.toggleSidebar)
+  const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? [])
+  const memoryCount = memoryEntries.length
+  const { openPersonaOverlay } = useOutletContext<{
+    openPersonaOverlay: (personaId: string | null, tab?: string) => void
+  }>()
 
   useEffect(() => {
     const store = useChatStore.getState()
@@ -591,8 +597,8 @@ export function ChatView({ persona }: ChatViewProps) {
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Chat-local bookmarks dropdown */}
+        {/* Desktop topbar indicators */}
+        <div className="hidden lg:flex items-center gap-2">
           {bookmarks.length > 0 && (
             <div className="relative">
               <button
@@ -617,25 +623,57 @@ export function ChatView({ persona }: ChatViewProps) {
               )}
             </div>
           )}
-          {/* Mobile-only entry button to open the artefact sheet. Hidden on
-              desktop, where ArtefactRail provides the same affordance. */}
+          {persona && <JournalBadge personaId={persona.id} />}
+          <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
+        </div>
+
+        {/* Mobile topbar indicators — compact icon-only pills */}
+        <div className="flex lg:hidden items-center gap-1.5">
           {artefactCount > 0 && (
             <button
               type="button"
               onClick={toggleArtefactSidebar}
-              className="lg:hidden flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono text-white/30 transition-colors hover:text-white/50"
-              title="Show artefacts"
-              aria-label={`Show ${artefactCount} artefact${artefactCount === 1 ? '' : 's'}`}
+              className="flex items-center gap-1 rounded-full border border-gold/20 bg-gold/5 px-1.5 py-0.5 text-[10px] font-mono text-gold"
+              title={`${artefactCount} artefact${artefactCount === 1 ? '' : 's'}`}
             >
-              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
+              <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
                 <path d="M2.5 2.5H9L11.5 5V11.5H2.5V2.5Z" />
                 <path d="M9 2.5V5H11.5" />
               </svg>
               {artefactCount}
             </button>
           )}
-          {persona && <JournalBadge personaId={persona.id} />}
-          <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
+          <button
+            type="button"
+            onClick={() => personaId && openPersonaOverlay(personaId, 'memories')}
+            className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-mono ${
+              memoryCount > 0
+                ? 'border-green-500/20 bg-green-500/5 text-green-400'
+                : 'border-white/8 bg-white/3 text-white/30'
+            }`}
+            title={`${memoryCount} memory entries`}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+              <path d="M8 2C5.8 2 4 3.8 4 6c0 1.5.8 2.8 2 3.5V11h4V9.5c1.2-.7 2-2 2-3.5 0-2.2-1.8-4-4-4z" />
+              <path d="M6 12.5h4M6.5 14h3" />
+            </svg>
+            {memoryCount}
+          </button>
+          <span
+            className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-mono ${
+              contextStatus === 'green' ? 'border-green-500/20 bg-white/3 text-white/30'
+              : contextStatus === 'yellow' ? 'border-yellow-400/20 bg-yellow-400/5 text-yellow-300'
+              : contextStatus === 'orange' ? 'border-orange-500/20 bg-orange-500/5 text-orange-400'
+              : 'border-red-500/20 bg-red-500/5 text-red-400'
+            }`}
+            title={`Context: ${Math.round(contextFillPercentage * 100)}%`}
+          >
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+              <circle cx="8" cy="8" r="6" />
+              <path d="M8 4v4l2.5 2.5" />
+            </svg>
+            {contextStatus === 'green' ? '' : `${Math.round(contextFillPercentage * 100)}%`}
+          </span>
         </div>
       </div>
 

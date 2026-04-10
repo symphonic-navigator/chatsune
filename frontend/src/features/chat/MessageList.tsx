@@ -164,7 +164,7 @@ export function MessageList({
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
                 isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
             ) : (
-              activeToolCalls.filter((tc) => tc.status === 'running').length === 0 && <StreamingIndicator accentColour={accentColour} />
+              <StreamingIndicator accentColour={accentColour} />
             )}
           </div>
         )}

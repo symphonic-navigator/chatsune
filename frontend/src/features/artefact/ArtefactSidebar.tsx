@@ -75,6 +75,7 @@ export function ArtefactSidebar({ sessionId }: ArtefactSidebarProps) {
     try {
       const detail = await artefactApi.get(sessionId, artefact.handle)
       openOverlay(detail)
+      if (!isDesktop) setSidebarOpen(false)
     } catch {
       // silently ignore — overlay stays closed
     }
@@ -169,7 +170,11 @@ export function ArtefactSidebar({ sessionId }: ArtefactSidebarProps) {
         }
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/6 px-3 py-2">
+        <div
+          className="flex items-center justify-between border-b border-white/6 px-3 py-2 cursor-pointer lg:cursor-default"
+          onClick={() => { if (!isDesktop) setSidebarOpen(false) }}
+          role={isDesktop ? undefined : "button"}
+        >
           <span className="text-[11px] font-mono text-white/40 tracking-wider uppercase">Artefacts</span>
           <button
             type="button"

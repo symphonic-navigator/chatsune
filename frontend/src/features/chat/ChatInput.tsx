@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useViewport } from '../../core/hooks/useViewport'
 import { hapticTap } from '../../core/utils/haptics'
 
 const LONG_PASTE_THRESHOLD = 500
@@ -27,6 +28,7 @@ export interface ChatInputHandle {
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
   { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip }, ref,
 ) {
+  const { isMobile } = useViewport()
   const [text, setText] = useState('')
   const [pendingPaste, setPendingPaste] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -114,12 +116,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
         e.preventDefault()
         handleSend()
       }
     },
-    [handleSend],
+    [handleSend, isMobile],
   )
 
   return (
@@ -208,7 +210,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             onClick={onCancel}
             title="Cancel response"
             aria-label="Cancel response"
-            className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -222,7 +224,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             disabled={!text.trim() || disabled || hasPendingUploads}
             title="Send message"
             aria-label="Send message"
-            className="flex h-11 w-11 lg:h-9 lg:w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />

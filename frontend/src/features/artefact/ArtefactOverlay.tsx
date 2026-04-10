@@ -127,24 +127,29 @@ export function ArtefactOverlay() {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-white/8 px-3 py-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13px] text-white/80" title={artefact?.title ?? ''}>
-              {artefact?.title ?? '...'}
-            </span>
-            {artefact && (
-              <span
-                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider"
-                style={{ background: `rgba(${rgb},0.12)`, color: `rgb(${rgb})`, border: `1px solid rgba(${rgb},0.25)` }}
-              >
-                {artefact.type}
+        <div className="shrink-0 border-b border-white/8 px-3 py-2">
+          {/* Row 1: title + type badge + close button */}
+          <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate text-[13px] text-white/80" title={artefact?.title ?? ''}>
+                {artefact?.title ?? '...'}
               </span>
-            )}
-            {artefact?.language && (
-              <span className="shrink-0 text-[10px] font-mono text-white/30">{artefact.language}</span>
-            )}
+              {artefact && (
+                <span
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider"
+                  style={{ background: `rgba(${rgb},0.12)`, color: `rgb(${rgb})`, border: `1px solid rgba(${rgb},0.25)` }}
+                >
+                  {artefact.type}
+                </span>
+              )}
+              {artefact?.language && (
+                <span className="shrink-0 text-[10px] font-mono text-white/30">{artefact.language}</span>
+              )}
+            </div>
+            <button type="button" onClick={closeOverlay} className={BTN_ICON}>&#10005;</button>
           </div>
-          <div className="flex items-center gap-1 overflow-x-auto">
+          {/* Row 2: action buttons */}
+          <div className="mt-1.5 flex items-center gap-1">
             <button type="button" onClick={() => setMode('preview')}
               className={`${BTN_BASE} ${mode === 'preview' ? BTN_ACTIVE : BTN_INACTIVE}`}>Preview</button>
             <button type="button" onClick={() => { setMode('edit'); setEditContent(artefact?.content ?? '') }}
@@ -157,8 +162,6 @@ export function ArtefactOverlay() {
               className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`}>Undo</button>
             <button type="button" onClick={handleRedo} disabled={redoDisabled}
               className={`${BTN_ICON} disabled:opacity-20 disabled:cursor-not-allowed`}>Redo</button>
-            <span className="mx-1 h-4 w-px bg-white/10" />
-            <button type="button" onClick={closeOverlay} className={BTN_ICON}>&#10005;</button>
           </div>
         </div>
 
