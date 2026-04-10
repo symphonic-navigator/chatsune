@@ -23,6 +23,7 @@ const BREAKPOINTS = {
   md: '(min-width: 768px)',
   lg: '(min-width: 1024px)',
   xl: '(min-width: 1280px)',
+  landscape: '(orientation: landscape)',
 } as const
 
 type BreakpointKey = keyof typeof BREAKPOINTS
@@ -34,6 +35,8 @@ export interface ViewportState {
   isTablet: boolean
   /** True at or above the `lg` breakpoint (>= 1024 px). */
   isDesktop: boolean
+  /** True when below lg AND orientation is landscape. */
+  isLandscape: boolean
   isSm: boolean
   isMd: boolean
   isLg: boolean
@@ -44,13 +47,14 @@ function readMatches(): Record<BreakpointKey, boolean> {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
     // Defensive fallback for non-browser contexts. CSR-only project, but the
     // guard keeps the module import-safe under tests / SSR tooling.
-    return { sm: false, md: false, lg: false, xl: false }
+    return { sm: false, md: false, lg: false, xl: false, landscape: false }
   }
   return {
     sm: window.matchMedia(BREAKPOINTS.sm).matches,
     md: window.matchMedia(BREAKPOINTS.md).matches,
     lg: window.matchMedia(BREAKPOINTS.lg).matches,
     xl: window.matchMedia(BREAKPOINTS.xl).matches,
+    landscape: window.matchMedia(BREAKPOINTS.landscape).matches,
   }
 }
 
@@ -59,6 +63,7 @@ function deriveState(matches: Record<BreakpointKey, boolean>): ViewportState {
     isMobile: !matches.lg,
     isTablet: matches.md && !matches.lg,
     isDesktop: matches.lg,
+    isLandscape: !matches.lg && matches.landscape,
     isSm: matches.sm,
     isMd: matches.md,
     isLg: matches.lg,

@@ -6,6 +6,7 @@ import type { PersonaDto } from "../../../core/types/persona";
 import type { PersonaOverlayTab } from "../persona-overlay/PersonaOverlay";
 import { CHAKRA_PALETTE } from "../../../core/types/chakra";
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar";
+import { useViewport } from "../../../core/hooks/useViewport";
 
 interface PersonaCardProps {
   persona: PersonaDto;
@@ -25,6 +26,7 @@ export default function PersonaCard({
   onTogglePin,
 }: PersonaCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const { isLandscape } = useViewport();
 
   const {
     attributes,
@@ -42,8 +44,8 @@ export default function PersonaCard({
     : chakra.glow;
 
   const cardStyle: React.CSSProperties = {
-    width: "clamp(160px, 42vw, 210px)",
-    height: "clamp(240px, 63vw, 320px)",
+    width: isLandscape ? "clamp(260px, 55vw, 340px)" : "clamp(160px, 42vw, 210px)",
+    height: isLandscape ? "clamp(120px, 20vh, 160px)" : "clamp(240px, 63vw, 320px)",
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.4 : 1,
@@ -93,14 +95,14 @@ export default function PersonaCard({
     <div
       ref={setNodeRef}
       style={cardStyle}
-      className="relative flex flex-col rounded-xl overflow-hidden select-none"
+      className={`relative flex ${isLandscape ? 'flex-row' : 'flex-col'} rounded-xl overflow-hidden select-none`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       {...attributes}
     >
       {/* Chakra gradient overlay */}
       <div
-        className="absolute inset-x-0 top-0 h-1/2 pointer-events-none"
+        className={`absolute inset-x-0 top-0 ${isLandscape ? 'h-1/3' : 'h-1/2'} pointer-events-none`}
         style={{ background: chakra.gradient }}
       />
 
@@ -161,17 +163,17 @@ export default function PersonaCard({
       {/* Card content — clickable for Continue */}
       <button
         type="button"
-        className="flex-1 grid items-center justify-items-center px-3 bg-transparent border-none cursor-pointer w-full"
-        style={{
-          gridTemplateRows: "auto 1fr auto auto auto",
-          paddingBottom: "28px",
-        }}
+        className={`flex-1 ${isLandscape ? '' : 'grid items-center justify-items-center'} ${isLandscape ? 'px-2 py-1' : 'px-3'} bg-transparent border-none cursor-pointer w-full`}
+        style={isLandscape
+          ? { display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-start", paddingBottom: "4px" }
+          : { gridTemplateRows: "auto 1fr auto auto auto", paddingBottom: "28px" }
+        }
         onPointerDown={(e) => e.stopPropagation()}
         onClick={() => onContinue(persona.id)}
       >
         {/* Name */}
         <p
-          className="font-serif text-[15px] font-semibold leading-tight pt-4 self-start"
+          className={`font-serif ${isLandscape ? 'text-[13px] pt-2' : 'text-[15px] pt-4'} font-semibold leading-tight self-start`}
           style={{ color: "#e8e0d4" }}
         >
           {persona.name}
@@ -179,7 +181,7 @@ export default function PersonaCard({
 
         {/* Avatar / Monogram */}
         <div
-          className="w-[90px] h-[90px] rounded-full flex items-center justify-center self-center overflow-hidden"
+          className={`${isLandscape ? 'w-[50px] h-[50px]' : 'w-[90px] h-[90px]'} rounded-full flex items-center justify-center self-center overflow-hidden`}
           style={{
             background: `radial-gradient(circle at center, ${chakra.hex}33 0%, ${chakra.hex}11 50%, transparent 70%)`,
             boxShadow: `0 0 20px ${glowStrength}, 0 0 40px ${chakra.hex}22`,
@@ -191,7 +193,7 @@ export default function PersonaCard({
               personaId={persona.id}
               updatedAt={persona.updated_at}
               crop={persona.profile_crop}
-              size={86}
+              size={isLandscape ? 46 : 86}
               alt={persona.name}
             />
           ) : (
@@ -206,11 +208,11 @@ export default function PersonaCard({
 
         {/* Tagline — anchored at bottom, max 2 lines with ellipsis */}
         <p
-          className="font-mono text-[11px] italic leading-snug text-center self-end w-full"
+          className={`font-mono ${isLandscape ? 'text-[10px]' : 'text-[11px]'} italic leading-snug text-center self-end w-full`}
           style={{
             color: "rgba(255,255,255,0.4)",
             display: "-webkit-box",
-            WebkitLineClamp: 2,
+            WebkitLineClamp: isLandscape ? 1 : 2,
             WebkitBoxOrient: "vertical",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -230,22 +232,27 @@ export default function PersonaCard({
           {persona.model_unique_id.split(":").slice(1).join(":")}
         </p>
 
-        {/* Continue hint — visible on hover */}
-        <span
-          className="text-[9px] font-semibold uppercase tracking-[1.5px] transition-opacity duration-200 self-end"
-          style={{
-            color: chakra.hex + "80",
-            opacity: isHovered ? 1 : 0,
-          }}
-        >
-          ▸ Continue
-        </span>
+        {/* Continue hint — visible on hover, hidden in landscape */}
+        {!isLandscape && (
+          <span
+            className="text-[9px] font-semibold uppercase tracking-[1.5px] transition-opacity duration-200 self-end"
+            style={{
+              color: chakra.hex + "80",
+              opacity: isHovered ? 1 : 0,
+            }}
+          >
+            ▸ Continue
+          </span>
+        )}
       </button>
 
-      {/* Menu bar — bottom */}
+      {/* Menu bar — bottom (portrait) / right side (landscape) */}
       <div
-        className="flex h-12 relative z-[3]"
-        style={{ borderTop: `1px solid rgba(255,255,255,0.06)` }}
+        className={`flex ${isLandscape ? 'flex-col w-10' : 'h-12'} relative z-[3]`}
+        style={isLandscape
+          ? { borderLeft: '1px solid rgba(255,255,255,0.06)' }
+          : { borderTop: '1px solid rgba(255,255,255,0.06)' }
+        }
       >
         {menuButtons.map((btn) => (
           <button
@@ -253,7 +260,9 @@ export default function PersonaCard({
             className="flex-1 flex items-center justify-center transition-colors duration-200 bg-transparent border-none cursor-pointer"
             style={{
               color: "rgba(255,255,255,0.35)",
-              borderRight: "1px solid rgba(255,255,255,0.04)",
+              ...(isLandscape
+                ? { borderBottom: "1px solid rgba(255,255,255,0.04)" }
+                : { borderRight: "1px solid rgba(255,255,255,0.04)" }),
             }}
             title={btn.title}
             aria-label={`${btn.title} — ${persona.name}`}
