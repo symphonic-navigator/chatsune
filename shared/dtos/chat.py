@@ -61,6 +61,7 @@ class ChatMessageDto(BaseModel):
     knowledge_context: list[dict] | None = None
     vision_descriptions_used: list[VisionDescriptionSnapshotDto] | None = None
     created_at: datetime
+    status: Literal["completed", "aborted"] = "completed"
 
 
 class ChatMessagesBundleDto(BaseModel):

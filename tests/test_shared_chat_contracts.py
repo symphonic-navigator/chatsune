@@ -98,3 +98,28 @@ def test_chat_stream_ended_event_accepts_aborted_status():
 def test_chat_stream_slow_topic_constant_matches_type():
     assert Topics.CHAT_STREAM_SLOW == "chat.stream.slow"
     assert ChatStreamSlowEvent.model_fields["type"].default == Topics.CHAT_STREAM_SLOW
+
+
+def test_chat_message_dto_status_defaults_to_completed():
+    msg = ChatMessageDto(
+        id="m1",
+        session_id="s1",
+        role="assistant",
+        content="hi",
+        token_count=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    assert msg.status == "completed"
+
+
+def test_chat_message_dto_accepts_aborted_status():
+    msg = ChatMessageDto(
+        id="m1",
+        session_id="s1",
+        role="assistant",
+        content="partial answer",
+        token_count=2,
+        created_at=datetime.now(timezone.utc),
+        status="aborted",
+    )
+    assert msg.status == "aborted"
