@@ -58,3 +58,23 @@ def test_stream_aborted_carries_reason_with_default():
 
     sample: ProviderStreamEvent = custom
     assert sample is custom
+
+
+def test_stream_refused_event_fields():
+    from backend.modules.llm._adapters._events import StreamRefused
+    ev = StreamRefused(reason="content_filter")
+    assert ev.reason == "content_filter"
+    assert ev.refusal_text is None
+
+    ev2 = StreamRefused(reason="refusal", refusal_text="no can do")
+    assert ev2.refusal_text == "no can do"
+
+
+def test_stream_refused_is_member_of_provider_stream_event_union():
+    from backend.modules.llm._adapters._events import (
+        ProviderStreamEvent,
+        StreamRefused,
+    )
+    import typing
+    args = typing.get_args(ProviderStreamEvent)
+    assert StreamRefused in args
