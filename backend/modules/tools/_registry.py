@@ -31,7 +31,12 @@ class ToolGroup:
 
 def _build_groups() -> dict[str, ToolGroup]:
     """Build the tool group registry. Imported lazily to avoid circular imports."""
-    from backend.modules.tools._executors import ArtefactToolExecutor, KnowledgeSearchExecutor, WebSearchExecutor
+    from backend.modules.tools._executors import (
+        ArtefactToolExecutor,
+        JournalToolExecutor,
+        KnowledgeSearchExecutor,
+        WebSearchExecutor,
+    )
     from backend.modules.websearch import get_tool_definitions as ws_definitions
     from shared.dtos.inference import ToolDefinition
 
@@ -211,6 +216,67 @@ def _build_groups() -> dict[str, ToolGroup]:
                 ),
             ],
             executor=None,
+        ),
+        "journal": ToolGroup(
+            id="journal",
+            display_name="Journal",
+            description=(
+                "Allow the persona to record a lasting observation about "
+                "you in its private journal when it learns something "
+                "genuinely significant. Entries are drafts until you "
+                "commit them."
+            ),
+            side="server",
+            toggleable=True,
+            tool_names=["write_journal_entry"],
+            definitions=[
+                ToolDefinition(
+                    name="write_journal_entry",
+                    description=(
+                        "Record a lasting observation about the user in "
+                        "your private journal. Use this ONLY when you "
+                        "believe you have just learned something genuinely "
+                        "significant — something that will meaningfully "
+                        "change how you understand or relate to this "
+                        "person over the long term. Do NOT use this for "
+                        "small talk, transient context, things obvious "
+                        "from the conversation itself, or things you "
+                        "could easily infer later. The entry is "
+                        "uncommitted (a draft) until the user explicitly "
+                        "commits it. Be selective: a handful of truly "
+                        "impactful entries is worth more than many "
+                        "shallow ones."
+                    ),
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": (
+                                    "The insight about the user, written "
+                                    "in natural prose as the persona "
+                                    "understands it. Third person, "
+                                    "specific and concrete."
+                                ),
+                            },
+                            "category": {
+                                "type": "string",
+                                "enum": [
+                                    "preference", "fact", "relationship",
+                                    "value", "insight", "projects",
+                                    "creative",
+                                ],
+                                "description": (
+                                    "Which aspect of the user this entry "
+                                    "captures."
+                                ),
+                            },
+                        },
+                        "required": ["content", "category"],
+                    },
+                ),
+            ],
+            executor=JournalToolExecutor(),
         ),
     }
 
