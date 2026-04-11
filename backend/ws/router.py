@@ -60,7 +60,11 @@ async def websocket_endpoint(
 
     manager = get_manager()
     await ws.accept()
-    await manager.connect(user_id, role, ws)
+    connection_id = await manager.connect(user_id, role, ws)
+    try:
+        await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
+    except Exception:
+        _log.warning("Failed to send ws.hello to user %s", user_id)
 
     expiry_task: asyncio.Task | None = None
 
@@ -177,6 +181,14 @@ async def websocket_endpoint(
                 task = asyncio.create_task(handle_incognito_send(user_id, data))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
+            elif msg_type == "chat.client_tool.result":
+                # Handled fully in Task 11 — for now, log and drop so the
+                # message type is recognised.
+                _log.debug(
+                    "chat.client_tool.result received (handler not yet wired) "
+                    "user=%s connection=%s",
+                    user_id, connection_id,
+                )
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
