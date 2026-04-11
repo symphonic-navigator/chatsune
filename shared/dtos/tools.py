@@ -11,7 +11,7 @@ class ToolGroupDto(BaseModel):
     toggleable: bool
 
 
-class ClientToolResultPayload(BaseModel):
+class ClientToolResultPayloadDto(BaseModel):
     """The shape of the `result` field in a chat.client_tool.result WS message."""
     stdout: str
     error: str | None
@@ -20,4 +20,4 @@ class ClientToolResultPayload(BaseModel):
 class ClientToolResultDto(BaseModel):
     """Validates inbound chat.client_tool.result WebSocket messages."""
     tool_call_id: str
-    result: ClientToolResultPayload
+    result: ClientToolResultPayloadDto
