@@ -121,18 +121,18 @@ export function ArtefactsTab({ onClose }: ArtefactsTabProps) {
     [items, isSanitised, nsfwPersonaIds, personaFilter, typeFilter, search],
   )
 
-  // Personas that have at least one visible artefact, sorted by name
+  // Personas available in the filter dropdown. Derived from the unfiltered
+  // `items` set (not `filtered`) so that picking one persona doesn't collapse
+  // the dropdown to just the current selection — otherwise the user has to
+  // bounce back through "All Personas" to switch. Sanitised mode still hides
+  // NSFW personas entirely so the toggle keeps its meaning.
   const filterPersonas = useMemo(() => {
-    const visiblePersonaIds = new Set(filtered.map((a) => a.persona_id))
-    // Also include ids from all items so filter options don't disappear mid-filter
     const allPersonaIds = new Set(items.map((a) => a.persona_id))
     return personas
       .filter((p) => allPersonaIds.has(p.id))
       .filter((p) => !isSanitised || !p.nsfw)
-      // Prioritise personas with visible results but show all that have artefacts
-      .filter((p) => visiblePersonaIds.has(p.id) || personaFilter === p.id)
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [personas, items, filtered, isSanitised, personaFilter])
+  }, [personas, items, isSanitised])
 
   function handleOpen(row: ArtefactListItem) {
     navigate(`/chat/${row.persona_id}/${row.session_id}`, {
