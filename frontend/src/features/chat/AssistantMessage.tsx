@@ -4,15 +4,25 @@ import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath 
 import { ThinkingBubble } from './ThinkingBubble'
 import type { Highlighter } from 'shiki'
 
+const REFUSAL_FALLBACK_TEXT = 'The model declined this request.'
+
 interface AssistantMessageProps {
   content: string; thinking: string | null; isStreaming: boolean;
   accentColour: string; highlighter: Highlighter | null;
   isBookmarked?: boolean; onBookmark?: () => void;
   canRegenerate?: boolean; onRegenerate?: () => void;
-  status?: 'completed' | 'aborted';
+  status?: 'completed' | 'aborted' | 'refused';
+  refusalText?: string | null;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed' }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText }: AssistantMessageProps) {
+  const effectiveContent = (() => {
+    if (content) return content
+    if (refusalText && status === 'refused') return refusalText
+    if (status === 'refused') return REFUSAL_FALLBACK_TEXT
+    return ''
+  })()
+
   const [copied, setCopied] = useState(false)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -21,11 +31,11 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
   }, [])
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content)
+    navigator.clipboard.writeText(effectiveContent)
     setCopied(true)
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
     copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500)
-  }, [content])
+  }, [effectiveContent])
 
   const components = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
 
@@ -37,7 +47,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
       <div className="max-w-[92%] lg:max-w-[85%] min-w-0 break-words [overflow-wrap:anywhere]">
         <div className="chat-text chat-prose text-white/80">
           <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-            {preprocessMath(content)}
+            {preprocessMath(effectiveContent)}
           </ReactMarkdown>
         </div>
         {status === 'aborted' && !isStreaming && (
@@ -64,7 +74,30 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
             </div>
           </div>
         )}
-        {!isStreaming && content && (
+        {status === 'refused' && !isStreaming && (
+          <div className="mt-2 flex items-start gap-2 rounded-md border border-red-400/40 bg-red-500/5 px-3 py-2">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              className="text-red-400 mt-0.5 shrink-0"
+              aria-hidden="true"
+            >
+              <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
+              <path
+                d="M4.5 4.5L9.5 9.5M9.5 4.5L4.5 9.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="text-[11px] leading-snug text-red-200/90">
+              The model declined this request. Click <strong>Regenerate</strong> to try again.
+            </div>
+          </div>
+        )}
+        {!isStreaming && effectiveContent && (
           <div className="mt-2.5 flex gap-3 border-t border-white/6 pt-2">
             <button type="button" onClick={handleCopy}
               className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50"
