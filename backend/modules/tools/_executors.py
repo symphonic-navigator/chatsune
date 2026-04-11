@@ -131,12 +131,16 @@ class ArtefactToolExecutor:
             )
 
             if tool_name == "create_artefact":
+                # Normalise type to lowercase — some models return "HTML" / "Markdown"
+                # despite the enum specifying lowercase, and the frontend preview
+                # switch is strictly case-sensitive.
+                raw_type = arguments.get("type", "") or ""
                 result = await create_artefact(
                     user_id=user_id,
                     session_id=session_id,
                     handle=arguments.get("handle", ""),
                     title=arguments.get("title", ""),
-                    artefact_type=arguments.get("type", ""),
+                    artefact_type=raw_type.strip().lower(),
                     content=arguments.get("content", ""),
                     language=arguments.get("language"),
                     correlation_id=correlation_id,

@@ -216,8 +216,12 @@ class InferenceRunner:
                 # The content from this iteration was a tool-call turn — the
                 # final user-facing content will come from the next iteration.
                 # Reset so only the last iteration's content is saved.
+                # Thinking, however, is cumulative: reasoning that preceded a
+                # tool call is still part of the model's complete reasoning
+                # trace and must survive a chat reload, otherwise the thinking
+                # bubble disappears on refresh for any response that involved
+                # a tool call (e.g. artefact creation).
                 full_content = ""
-                full_thinking = ""
 
                 for tc in iter_tool_calls:
                     now = datetime.now(timezone.utc)

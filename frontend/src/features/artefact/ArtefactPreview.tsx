@@ -285,15 +285,36 @@ interface ArtefactPreviewProps {
   content: string
   type: ArtefactType
   language: string | null
+  /** User override — when set, skips language-based detection and renders this type directly. */
+  typeOverride?: ArtefactType | null
 }
 
-export function ArtefactPreview({ content, type, language }: ArtefactPreviewProps) {
+/**
+ * Detect which preview renderer to use.
+ *
+ * LLMs inconsistently set the artefact type when creating code artefacts — a
+ * single-page HTML website may come through as type='code' + language='html'
+ * instead of type='html'. Without this normalisation the preview shows the raw
+ * source instead of rendering the page. The same applies to JSX components,
+ * markdown documents, SVG, and mermaid diagrams. The `language` hint is
+ * matched case-insensitively.
+ */
+export function detectPreviewType(type: ArtefactType, language: string | null): ArtefactType {
+  if (type !== 'code') return type
+  const lang = language?.toLowerCase().trim()
+  if (!lang) return type
+  if (lang === 'html' || lang === 'htm') return 'html'
+  if (lang === 'jsx' || lang === 'tsx') return 'jsx'
+  if (lang === 'md' || lang === 'markdown') return 'markdown'
+  if (lang === 'svg') return 'svg'
+  if (lang === 'mermaid') return 'mermaid'
+  return type
+}
+
+export function ArtefactPreview({ content, type, language, typeOverride }: ArtefactPreviewProps) {
   const highlighter = useHighlighter()
 
-  // LLMs sometimes set type:"code" + language:"jsx" instead of type:"jsx"
-  const effectiveType = type === 'code' && (language === 'jsx' || language === 'tsx')
-    ? 'jsx'
-    : type
+  const effectiveType = typeOverride ?? detectPreviewType(type, language)
 
   switch (effectiveType) {
     case 'markdown':

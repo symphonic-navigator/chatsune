@@ -1,8 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
-import { ArtefactPreview } from './ArtefactPreview'
+import type { ArtefactType } from '../../core/types/artefact'
+import { ArtefactPreview, detectPreviewType } from './ArtefactPreview'
+
+const PREVIEW_TYPES: ArtefactType[] = ['markdown', 'code', 'html', 'svg', 'jsx', 'mermaid']
+
+// Native <select> open state is not stylable via CSS — options must carry
+// their background/colour inline so the dropdown list matches the app theme
+// (Chrome/Firefox/Safari). See CLAUDE.md → "Frontend styling gotchas".
+const SELECT_OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',
+  color: 'rgba(255,255,255,0.85)',
+}
 
 const TYPE_COLOURS: Record<string, string> = {
   markdown: '180,180,220',
@@ -37,6 +48,7 @@ export function ArtefactOverlay() {
   const [editContent, setEditContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [previewTypeOverride, setPreviewTypeOverride] = useState<ArtefactType | null>(null)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
@@ -45,7 +57,15 @@ export function ArtefactOverlay() {
   useEffect(() => {
     setMode('preview')
     setEditContent(artefact?.content ?? '')
+    setPreviewTypeOverride(null)
   }, [artefact?.handle, artefact?.version])
+
+  // Auto-detected preview type (used as the <select> default until the user overrides it).
+  const detectedPreviewType = useMemo(
+    () => (artefact ? detectPreviewType(artefact.type, artefact.language) : null),
+    [artefact?.type, artefact?.language],
+  )
+  const effectivePreviewType = previewTypeOverride ?? detectedPreviewType
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -154,6 +174,26 @@ export function ArtefactOverlay() {
               className={`${BTN_BASE} ${mode === 'preview' ? BTN_ACTIVE : BTN_INACTIVE}`}>Preview</button>
             <button type="button" onClick={() => { setMode('edit'); setEditContent(artefact?.content ?? '') }}
               className={`${BTN_BASE} ${mode === 'edit' ? BTN_ACTIVE : BTN_INACTIVE}`}>Edit</button>
+            {mode === 'preview' && artefact && effectivePreviewType && (
+              <select
+                value={effectivePreviewType}
+                onChange={(e) => setPreviewTypeOverride(e.target.value as ArtefactType)}
+                title="Preview renderer"
+                className={`${BTN_BASE} ${BTN_INACTIVE} ml-1 appearance-none pr-5`}
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'><path d='M0 0l4 6 4-6z' fill='rgba(255,255,255,0.4)'/></svg>\")",
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 6px center',
+                }}
+              >
+                {PREVIEW_TYPES.map((t) => (
+                  <option key={t} value={t} style={SELECT_OPTION_STYLE}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            )}
             <span className="mx-1 h-4 w-px bg-white/10" />
             <button type="button" onClick={handleCopy} className={BTN_ICON}>{copied ? 'Copied' : 'Copy'}</button>
             <button type="button" onClick={handleDownload} className={BTN_ICON}>Download</button>
@@ -174,7 +214,12 @@ export function ArtefactOverlay() {
           )}
 
           {!loading && artefact && mode === 'preview' && (
-            <ArtefactPreview content={artefact.content} type={artefact.type} language={artefact.language} />
+            <ArtefactPreview
+              content={artefact.content}
+              type={artefact.type}
+              language={artefact.language}
+              typeOverride={previewTypeOverride}
+            />
           )}
 
           {!loading && artefact && mode === 'edit' && (

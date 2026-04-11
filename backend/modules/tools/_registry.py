@@ -99,8 +99,13 @@ def _build_groups() -> dict[str, ToolGroup]:
                             },
                             "type": {
                                 "type": "string",
-                                "enum": ["code", "document", "diagram", "html", "svg", "markdown"],
-                                "description": "The type of artefact.",
+                                "enum": ["markdown", "code", "html", "svg", "jsx", "mermaid"],
+                                "description": (
+                                    "The type of artefact. Use 'html' for full standalone HTML pages, "
+                                    "'jsx' for React components, 'svg' for raw SVG markup, 'mermaid' for "
+                                    "diagram syntax, 'markdown' for documents, and 'code' for everything "
+                                    "else (set 'language' for syntax highlighting)."
+                                ),
                             },
                             "content": {
                                 "type": "string",
