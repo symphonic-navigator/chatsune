@@ -137,6 +137,14 @@ def _make_tool_executor(
             args["_correlation_id"] = correlation_id
             arguments_json = json.dumps(args)
 
+        if tool_name == "write_journal_entry":
+            args = json.loads(arguments_json)
+            args["_session_id"] = session.get("_id", "")
+            args["_persona_id"] = (persona or {}).get("_id", "")
+            args["_persona_name"] = (persona or {}).get("name", "")
+            args["_correlation_id"] = correlation_id
+            arguments_json = json.dumps(args)
+
         return await execute_tool(
             user_id,
             tool_name,
