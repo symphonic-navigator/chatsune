@@ -79,21 +79,29 @@ export function handleChatEvent(
       getStore().clearWaitingForLock()
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
-      const status = (p.status as 'completed' | 'cancelled' | 'error' | 'aborted') ?? 'completed'
-      const messageStatus: 'completed' | 'aborted' =
-        status === 'aborted' ? 'aborted' : 'completed'
+      const rawStatus = (p.status as string | undefined) ?? 'completed'
+      const messageStatus: 'completed' | 'aborted' | 'refused' =
+        rawStatus === 'refused'
+          ? 'refused'
+          : rawStatus === 'aborted'
+            ? 'aborted'
+            : 'completed'
 
       // Finalise the streamed message whenever the backend persisted
       // it — even on cancelled/error runs, the backend now saves the
       // partial content so we do not throw away tokens the user has
       // already seen. The ``status`` is still surfaced so the bubble
       // can be badged as interrupted if we want to.
+      // Refused messages may have no content — still persist them so
+      // the refusal band shows immediately without a page refresh.
       const backendMessageId = p.message_id as string | undefined
       const content = getStore().streamingContent
       const thinking = getStore().streamingThinking
       const webSearchContext = getStore().streamingWebSearchContext
       const knowledgeContext = getStore().streamingKnowledgeContext
-      if (backendMessageId && (content || thinking)) {
+      const artefactRefs = getStore().streamingArtefactRefs
+      const refusalText = getStore().streamingRefusalText
+      if (backendMessageId && (content || thinking || messageStatus === 'refused')) {
         getStore().finishStreaming(
           {
             id: backendMessageId,
@@ -105,6 +113,8 @@ export function handleChatEvent(
             attachments: null,
             web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
             knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
+            artefact_refs: artefactRefs.length > 0 ? artefactRefs : null,
+            refusal_text: refusalText || null,
             created_at: new Date().toISOString(),
             status: messageStatus,
           },

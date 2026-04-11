@@ -151,3 +151,97 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
     )
   })
 })
+
+describe('useChatStream — CHAT_STREAM_ENDED refusal and artefact persistence', () => {
+  beforeEach(() => {
+    mockAddNotification.mockReset()
+    mockSendMessage.mockReset()
+    useChatStore.setState({
+      correlationId: 'c1',
+      streamingContent: '',
+      streamingThinking: '',
+      streamingWebSearchContext: [],
+      streamingKnowledgeContext: [],
+      streamingArtefactRefs: [],
+      streamingRefusalText: null,
+      messages: [],
+      activeToolCalls: [],
+      contextStatus: 'green',
+      contextFillPercentage: 0,
+    } as any)
+  })
+
+  it('assembles final message with refused status and refusal_text', () => {
+    useChatStore.setState({
+      streamingContent: '',
+      streamingRefusalText: 'declined',
+    } as any)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm1',
+        status: 'refused',
+        context_status: 'green',
+        context_fill_percentage: 0.1,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    expect(messages[0].status).toBe('refused')
+    expect(messages[0].refusal_text).toBe('declined')
+  })
+
+  it('persists content-less refused messages on finish', () => {
+    useChatStore.setState({
+      streamingContent: '',
+      streamingThinking: '',
+      streamingRefusalText: 'declined',
+    } as any)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm1',
+        status: 'refused',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    expect(useChatStore.getState().messages).toHaveLength(1)
+  })
+
+  it('attaches streamingArtefactRefs to the final message', () => {
+    useChatStore.setState({
+      streamingContent: 'body',
+      streamingArtefactRefs: [
+        {
+          artefact_id: 'a1',
+          handle: 'h1',
+          title: 't1',
+          artefact_type: 'code',
+          operation: 'create',
+        },
+      ],
+    } as any)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm1',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages[0].artefact_refs).toHaveLength(1)
+    expect(messages[0].artefact_refs![0].handle).toBe('h1')
+  })
+})
