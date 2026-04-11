@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.modules.chat._inference import InferenceRunner
-from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamSlow, ThinkingDelta
+from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamRefused, StreamSlow, ThinkingDelta
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
@@ -32,28 +32,6 @@ def _make_stream(*events):
             yield e
     return _gen
 
-
-async def _run_inference_with_fake_stream(stream, emit_fn, save_fn):
-    """Helper that runs InferenceRunner._run_locked with a pre-built async stream.
-
-    Wraps the stream in a stream_fn callable so InferenceRunner can consume it.
-    Stub values are used for arguments the refusal tests do not care about.
-    """
-    runner = InferenceRunner()
-
-    async def _stream_fn(extra_messages=None):
-        async for event in stream:
-            yield event
-
-    await runner._run_locked(
-        user_id="user-1",
-        session_id="sess-1",
-        correlation_id="corr-1",
-        stream_fn=_stream_fn,
-        emit_fn=emit_fn,
-        save_fn=save_fn,
-        cancel_event=None,
-    )
 
 
 async def test_basic_content_stream(runner, mock_emit, mock_save):
@@ -274,71 +252,54 @@ async def test_stream_aborted_without_content_does_not_save(
     assert ended.status == "aborted"
 
 
-@pytest.mark.asyncio
-async def test_run_inference_handles_stream_refused(caplog):
-    """StreamRefused → status='refused', error event with error_code='refusal',
-    save_fn called with refusal fields."""
-    from backend.modules.llm._adapters._events import (
-        ContentDelta, StreamRefused,
+async def test_run_inference_handles_stream_refused(
+    runner, mock_emit, mock_save, caplog,
+):
+    """StreamRefused → status='refused', recoverable error event with
+    error_code='refusal', save_fn called with status='refused' and the
+    partial content that arrived before the refusal."""
+    stream_fn = _make_stream(
+        ContentDelta(delta="I am sorry"),
+        StreamRefused(reason="content_filter", refusal_text=None),
     )
-    from shared.events.chat import ChatStreamErrorEvent
-
-    async def fake_stream():
-        yield ContentDelta(delta="I am sorry")
-        yield StreamRefused(reason="content_filter", refusal_text=None)
-
-    emitted: list = []
-    save_calls: list = []
-
-    async def fake_emit(event):
-        emitted.append(event)
-
-    async def fake_save(**kwargs):
-        save_calls.append(kwargs)
-        return "msg-1"
 
     with caplog.at_level("WARNING"):
-        await _run_inference_with_fake_stream(
-            stream=fake_stream(),
-            emit_fn=fake_emit,
-            save_fn=fake_save,
+        await runner.run(
+            user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+            stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
         )
 
-    # Error event with refusal code emitted
-    err_events = [e for e in emitted if isinstance(e, ChatStreamErrorEvent)]
-    assert any(e.error_code == "refusal" and e.recoverable is True
-               for e in err_events)
-    # Warning log line
+    emitted = [call.args[0] for call in mock_emit.call_args_list]
+
+    refusal_errors = [
+        e for e in emitted
+        if isinstance(e, ChatStreamErrorEvent) and e.error_code == "refusal"
+    ]
+    assert len(refusal_errors) == 1
+    assert refusal_errors[0].recoverable is True
+
     assert any("chat.stream.refused" in m for m in caplog.messages)
-    # save_fn called with status='refused' and refusal_text=None
-    assert len(save_calls) == 1
-    assert save_calls[0]["status"] == "refused"
-    assert save_calls[0]["refusal_text"] is None
-    assert save_calls[0]["content"] == "I am sorry"
+
+    save_args = mock_save.call_args
+    assert save_args.kwargs["status"] == "refused"
+    assert save_args.kwargs["refusal_text"] is None
+    assert save_args.kwargs["content"] == "I am sorry"
 
 
-@pytest.mark.asyncio
-async def test_run_inference_refused_with_provider_body():
-    from backend.modules.llm._adapters._events import StreamRefused
-
-    async def fake_stream():
-        yield StreamRefused(reason="refusal", refusal_text="I cannot help")
-
-    emitted: list = []
-    save_calls: list = []
-
-    async def fake_emit(event):
-        emitted.append(event)
-
-    async def fake_save(**kwargs):
-        save_calls.append(kwargs)
-        return "msg-1"
-
-    await _run_inference_with_fake_stream(
-        stream=fake_stream(),
-        emit_fn=fake_emit,
-        save_fn=fake_save,
+async def test_run_inference_refused_with_provider_body(
+    runner, mock_emit, mock_save,
+):
+    """When StreamRefused carries a refusal_text, it must be forwarded
+    to save_fn unchanged."""
+    stream_fn = _make_stream(
+        StreamRefused(reason="refusal", refusal_text="I cannot help"),
     )
-    assert len(save_calls) == 1
-    assert save_calls[0]["refusal_text"] == "I cannot help"
-    assert save_calls[0]["status"] == "refused"
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+    )
+
+    save_args = mock_save.call_args
+    assert save_args.kwargs["refusal_text"] == "I cannot help"
+    assert save_args.kwargs["status"] == "refused"
