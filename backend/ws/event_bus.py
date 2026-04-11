@@ -86,6 +86,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.MEMORY_ENTRY_UPDATED: ([], True),
     Topics.MEMORY_ENTRY_DELETED: ([], True),
     Topics.MEMORY_ENTRY_AUTO_COMMITTED: ([], True),
+    Topics.MEMORY_ENTRY_AUTHORED_BY_PERSONA: ([], True),
     Topics.MEMORY_ENTRIES_DISCARDED: ([], True),
     Topics.MEMORY_DREAM_STARTED: ([], True),
     Topics.MEMORY_DREAM_COMPLETED: ([], True),
