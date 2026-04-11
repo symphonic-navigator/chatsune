@@ -99,6 +99,31 @@ During the user's GLM-5 calculator test that motivated the whole feature, the sy
 
 ---
 
+## Schub 4 — Nachzügler aus Schub 1
+
+Diese zwei Punkte sind während der Code-Erkundung für Schub 2/3 aufgefallen. Sie wurden in der Schub-1-Spec so festgelegt, aber in der ausgelieferten Fassung nicht oder nicht vollständig umgesetzt. Kein Beta-Blocker, gehört aber auf die Liste, damit es nicht verloren geht.
+
+### 4.1 — `usage` wird nicht persistiert
+
+`backend/modules/chat/_inference.py` berechnet beim `StreamDone`-Event ein `usage`-Dict mit `input_tokens` und `output_tokens` und reicht es an die `save_fn`-Closure durch. Die Closure in `backend/modules/chat/_orchestrator.py` akzeptiert den Parameter, leitet ihn aber nicht an `repo.save_message()` weiter. Das Mongo-Dokument hat daher kein `usage`-Feld, und der `ChatMessageDto` kann keine Token-Kosten pro Message anzeigen — obwohl der Wert an der richtigen Stelle bereits berechnet wird.
+
+Die Schub-1-Spec hat das Feld auf Zeile 262 als Parameter für `save_message` vorgesehen. Drift zwischen Spec und Implementierung.
+
+Fix ist klein und rein additiv:
+- `usage`-kwarg auf `save_message` durchreichen und ins Mongo-Dokument schreiben
+- `ChatMessageDto.usage: dict | None` ergänzen, `message_to_dto` lesend erweitern
+- Frontend darf das Feld danach im UI nutzen (Token-Counter pro Message)
+
+### 4.2 — Gutter-State-Machine ist nicht test-injizierbar
+
+Die Schub-1-Spec (Zeile 81–88) verlangt eine modul-private `_clock = time.monotonic` Binding in `backend/modules/llm/_adapters/_ollama_base.py`, damit Unit-Tests die Wall-Clock manipulieren und die Slow/Abort-Trigger deterministisch durchfahren können. In der ausgelieferten Fassung wird `time.monotonic()` direkt im Hot Path aufgerufen, ohne Indirektion.
+
+Konsequenz: Tests für die Two-Stage-State-Machine müssten entweder mit echten `sleep`s laufen (langsam und fragil) oder mit low-level `asyncio.wait`-Mocks (zerbrechlich). Der geplante einfache Monkeypatch-Pfad fehlt.
+
+Fix ist ebenfalls klein: modul-lokales `_clock`-Symbol einführen, alle `time.monotonic()`-Aufrufe in `stream_completion` darauf umlenken, Tests auf `monkeypatch.setattr(..., "_clock", fake)` umstellen.
+
+---
+
 ## When picking up Schub 2 or Schub 3
 
 Invoke the brainstorming skill (`superpowers:brainstorming`) at the start of the session to re-confirm scope and decisions. Reference this file so the new brainstorm can load the already-made decisions into context rather than rediscovering them. Then proceed into writing-plans → subagent-driven-development exactly like Schub 1.
