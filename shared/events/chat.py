@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from shared.dtos.chat import ArtefactRefDto
+
 
 class ChatMessageCreatedEvent(BaseModel):
     type: str = "chat.message.created"
@@ -49,7 +51,7 @@ class ChatStreamEndedEvent(BaseModel):
     correlation_id: str
     session_id: str
     message_id: str | None = None
-    status: Literal["completed", "cancelled", "error", "aborted"]
+    status: Literal["completed", "cancelled", "error", "aborted", "refused"]
     usage: dict | None = None
     context_status: Literal["green", "yellow", "orange", "red"]
     context_fill_percentage: float = 0.0
@@ -142,6 +144,7 @@ class ChatToolCallCompletedEvent(BaseModel):
     tool_call_id: str
     tool_name: str
     success: bool
+    artefact_ref: ArtefactRefDto | None = None
     timestamp: datetime
 
 
