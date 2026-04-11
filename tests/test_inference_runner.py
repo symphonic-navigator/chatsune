@@ -462,3 +462,15 @@ async def test_run_inference_preserves_artefact_call_order(
     assert [r["operation"] for r in refs] == ["create", "update"]
     assert refs[0]["title"] == "t1"
     assert refs[1]["title"] == "t2"
+
+
+def test_history_filter_excludes_aborted_and_refused():
+    from backend.modules.chat._orchestrator import _filter_usable_history
+    docs = [
+        {"_id": "1", "status": "completed"},
+        {"_id": "2", "status": "aborted"},
+        {"_id": "3", "status": "refused"},
+        {"_id": "4"},  # legacy, no status
+    ]
+    result = _filter_usable_history(docs)
+    assert [d["_id"] for d in result] == ["1", "4"]
