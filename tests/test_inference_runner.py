@@ -1,12 +1,15 @@
 import asyncio
+import json
 from unittest.mock import AsyncMock
 import pytest
 
 from backend.modules.chat._inference import InferenceRunner
-from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamSlow, ThinkingDelta
+from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamRefused, StreamSlow, ThinkingDelta, ToolCallEvent
+from shared.dtos.chat import ArtefactRefDto
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
+    ChatToolCallCompletedEvent,
 )
 
 
@@ -31,6 +34,7 @@ def _make_stream(*events):
         for e in events:
             yield e
     return _gen
+
 
 
 async def test_basic_content_stream(runner, mock_emit, mock_save):
@@ -249,3 +253,224 @@ async def test_stream_aborted_without_content_does_not_save(
         if isinstance(call.args[0], ChatStreamEndedEvent)
     ][0]
     assert ended.status == "aborted"
+
+
+async def test_run_inference_handles_stream_refused(
+    runner, mock_emit, mock_save, caplog,
+):
+    """StreamRefused → status='refused', recoverable error event with
+    error_code='refusal', save_fn called with status='refused' and the
+    partial content that arrived before the refusal."""
+    stream_fn = _make_stream(
+        ContentDelta(delta="I am sorry"),
+        StreamRefused(reason="content_filter", refusal_text=None),
+    )
+
+    with caplog.at_level("WARNING"):
+        await runner.run(
+            user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+            stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+        )
+
+    emitted = [call.args[0] for call in mock_emit.call_args_list]
+
+    refusal_errors = [
+        e for e in emitted
+        if isinstance(e, ChatStreamErrorEvent) and e.error_code == "refusal"
+    ]
+    assert len(refusal_errors) == 1
+    assert refusal_errors[0].recoverable is True
+
+    assert any("chat.stream.refused" in m for m in caplog.messages)
+
+    save_args = mock_save.call_args
+    assert save_args.kwargs["status"] == "refused"
+    assert save_args.kwargs["refusal_text"] is None
+    assert save_args.kwargs["content"] == "I am sorry"
+
+
+async def test_run_inference_refused_with_provider_body(
+    runner, mock_emit, mock_save,
+):
+    """When StreamRefused carries a refusal_text, it must be forwarded
+    to save_fn unchanged."""
+    stream_fn = _make_stream(
+        StreamRefused(reason="refusal", refusal_text="I cannot help"),
+    )
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=stream_fn, emit_fn=mock_emit, save_fn=mock_save,
+    )
+
+    save_args = mock_save.call_args
+    assert save_args.kwargs["refusal_text"] == "I cannot help"
+    assert save_args.kwargs["status"] == "refused"
+
+
+async def test_run_inference_captures_create_artefact_ref(
+    runner, mock_emit, mock_save,
+):
+    """A successful create_artefact tool call must append a ref to artefact_refs
+    and attach an ArtefactRefDto to the ChatToolCallCompletedEvent."""
+    call_count = 0
+
+    async def two_phase_stream(extra_messages=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First iteration: model emits a tool call
+            yield ToolCallEvent(
+                id="tc1", name="create_artefact",
+                arguments=json.dumps({"handle": "h1", "title": "Hello snippet", "type": "code"}),
+            )
+            yield StreamDone(input_tokens=1, output_tokens=1)
+        else:
+            # Second iteration: model responds with content after tool execution
+            yield ContentDelta(delta="Artefact created.")
+            yield StreamDone(input_tokens=2, output_tokens=2)
+
+    async def fake_tool_executor(user_id, tool_name, arguments_str):
+        return json.dumps({"ok": True, "artefact_id": "a1", "handle": "h1"})
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=two_phase_stream, emit_fn=mock_emit, save_fn=mock_save,
+        tool_executor_fn=fake_tool_executor,
+    )
+
+    mock_save.assert_awaited_once()
+    save_kwargs = mock_save.call_args.kwargs
+    assert save_kwargs["artefact_refs"] == [
+        {"artefact_id": "a1", "handle": "h1", "title": "Hello snippet", "artefact_type": "code", "operation": "create"}
+    ]
+
+    emitted = [call.args[0] for call in mock_emit.call_args_list]
+    completed_events = [e for e in emitted if isinstance(e, ChatToolCallCompletedEvent)]
+    assert len(completed_events) == 1
+    assert isinstance(completed_events[0].artefact_ref, ArtefactRefDto)
+    assert completed_events[0].artefact_ref.operation == "create"
+    assert completed_events[0].artefact_ref.artefact_id == "a1"
+
+
+async def test_run_inference_captures_update_artefact_without_artefact_id(
+    runner, mock_emit, mock_save,
+):
+    """A successful update_artefact result that omits artefact_id must store
+    an empty string for that field."""
+    call_count = 0
+
+    async def two_phase_stream(extra_messages=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            yield ToolCallEvent(
+                id="tc2", name="update_artefact",
+                arguments=json.dumps({"handle": "h2", "title": "x"}),
+            )
+            yield StreamDone(input_tokens=1, output_tokens=1)
+        else:
+            yield ContentDelta(delta="Updated.")
+            yield StreamDone(input_tokens=2, output_tokens=2)
+
+    async def fake_tool_executor(user_id, tool_name, arguments_str):
+        return json.dumps({"ok": True, "handle": "h2", "version": 3})
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=two_phase_stream, emit_fn=mock_emit, save_fn=mock_save,
+        tool_executor_fn=fake_tool_executor,
+    )
+
+    save_kwargs = mock_save.call_args.kwargs
+    refs = save_kwargs["artefact_refs"]
+    assert refs[0]["artefact_id"] == ""
+    assert refs[0]["handle"] == "h2"
+    assert refs[0]["operation"] == "update"
+
+
+async def test_run_inference_skips_failed_artefact_tool_call(
+    runner, mock_emit, mock_save,
+):
+    """A failed artefact tool call (result contains 'error') must not
+    add to artefact_refs; save_fn receives artefact_refs=None."""
+    call_count = 0
+
+    async def two_phase_stream(extra_messages=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            yield ToolCallEvent(
+                id="tc3", name="create_artefact",
+                arguments=json.dumps({"handle": "h3", "title": "x", "type": "code"}),
+            )
+            yield StreamDone(input_tokens=1, output_tokens=1)
+        else:
+            yield ContentDelta(delta="Could not create.")
+            yield StreamDone(input_tokens=2, output_tokens=2)
+
+    async def fake_tool_executor(user_id, tool_name, arguments_str):
+        return json.dumps({"error": "validation failed"})
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=two_phase_stream, emit_fn=mock_emit, save_fn=mock_save,
+        tool_executor_fn=fake_tool_executor,
+    )
+
+    save_kwargs = mock_save.call_args.kwargs
+    assert save_kwargs["artefact_refs"] is None
+
+
+async def test_run_inference_preserves_artefact_call_order(
+    runner, mock_emit, mock_save,
+):
+    """Two artefact tool calls in sequence must appear in artefact_refs
+    in the same order they were executed."""
+    call_count = 0
+
+    async def two_phase_stream(extra_messages=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            yield ToolCallEvent(
+                id="tc-a", name="create_artefact",
+                arguments=json.dumps({"handle": "h", "title": "t1", "type": "code"}),
+            )
+            yield ToolCallEvent(
+                id="tc-b", name="update_artefact",
+                arguments=json.dumps({"handle": "h", "title": "t2"}),
+            )
+            yield StreamDone(input_tokens=2, output_tokens=2)
+        else:
+            yield ContentDelta(delta="Done.")
+            yield StreamDone(input_tokens=3, output_tokens=3)
+
+    async def fake_tool_executor(user_id, tool_name, arguments_str):
+        if tool_name == "create_artefact":
+            return json.dumps({"ok": True, "artefact_id": "a", "handle": "h"})
+        return json.dumps({"ok": True, "handle": "h", "version": 2})
+
+    await runner.run(
+        user_id="user-1", session_id="sess-1", correlation_id="corr-1",
+        stream_fn=two_phase_stream, emit_fn=mock_emit, save_fn=mock_save,
+        tool_executor_fn=fake_tool_executor,
+    )
+
+    save_kwargs = mock_save.call_args.kwargs
+    refs = save_kwargs["artefact_refs"]
+    assert [r["operation"] for r in refs] == ["create", "update"]
+    assert refs[0]["title"] == "t1"
+    assert refs[1]["title"] == "t2"
+
+
+def test_history_filter_excludes_aborted_and_refused():
+    from backend.modules.chat._orchestrator import _filter_usable_history
+    docs = [
+        {"_id": "1", "status": "completed"},
+        {"_id": "2", "status": "aborted"},
+        {"_id": "3", "status": "refused"},
+        {"_id": "4"},  # legacy, no status
+    ]
+    result = _filter_usable_history(docs)
+    assert [d["_id"] for d in result] == ["1", "4"]

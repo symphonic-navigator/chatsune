@@ -3,6 +3,7 @@ import json
 import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Literal
 
 from backend.jobs import get_user_lock
 from backend.modules.llm import (
@@ -10,10 +11,12 @@ from backend.modules.llm import (
     StreamAborted,
     StreamDone,
     StreamError,
+    StreamRefused,
     StreamSlow,
     ThinkingDelta,
     ToolCallEvent,
 )
+from shared.dtos.chat import ArtefactRefDto
 from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
@@ -25,6 +28,7 @@ from shared.events.chat import (
 _log = logging.getLogger(__name__)
 
 _MAX_TOOL_ITERATIONS = 5
+_REFUSAL_FALLBACK_TEXT = "The model declined this request."
 
 
 class InferenceRunner:
@@ -78,8 +82,10 @@ class InferenceRunner:
         full_thinking = ""
         usage = None
         status = "completed"
+        iter_refusal_text: str | None = None
         web_search_context: list[dict] = []
         knowledge_context: list[dict] = []
+        artefact_refs: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
@@ -96,6 +102,7 @@ class InferenceRunner:
                 # Per-iteration accumulators
                 iter_content = ""
                 iter_thinking = ""
+                iter_refusal_text: str | None = None
                 iter_tool_calls: list[ToolCallEvent] = []
                 cancelled = False
 
@@ -158,12 +165,27 @@ class InferenceRunner:
                                 timestamp=datetime.now(timezone.utc),
                             ))
 
+                        case StreamRefused() as refused:
+                            _log.warning(
+                                "chat.stream.refused session=%s correlation_id=%s reason=%s",
+                                session_id, correlation_id, refused.reason,
+                            )
+                            status = "refused"
+                            iter_refusal_text = refused.refusal_text
+                            await emit_fn(ChatStreamErrorEvent(
+                                correlation_id=correlation_id,
+                                error_code="refusal",
+                                recoverable=True,
+                                user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
+                                timestamp=datetime.now(timezone.utc),
+                            ))
+
                 # Accumulate content/thinking across iterations
                 full_content += iter_content
                 if iter_thinking:
                     full_thinking += iter_thinking
 
-                if cancelled or status in ("error", "aborted"):
+                if cancelled or status in ("error", "aborted", "refused"):
                     break
 
                 # No tool calls or no executor → we are done
@@ -217,13 +239,31 @@ class InferenceRunner:
                         parsed_result = json.loads(result_str)
                         tool_success = not (isinstance(parsed_result, dict) and "error" in parsed_result)
                     except (json.JSONDecodeError, TypeError):
+                        parsed_result = None
                         tool_success = True
+
+                    # Capture artefact tool calls BEFORE emitting the completed event so
+                    # the ref can be attached to the event payload.
+                    ref_for_event: ArtefactRefDto | None = None
+                    if tc.name in ("create_artefact", "update_artefact"):
+                        if isinstance(parsed_result, dict) and parsed_result.get("ok"):
+                            ref_for_event = ArtefactRefDto(
+                                artefact_id=parsed_result.get("artefact_id", ""),
+                                handle=parsed_result.get("handle") or arguments.get("handle", ""),
+                                title=arguments.get("title", ""),
+                                artefact_type=arguments.get("type", ""),
+                                operation=(
+                                    "create" if tc.name == "create_artefact" else "update"
+                                ),
+                            )
+                            artefact_refs.append(ref_for_event.model_dump())
 
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
                         tool_name=tc.name,
                         success=tool_success,
+                        artefact_ref=ref_for_event,
                         timestamp=datetime.now(timezone.utc),
                     ))
 
@@ -300,16 +340,21 @@ class InferenceRunner:
         # streams (e.g. aborted mid-thinking, or ollama_local interrupted by
         # another request) are dropped so the user can simply regenerate.
         # See docs/superpowers/specs/2026-04-08-ollama-local-and-chat-ui-fixes-design.md.
-        if full_content:
+        if full_content or status == "refused":
+            resolved_status: Literal["completed", "aborted", "refused"] = (
+                "refused" if status == "refused"
+                else "aborted" if status == "aborted"
+                else "completed"
+            )
             message_id = await save_fn(
                 content=full_content,
                 thinking=full_thinking or None,
                 usage=usage,
                 web_search_context=web_search_context or None,
                 knowledge_context=knowledge_context or None,
-                # Cancelled and error runs collapse to "completed" — only
-                # gutter aborts deserve the warning badge in the UI.
-                status="aborted" if status == "aborted" else "completed",
+                artefact_refs=artefact_refs or None,
+                refusal_text=iter_refusal_text,
+                status=resolved_status,
             )
 
         await emit_fn(ChatStreamEndedEvent(

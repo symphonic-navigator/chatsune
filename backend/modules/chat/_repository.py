@@ -6,6 +6,7 @@ from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from shared.dtos.chat import (
+    ArtefactRefDto,
     ChatMessageDto,
     ChatSessionDto,
     VisionDescriptionSnapshotDto,
@@ -305,12 +306,15 @@ class ChatRepository:
         content: str,
         token_count: int,
         thinking: str | None = None,
+        usage: dict | None = None,
         web_search_context: list[dict] | None = None,
         knowledge_context: list[dict] | None = None,
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
         vision_descriptions_used: list[dict] | None = None,
-        status: Literal["completed", "aborted"] = "completed",
+        artefact_refs: list[dict] | None = None,
+        refusal_text: str | None = None,
+        status: Literal["completed", "aborted", "refused"] = "completed",
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -333,6 +337,12 @@ class ChatRepository:
             doc["attachment_refs"] = attachment_refs
         if vision_descriptions_used:
             doc["vision_descriptions_used"] = vision_descriptions_used
+        if usage:
+            doc["usage"] = usage
+        if artefact_refs:
+            doc["artefact_refs"] = artefact_refs
+        if refusal_text:
+            doc["refusal_text"] = refusal_text
         await self._messages.insert_one(doc)
         return doc
 
@@ -526,6 +536,21 @@ class ChatRepository:
             if raw_vision_snaps
             else None
         )
+        raw_artefact_refs = doc.get("artefact_refs")
+        artefact_refs = (
+            [
+                ArtefactRefDto(
+                    artefact_id=ref.get("artefact_id", ""),
+                    handle=ref.get("handle", ""),
+                    title=ref.get("title", ""),
+                    artefact_type=ref.get("artefact_type", ""),
+                    operation=ref.get("operation", "create"),
+                )
+                for ref in raw_artefact_refs
+            ]
+            if raw_artefact_refs
+            else None
+        )
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -539,4 +564,7 @@ class ChatRepository:
             vision_descriptions_used=vision_snaps,
             created_at=doc["created_at"],
             status=doc.get("status", "completed"),
+            refusal_text=doc.get("refusal_text"),
+            artefact_refs=artefact_refs,
+            usage=doc.get("usage"),
         )

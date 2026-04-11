@@ -49,6 +49,14 @@ class VisionDescriptionSnapshotDto(BaseModel):
     text: str
 
 
+class ArtefactRefDto(BaseModel):
+    artefact_id: str
+    handle: str
+    title: str
+    artefact_type: str
+    operation: Literal["create", "update"]
+
+
 class ChatMessageDto(BaseModel):
     id: str
     session_id: str
@@ -61,7 +69,10 @@ class ChatMessageDto(BaseModel):
     knowledge_context: list[dict] | None = None
     vision_descriptions_used: list[VisionDescriptionSnapshotDto] | None = None
     created_at: datetime
-    status: Literal["completed", "aborted"] = "completed"
+    status: Literal["completed", "aborted", "refused"] = "completed"
+    refusal_text: str | None = None
+    artefact_refs: list[ArtefactRefDto] | None = None
+    usage: dict | None = None
 
 
 class ChatMessagesBundleDto(BaseModel):

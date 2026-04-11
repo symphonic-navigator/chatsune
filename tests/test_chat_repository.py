@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from backend.database import connect_db, disconnect_db, get_db
 from backend.modules.chat._repository import ChatRepository
+from shared.dtos.chat import ArtefactRefDto
 
 
 @pytest.fixture
@@ -112,3 +113,63 @@ async def test_legacy_message_without_status_defaults_to_completed(repo):
     # Repo returns raw dicts from MongoDB; DTO conversion must default.
     dto = repo.message_to_dto(msgs[0])
     assert dto.status == "completed"
+
+
+async def test_save_message_persists_new_fields_and_roundtrip(repo):
+    doc = await repo.save_message(
+        session_id="s1",
+        role="assistant",
+        content="",
+        token_count=0,
+        thinking=None,
+        usage={"input_tokens": 10, "output_tokens": 5},
+        artefact_refs=[{
+            "artefact_id": "a1",
+            "handle": "h1",
+            "title": "Snippet",
+            "artefact_type": "code",
+            "operation": "create",
+        }],
+        refusal_text="The model declined this request.",
+        status="refused",
+    )
+    assert doc["status"] == "refused"
+    assert doc["refusal_text"] == "The model declined this request."
+    assert doc["usage"] == {"input_tokens": 10, "output_tokens": 5}
+    assert doc["artefact_refs"][0]["handle"] == "h1"
+
+    # Roundtrip through message_to_dto
+    dto = repo.message_to_dto(doc)
+    assert dto.status == "refused"
+    assert dto.refusal_text == "The model declined this request."
+    assert dto.usage == {"input_tokens": 10, "output_tokens": 5}
+    assert dto.artefact_refs and dto.artefact_refs[0].handle == "h1"
+    assert isinstance(dto.artefact_refs[0], ArtefactRefDto)
+
+
+async def test_save_message_legacy_document_reads_with_defaults(repo):
+    doc = {
+        "_id": str(uuid4()),
+        "session_id": "s1",
+        "role": "assistant",
+        "content": "hi",
+        "thinking": None,
+        "token_count": 1,
+        "created_at": datetime.now(UTC),
+    }
+    dto = repo.message_to_dto(doc)
+    assert dto.status == "completed"
+    assert dto.refusal_text is None
+    assert dto.artefact_refs is None
+    assert dto.usage is None
+
+
+async def test_save_message_empty_artefact_refs_not_written(repo):
+    doc = await repo.save_message(
+        session_id="s1",
+        role="assistant",
+        content="ok",
+        token_count=1,
+        artefact_refs=[],
+    )
+    assert "artefact_refs" not in doc

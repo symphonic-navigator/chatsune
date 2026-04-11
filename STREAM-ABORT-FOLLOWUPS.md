@@ -101,18 +101,9 @@ During the user's GLM-5 calculator test that motivated the whole feature, the sy
 
 ## Schub 4 — Nachzügler aus Schub 1
 
-Diese zwei Punkte sind während der Code-Erkundung für Schub 2/3 aufgefallen. Sie wurden in der Schub-1-Spec so festgelegt, aber in der ausgelieferten Fassung nicht oder nicht vollständig umgesetzt. Kein Beta-Blocker, gehört aber auf die Liste, damit es nicht verloren geht.
+Ein Punkt, der während der Code-Erkundung für Schub 2/3 aufgefallen ist und noch nicht umgesetzt wurde. Kein Beta-Blocker, gehört aber auf die Liste, damit es nicht verloren geht.
 
-### 4.1 — `usage` wird nicht persistiert
-
-`backend/modules/chat/_inference.py` berechnet beim `StreamDone`-Event ein `usage`-Dict mit `input_tokens` und `output_tokens` und reicht es an die `save_fn`-Closure durch. Die Closure in `backend/modules/chat/_orchestrator.py` akzeptiert den Parameter, leitet ihn aber nicht an `repo.save_message()` weiter. Das Mongo-Dokument hat daher kein `usage`-Feld, und der `ChatMessageDto` kann keine Token-Kosten pro Message anzeigen — obwohl der Wert an der richtigen Stelle bereits berechnet wird.
-
-Die Schub-1-Spec hat das Feld auf Zeile 262 als Parameter für `save_message` vorgesehen. Drift zwischen Spec und Implementierung.
-
-Fix ist klein und rein additiv:
-- `usage`-kwarg auf `save_message` durchreichen und ins Mongo-Dokument schreiben
-- `ChatMessageDto.usage: dict | None` ergänzen, `message_to_dto` lesend erweitern
-- Frontend darf das Feld danach im UI nutzen (Token-Counter pro Message)
+(Schub 4.1 — `usage` wird nicht persistiert — wurde im Zuge des Schub-2/3-Merges als Piggyback mitgeshipt und ist damit erledigt.)
 
 ### 4.2 — Gutter-State-Machine ist nicht test-injizierbar
 

@@ -30,6 +30,14 @@ interface VisionDescriptionSnapshot {
   text: string
 }
 
+interface ArtefactRef {
+  artefact_id: string
+  handle: string
+  title: string
+  artefact_type: string
+  operation: 'create' | 'update'
+}
+
 interface ChatMessageDto {
   id: string
   session_id: string
@@ -42,7 +50,10 @@ interface ChatMessageDto {
   knowledge_context: RetrievedChunkDto[] | null
   vision_descriptions_used?: VisionDescriptionSnapshot[] | null
   created_at: string
-  status?: "completed" | "aborted"
+  status?: 'completed' | 'aborted' | 'refused'
+  refusal_text?: string | null
+  artefact_refs?: ArtefactRef[] | null
+  usage?: { input_tokens?: number; output_tokens?: number } | null
 }
 
 interface ToolGroupDto {
@@ -58,6 +69,7 @@ export type {
   ChatMessageDto,
   WebSearchContextItem,
   VisionDescriptionSnapshot,
+  ArtefactRef,
   ToolGroupDto,
   AttachmentRefDto,
 }

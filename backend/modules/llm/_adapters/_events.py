@@ -67,6 +67,18 @@ class StreamAborted(BaseModel):
     reason: str = "gutter_timeout"
 
 
+class StreamRefused(BaseModel):
+    """Provider explicitly signalled a refusal. Terminal event on this stream.
+
+    Either the provider emitted a known refusal marker in done_reason
+    (e.g. content_filter), or a dedicated refusal field was present in
+    the final chunk. Refusals are distinct from errors: the stream
+    itself was healthy, the model simply declined.
+    """
+    reason: str
+    refusal_text: str | None = None
+
+
 # Union type used as the return type for adapter stream generators.
 ProviderStreamEvent = (
     ContentDelta
@@ -76,4 +88,5 @@ ProviderStreamEvent = (
     | StreamError
     | StreamSlow
     | StreamAborted
+    | StreamRefused
 )
