@@ -65,6 +65,13 @@ export function connect() {
         return
       }
 
+      if (data.type === "ws.hello") {
+        if (typeof data.connection_id === "string") {
+          useEventStore.getState().setConnectionId(data.connection_id)
+        }
+        return
+      }
+
       const event = data as BaseEvent
       if (event.sequence) {
         useEventStore.getState().setLastSequence(event.sequence)
@@ -78,6 +85,7 @@ export function connect() {
   socket.onclose = (ev) => {
     if (ws !== socket) return
     useEventStore.getState().setStatus("disconnected")
+    useEventStore.getState().setConnectionId(null)
     ws = null
 
     if (!intentionalClose && ev.code !== 4001 && ev.code !== 4003) {
@@ -103,6 +111,7 @@ export function disconnect() {
   ws?.close()
   ws = null
   useEventStore.getState().setStatus("disconnected")
+  useEventStore.getState().setConnectionId(null)
 }
 
 /**
