@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
@@ -18,8 +19,10 @@ from backend.modules.chat import (
     handle_incognito_send,
     trigger_disconnect_extraction,
 )
+from backend.modules.tools import get_client_dispatcher
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
+from shared.dtos.tools import ClientToolResultDto
 
 _log = logging.getLogger(__name__)
 
@@ -182,13 +185,19 @@ async def websocket_endpoint(
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.client_tool.result":
-                # Handled fully in Task 11 — for now, log and drop so the
-                # message type is recognised.
-                _log.debug(
-                    "chat.client_tool.result received (handler not yet wired) "
-                    "user=%s connection=%s",
-                    user_id, connection_id,
-                )
+                try:
+                    dto = ClientToolResultDto.model_validate(data)
+                except ValidationError as e:
+                    _log.warning(
+                        "malformed chat.client_tool.result from user=%s connection=%s: %s",
+                        user_id, connection_id, e,
+                    )
+                else:
+                    get_client_dispatcher().resolve(
+                        tool_call_id=dto.tool_call_id,
+                        received_from_user_id=user_id,
+                        result_json=dto.result.model_dump_json(),
+                    )
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
