@@ -36,7 +36,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
       correlationId: 'c1',
       streamingArtefactRefs: [],
       activeToolCalls: [],
-    } as Parameters<typeof useChatStore.setState>[0])
+    } as any)
   })
 
   it('appends artefact_ref to streamingArtefactRefs when present', () => {
@@ -91,7 +91,7 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
     useChatStore.setState({
       correlationId: 'c1',
       streamingRefusalText: null,
-    } as Parameters<typeof useChatStore.setState>[0])
+    } as any)
   })
 
   it('sets streamingRefusalText and uses "Request declined" toast title when error_code=refusal', () => {

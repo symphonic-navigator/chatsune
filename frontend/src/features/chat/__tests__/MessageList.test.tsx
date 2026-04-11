@@ -58,7 +58,7 @@ describe('MessageList — persisted artefact rendering', () => {
     onRegenerate: noop,
     bookmarkedMessageIds: new Set<string>(),
     onBookmark: noop,
-  } as const
+  }
 
   beforeEach(() => {
     vi.clearAllMocks()
