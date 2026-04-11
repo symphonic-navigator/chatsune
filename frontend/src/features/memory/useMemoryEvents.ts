@@ -60,6 +60,25 @@ export function useMemoryEvents(personaId: string | null) {
           store().autoCommitEntry(personaId, entry)
           break
         }
+        case Topics.MEMORY_ENTRY_AUTHORED_BY_PERSONA: {
+          const entry = p.entry as JournalEntryDto
+          const personaName = (p.persona_name as string | undefined) ?? 'Your persona'
+          // The top-level persona guard above reads p.persona_id, but this
+          // event's persona_id lives on entry.persona_id. Apply the cross-
+          // persona guard here so dual-mounted hooks (ChatView + MemoriesTab)
+          // don't both handle the same event.
+          if (entry.persona_id !== personaId) break
+          store().addEntry(personaId, entry)
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'info',
+              title: 'Journal note added',
+              message: `${personaName} has recorded a new observation about you.`,
+            })
+          }
+          break
+        }
         case Topics.MEMORY_DREAM_STARTED: {
           store().setDreaming(personaId, true)
           break
