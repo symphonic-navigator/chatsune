@@ -237,6 +237,7 @@ class InferenceRunner:
 
                     result_str = await tool_executor_fn(
                         user_id, tc.name, tc.arguments,
+                        tool_call_id=tc.id,
                     )
 
                     try:

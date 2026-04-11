@@ -164,21 +164,21 @@ async def websocket_endpoint(
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
             elif msg_type == "chat.send":
-                task = asyncio.create_task(handle_chat_send(user_id, data))
+                task = asyncio.create_task(handle_chat_send(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
             elif msg_type == "chat.edit":
-                task = asyncio.create_task(handle_chat_edit(user_id, data))
+                task = asyncio.create_task(handle_chat_edit(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.regenerate":
-                task = asyncio.create_task(handle_chat_regenerate(user_id, data))
+                task = asyncio.create_task(handle_chat_regenerate(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.incognito.send":
-                task = asyncio.create_task(handle_incognito_send(user_id, data))
+                task = asyncio.create_task(handle_incognito_send(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.client_tool.result":
