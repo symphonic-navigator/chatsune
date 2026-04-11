@@ -1,5 +1,3 @@
-// @vitest-environment happy-dom
-//
 // NOTE: Neither jsdom nor happy-dom provide a real Worker runtime in Vitest.
 // We therefore use the direct-import fallback: executeCode is exported from
 // sandbox.worker.ts and called here directly. This preserves full behavioural
