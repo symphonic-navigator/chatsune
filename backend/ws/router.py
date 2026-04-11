@@ -232,6 +232,17 @@ async def websocket_endpoint(
                         "Cancelled %d in-flight inferences after disconnect grace period for user %s",
                         cancelled, user_id,
                     )
+                # Fail any pending client-side tool futures for this user.
+                # Their inference loop has been cancelled above; this just
+                # ensures the dispatch futures resolve cleanly instead of
+                # lingering until their server-side timeout.
+                try:
+                    get_client_dispatcher().cancel_for_user(user_id)
+                except Exception:
+                    _log.warning(
+                        "Failed to cancel pending client tools for user %s",
+                        user_id, exc_info=True,
+                    )
                 try:
                     await trigger_disconnect_extraction(user_id)
                 except Exception:
