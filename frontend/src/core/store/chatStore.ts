@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatMessageDto, WebSearchContextItem } from '../api/chat'
+import type { ArtefactRef, ChatMessageDto, WebSearchContextItem } from '../api/chat'
 import type { RetrievedChunkDto } from '../types/knowledge'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
@@ -35,6 +35,8 @@ interface ChatState {
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
   streamingKnowledgeContext: RetrievedChunkDto[]
+  streamingArtefactRefs: ArtefactRef[]
+  streamingRefusalText: string | null
   activeToolCalls: ActiveToolCall[]
   visionDescriptions: Record<string, LiveVisionDescription>
   contextStatus: ContextStatus
@@ -52,6 +54,8 @@ interface ChatState {
   appendStreamingThinking: (delta: string) => void
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
   setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
+  appendArtefactRef: (ref: ArtefactRef) => void
+  setStreamingRefusalText: (text: string | null) => void
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
   upsertVisionDescription: (correlationId: string, payload: LiveVisionDescription) => void
@@ -85,6 +89,8 @@ const INITIAL_STATE = {
   streamingThinking: '',
   streamingWebSearchContext: [] as WebSearchContextItem[],
   streamingKnowledgeContext: [] as RetrievedChunkDto[],
+  streamingArtefactRefs: [] as ArtefactRef[],
+  streamingRefusalText: null as string | null,
   activeToolCalls: [] as ActiveToolCall[],
   visionDescriptions: {} as Record<string, LiveVisionDescription>,
   contextStatus: 'green' as ContextStatus,
@@ -109,6 +115,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], visionDescriptions: {}, error: null,
+      streamingArtefactRefs: [], streamingRefusalText: null,
       streamingSlow: false,
     }),
   appendStreamingContent: (delta) =>
@@ -119,6 +126,10 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({ streamingWebSearchContext: items }),
   setStreamingKnowledgeContext: (items) =>
     set({ streamingKnowledgeContext: items }),
+  appendArtefactRef: (ref) =>
+    set((s) => ({ streamingArtefactRefs: [...s.streamingArtefactRefs, ref] })),
+  setStreamingRefusalText: (text) =>
+    set({ streamingRefusalText: text }),
   addToolCall: (tc) =>
     set((s) => ({ activeToolCalls: [...s.activeToolCalls, tc] })),
   completeToolCall: (toolCallId) =>
@@ -139,6 +150,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
+      streamingArtefactRefs: [], streamingRefusalText: null,
       streamingSlow: false,
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
     })),
@@ -147,6 +159,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
+      streamingArtefactRefs: [], streamingRefusalText: null,
       streamingSlow: false,
     }),
   truncateAfter: (messageId) =>
