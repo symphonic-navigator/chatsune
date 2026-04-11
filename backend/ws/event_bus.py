@@ -58,6 +58,7 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # Tool call progress — target user only
     Topics.CHAT_TOOL_CALL_STARTED: ([], True),
     Topics.CHAT_TOOL_CALL_COMPLETED: ([], True),
+    Topics.CHAT_CLIENT_TOOL_DISPATCH: ([], True),
     Topics.CHAT_WEB_SEARCH_CONTEXT: ([], True),
     Topics.CHAT_VISION_DESCRIPTION: ([], True),
     # Storage — target user only
@@ -136,6 +137,7 @@ _SKIP_PERSISTENCE: set[str] = {
     Topics.CHAT_THINKING_DELTA,
     Topics.CHAT_TOOL_CALL_STARTED,
     Topics.CHAT_TOOL_CALL_COMPLETED,
+    Topics.CHAT_CLIENT_TOOL_DISPATCH,
     Topics.CHAT_WEB_SEARCH_CONTEXT,
     # Debug events: high-frequency diagnostics, useless after the fact.
     # Admins re-fetch a fresh snapshot on (re)connect via the HTTP route.
