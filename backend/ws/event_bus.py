@@ -170,6 +170,7 @@ class EventBus:
         scope: str = "global",
         target_user_ids: list[str] | None = None,
         correlation_id: str | None = None,
+        target_connection_id: str | None = None,
     ) -> None:
         now = datetime.now(timezone.utc)
         envelope = BaseEvent(
@@ -208,7 +209,10 @@ class EventBus:
             # NOTE: periodic xtrim runs in start_periodic_trim() — no inline trim here.
 
         await self._fan_out(
-            topic, envelope.model_dump(mode="json"), target_user_ids or []
+            topic,
+            envelope.model_dump(mode="json"),
+            target_user_ids or [],
+            target_connection_id=target_connection_id,
         )
 
         # Notify internal subscribers (server-side module coordination)
@@ -238,7 +242,12 @@ class EventBus:
         return asyncio.create_task(_trim_loop())
 
     async def _fan_out(
-        self, topic: str, event_dict: dict, target_user_ids: list[str]
+        self,
+        topic: str,
+        event_dict: dict,
+        target_user_ids: list[str],
+        *,
+        target_connection_id: str | None = None,
     ) -> None:
         if topic == Topics.AUDIT_LOGGED:
             await self._fan_out_audit(event_dict)
@@ -258,7 +267,17 @@ class EventBus:
         # BD-031: broadcasts to ALL connected users with matching roles —
         # no resource-level filtering (see comment on _FANOUT).
         await self._manager.broadcast_to_roles(roles, event_dict)
-        if send_to_targets and target_user_ids:
+
+        if target_connection_id is not None and target_user_ids:
+            # Targeted delivery — exactly one (user_id, connection_id) pair.
+            # Used by client-side tool dispatch to avoid duplicate execution
+            # across multi-tab sessions. The first element of target_user_ids
+            # is the owning user; we never deliver to other users even if
+            # multiple are listed (targeted delivery is single-recipient).
+            await self._manager.send_to_connection(
+                target_user_ids[0], target_connection_id, event_dict,
+            )
+        elif send_to_targets and target_user_ids:
             await self._manager.send_to_users(target_user_ids, event_dict)
 
         # BD-020: sync cached role when an admin changes a user's role
