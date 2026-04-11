@@ -239,28 +239,24 @@ class InferenceRunner:
                         parsed_result = json.loads(result_str)
                         tool_success = not (isinstance(parsed_result, dict) and "error" in parsed_result)
                     except (json.JSONDecodeError, TypeError):
+                        parsed_result = None
                         tool_success = True
 
                     # Capture artefact tool calls BEFORE emitting the completed event so
                     # the ref can be attached to the event payload.
                     ref_for_event: ArtefactRefDto | None = None
                     if tc.name in ("create_artefact", "update_artefact"):
-                        try:
-                            parsed = json.loads(result_str)
-                            if isinstance(parsed, dict) and parsed.get("ok"):
-                                ref_dict = {
-                                    "artefact_id": parsed.get("artefact_id", ""),
-                                    "handle": parsed.get("handle") or arguments.get("handle", ""),
-                                    "title": arguments.get("title", ""),
-                                    "artefact_type": arguments.get("type", ""),
-                                    "operation": (
-                                        "create" if tc.name == "create_artefact" else "update"
-                                    ),
-                                }
-                                artefact_refs.append(ref_dict)
-                                ref_for_event = ArtefactRefDto(**ref_dict)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
+                        if isinstance(parsed_result, dict) and parsed_result.get("ok"):
+                            ref_for_event = ArtefactRefDto(
+                                artefact_id=parsed_result.get("artefact_id", ""),
+                                handle=parsed_result.get("handle") or arguments.get("handle", ""),
+                                title=arguments.get("title", ""),
+                                artefact_type=arguments.get("type", ""),
+                                operation=(
+                                    "create" if tc.name == "create_artefact" else "update"
+                                ),
+                            )
+                            artefact_refs.append(ref_for_event.model_dump())
 
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
