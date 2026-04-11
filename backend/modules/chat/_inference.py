@@ -16,6 +16,7 @@ from backend.modules.llm import (
     ThinkingDelta,
     ToolCallEvent,
 )
+from shared.dtos.chat import ArtefactRefDto
 from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
@@ -84,6 +85,7 @@ class InferenceRunner:
         iter_refusal_text: str | None = None
         web_search_context: list[dict] = []
         knowledge_context: list[dict] = []
+        artefact_refs: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
@@ -239,11 +241,33 @@ class InferenceRunner:
                     except (json.JSONDecodeError, TypeError):
                         tool_success = True
 
+                    # Capture artefact tool calls BEFORE emitting the completed event so
+                    # the ref can be attached to the event payload.
+                    ref_for_event: ArtefactRefDto | None = None
+                    if tc.name in ("create_artefact", "update_artefact"):
+                        try:
+                            parsed = json.loads(result_str)
+                            if isinstance(parsed, dict) and parsed.get("ok"):
+                                ref_dict = {
+                                    "artefact_id": parsed.get("artefact_id", ""),
+                                    "handle": parsed.get("handle") or arguments.get("handle", ""),
+                                    "title": arguments.get("title", ""),
+                                    "artefact_type": arguments.get("type", ""),
+                                    "operation": (
+                                        "create" if tc.name == "create_artefact" else "update"
+                                    ),
+                                }
+                                artefact_refs.append(ref_dict)
+                                ref_for_event = ArtefactRefDto(**ref_dict)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
                         tool_name=tc.name,
                         success=tool_success,
+                        artefact_ref=ref_for_event,
                         timestamp=datetime.now(timezone.utc),
                     ))
 
@@ -332,6 +356,7 @@ class InferenceRunner:
                 usage=usage,
                 web_search_context=web_search_context or None,
                 knowledge_context=knowledge_context or None,
+                artefact_refs=artefact_refs or None,
                 refusal_text=iter_refusal_text,
                 status=resolved_status,
             )
