@@ -193,3 +193,75 @@ class ArtefactToolExecutor:
             return json.dumps({"error": f"Artefact tool failed: {exc}"})
 
         return json.dumps({"error": f"Unknown artefact tool: {tool_name}"})
+
+
+_VALID_JOURNAL_CATEGORIES = {
+    "preference", "fact", "relationship", "value",
+    "insight", "projects", "creative",
+}
+_MAX_JOURNAL_CONTENT_LENGTH = 2000
+
+
+class JournalToolExecutor:
+    """Dispatches write_journal_entry tool calls to the memory module."""
+
+    async def execute(self, user_id: str, tool_name: str, arguments: dict) -> str:
+        if tool_name != "write_journal_entry":
+            return json.dumps({"error": f"Unknown journal tool: {tool_name}"})
+
+        content = arguments.get("content")
+        category = arguments.get("category")
+        persona_id = arguments.get("_persona_id")
+        persona_name = arguments.get("_persona_name", "")
+        session_id = arguments.get("_session_id")
+        correlation_id = arguments.get("_correlation_id", "")
+
+        # Validation — content
+        if not isinstance(content, str) or not content.strip():
+            return json.dumps({"error": "content must be a non-empty string"})
+        if len(content) > _MAX_JOURNAL_CONTENT_LENGTH:
+            return json.dumps({
+                "error": (
+                    f"content too long (max {_MAX_JOURNAL_CONTENT_LENGTH} "
+                    "characters)"
+                ),
+            })
+
+        # Validation — category
+        if not isinstance(category, str) or category not in _VALID_JOURNAL_CATEGORIES:
+            return json.dumps({
+                "error": (
+                    "category must be one of: preference, fact, relationship, "
+                    "value, insight, projects, creative"
+                ),
+            })
+
+        # Dispatch context — must be injected by the chat orchestrator
+        if not persona_id or not session_id:
+            _log.error(
+                "write_journal_entry missing dispatch context: "
+                "persona_id=%r session_id=%r correlation_id=%r",
+                persona_id, session_id, correlation_id,
+            )
+            return json.dumps({"error": "internal: missing session context"})
+
+        try:
+            from backend.modules import memory as memory_mod
+
+            dto = await memory_mod.write_persona_authored_entry(
+                user_id=user_id,
+                persona_id=persona_id,
+                persona_name=persona_name,
+                content=content,
+                category=category,
+                source_session_id=session_id,
+                correlation_id=correlation_id,
+            )
+            return json.dumps({"status": "recorded", "entry_id": dto.id})
+
+        except Exception as exc:
+            _log.exception(
+                "write_journal_entry failed for user=%s persona=%s correlation_id=%s: %s",
+                user_id, persona_id, correlation_id, exc,
+            )
+            return json.dumps({"error": "failed to record entry"})
