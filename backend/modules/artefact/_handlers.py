@@ -10,7 +10,7 @@ from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.artefact._repository import ArtefactRepository
 from backend.ws.event_bus import get_event_bus
-from shared.dtos.artefact import ArtefactDetailDto, ArtefactSummaryDto
+from shared.dtos.artefact import ArtefactDetailDto, ArtefactSummaryDto, ArtefactType
 from shared.events.artefact import (
     ArtefactDeletedEvent,
     ArtefactRedoEvent,
@@ -23,6 +23,31 @@ router = APIRouter(
     prefix="/api/chat/sessions/{session_id}/artefacts",
     tags=["artefacts"],
 )
+
+# Legacy rows in MongoDB predate both the case-normalisation fix and the
+# alignment of the create_artefact tool enum with the DTO enum. Those rows
+# may contain values like 'HTML' (wrong case) or 'document'/'diagram' (stale
+# enum members that no longer exist on ArtefactType). Lowercasing handles the
+# former; the explicit mapping below covers the latter semantically — a
+# 'document' was almost always a markdown doc, and 'diagram' was mermaid.
+# Anything still unrecognised falls back to 'code' so the row remains
+# viewable rather than breaking the whole list endpoint.
+_LEGACY_TYPE_MAP: dict[str, ArtefactType] = {
+    "document": "markdown",
+    "diagram": "mermaid",
+}
+_VALID_TYPES: set[str] = {"markdown", "code", "html", "svg", "jsx", "mermaid"}
+
+
+def _normalise_type(raw: object) -> ArtefactType:
+    if not isinstance(raw, str):
+        return "code"
+    lowered = raw.strip().lower()
+    if lowered in _VALID_TYPES:
+        return lowered  # type: ignore[return-value]
+    if lowered in _LEGACY_TYPE_MAP:
+        return _LEGACY_TYPE_MAP[lowered]
+    return "code"
 
 
 class PatchArtefactRequest(BaseModel):
@@ -40,7 +65,7 @@ def _to_summary(doc: dict) -> ArtefactSummaryDto:
         session_id=doc["session_id"],
         handle=doc["handle"],
         title=doc["title"],
-        type=doc["type"],
+        type=_normalise_type(doc.get("type")),
         language=doc.get("language"),
         size_bytes=doc["size_bytes"],
         version=doc["version"],
@@ -55,7 +80,7 @@ def _to_detail(doc: dict) -> ArtefactDetailDto:
         session_id=doc["session_id"],
         handle=doc["handle"],
         title=doc["title"],
-        type=doc["type"],
+        type=_normalise_type(doc.get("type")),
         language=doc.get("language"),
         size_bytes=doc["size_bytes"],
         version=doc["version"],
@@ -288,7 +313,7 @@ async def list_user_artefacts(
             id=str(a["_id"]),
             handle=a["handle"],
             title=a["title"],
-            type=a["type"],
+            type=_normalise_type(a.get("type")),
             language=a.get("language"),
             size_bytes=a["size_bytes"],
             version=a["version"],
