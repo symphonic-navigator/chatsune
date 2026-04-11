@@ -148,6 +148,17 @@ class ChatToolCallCompletedEvent(BaseModel):
     timestamp: datetime
 
 
+class ChatClientToolDispatchEvent(BaseModel):
+    """Server → client: please execute this tool call and reply with chat.client_tool.result."""
+    type: str = "chat.client_tool.dispatch"
+    session_id: str
+    tool_call_id: str
+    tool_name: str
+    arguments: dict
+    timeout_ms: int
+    target_connection_id: str
+
+
 class WebSearchContextItem(BaseModel):
     title: str
     url: str

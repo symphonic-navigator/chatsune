@@ -167,6 +167,51 @@ def _build_groups() -> dict[str, ToolGroup]:
             ],
             executor=ArtefactToolExecutor(),
         ),
+        "code_execution": ToolGroup(
+            id="code_execution",
+            display_name="Code Execution",
+            description=(
+                "Run small JavaScript snippets for calculations, string "
+                "operations, and JSON handling — executed in a sandboxed Web "
+                "Worker in your browser. No network, no DOM, no state between "
+                "calls."
+            ),
+            side="client",
+            toggleable=True,
+            tool_names=["calculate_js"],
+            definitions=[
+                ToolDefinition(
+                    name="calculate_js",
+                    description=(
+                        "Execute a short JavaScript snippet for calculations, "
+                        "string operations, or JSON handling. The snippet runs "
+                        "in an isolated sandbox with no network or state. Use "
+                        "console.log(...) to emit results — anything not logged "
+                        "is invisible to you. Typical uses: arithmetic that "
+                        "needs exact results, counting characters or substrings, "
+                        "parsing or reformatting JSON, date arithmetic. Do NOT "
+                        "use for anything that requires waiting, network access, "
+                        "or multiple steps across calls."
+                    ),
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "description": (
+                                    "A self-contained JavaScript snippet. Must "
+                                    "emit its result via console.log. Maximum "
+                                    "runtime is a few seconds; maximum output "
+                                    "is a few kilobytes."
+                                ),
+                            },
+                        },
+                        "required": ["code"],
+                    },
+                ),
+            ],
+            executor=None,
+        ),
     }
 
 

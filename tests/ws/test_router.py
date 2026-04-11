@@ -43,6 +43,9 @@ def test_ws_rejects_mcp_token(ws_client):
 def test_ws_accepts_valid_token_and_responds_to_ping(ws_client):
     token = valid_token(role="user")
     with ws_client.websocket_connect(f"/ws?token={token}") as ws:
+        # Consume the ws.hello handshake sent on connect
+        hello = ws.receive_json()
+        assert hello["type"] == "ws.hello"
         ws.send_json({"type": "ping"})
         data = ws.receive_json()
         assert data["type"] == "pong"
@@ -51,6 +54,9 @@ def test_ws_accepts_valid_token_and_responds_to_ping(ws_client):
 def test_ws_ignores_unknown_message_types(ws_client):
     token = valid_token(role="user")
     with ws_client.websocket_connect(f"/ws?token={token}") as ws:
+        # Consume the ws.hello handshake sent on connect
+        hello = ws.receive_json()
+        assert hello["type"] == "ws.hello"
         ws.send_json({"type": "unknown_type"})
         ws.send_json({"type": "ping"})
         data = ws.receive_json()

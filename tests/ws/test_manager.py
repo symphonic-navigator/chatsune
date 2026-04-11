@@ -33,8 +33,8 @@ async def test_disconnect_keeps_entry_when_other_sessions_remain():
     await mgr.connect("user1", "user", ws2)
     await mgr.disconnect("user1", ws1)
     assert "user1" in mgr._connections
-    assert ws1 not in mgr._connections["user1"]
-    assert ws2 in mgr._connections["user1"]
+    assert ws1 not in mgr._connections["user1"].values()
+    assert ws2 in mgr._connections["user1"].values()
 
 
 async def test_send_to_user_delivers_event():

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "./core/store/authStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
+import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"
@@ -63,6 +64,16 @@ function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   useBootstrap()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const unregisterClientTool = registerClientToolHandler()
+    return () => {
+      unregisterClientTool()
+    }
+  }, [isAuthenticated])
 
   return (
     <>

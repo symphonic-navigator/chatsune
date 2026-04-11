@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
@@ -18,8 +19,10 @@ from backend.modules.chat import (
     handle_incognito_send,
     trigger_disconnect_extraction,
 )
+from backend.modules.tools import get_client_dispatcher
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
+from shared.dtos.tools import ClientToolResultDto
 
 _log = logging.getLogger(__name__)
 
@@ -60,7 +63,11 @@ async def websocket_endpoint(
 
     manager = get_manager()
     await ws.accept()
-    await manager.connect(user_id, role, ws)
+    connection_id = await manager.connect(user_id, role, ws)
+    try:
+        await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
+    except Exception:
+        _log.warning("Failed to send ws.hello to user %s", user_id)
 
     expiry_task: asyncio.Task | None = None
 
@@ -160,23 +167,37 @@ async def websocket_endpoint(
             if msg_type == "ping":
                 await ws.send_json({"type": "pong"})
             elif msg_type == "chat.send":
-                task = asyncio.create_task(handle_chat_send(user_id, data))
+                task = asyncio.create_task(handle_chat_send(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
             elif msg_type == "chat.edit":
-                task = asyncio.create_task(handle_chat_edit(user_id, data))
+                task = asyncio.create_task(handle_chat_edit(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.regenerate":
-                task = asyncio.create_task(handle_chat_regenerate(user_id, data))
+                task = asyncio.create_task(handle_chat_regenerate(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.incognito.send":
-                task = asyncio.create_task(handle_incognito_send(user_id, data))
+                task = asyncio.create_task(handle_incognito_send(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
+            elif msg_type == "chat.client_tool.result":
+                try:
+                    dto = ClientToolResultDto.model_validate(data)
+                except ValidationError as e:
+                    _log.warning(
+                        "malformed chat.client_tool.result from user=%s connection=%s: %s",
+                        user_id, connection_id, e,
+                    )
+                else:
+                    get_client_dispatcher().resolve(
+                        tool_call_id=dto.tool_call_id,
+                        received_from_user_id=user_id,
+                        result_json=dto.result.model_dump_json(),
+                    )
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
@@ -210,6 +231,17 @@ async def websocket_endpoint(
                     _log.info(
                         "Cancelled %d in-flight inferences after disconnect grace period for user %s",
                         cancelled, user_id,
+                    )
+                # Fail any pending client-side tool futures for this user.
+                # Their inference loop has been cancelled above; this just
+                # ensures the dispatch futures resolve cleanly instead of
+                # lingering until their server-side timeout.
+                try:
+                    get_client_dispatcher().cancel_for_user(user_id)
+                except Exception:
+                    _log.warning(
+                        "Failed to cancel pending client tools for user %s",
+                        user_id, exc_info=True,
                     )
                 try:
                     await trigger_disconnect_extraction(user_id)

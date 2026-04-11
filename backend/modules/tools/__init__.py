@@ -7,6 +7,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from backend.modules.tools._client_dispatcher import ClientToolDispatcher
 from backend.modules.tools._registry import ToolGroup, get_groups
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.tools import ToolGroupDto
@@ -14,6 +15,20 @@ from shared.dtos.tools import ToolGroupDto
 _log = logging.getLogger(__name__)
 
 _MAX_TOOL_ITERATIONS = 5
+
+# Client-tool timeouts: the server-side wait budget is intentionally ~5s
+# larger than the client-side Worker budget to absorb network and
+# scheduler jitter. See docs/superpowers/specs/2026-04-11-calculate-js-
+# client-tool-design.md §4.
+_CLIENT_TOOL_SERVER_TIMEOUT_MS = 10_000
+_CLIENT_TOOL_CLIENT_TIMEOUT_MS = 5_000
+
+_dispatcher_singleton = ClientToolDispatcher()
+
+
+def get_client_dispatcher() -> ClientToolDispatcher:
+    """Return the singleton client-tool dispatcher (for WS router and disconnect hooks)."""
+    return _dispatcher_singleton
 
 
 class ToolNotFoundError(Exception):
@@ -51,16 +66,44 @@ def get_active_definitions(
     return definitions
 
 
-async def execute_tool(user_id: str, tool_name: str, arguments_json: str) -> str:
+async def execute_tool(
+    user_id: str,
+    tool_name: str,
+    arguments_json: str,
+    *,
+    tool_call_id: str,
+    session_id: str,
+    originating_connection_id: str,
+) -> str:
     """Dispatch a tool call to the appropriate executor.
 
-    Returns the tool result as a string (JSON).
-    Raises ToolNotFoundError if no executor handles this tool name.
+    For server-side tools (``side == "server"``) the registered executor is
+    invoked directly. For client-side tools (``side == "client"``) the call
+    is forwarded to the originating browser connection via the
+    ``ClientToolDispatcher`` and this coroutine awaits the result.
+
+    Always returns a string (JSON-encoded result or error). Raises
+    ``ToolNotFoundError`` only if the tool name is unknown.
     """
     arguments = json.loads(arguments_json)
 
     for group in get_groups().values():
-        if tool_name in group.tool_names and group.executor is not None:
+        if tool_name not in group.tool_names:
+            continue
+
+        if group.side == "client":
+            return await _dispatcher_singleton.dispatch(
+                user_id=user_id,
+                session_id=session_id,
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                arguments=arguments,
+                server_timeout_ms=_CLIENT_TOOL_SERVER_TIMEOUT_MS,
+                client_timeout_ms=_CLIENT_TOOL_CLIENT_TIMEOUT_MS,
+                target_connection_id=originating_connection_id,
+            )
+
+        if group.executor is not None:
             return await group.executor.execute(user_id, tool_name, arguments)
 
     raise ToolNotFoundError(f"No executor registered for tool '{tool_name}'")
@@ -76,5 +119,6 @@ __all__ = [
     "get_active_definitions",
     "execute_tool",
     "get_max_tool_iterations",
+    "get_client_dispatcher",
     "ToolNotFoundError",
 ]

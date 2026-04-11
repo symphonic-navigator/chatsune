@@ -101,13 +101,25 @@ async def cancel_all_for_user(user_id: str) -> int:
     return len(targets)
 
 
-def _make_tool_executor(session: dict, persona: dict | None, correlation_id: str = ""):
-    """Wrap execute_tool to inject knowledge library IDs for knowledge_search and session context for artefact tools."""
+def _make_tool_executor(
+    session: dict,
+    persona: dict | None,
+    correlation_id: str = "",
+    connection_id: str | None = None,
+):
+    """Wrap execute_tool to inject session context and forward the
+    originating WebSocket connection id for client-side tools."""
     persona_lib_ids = (persona or {}).get("knowledge_library_ids", [])
     session_lib_ids = session.get("knowledge_library_ids", [])
     sanitised = session.get("sanitised", False)
 
-    async def _executor(user_id: str, tool_name: str, arguments_json: str) -> str:
+    async def _executor(
+        user_id: str,
+        tool_name: str,
+        arguments_json: str,
+        *,
+        tool_call_id: str,
+    ) -> str:
         if tool_name == "knowledge_search":
             args = json.loads(arguments_json)
             args["_persona_library_ids"] = persona_lib_ids
@@ -116,14 +128,23 @@ def _make_tool_executor(session: dict, persona: dict | None, correlation_id: str
             args["_session_id"] = session.get("_id", "")
             arguments_json = json.dumps(args)
 
-        artefact_tools = {"create_artefact", "update_artefact", "read_artefact", "list_artefacts"}
+        artefact_tools = {
+            "create_artefact", "update_artefact", "read_artefact", "list_artefacts",
+        }
         if tool_name in artefact_tools:
             args = json.loads(arguments_json)
             args["_session_id"] = session.get("_id", "")
             args["_correlation_id"] = correlation_id
             arguments_json = json.dumps(args)
 
-        return await execute_tool(user_id, tool_name, arguments_json)
+        return await execute_tool(
+            user_id,
+            tool_name,
+            arguments_json,
+            tool_call_id=tool_call_id,
+            session_id=session.get("_id", ""),
+            originating_connection_id=connection_id or "",
+        )
 
     return _executor
 
@@ -277,6 +298,8 @@ async def run_inference(
     session_id: str,
     repo: ChatRepository,
     session: dict,
+    *,
+    connection_id: str | None = None,
 ) -> None:
     """Shared inference path used by send, edit, and regenerate."""
     persona_id = session.get("persona_id")
@@ -555,7 +578,7 @@ async def run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
-            tool_executor_fn=_make_tool_executor(session, persona, correlation_id) if active_tools else None,
+            tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id) if active_tools else None,
         )
         # Persist the latest context-window utilisation on the session so
         # that opening the chat later can hydrate the indicator without

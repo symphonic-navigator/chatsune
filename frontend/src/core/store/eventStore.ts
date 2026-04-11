@@ -34,16 +34,20 @@ function writePersistedSequence(value: string | null): void {
 interface EventState {
   status: ConnectionStatus
   lastSequence: string | null
+  connectionId: string | null
   setStatus: (status: ConnectionStatus) => void
   setLastSequence: (seq: string | null) => void
+  setConnectionId: (id: string | null) => void
 }
 
 export const useEventStore = create<EventState>((set) => ({
   status: "disconnected",
   lastSequence: readPersistedSequence(),
+  connectionId: null,
   setStatus: (status) => set({ status }),
   setLastSequence: (lastSequence) => {
     writePersistedSequence(lastSequence)
     set({ lastSequence })
   },
+  setConnectionId: (connectionId) => set({ connectionId }),
 }))

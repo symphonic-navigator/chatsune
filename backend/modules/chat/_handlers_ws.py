@@ -49,7 +49,7 @@ _log = logging.getLogger(__name__)
 _runner = InferenceRunner()
 
 
-async def handle_chat_send(user_id: str, data: dict) -> None:
+async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | None = None) -> None:
     """Handle a chat.send WebSocket message — save user message, run inference."""
     session_id = data.get("session_id")
     content_parts = data.get("content")
@@ -143,12 +143,12 @@ async def handle_chat_send(user_id: str, data: dict) -> None:
                 user_id, persona_id, session_id, model_unique_id,
             )
 
-        await run_inference(user_id, session_id, repo, session)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_send for user %s", user_id)
 
 
-async def handle_chat_edit(user_id: str, data: dict) -> None:
+async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | None = None) -> None:
     """Handle a chat.edit WebSocket message — truncate, update, re-infer."""
     session_id = data.get("session_id")
     message_id = data.get("message_id")
@@ -282,12 +282,12 @@ async def handle_chat_edit(user_id: str, data: dict) -> None:
         )
 
         # Run inference
-        await run_inference(user_id, session_id, repo, session)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_edit for user %s", user_id)
 
 
-async def handle_chat_regenerate(user_id: str, data: dict) -> None:
+async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str | None = None) -> None:
     """Handle a chat.regenerate WebSocket message — delete last assistant msg, re-infer."""
     session_id = data.get("session_id")
     if not session_id:
@@ -340,7 +340,7 @@ async def handle_chat_regenerate(user_id: str, data: dict) -> None:
         # If last_msg is a user message, nothing to delete — just re-infer below.
 
         # Run inference using existing last user message
-        await run_inference(user_id, session_id, repo, session)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_regenerate for user %s", user_id)
 
@@ -372,7 +372,7 @@ async def update_session_title(session_id: str, title: str, user_id: str, correl
     )
 
 
-async def handle_incognito_send(user_id: str, data: dict) -> None:
+async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str | None = None) -> None:
     """Handle a chat.incognito.send WebSocket message — stateless inference, nothing saved."""
     persona_id = data.get("persona_id")
     session_id = data.get("session_id")
@@ -493,7 +493,7 @@ async def handle_incognito_send(user_id: str, data: dict) -> None:
                 cancel_event=cancel_event,
                 context_status="green",
                 context_fill_percentage=0.0,
-                tool_executor_fn=_make_tool_executor(session, persona, correlation_id) if active_tools else None,
+                tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id) if active_tools else None,
             )
         except LlmCredentialNotFoundError:
             now = datetime.now(timezone.utc)

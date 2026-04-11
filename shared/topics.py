@@ -45,6 +45,7 @@ class Topics:
     # Tool calls
     CHAT_TOOL_CALL_STARTED = "chat.tool_call.started"
     CHAT_TOOL_CALL_COMPLETED = "chat.tool_call.completed"
+    CHAT_CLIENT_TOOL_DISPATCH = "chat.client_tool.dispatch"
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
     # Tool group toggles
     CHAT_SESSION_TOOLS_UPDATED = "chat.session.tools_updated"
