@@ -5,6 +5,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Literal
 
+from backend.config import settings
 from backend.jobs import get_user_lock
 from backend.modules.llm import (
     ContentDelta,
@@ -105,11 +106,19 @@ class InferenceRunner:
                 iter_refusal_text: str | None = None
                 iter_tool_calls: list[ToolCallEvent] = []
                 cancelled = False
+                stream_end_reason: str = "unknown"
+
+                if settings.inference_logging:
+                    _log.info(
+                        "inference.stream.begin session=%s correlation_id=%s iteration=%d",
+                        session_id, correlation_id, iteration,
+                    )
 
                 async for event in stream:
                     if cancel_event and cancel_event.is_set():
                         cancelled = True
                         status = "cancelled"
+                        stream_end_reason = "cancelled"
                         break
 
                     match event:
@@ -134,9 +143,11 @@ class InferenceRunner:
                                 usage["input_tokens"] = done.input_tokens
                             if done.output_tokens is not None:
                                 usage["output_tokens"] = done.output_tokens
+                            stream_end_reason = "done"
 
                         case StreamError() as err:
                             status = "error"
+                            stream_end_reason = f"error:{err.error_code}"
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
                                 error_code=err.error_code,
@@ -157,6 +168,7 @@ class InferenceRunner:
                                 session_id, correlation_id, ab.reason,
                             )
                             status = "aborted"
+                            stream_end_reason = f"aborted:{ab.reason}"
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
                                 error_code="stream_aborted",
@@ -171,6 +183,7 @@ class InferenceRunner:
                                 session_id, correlation_id, refused.reason,
                             )
                             status = "refused"
+                            stream_end_reason = f"refused:{refused.reason or 'unspecified'}"
                             iter_refusal_text = refused.refusal_text
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
@@ -179,6 +192,14 @@ class InferenceRunner:
                                 user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
                                 timestamp=datetime.now(timezone.utc),
                             ))
+
+                if settings.inference_logging:
+                    _log.info(
+                        "inference.stream.end session=%s correlation_id=%s iteration=%d "
+                        "reason=%s tool_calls=%d content_chars=%d thinking_chars=%d",
+                        session_id, correlation_id, iteration, stream_end_reason,
+                        len(iter_tool_calls), len(iter_content), len(iter_thinking),
+                    )
 
                 # Accumulate content/thinking across iterations
                 full_content += iter_content
@@ -227,6 +248,14 @@ class InferenceRunner:
                     now = datetime.now(timezone.utc)
                     arguments = json.loads(tc.arguments)
 
+                    if settings.inference_logging:
+                        _log.info(
+                            "inference.tool_call.begin session=%s correlation_id=%s "
+                            "tool_call_id=%s tool=%s args_chars=%d",
+                            session_id, correlation_id, tc.id, tc.name,
+                            len(tc.arguments) if tc.arguments else 0,
+                        )
+
                     await emit_fn(ChatToolCallStartedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
@@ -239,6 +268,14 @@ class InferenceRunner:
                         user_id, tc.name, tc.arguments,
                         tool_call_id=tc.id,
                     )
+
+                    if settings.inference_logging:
+                        _log.info(
+                            "inference.tool_call.end session=%s correlation_id=%s "
+                            "tool_call_id=%s tool=%s result_chars=%d",
+                            session_id, correlation_id, tc.id, tc.name,
+                            len(result_str) if result_str else 0,
+                        )
 
                     try:
                         parsed_result = json.loads(result_str)

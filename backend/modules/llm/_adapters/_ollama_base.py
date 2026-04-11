@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import httpx
 
+from backend.config import settings
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -271,6 +272,30 @@ class OllamaBaseAdapter(BaseAdapter):
                     except json.JSONDecodeError:
                         _log.warning("Skipping malformed NDJSON line: %s", line)
                         continue
+
+                    if settings.inference_logging:
+                        msg = chunk.get("message") or {}
+                        tcs = msg.get("tool_calls") or []
+                        _log.info(
+                            "ollama_base.chunk model=%s done=%s done_reason=%s "
+                            "content_chars=%d thinking_chars=%d tool_calls=%d",
+                            payload.get("model"),
+                            bool(chunk.get("done")),
+                            chunk.get("done_reason"),
+                            len(msg.get("content") or ""),
+                            len(msg.get("thinking") or ""),
+                            len(tcs),
+                        )
+                        if tcs:
+                            for _tc in tcs:
+                                _fn = _tc.get("function") or {}
+                                _log.info(
+                                    "ollama_base.chunk.tool_call model=%s name=%s "
+                                    "args_chars=%d",
+                                    payload.get("model"),
+                                    _fn.get("name"),
+                                    len(json.dumps(_fn.get("arguments") or {})),
+                                )
 
                     if chunk.get("done"):
                         seen_done = True

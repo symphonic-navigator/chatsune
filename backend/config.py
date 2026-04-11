@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     log_level_uvicorn_access: str = "WARNING"
     log_level_third_party: str = "WARNING"
 
+    # Verbose inference-runner tracing. When enabled, the chat inference
+    # runner emits INFO-level logs at stream start/end and around every
+    # tool-call execution. Used to diagnose models (e.g. GLM-5/5.1) whose
+    # streaming behaviour does not match the "well-behaved" happy path —
+    # e.g. to tell whether tool calls run at all or arrive as one lump.
+    inference_logging: bool = False
+
     model_config = {"env_file": str(_PROJECT_ROOT / ".env"), "extra": "ignore"}
 
     @field_validator("encryption_key")
