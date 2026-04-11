@@ -126,11 +126,26 @@ export function MessageList({
                 {msg.knowledge_context && msg.knowledge_context.length > 0 && (
                   <KnowledgePills items={msg.knowledge_context} />
                 )}
+                {msg.artefact_refs && msg.artefact_refs.length > 0 && (
+                  <div className="my-2 flex flex-col gap-2">
+                    {msg.artefact_refs.map((ref) => (
+                      <ArtefactCard
+                        key={`${msg.id}-${ref.artefact_id || ref.handle}-${ref.operation}`}
+                        handle={ref.handle}
+                        title={ref.title}
+                        artefactType={ref.artefact_type}
+                        isUpdate={ref.operation === 'update'}
+                        sessionId={sessionId ?? ''}
+                      />
+                    ))}
+                  </div>
+                )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
                   canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate}
-                  status={msg.status ?? 'completed'} />
+                  status={msg.status ?? 'completed'}
+                  refusalText={msg.refusal_text ?? null} />
               </div>
             )
           }
