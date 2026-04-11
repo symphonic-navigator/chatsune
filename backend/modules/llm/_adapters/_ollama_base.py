@@ -15,6 +15,7 @@ from backend.modules.llm._adapters._events import (
     StreamAborted,
     StreamDone,
     StreamError,
+    StreamRefused,
     StreamSlow,
     ThinkingDelta,
     ToolCallEvent,
@@ -25,6 +26,20 @@ from shared.dtos.llm import ModelMetaDto
 _log = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+
+_REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
+
+
+def _is_refusal_reason(reason: str | None) -> bool:
+    """Return True if the Ollama done_reason value marks a refusal.
+
+    Case-insensitive. Extension point: when new upstream providers are
+    observed in production logs emitting other refusal markers, add
+    them to _REFUSAL_REASONS.
+    """
+    if not reason:
+        return False
+    return reason.lower() in _REFUSAL_REASONS
 
 # Two-stage NDJSON idle thresholds. At GUTTER_SLOW_SECONDS of silence we
 # emit a StreamSlow (informational); at GUTTER_ABORT_SECONDS we give up
@@ -259,6 +274,25 @@ class OllamaBaseAdapter(BaseAdapter):
 
                     if chunk.get("done"):
                         seen_done = True
+                        done_reason = chunk.get("done_reason")
+
+                        # Observability: surface any non-vanilla done_reason value so we
+                        # can discover new refusal markers from production logs.
+                        if done_reason and done_reason not in ("stop", "length"):
+                            _log.info(
+                                "ollama_base.done_reason model=%s reason=%s",
+                                payload.get("model"), done_reason,
+                            )
+
+                        if _is_refusal_reason(done_reason):
+                            msg = chunk.get("message", {})
+                            refusal_body = msg.get("refusal") or None
+                            yield StreamRefused(
+                                reason=done_reason,
+                                refusal_text=refusal_body,
+                            )
+                            return  # Refusal is terminal; no StreamDone after this.
+
                         yield StreamDone(
                             input_tokens=chunk.get("prompt_eval_count"),
                             output_tokens=chunk.get("eval_count"),
