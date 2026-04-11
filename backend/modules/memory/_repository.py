@@ -33,8 +33,9 @@ class MemoryRepository:
         source_session_id: str,
         is_correction: bool = False,
         session=None,
+        created_at: datetime | None = None,
     ) -> str:
-        now = datetime.now(UTC)
+        now = created_at or datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
             "user_id": user_id,

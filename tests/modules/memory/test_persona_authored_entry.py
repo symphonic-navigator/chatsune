@@ -28,9 +28,13 @@ async def wired_bus(clean_db):
 
 async def test_write_persona_authored_entry_persists_and_publishes(wired_bus):
     captured: list[dict] = []
+
+    async def _capture(payload: dict) -> None:
+        captured.append(payload)
+
     wired_bus.subscribe(
         Topics.MEMORY_ENTRY_AUTHORED_BY_PERSONA,
-        lambda payload: captured.append(payload),
+        _capture,
     )
 
     dto = await write_persona_authored_entry(
@@ -61,6 +65,22 @@ async def test_write_persona_authored_entry_persists_and_publishes(wired_bus):
         "Chris values the principle of least astonishment."
     )
     assert entries[0]["source_session_id"] == "session-1"
+
+    # The DTO's created_at and the DB row's created_at must refer to the
+    # same instant — the public API pins `created_at` before the insert,
+    # so the event payload and the persisted record cannot drift. Before
+    # the fix, they came from two separate `datetime.now(UTC)` calls and
+    # would differ by microseconds.
+    #
+    # Note: BSON datetimes are stored at millisecond precision and
+    # returned as naive datetimes by motor, so we truncate and strip
+    # tzinfo on the DTO side before comparing.
+    db_created_at = entries[0]["created_at"]
+    dto_created_at_ms = dto.created_at.replace(
+        microsecond=(dto.created_at.microsecond // 1000) * 1000,
+        tzinfo=None,
+    )
+    assert dto_created_at_ms == db_created_at
 
     # Event was published with persona_name and entry DTO
     assert len(captured) == 1

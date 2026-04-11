@@ -64,14 +64,15 @@ async def write_persona_authored_entry(
     from backend.ws.event_bus import get_event_bus
 
     repo = MemoryRepository(get_db())
+    now = datetime.now(UTC)
     entry_id = await repo.create_journal_entry(
         user_id=user_id,
         persona_id=persona_id,
         content=content,
         category=category,
         source_session_id=source_session_id,
+        created_at=now,
     )
-    now = datetime.now(UTC)
     dto = JournalEntryDto(
         id=entry_id,
         persona_id=persona_id,
