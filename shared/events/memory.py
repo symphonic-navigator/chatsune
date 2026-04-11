@@ -84,6 +84,14 @@ class MemoryEntryAutoCommittedEvent(BaseModel):
     timestamp: datetime
 
 
+class MemoryEntryAuthoredByPersonaEvent(BaseModel):
+    type: str = "memory.entry.authored_by_persona"
+    entry: JournalEntryDto
+    persona_name: str
+    correlation_id: str
+    timestamp: datetime
+
+
 class MemoryEntriesDiscardedEvent(BaseModel):
     type: str = "memory.entries.discarded"
     persona_id: str
