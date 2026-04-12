@@ -26,6 +26,11 @@ export interface PersonaDto {
   pinned: boolean;
   profile_image: string | null;
   profile_crop: ProfileCrop | null;
+  mcp_config: {
+    excluded_gateways: string[]
+    excluded_servers: string[]
+    excluded_tools: string[]
+  } | null;
   created_at: string;
   updated_at: string;
 }

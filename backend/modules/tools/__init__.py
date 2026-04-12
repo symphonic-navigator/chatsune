@@ -126,13 +126,13 @@ def get_active_definitions(
             excluded_tools = set(persona_mcp_config.excluded_tools)
 
         for gw in mcp_registry.gateways.values():
-            if gw.id in excluded_gw_ids:
+            if gw.name in excluded_gw_ids:
                 continue
             for td in gw.tool_definitions:
                 if td.name in excluded_tools:
                     continue
                 server = mcp_registry.server_name_for_tool(td.name)
-                if server and f"{gw.id}:{server}" in excluded_servers:
+                if server and f"{gw.name}:{server}" in excluded_servers:
                     continue
                 definitions.append(td)
 
