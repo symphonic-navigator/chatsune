@@ -252,7 +252,13 @@ export function McpTab() {
   // ─── sub-views ─────────────────────────────────────────────────────────────
 
   if (view.kind === 'explore') {
-    const { gateway, tier } = view
+    const { tier } = view
+    // Always read the freshest gateway from state (mutations update the arrays)
+    const gateway = tier === 'local'
+      ? localGateways.find(g => g.id === view.gateway.id) ?? view.gateway
+      : tier === 'remote'
+        ? remoteGateways.find(g => g.id === view.gateway.id) ?? view.gateway
+        : adminGateways.find(g => g.id === view.gateway.id) ?? view.gateway
     return (
       <div className="flex-1 overflow-hidden flex flex-col min-h-0">
         <ToolExplorer

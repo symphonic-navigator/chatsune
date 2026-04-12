@@ -287,12 +287,26 @@ export function ToolExplorer({
             return (
               <div key={serverName} style={{ marginBottom: 8 }}>
                 {/* Server header */}
-                <div style={{
+                <label style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '5px 12px',
                   background: 'rgba(255,255,255,0.03)',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  cursor: readOnly ? 'default' : 'pointer',
                 }}>
+                  {!readOnly && (
+                    <input
+                      type="checkbox"
+                      checked={!isServerHidden}
+                      onChange={() => onUpdateServerConfig(serverName, {
+                        server_name: serverName,
+                        hidden: !isServerHidden,
+                        prefix_enabled: serverCfg?.prefix_enabled ?? false,
+                        custom_prefix: serverCfg?.custom_prefix ?? null,
+                      })}
+                      style={{ accentColor: 'rgba(137,180,250,0.8)' }}
+                    />
+                  )}
                   <span style={{
                     fontWeight: 600, fontSize: 11, flex: 1,
                     color: 'rgba(255,255,255,0.55)',
@@ -304,23 +318,7 @@ export function ToolExplorer({
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
                     {serverTools.length}
                   </span>
-                  {!readOnly && (
-                    <button
-                      onClick={() => onUpdateServerConfig(serverName, {
-                        server_name: serverName,
-                        hidden: !isServerHidden,
-                        prefix_enabled: serverCfg?.prefix_enabled ?? false,
-                        custom_prefix: serverCfg?.custom_prefix ?? null,
-                      })}
-                      style={{
-                        fontSize: 10, color: 'rgba(255,255,255,0.35)', cursor: 'pointer',
-                        background: 'none', border: 'none', padding: '0 2px',
-                      }}
-                    >
-                      {isServerHidden ? 'show' : 'hide'}
-                    </button>
-                  )}
-                </div>
+                </label>
 
                 {/* Server prefix controls */}
                 {!readOnly && !isServerHidden && (
@@ -372,40 +370,46 @@ export function ToolExplorer({
                   const isHidden = override?.hidden ?? false
                   const selected = tool.name === selectedName
                   return (
-                    <button
+                    <div
                       key={`${serverName}:${tool.name}`}
                       onClick={() => handleSelectTool(tool.name)}
                       style={{
                         background: selected ? 'rgba(137,180,250,0.08)' : 'none',
-                        border: 'none', borderRadius: 0, cursor: 'pointer',
-                        display: 'block', opacity: isHidden ? 0.35 : 1,
-                        padding: '6px 12px 6px 20px', textAlign: 'left', width: '100%',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'flex-start', gap: 6,
+                        opacity: isHidden ? 0.35 : 1,
+                        padding: '6px 12px 6px 20px', width: '100%',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+                      {!readOnly && (
+                        <input
+                          type="checkbox"
+                          checked={!isHidden}
+                          onChange={e => {
+                            e.stopPropagation()
+                            onToggleTool(tool.name, serverName, !isHidden)
+                          }}
+                          onClick={e => e.stopPropagation()}
+                          style={{ marginTop: 2, accentColor: 'rgba(137,180,250,0.8)', flexShrink: 0 }}
+                        />
+                      )}
+                      <div style={{ minWidth: 0, flex: 1 }}>
                         <span style={{
                           color: selected ? 'rgba(137,180,250,0.9)' : 'rgba(255,255,255,0.75)',
                           fontFamily: 'monospace', fontSize: 12,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          display: 'block',
                         }}>
                           {override?.display_name ?? tool.name}
                         </span>
-                        {isHidden && (
-                          <span style={{
-                            background: 'rgba(243,139,168,0.2)', borderRadius: 3,
-                            color: 'rgba(243,139,168,0.8)', fontSize: 10, flexShrink: 0, padding: '1px 4px',
-                          }}>
-                            hidden
-                          </span>
-                        )}
+                        <div style={{
+                          color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 1,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {tool.description}
+                        </div>
                       </div>
-                      <div style={{
-                        color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 1,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      }}>
-                        {tool.description}
-                      </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -438,48 +442,23 @@ export function ToolExplorer({
                   {selectedTool.name}
                 </span>
 
-                {/* Hide/show toggle */}
-                {!readOnly && (
-                  <button
-                    onClick={() => {
-                      const serverName = selectedTool._gateway_server ?? '_unknown'
-                      const override = gateway.tool_overrides?.find(
-                        o => o.original_name === selectedTool.name && o.server_name === serverName
-                      )
-                      const currentlyHidden = override?.hidden ?? false
-                      onToggleTool(selectedTool.name, serverName, !currentlyHidden)
-                    }}
-                    style={{
-                      background: (() => {
-                        const sn = selectedTool._gateway_server ?? '_unknown'
-                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
-                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.15)' : 'rgba(166,218,149,0.15)'
-                      })(),
-                      border: `1px solid ${(() => {
-                        const sn = selectedTool._gateway_server ?? '_unknown'
-                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
-                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.3)' : 'rgba(166,218,149,0.3)'
-                      })()}`,
-                      borderRadius: '4px',
-                      color: (() => {
-                        const sn = selectedTool._gateway_server ?? '_unknown'
-                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
-                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.8)' : 'rgba(166,218,149,0.8)'
-                      })(),
-                      cursor: 'pointer',
-                      fontSize: '11px',
-                      padding: '3px 8px',
-                    }}
-                  >
-                    {(() => {
-                      const serverName = selectedTool._gateway_server ?? '_unknown'
-                      const override = gateway.tool_overrides?.find(
-                        o => o.original_name === selectedTool.name && o.server_name === serverName
-                      )
-                      return (override?.hidden ?? false) ? 'Show' : 'Hide'
-                    })()}
-                  </button>
-                )}
+                {/* Enabled checkbox */}
+                {!readOnly && (() => {
+                  const sn = selectedTool._gateway_server ?? '_unknown'
+                  const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
+                  const hidden = o?.hidden ?? false
+                  return (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                      <input
+                        type="checkbox"
+                        checked={!hidden}
+                        onChange={() => onToggleTool(selectedTool.name, sn, !hidden)}
+                        style={{ accentColor: 'rgba(137,180,250,0.8)' }}
+                      />
+                      Enabled
+                    </label>
+                  )
+                })()}
               </div>
 
               <div

@@ -66,7 +66,8 @@ export function AdminMcpTab() {
 
   // ── Explore view ────────────────────────────────────────────────────
   if (view.kind === 'explore') {
-    const gw = view.gateway
+    // Always read the freshest gateway from state (mutations update gateways[])
+    const gw = gateways.find(g => g.id === view.gateway.id) ?? view.gateway
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <ToolExplorer

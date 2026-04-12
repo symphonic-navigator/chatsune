@@ -124,8 +124,9 @@ export function useMcpEvents() {
         })),
         collisions: (gw.collisions ?? []) as string[],
       }))
-      // The event carries the full registry state (all tiers) — replace entirely
-      useMcpStore.getState().setSessionGateways(entries)
+      // Merge with existing local gateways (which arrive via registerLocalGateways)
+      const locals = useMcpStore.getState().sessionGateways.filter((e) => e.tier === "local")
+      useMcpStore.getState().setSessionGateways([...entries, ...locals])
     })
 
     return () => {
