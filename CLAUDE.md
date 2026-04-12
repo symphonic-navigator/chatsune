@@ -50,11 +50,18 @@ Always ensure clean compilation/build after changes.
 
 ### Dependency Management
 
-We build for Docker — `pyproject.toml` (backend) and `package.json` (frontend)
-must always list dependencies **explicitly with pinned minimum versions**.
-Never rely on transitive installs. If code imports a package, that package
-must appear in the dependency file. This prevents Docker builds from breaking
-when intermediate images lack packages that happened to be installed locally.
+We build for Docker — dependency files must always list packages **explicitly
+with pinned minimum versions**. Never rely on transitive installs. If code
+imports a package, that package must appear in the dependency file.
+
+**IMPORTANT — two `pyproject.toml` files exist:**
+
+- `pyproject.toml` (root) — used by `uv sync` during local development
+- `backend/pyproject.toml` — used by `backend/Dockerfile` for Docker builds
+
+When adding a Python dependency, **update both files**. The Docker build uses
+only `backend/pyproject.toml` — a package missing there will crash on startup
+even if local development works fine.
 
 ---
 
