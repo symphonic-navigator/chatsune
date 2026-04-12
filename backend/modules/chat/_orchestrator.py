@@ -311,7 +311,11 @@ async def run_inference(
 ) -> None:
     """Shared inference path used by send, edit, and regenerate."""
     persona_id = session.get("persona_id")
-    model_unique_id = session.get("model_unique_id", "")
+
+    # Resolve persona early — the model is always read from the persona,
+    # never from the session.
+    persona = await get_persona(persona_id, user_id) if persona_id else None
+    model_unique_id = persona.get("model_unique_id", "") if persona else ""
 
     if ":" not in model_unique_id:
         _log.error("Invalid model_unique_id format: %s", model_unique_id)
@@ -319,10 +323,6 @@ async def run_inference(
         return
 
     provider_id, model_slug = model_unique_id.split(":", 1)
-
-    # Resolve persona and reasoning context early so the prompt assembler
-    # can decide whether to inject the Soft-CoT block.
-    persona = await get_persona(persona_id, user_id) if persona_id else None
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:
         reasoning_enabled = reasoning_override
@@ -663,7 +663,6 @@ async def _schedule_idle_extraction(
     user_id: str,
     persona_id: str,
     session_id: str,
-    model_unique_id: str,
     idle_timestamp: str,
 ) -> None:
     """Wait for idle period, then submit memory extraction if user is still idle."""
@@ -676,6 +675,17 @@ async def _schedule_idle_extraction(
 
         # User sent another message — a newer timer will handle extraction
         if current_ts != idle_timestamp:
+            return
+
+        # Resolve model from persona at submission time so we always use
+        # the current setting, not a stale cached value.
+        persona = await get_persona(persona_id, user_id)
+        model_unique_id = persona.get("model_unique_id", "") if persona else ""
+        if not model_unique_id:
+            _log.warning(
+                "Cannot run idle extraction — persona has no model: user=%s persona=%s",
+                user_id, persona_id,
+            )
             return
 
         # Fetch unextracted user messages only
@@ -743,7 +753,6 @@ async def track_extraction_trigger(
     user_id: str,
     persona_id: str,
     session_id: str,
-    model_unique_id: str,
 ) -> None:
     """Track message count and schedule idle-based extraction after a user message."""
     try:
@@ -755,7 +764,6 @@ async def track_extraction_trigger(
         await redis.hset(tracking_key, mapping={
             "last_message_at": now_iso,
             "session_id": session_id,
-            "model_unique_id": model_unique_id,
         })
 
         # Cancel any existing idle timer for this user+persona pair
@@ -767,7 +775,7 @@ async def track_extraction_trigger(
         # Schedule new idle extraction timer
         task = asyncio.create_task(
             _schedule_idle_extraction(
-                user_id, persona_id, session_id, model_unique_id, now_iso,
+                user_id, persona_id, session_id, now_iso,
             )
         )
         _idle_extraction_tasks[task_key] = task
@@ -807,12 +815,21 @@ async def trigger_disconnect_extraction(user_id: str) -> None:
                     continue
 
                 session_id = tracking.get("session_id")
-                model_unique_id = tracking.get("model_unique_id")
-                if not session_id or not model_unique_id:
+                if not session_id:
                     continue
 
                 # Extract persona_id from the key
                 persona_id = key.removeprefix(prefix)
+
+                # Resolve model from persona at submission time
+                persona = await get_persona(persona_id, user_id)
+                model_unique_id = persona.get("model_unique_id", "") if persona else ""
+                if not model_unique_id:
+                    _log.warning(
+                        "Cannot run disconnect extraction — persona has no model: user=%s persona=%s",
+                        user_id, persona_id,
+                    )
+                    continue
 
                 # Fetch unextracted user messages only
                 db = get_db()

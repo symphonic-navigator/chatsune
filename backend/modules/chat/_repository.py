@@ -31,13 +31,12 @@ class ChatRepository:
             name="content_text",
         )
 
-    async def create_session(self, user_id: str, persona_id: str, model_unique_id: str) -> dict:
+    async def create_session(self, user_id: str, persona_id: str) -> dict:
         now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
             "user_id": user_id,
             "persona_id": persona_id,
-            "model_unique_id": model_unique_id,
             "state": "idle",
             "created_at": now,
             "updated_at": now,
@@ -462,7 +461,6 @@ class ChatRepository:
             id=doc["_id"],
             user_id=doc["user_id"],
             persona_id=doc["persona_id"],
-            model_unique_id=doc["model_unique_id"],
             state=doc["state"],
             title=doc.get("title"),
             disabled_tool_groups=doc.get("disabled_tool_groups", []),

@@ -10,7 +10,6 @@ class ChatSessionDocument(BaseModel):
     id: str = Field(alias="_id")
     user_id: str
     persona_id: str
-    model_unique_id: str
     state: Literal["idle", "streaming", "requires_action"] = "idle"
     pinned: bool = False
     created_at: datetime

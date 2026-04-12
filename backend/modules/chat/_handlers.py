@@ -53,7 +53,6 @@ async def create_session(
     doc = await repo.create_session(
         user_id=user["sub"],
         persona_id=persona["_id"],
-        model_unique_id=persona["model_unique_id"],
     )
     dto = ChatRepository.session_to_dto(doc)
 
@@ -83,7 +82,6 @@ async def create_session(
             session_id=dto.id,
             user_id=dto.user_id,
             persona_id=dto.persona_id,
-            model_unique_id=dto.model_unique_id,
             title=dto.title,
             created_at=dto.created_at,
             updated_at=dto.updated_at,
@@ -324,7 +322,10 @@ async def generate_title(
     if not first_user or not first_assistant:
         raise HTTPException(status_code=400, detail="Session needs at least one user and one assistant message")
 
-    model_unique_id = session.get("model_unique_id", "")
+    persona = await get_persona_fn(session["persona_id"], user["sub"])
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    model_unique_id = persona.get("model_unique_id", "")
     correlation_id = str(uuid4())
 
     await submit(

@@ -306,7 +306,7 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setSessionTitle(session.title)
         useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
-        applyModelCapabilities(session.model_unique_id, isCancelled)
+        applyModelCapabilities(persona?.model_unique_id, isCancelled)
       })
       .catch((err) => {
         if (cancelled) return

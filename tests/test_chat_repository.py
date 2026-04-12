@@ -17,22 +17,21 @@ async def repo(clean_db):
 
 
 async def test_create_session(repo):
-    doc = await repo.create_session(user_id="user-1", persona_id="persona-1", model_unique_id="ollama_cloud:qwen3:32b")
+    doc = await repo.create_session(user_id="user-1", persona_id="persona-1")
     assert doc["user_id"] == "user-1"
     assert doc["state"] == "idle"
     assert doc["persona_id"] == "persona-1"
-    assert doc["model_unique_id"] == "ollama_cloud:qwen3:32b"
 
 
 async def test_get_session(repo):
-    created = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    created = await repo.create_session("user-1", "p-1")
     found = await repo.get_session(created["_id"], "user-1")
     assert found is not None
     assert found["_id"] == created["_id"]
 
 
 async def test_get_session_wrong_user(repo):
-    created = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    created = await repo.create_session("user-1", "p-1")
     found = await repo.get_session(created["_id"], "other-user")
     assert found is None
 
@@ -40,9 +39,9 @@ async def test_get_session_wrong_user(repo):
 async def test_list_sessions_for_user(repo):
     # list_sessions() only returns sessions with at least one message
     # (empty ghost sessions are hidden, like on Claude.ai).
-    s1 = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
-    s2 = await repo.create_session("user-1", "p-2", "ollama_cloud:m")
-    s3 = await repo.create_session("user-2", "p-3", "ollama_cloud:m")
+    s1 = await repo.create_session("user-1", "p-1")
+    s2 = await repo.create_session("user-1", "p-2")
+    s3 = await repo.create_session("user-2", "p-3")
     await repo.save_message(session_id=s1["_id"], role="user", content="hi", token_count=1)
     await repo.save_message(session_id=s2["_id"], role="user", content="hi", token_count=1)
     await repo.save_message(session_id=s3["_id"], role="user", content="hi", token_count=1)
@@ -51,13 +50,13 @@ async def test_list_sessions_for_user(repo):
 
 
 async def test_update_session_state(repo):
-    doc = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    doc = await repo.create_session("user-1", "p-1")
     updated = await repo.update_session_state(doc["_id"], "streaming")
     assert updated["state"] == "streaming"
 
 
 async def test_save_and_list_messages(repo):
-    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    session = await repo.create_session("user-1", "p-1")
     sid = session["_id"]
     await repo.save_message(session_id=sid, role="user", content="Hello!", token_count=3)
     await repo.save_message(session_id=sid, role="assistant", content="Hi there!", thinking="Let me respond naturally.", token_count=5)
@@ -72,7 +71,7 @@ async def test_save_and_list_messages(repo):
 async def test_soft_delete_session_hides_it(repo):
     # Sessions are soft-deleted: get_session no longer returns them,
     # but messages remain until hard_delete_expired_sessions runs.
-    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    session = await repo.create_session("user-1", "p-1")
     sid = session["_id"]
     await repo.save_message(session_id=sid, role="user", content="hi", token_count=1)
     deleted = await repo.soft_delete_session(sid, "user-1")
@@ -81,7 +80,7 @@ async def test_soft_delete_session_hides_it(repo):
 
 
 async def test_save_message_with_aborted_status(repo):
-    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    session = await repo.create_session("user-1", "p-1")
     sid = session["_id"]
     await repo.save_message(
         session_id=sid, role="assistant", content="partial", token_count=1,
@@ -95,7 +94,7 @@ async def test_save_message_with_aborted_status(repo):
 
 
 async def test_legacy_message_without_status_defaults_to_completed(repo):
-    session = await repo.create_session("user-1", "p-1", "ollama_cloud:m")
+    session = await repo.create_session("user-1", "p-1")
     sid = session["_id"]
     # Simulate a legacy document: insert directly into MongoDB without
     # going through save_message, so we bypass the new default kwarg.

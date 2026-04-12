@@ -20,7 +20,6 @@ class ChatSessionDto(BaseModel):
     id: str
     user_id: str
     persona_id: str
-    model_unique_id: str
     state: Literal["idle", "streaming", "requires_action"]
     title: str | None = None
     disabled_tool_groups: list[str] = []

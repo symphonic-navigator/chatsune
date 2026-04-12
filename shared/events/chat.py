@@ -106,7 +106,6 @@ class ChatSessionCreatedEvent(BaseModel):
     session_id: str
     user_id: str
     persona_id: str
-    model_unique_id: str
     title: str | None = None
     created_at: datetime
     updated_at: datetime

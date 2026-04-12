@@ -6,7 +6,6 @@ interface ChatSessionDto {
   id: string
   user_id: string
   persona_id: string
-  model_unique_id: string
   state: "idle" | "streaming" | "requires_action"
   title: string | null
   disabled_tool_groups: string[]

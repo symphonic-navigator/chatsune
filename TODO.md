@@ -1,7 +1,7 @@
 ## Fehler
 
-* Modell ist an Chat gebunden:
-man kann für einen existierenden Chat das Modell nicht wechseln
+* ~~Modell ist an Chat gebunden:
+man kann für einen existierenden Chat das Modell nicht wechseln~~ ERLEDIGT
 
 ## Missing features
 

@@ -32,7 +32,6 @@ export function useChatSessions() {
         id: p.session_id as string,
         user_id: p.user_id as string,
         persona_id: p.persona_id as string,
-        model_unique_id: p.model_unique_id as string,
         state: "idle",
         title: (p.title as string) ?? null,
         disabled_tool_groups: [],

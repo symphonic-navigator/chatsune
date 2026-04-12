@@ -358,6 +358,7 @@ async def lifespan(app: FastAPI):
                         find_sessions_for_extraction,
                         list_unextracted_messages_for_session,
                     )
+                    from backend.modules.persona import get_persona as _ext_get_persona
                     from backend.jobs._submit import submit as _ext_submit
                     from backend.jobs._models import JobType as _ExtJobType
                     from backend.jobs._dedup import (
@@ -399,11 +400,18 @@ async def lifespan(app: FastAPI):
 
                                 # Find the most recent session for this user+persona
                                 session = await find_sessions_for_extraction(uid, pid)
-                                if not session or not session.get("model_unique_id"):
+                                if not session:
                                     continue
 
                                 session_id = session["_id"]
-                                model_unique_id = session["model_unique_id"]
+
+                                # Resolve model from persona, not session
+                                _ext_persona = await _ext_get_persona(pid, uid)
+                                if not _ext_persona:
+                                    continue
+                                model_unique_id = _ext_persona.get("model_unique_id", "")
+                                if not model_unique_id:
+                                    continue
 
                                 # Fetch unextracted user messages only
                                 unextracted = await list_unextracted_messages_for_session(

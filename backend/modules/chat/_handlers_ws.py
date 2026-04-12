@@ -134,13 +134,12 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
 
         # Track extraction trigger — skip for incognito sessions
         persona_id = session.get("persona_id")
-        model_unique_id = session.get("model_unique_id", "")
         is_incognito = session.get("incognito", False) or (
             session_id and session_id.startswith("incognito-")
         )
-        if persona_id and model_unique_id and not is_incognito:
+        if persona_id and not is_incognito:
             await track_extraction_trigger(
-                user_id, persona_id, session_id, model_unique_id,
+                user_id, persona_id, session_id,
             )
 
         await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
