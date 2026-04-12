@@ -98,20 +98,43 @@ def get_all_groups() -> list[ToolGroupDto]:
 def get_active_definitions(
     disabled_groups: list[str] | None = None,
     mcp_registry: SessionMcpRegistry | None = None,
+    persona_mcp_config: "PersonaMcpConfig | None" = None,
 ) -> list[ToolDefinition]:
-    """Return tool definitions for all enabled groups, plus MCP tools if registry provided."""
+    """Return tool definitions for all enabled groups, plus MCP tools if registry provided.
+
+    If persona_mcp_config is provided, excluded gateways/servers/tools are filtered out.
+    """
+    from shared.dtos.mcp import PersonaMcpConfig  # avoid circular import at module level
+
     disabled = set(disabled_groups or [])
     definitions: list[ToolDefinition] = []
     for group in get_groups().values():
         if group.id in disabled and group.toggleable:
             continue
         if group.id == "mcp":
-            continue  # MCP tools come from registry, not from static group
+            continue
         definitions.extend(group.definitions)
 
-    # Append MCP tools (already sorted alphabetically by registry)
+    # Append MCP tools with persona filtering
     if mcp_registry and "mcp" not in disabled:
-        definitions.extend(mcp_registry.all_definitions())
+        excluded_gw_ids = set()
+        excluded_servers = set()
+        excluded_tools = set()
+        if persona_mcp_config:
+            excluded_gw_ids = set(persona_mcp_config.excluded_gateways)
+            excluded_servers = set(persona_mcp_config.excluded_servers)
+            excluded_tools = set(persona_mcp_config.excluded_tools)
+
+        for gw in mcp_registry.gateways.values():
+            if gw.id in excluded_gw_ids:
+                continue
+            for td in gw.tool_definitions:
+                if td.name in excluded_tools:
+                    continue
+                server = mcp_registry.server_name_for_tool(td.name)
+                if server and f"{gw.id}:{server}" in excluded_servers:
+                    continue
+                definitions.append(td)
 
     return definitions
 

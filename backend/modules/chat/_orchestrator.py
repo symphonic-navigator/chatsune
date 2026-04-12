@@ -516,9 +516,14 @@ async def run_inference(
                     namespace=gw.name,
                     tier=gw.tier,
                     tools=[
-                        {"name": td.name, "description": td.description}
+                        {
+                            "name": td.name,
+                            "description": td.description,
+                            "server_name": mcp_registry.server_name_for_tool(td.name) or "_unknown",
+                        }
                         for td in gw.tool_definitions
                     ],
+                    collisions=gw.collisions,
                 )
                 for gw in mcp_registry.gateways.values()
             ]
@@ -537,7 +542,17 @@ async def run_inference(
                 correlation_id=correlation_id,
             )
 
-    active_tools = get_active_definitions(disabled_tool_groups, mcp_registry=mcp_registry) or None
+    # Extract persona MCP config for tool filtering
+    persona_mcp_config = None
+    if persona and persona.get("mcp_config"):
+        from shared.dtos.mcp import PersonaMcpConfig
+        persona_mcp_config = PersonaMcpConfig(**persona["mcp_config"])
+
+    active_tools = get_active_definitions(
+        disabled_tool_groups,
+        mcp_registry=mcp_registry,
+        persona_mcp_config=persona_mcp_config,
+    ) or None
 
     # Estimate tokens consumed by tool definitions sent with the API call
     tool_definition_tokens = 0
