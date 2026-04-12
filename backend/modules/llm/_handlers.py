@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database import get_db, get_redis
@@ -478,3 +479,41 @@ async def get_provider_status(user: dict = Depends(require_active_session)):
         except (ValueError, TypeError):
             statuses[provider_id] = False
     return {"statuses": statuses}
+
+
+@router.get("/admin/ollama-local/ps")
+async def ollama_local_ps(user: dict = Depends(require_admin)):
+    """Proxy to Ollama Local /api/ps — returns currently running models."""
+    base_url = PROVIDER_BASE_URLS.get("ollama_local")
+    if not base_url:
+        raise HTTPException(status_code=404, detail="ollama_local provider not configured")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            resp = await client.get(f"{base_url}/api/ps")
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Cannot connect to Ollama Local")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama returned {exc.response.status_code}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Ollama Local request timed out")
+
+
+@router.get("/admin/ollama-local/tags")
+async def ollama_local_tags(user: dict = Depends(require_admin)):
+    """Proxy to Ollama Local /api/tags — returns all available models."""
+    base_url = PROVIDER_BASE_URLS.get("ollama_local")
+    if not base_url:
+        raise HTTPException(status_code=404, detail="ollama_local provider not configured")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            resp = await client.get(f"{base_url}/api/tags")
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Cannot connect to Ollama Local")
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama returned {exc.response.status_code}")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Ollama Local request timed out")
