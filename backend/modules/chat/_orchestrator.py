@@ -50,6 +50,8 @@ from backend.modules.tools import execute_tool, get_active_definitions, set_mcp_
 from backend.modules.tools._mcp_discovery import discover_backend_gateways
 from backend.modules.user import get_user_mcp_gateways, get_admin_mcp_gateways
 from shared.dtos.mcp import McpGatewayConfigDto
+from shared.events.mcp import McpGatewayToolEntry, McpToolsRegisteredEvent
+from shared.topics import Topics
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -491,6 +493,34 @@ async def run_inference(
             correlation_id=correlation_id,
         )
         set_mcp_registry(connection_id, mcp_registry)
+
+        # Notify frontend about discovered tools so it can display them
+        if mcp_registry.gateways:
+            gateway_entries = [
+                McpGatewayToolEntry(
+                    namespace=gw.name,
+                    tier=gw.tier,
+                    tools=[
+                        {"name": td.name, "description": td.description}
+                        for td in gw.tool_definitions
+                    ],
+                )
+                for gw in mcp_registry.gateways.values()
+            ]
+            event_bus = get_event_bus()
+            await event_bus.publish(
+                Topics.MCP_TOOLS_REGISTERED,
+                McpToolsRegisteredEvent(
+                    session_id=session_id,
+                    gateways=gateway_entries,
+                    total_tools=len(mcp_registry.all_definitions()),
+                    correlation_id=correlation_id,
+                    timestamp=datetime.now(timezone.utc),
+                ),
+                scope=f"session:{session_id}",
+                target_user_ids=[user_id],
+                correlation_id=correlation_id,
+            )
 
     active_tools = get_active_definitions(disabled_tool_groups, mcp_registry=mcp_registry) or None
 

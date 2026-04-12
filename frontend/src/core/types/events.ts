@@ -108,6 +108,7 @@ export const Topics = {
   INFERENCE_LOCK_WAIT_STARTED: "inference.lock.wait_started",
   INFERENCE_LOCK_WAIT_ENDED: "inference.lock.wait_ended",
   MCP_GATEWAY_ERROR: "mcp.gateway.error",
+  MCP_TOOLS_REGISTERED: "mcp.tools.registered",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

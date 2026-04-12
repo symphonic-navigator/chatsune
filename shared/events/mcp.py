@@ -7,10 +7,18 @@ from pydantic import BaseModel
 from shared.dtos.mcp import McpGatewayStatusDto
 
 
+class McpGatewayToolEntry(BaseModel):
+    """One gateway with its discovered tool definitions — sent to the frontend."""
+
+    namespace: str
+    tier: str
+    tools: list[dict]  # [{name, description}] — lightweight, no full JSON schema
+
+
 class McpToolsRegisteredEvent(BaseModel):
     type: str = "mcp.tools.registered"
     session_id: str
-    gateways: list[McpGatewayStatusDto]
+    gateways: list[McpGatewayToolEntry]
     total_tools: int
     correlation_id: str
     timestamp: datetime
