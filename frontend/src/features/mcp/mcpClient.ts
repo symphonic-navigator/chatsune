@@ -1,8 +1,13 @@
 /**
  * MCP JSON-RPC client — used by the Tool Explorer for direct gateway calls
  * and by the clientToolHandler for local gateway tool execution.
+ *
+ * For local gateways the browser calls the gateway directly.
+ * For admin/remote gateways the call is proxied through the backend
+ * (the gateway URL may only be reachable from the backend container).
  */
 
+import { api } from '../../core/api/client'
 import type { McpToolDefinition } from './types'
 
 let requestId = 0
@@ -10,6 +15,30 @@ let requestId = 0
 function nextId(): number {
   return ++requestId
 }
+
+// ── Backend-proxied calls (admin / remote gateways) ──────────────────
+
+export async function mcpProxyToolsList(
+  gatewayId: string,
+): Promise<{ tools: McpToolDefinition[] }> {
+  const body = await api.get<{ tools: McpToolDefinition[] }>(
+    `/api/mcp/gateways/${encodeURIComponent(gatewayId)}/tools`,
+  )
+  return { tools: body.tools ?? [] }
+}
+
+export async function mcpProxyToolsCall(
+  gatewayId: string,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<{ stdout: string; error: string | null }> {
+  return api.post<{ stdout: string; error: string | null }>(
+    `/api/mcp/gateways/${encodeURIComponent(gatewayId)}/call`,
+    { tool_name: toolName, arguments: args },
+  )
+}
+
+// ── Direct calls (local gateways) ───────────────────────────────────
 
 export async function mcpToolsList(
   gatewayUrl: string,

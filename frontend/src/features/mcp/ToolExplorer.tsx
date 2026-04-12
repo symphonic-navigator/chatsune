@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { McpGatewayConfig, McpToolDefinition } from './types'
-import { mcpToolsList, mcpToolsCall } from './mcpClient'
+import { mcpToolsList, mcpToolsCall, mcpProxyToolsList, mcpProxyToolsCall } from './mcpClient'
 
 interface ToolExplorerProps {
   gateway: McpGatewayConfig
@@ -33,11 +33,15 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
   const [response, setResponse] = useState<string | null>(null)
   const [executing, setExecuting] = useState(false)
 
+  const useProxy = tier !== 'local'
+
   const loadTools = useCallback(async () => {
     setLoading(true)
     setLoadError(null)
     try {
-      const { tools: loaded } = await mcpToolsList(gateway.url, gateway.api_key)
+      const { tools: loaded } = useProxy
+        ? await mcpProxyToolsList(gateway.id)
+        : await mcpToolsList(gateway.url, gateway.api_key)
       setTools(loaded)
       if (loaded.length > 0 && selectedName === null) {
         setSelectedName(loaded[0].name)
@@ -47,7 +51,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
     } finally {
       setLoading(false)
     }
-  }, [gateway.url, gateway.api_key, selectedName])
+  }, [gateway.id, gateway.url, gateway.api_key, useProxy, selectedName])
 
   useEffect(() => {
     loadTools()
@@ -94,7 +98,9 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
     for (const [k, v] of Object.entries(paramValues)) {
       if (v !== '') args[k] = v
     }
-    const result = await mcpToolsCall(gateway.url, gateway.api_key, selectedTool.name, args)
+    const result = useProxy
+      ? await mcpProxyToolsCall(gateway.id, selectedTool.name, args)
+      : await mcpToolsCall(gateway.url, gateway.api_key, selectedTool.name, args)
     if (result.error) {
       setResponse(JSON.stringify({ error: result.error }, null, 2))
     } else {

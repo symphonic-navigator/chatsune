@@ -841,3 +841,70 @@ async def delete_admin_mcp_gateway(
     if len(gateways) == original_len:
         raise HTTPException(status_code=404, detail="Gateway not found")
     await _save_admin_mcp_settings(db, gateways)
+
+
+# ── MCP Gateway Proxy ────────────────────────────────────────────────
+# Admin and user-remote gateways may be reachable only from the backend
+# (e.g. Docker-internal hostnames). These endpoints proxy tools/list and
+# tools/call so the frontend can explore and test them.
+
+
+class _McpProxyCallRequest(_BaseModel):
+    tool_name: str
+    arguments: dict = {}
+
+
+async def _resolve_gateway(
+    gateway_id: str, user: dict,
+) -> McpGatewayConfigDto:
+    """Look up a gateway by ID across admin and user-remote tiers."""
+    db = get_db()
+    # Check admin gateways
+    admin_doc = await db["admin_settings"].find_one({"_id": "mcp"})
+    if admin_doc:
+        for gw in admin_doc.get("gateways", []):
+            if gw["id"] == gateway_id:
+                return McpGatewayConfigDto(**gw)
+    # Check user gateways
+    repo = UserRepository(db)
+    user_gateways = await repo.get_mcp_gateways(user["sub"])
+    for gw in user_gateways:
+        if gw["id"] == gateway_id:
+            return McpGatewayConfigDto(**gw)
+    raise HTTPException(status_code=404, detail="Gateway not found")
+
+
+@router.get("/mcp/gateways/{gateway_id}/tools")
+async def proxy_mcp_tools_list(
+    gateway_id: str,
+    user: dict = Depends(require_active_session),
+):
+    """Proxy tools/list to a backend-reachable MCP gateway."""
+    from backend.modules.tools._mcp_executor import McpExecutor
+
+    gw = await _resolve_gateway(gateway_id, user)
+    executor = McpExecutor()
+    mcp_url = gw.url.rstrip("/") + "/mcp"
+    tools = await executor.discover_tools(url=mcp_url, api_key=gw.api_key)
+    return {"tools": tools}
+
+
+@router.post("/mcp/gateways/{gateway_id}/call")
+async def proxy_mcp_tool_call(
+    gateway_id: str,
+    body: _McpProxyCallRequest,
+    user: dict = Depends(require_active_session),
+):
+    """Proxy tools/call to a backend-reachable MCP gateway."""
+    import json as _json
+
+    from backend.modules.tools._mcp_executor import McpExecutor
+
+    gw = await _resolve_gateway(gateway_id, user)
+    executor = McpExecutor()
+    mcp_url = gw.url.rstrip("/") + "/mcp"
+    result_json = await executor.call_tool(
+        url=mcp_url, api_key=gw.api_key,
+        tool_name=body.tool_name, arguments=body.arguments,
+    )
+    return _json.loads(result_json)
