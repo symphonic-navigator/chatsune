@@ -50,6 +50,10 @@ class Topics:
     # Tool group toggles
     CHAT_SESSION_TOOLS_UPDATED = "chat.session.tools_updated"
     CHAT_SESSION_PINNED_UPDATED = "chat.session.pinned_updated"
+    # MCP gateways
+    MCP_TOOLS_REGISTER = "mcp.tools.register"
+    MCP_TOOLS_REGISTERED = "mcp.tools.registered"
+    MCP_GATEWAY_ERROR = "mcp.gateway.error"
     # Storage
     STORAGE_FILE_UPLOADED = "storage.file.uploaded"
     STORAGE_FILE_DELETED = "storage.file.deleted"
