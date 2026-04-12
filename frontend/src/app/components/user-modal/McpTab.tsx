@@ -291,6 +291,7 @@ export function McpTab() {
         <SectionHeader
           label="Remote Gateways"
           accent={REMOTE_ACCENT}
+          subtitle="Discovered and executed by the server — URL must be reachable from the backend"
           onAdd={() => setView({ kind: 'edit-remote' })}
         />
 
@@ -330,7 +331,7 @@ export function McpTab() {
         <SectionHeader
           label="Local Gateways"
           accent={LOCAL_ACCENT}
-          subtitle="This device only — stored in browser"
+          subtitle="This device only — discovered and executed by the browser, URL must be reachable from here"
           onAdd={() => setView({ kind: 'edit-local' })}
         />
 

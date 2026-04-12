@@ -103,7 +103,9 @@ export function AdminMcpTab() {
         <h3 className="text-[13px] font-medium text-white/80">Global MCP Gateways</h3>
         <p className="mt-1 text-[11px] text-white/60 leading-relaxed">
           Configure MCP gateways available to all users. API keys are managed here
-          and not visible to users.
+          and not visible to users. The URL must be reachable from the backend
+          (e.g. use Docker service names like <code className="text-white/40">http://mcp-gateway:9100</code> for
+          containerised deployments).
         </p>
       </div>
 
