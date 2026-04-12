@@ -23,6 +23,7 @@ class PersonaDocument(BaseModel):
     pinned: bool
     profile_image: str | None
     profile_crop: dict | None = None
+    mcp_config: dict | None = None
     created_at: datetime
     updated_at: datetime
 

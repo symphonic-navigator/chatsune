@@ -16,6 +16,7 @@ from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
+from shared.dtos.mcp import PersonaMcpConfig
 from shared.dtos.persona import (
     CreatePersonaDto,
     PersonaDto,
@@ -279,6 +280,29 @@ async def update_persona(
     )
 
     return dto
+
+
+@router.patch("/{persona_id}/mcp")
+async def update_persona_mcp(
+    persona_id: str,
+    body: PersonaMcpConfig,
+    user: dict = Depends(require_active_session),
+):
+    repo = _persona_repo()
+    existing = await repo.find_by_id(persona_id, user["sub"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    config_dict = body.model_dump()
+    is_empty = (
+        not config_dict["excluded_gateways"]
+        and not config_dict["excluded_servers"]
+        and not config_dict["excluded_tools"]
+    )
+    await repo.update_mcp_config(persona_id, user["sub"], None if is_empty else config_dict)
+
+    updated = await repo.find_by_id(persona_id, user["sub"])
+    return repo.to_dto(updated)
 
 
 @router.delete("/{persona_id}")

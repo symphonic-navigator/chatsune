@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from shared.dtos.mcp import PersonaMcpConfig
 from shared.dtos.persona import PersonaDto, ProfileCropDto
 
 
@@ -98,6 +99,15 @@ class PersonaRepository:
         )
         return result
 
+    async def update_mcp_config(
+        self, persona_id: str, user_id: str, mcp_config: dict | None,
+    ) -> bool:
+        result = await self._collection.update_one(
+            {"_id": persona_id, "user_id": user_id},
+            {"$set": {"mcp_config": mcp_config, "updated_at": datetime.now(UTC)}},
+        )
+        return result.modified_count > 0
+
     async def bulk_reorder(self, user_id: str, ordered_ids: list[str]) -> None:
         """Reorder personas using a single bulk_write operation."""
         from pymongo import UpdateOne
@@ -147,6 +157,7 @@ class PersonaRepository:
             pinned=doc.get("pinned", False),
             profile_image=doc.get("profile_image"),
             profile_crop=ProfileCropDto(**doc["profile_crop"]) if doc.get("profile_crop") else None,
+            mcp_config=PersonaMcpConfig(**doc["mcp_config"]) if doc.get("mcp_config") else None,
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

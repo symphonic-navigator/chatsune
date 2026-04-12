@@ -659,6 +659,8 @@ class CreateMcpGatewayRequest(_BaseModel):
     url: str
     api_key: str | None = None
     enabled: bool = True
+    server_configs: dict = {}
+    tool_overrides: list = []
 
 
 class UpdateMcpGatewayRequest(_BaseModel):
@@ -667,6 +669,8 @@ class UpdateMcpGatewayRequest(_BaseModel):
     api_key: str | None = None
     enabled: bool | None = None
     disabled_tools: list[str] | None = None
+    server_configs: dict | None = None
+    tool_overrides: list | None = None
 
 
 def _invalidate_user_mcp(user_id: str) -> None:
@@ -705,6 +709,8 @@ async def create_mcp_gateway(
         "api_key": body.api_key,
         "enabled": body.enabled,
         "disabled_tools": [],
+        "server_configs": body.server_configs,
+        "tool_overrides": body.tool_overrides,
     }
     await repo.add_mcp_gateway(user["sub"], gateway)
     _invalidate_user_mcp(user["sub"])
@@ -804,6 +810,8 @@ async def create_admin_mcp_gateway(
         "api_key": body.api_key,
         "enabled": body.enabled,
         "disabled_tools": [],
+        "server_configs": body.server_configs,
+        "tool_overrides": body.tool_overrides,
     }
     existing.append(gateway)
     await _save_admin_mcp_settings(db, existing)
