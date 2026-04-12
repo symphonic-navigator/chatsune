@@ -325,6 +325,8 @@ async def run_inference(
         return
 
     provider_id, model_slug = model_unique_id.split(":", 1)
+    from backend.modules.llm._registry import PROVIDER_DISPLAY_NAMES
+    provider_display_name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id)
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:
         reasoning_enabled = reasoning_override
@@ -589,6 +591,10 @@ async def run_inference(
             context_status=context_status,
             context_fill_percentage=fill_ratio,
             tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
+            provider_name=provider_display_name,
+            model_name=model_slug,
+            provider_id=provider_id,
+            model_slug=model_slug,
         )
         # Persist the latest context-window utilisation on the session so
         # that opening the chat later can hydrate the indicator without

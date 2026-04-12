@@ -1,12 +1,14 @@
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Literal
 
 from backend.config import settings
 from backend.jobs import get_user_lock
+from backend.modules.metrics import inferences_aborted_total
 from backend.modules.llm import (
     ContentDelta,
     StreamAborted,
@@ -52,13 +54,17 @@ class InferenceRunner:
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
         tool_executor_fn: Callable | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        provider_id: str = "",
+        model_slug: str = "",
     ) -> None:
         lock = get_user_lock(user_id)
         async with lock:
             await self._run_locked(
                 user_id, session_id, correlation_id, stream_fn, emit_fn, save_fn,
                 cancel_event, context_status, context_fill_percentage,
-                tool_executor_fn,
+                tool_executor_fn, provider_name, model_name, provider_id, model_slug,
             )
 
     async def _run_locked(
@@ -73,6 +79,10 @@ class InferenceRunner:
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
         tool_executor_fn: Callable | None = None,
+        provider_name: str | None = None,
+        model_name: str | None = None,
+        provider_id: str = "",
+        model_slug: str = "",
     ) -> None:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamStartedEvent(
@@ -91,6 +101,9 @@ class InferenceRunner:
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
         extra_messages: list[CompletionMessage] = []
+
+        t_stream_start = time.monotonic()
+        t_first_token: float | None = None
 
         try:
             for iteration in range(_MAX_TOOL_ITERATIONS + 1):
@@ -123,12 +136,16 @@ class InferenceRunner:
 
                     match event:
                         case ContentDelta(delta=delta):
+                            if t_first_token is None:
+                                t_first_token = time.monotonic()
                             iter_content += delta
                             await emit_fn(ChatContentDeltaEvent(
                                 correlation_id=correlation_id, delta=delta,
                             ))
 
                         case ThinkingDelta(delta=delta):
+                            if t_first_token is None:
+                                t_first_token = time.monotonic()
                             iter_thinking += delta
                             await emit_fn(ChatThinkingDeltaEvent(
                                 correlation_id=correlation_id, delta=delta,
@@ -169,6 +186,10 @@ class InferenceRunner:
                             )
                             status = "aborted"
                             stream_end_reason = f"aborted:{ab.reason}"
+                            inferences_aborted_total.labels(
+                                model=model_slug or "unknown",
+                                provider=provider_id or "unknown",
+                            ).inc()
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
                                 error_code="stream_aborted",
@@ -399,6 +420,20 @@ class InferenceRunner:
                 status=resolved_status,
             )
 
+        t_stream_end = time.monotonic()
+        total_duration = t_stream_end - t_stream_start
+
+        ttft_ms: int | None = None
+        if t_first_token is not None:
+            ttft_ms = round((t_first_token - t_stream_start) * 1000)
+
+        tps: float | None = None
+        output_tokens = (usage or {}).get("output_tokens")
+        if output_tokens and total_duration > 0:
+            tps = round(output_tokens / total_duration, 1)
+
+        gen_duration_ms = round(total_duration * 1000)
+
         await emit_fn(ChatStreamEndedEvent(
             correlation_id=correlation_id,
             session_id=session_id,
@@ -407,5 +442,10 @@ class InferenceRunner:
             usage=usage,
             context_status=context_status,
             context_fill_percentage=context_fill_percentage,
+            time_to_first_token_ms=ttft_ms,
+            tokens_per_second=tps,
+            generation_duration_ms=gen_duration_ms,
+            provider_name=provider_name,
+            model_name=model_name,
             timestamp=datetime.now(timezone.utc),
         ))
