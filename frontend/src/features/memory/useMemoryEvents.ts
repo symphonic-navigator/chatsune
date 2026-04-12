@@ -131,6 +131,29 @@ export function useMemoryEvents(personaId: string | null) {
           }
           break
         }
+        case Topics.MEMORY_BODY_UPDATED: {
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'info',
+              title: 'Memory updated',
+              message: `Memory body saved as version ${p.version as number}.`,
+            })
+          }
+          break
+        }
+        case Topics.MEMORY_BODY_VERSION_DELETED: {
+          store().removeBodyVersion(personaId, p.deleted_version as number)
+          if (!_toastedCorrelations.has(event.correlation_id)) {
+            _toastedCorrelations.add(event.correlation_id)
+            notify().addNotification({
+              level: 'info',
+              title: 'Version deleted',
+              message: `Memory body version ${p.deleted_version as number} has been deleted.`,
+            })
+          }
+          break
+        }
       }
     }
 

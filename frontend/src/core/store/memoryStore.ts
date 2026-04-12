@@ -15,6 +15,7 @@ interface MemoryState {
   setCommittedEntries: (personaId: string, entries: JournalEntryDto[]) => void
   setMemoryBody: (personaId: string, body: MemoryBodyDto | null) => void
   setBodyVersions: (personaId: string, versions: MemoryBodyVersionDto[]) => void
+  removeBodyVersion: (personaId: string, version: number) => void
   setContext: (personaId: string, context: MemoryContextDto | null) => void
   setDreaming: (personaId: string, dreaming: boolean) => void
   setExtracting: (personaId: string, extracting: boolean) => void
@@ -48,6 +49,16 @@ export const useMemoryStore = create<MemoryState>((set, _get) => ({
 
   setBodyVersions: (personaId, versions) =>
     set((s) => ({ bodyVersions: { ...s.bodyVersions, [personaId]: versions } })),
+
+  removeBodyVersion: (personaId, version) =>
+    set((s) => ({
+      bodyVersions: {
+        ...s.bodyVersions,
+        [personaId]: (s.bodyVersions[personaId] ?? []).filter(
+          (v) => v.version !== version,
+        ),
+      },
+    })),
 
   setContext: (personaId, context) =>
     set((s) => ({ context: { ...s.context, [personaId]: context } })),
