@@ -121,6 +121,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # Inference lock wait — target user only, drives the wait banner
     Topics.INFERENCE_LOCK_WAIT_STARTED: ([], True),
     Topics.INFERENCE_LOCK_WAIT_ENDED: ([], True),
+    # MCP gateways — target user only
+    Topics.MCP_TOOLS_REGISTERED: ([], True),
+    Topics.MCP_GATEWAY_ERROR: ([], True),
     # Debug — admins only, no target user
     Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
     Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
