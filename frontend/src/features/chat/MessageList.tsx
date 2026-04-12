@@ -7,6 +7,7 @@ import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
 import { WebSearchPills } from './WebSearchPills'
 import { KnowledgePills } from './KnowledgePills'
+import { ToolCallPills } from './ToolCallPills'
 import { ToolCallActivity } from './ToolCallActivity'
 import { ArtefactCard } from '../artefact/ArtefactCard'
 import type { RetrievedChunkDto } from '../../core/types/knowledge'
@@ -151,6 +152,9 @@ export function MessageList({
                 )}
                 {msg.knowledge_context && msg.knowledge_context.length > 0 && (
                   <KnowledgePills items={msg.knowledge_context} />
+                )}
+                {msg.tool_calls && msg.tool_calls.length > 0 && (
+                  <ToolCallPills toolCalls={msg.tool_calls} />
                 )}
                 {msg.artefact_refs && msg.artefact_refs.length > 0 && (
                   <div className="my-2 flex flex-col gap-2">

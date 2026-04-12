@@ -37,6 +37,13 @@ interface ArtefactRef {
   operation: 'create' | 'update'
 }
 
+interface ToolCallRef {
+  tool_call_id: string
+  tool_name: string
+  arguments: Record<string, unknown>
+  success: boolean
+}
+
 interface ChatMessageDto {
   id: string
   session_id: string
@@ -52,6 +59,7 @@ interface ChatMessageDto {
   status?: 'completed' | 'aborted' | 'refused'
   refusal_text?: string | null
   artefact_refs?: ArtefactRef[] | null
+  tool_calls?: ToolCallRef[] | null
   usage?: { input_tokens?: number; output_tokens?: number } | null
   time_to_first_token_ms?: number | null
   tokens_per_second?: number | null
@@ -74,6 +82,7 @@ export type {
   WebSearchContextItem,
   VisionDescriptionSnapshot,
   ArtefactRef,
+  ToolCallRef,
   ToolGroupDto,
   AttachmentRefDto,
 }

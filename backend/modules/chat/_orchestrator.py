@@ -539,6 +539,25 @@ async def run_inference(
 
     active_tools = get_active_definitions(disabled_tool_groups, mcp_registry=mcp_registry) or None
 
+    # Estimate tokens consumed by tool definitions sent with the API call
+    tool_definition_tokens = 0
+    if active_tools:
+        for td in active_tools:
+            tool_definition_tokens += count_tokens(
+                td.name + " " + td.description + " " + json.dumps(td.parameters)
+            )
+
+    # Recalculate budget with tool definitions included so the ampel
+    # status and fill ratio reflect the true context consumption.
+    budget = calculate_budget(
+        max_context_tokens=max_context,
+        system_prompt_tokens=system_prompt_tokens,
+        new_message_tokens=new_msg_tokens,
+        tool_definition_tokens=tool_definition_tokens,
+    )
+    total_tokens_used = system_prompt_tokens + tool_definition_tokens + all_history_tokens
+    fill_ratio = total_tokens_used / max_context if max_context > 0 else 1.0
+
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
@@ -600,6 +619,7 @@ async def run_inference(
         web_search_context: list[dict] | None = None,
         knowledge_context: list[dict] | None = None,
         artefact_refs: list | None = None,
+        tool_calls: list[dict] | None = None,
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
     ) -> str | None:
@@ -614,6 +634,7 @@ async def run_inference(
             web_search_context=web_search_context,
             knowledge_context=knowledge_context,
             artefact_refs=artefact_refs,
+            tool_calls=tool_calls,
             refusal_text=refusal_text,
             status=status,
         )

@@ -7,6 +7,7 @@ from typing import Literal
 class ContextBudget:
     max_context_tokens: int
     system_prompt_tokens: int
+    tool_definition_tokens: int
     safety_reserve: int
     response_reserve: int
     available_for_chat: int
@@ -16,14 +17,22 @@ def calculate_budget(
     max_context_tokens: int,
     system_prompt_tokens: int,
     new_message_tokens: int,
+    tool_definition_tokens: int = 0,
 ) -> ContextBudget:
     """Calculate the token budget for chat message selection."""
     safety_reserve = math.floor(max_context_tokens * 0.165)
     response_reserve = 1000 + new_message_tokens
-    available = max_context_tokens - safety_reserve - system_prompt_tokens - response_reserve
+    available = (
+        max_context_tokens
+        - safety_reserve
+        - system_prompt_tokens
+        - tool_definition_tokens
+        - response_reserve
+    )
     return ContextBudget(
         max_context_tokens=max_context_tokens,
         system_prompt_tokens=system_prompt_tokens,
+        tool_definition_tokens=tool_definition_tokens,
         safety_reserve=safety_reserve,
         response_reserve=response_reserve,
         available_for_chat=max(0, available),

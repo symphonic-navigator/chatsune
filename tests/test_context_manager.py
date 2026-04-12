@@ -15,10 +15,25 @@ def test_calculate_budget():
     )
     # safety = floor(8192 * 0.165) = 1351
     # response_reserve = 1000 + 50 = 1050
-    # available = 8192 - 1351 - 200 - 1050 = 5591
+    # available = 8192 - 1351 - 200 - 0 - 1050 = 5591
     assert budget.available_for_chat == 5591
     assert budget.safety_reserve == 1351
     assert budget.response_reserve == 1050
+    assert budget.tool_definition_tokens == 0
+
+
+def test_calculate_budget_with_tool_tokens():
+    budget = calculate_budget(
+        max_context_tokens=8192,
+        system_prompt_tokens=200,
+        new_message_tokens=50,
+        tool_definition_tokens=300,
+    )
+    # safety = floor(8192 * 0.165) = 1351
+    # response_reserve = 1000 + 50 = 1050
+    # available = 8192 - 1351 - 200 - 300 - 1050 = 5291
+    assert budget.available_for_chat == 5291
+    assert budget.tool_definition_tokens == 300
 
 
 def test_calculate_budget_negative_available_clamped_to_zero():

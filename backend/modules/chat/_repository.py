@@ -9,6 +9,7 @@ from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
     ChatSessionDto,
+    ToolCallRefDto,
     VisionDescriptionSnapshotDto,
     WebSearchContextItemDto,
 )
@@ -312,6 +313,7 @@ class ChatRepository:
         attachment_refs: list[dict] | None = None,
         vision_descriptions_used: list[dict] | None = None,
         artefact_refs: list[dict] | None = None,
+        tool_calls: list[dict] | None = None,
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
     ) -> dict:
@@ -340,6 +342,8 @@ class ChatRepository:
             doc["usage"] = usage
         if artefact_refs:
             doc["artefact_refs"] = artefact_refs
+        if tool_calls:
+            doc["tool_calls"] = tool_calls
         if refusal_text:
             doc["refusal_text"] = refusal_text
         await self._messages.insert_one(doc)
@@ -549,6 +553,20 @@ class ChatRepository:
             if raw_artefact_refs
             else None
         )
+        raw_tool_calls = doc.get("tool_calls")
+        tool_calls = (
+            [
+                ToolCallRefDto(
+                    tool_call_id=tc.get("tool_call_id", ""),
+                    tool_name=tc.get("tool_name", ""),
+                    arguments=tc.get("arguments", {}),
+                    success=tc.get("success", True),
+                )
+                for tc in raw_tool_calls
+            ]
+            if raw_tool_calls
+            else None
+        )
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -564,5 +582,6 @@ class ChatRepository:
             status=doc.get("status", "completed"),
             refusal_text=doc.get("refusal_text"),
             artefact_refs=artefact_refs,
+            tool_calls=tool_calls,
             usage=doc.get("usage"),
         )

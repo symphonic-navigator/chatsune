@@ -102,6 +102,9 @@ class InferenceRunner:
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
         extra_messages: list[CompletionMessage] = []
 
+        # Collected tool call metadata for persistence on the assistant message.
+        all_tool_calls: list[dict] = []
+
         t_stream_start = time.monotonic()
         t_first_token: float | None = None
 
@@ -321,6 +324,13 @@ class InferenceRunner:
                             )
                             artefact_refs.append(ref_for_event.model_dump())
 
+                    all_tool_calls.append({
+                        "tool_call_id": tc.id,
+                        "tool_name": tc.name,
+                        "arguments": arguments,
+                        "success": tool_success,
+                    })
+
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
@@ -416,6 +426,7 @@ class InferenceRunner:
                 web_search_context=web_search_context or None,
                 knowledge_context=knowledge_context or None,
                 artefact_refs=artefact_refs or None,
+                tool_calls=all_tool_calls or None,
                 refusal_text=iter_refusal_text,
                 status=resolved_status,
             )

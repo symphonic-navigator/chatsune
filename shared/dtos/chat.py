@@ -56,6 +56,14 @@ class ArtefactRefDto(BaseModel):
     operation: Literal["create", "update"]
 
 
+class ToolCallRefDto(BaseModel):
+    """Metadata for a single tool call executed during inference."""
+    tool_call_id: str
+    tool_name: str
+    arguments: dict
+    success: bool
+
+
 class ChatMessageDto(BaseModel):
     id: str
     session_id: str
@@ -71,6 +79,7 @@ class ChatMessageDto(BaseModel):
     status: Literal["completed", "aborted", "refused"] = "completed"
     refusal_text: str | None = None
     artefact_refs: list[ArtefactRefDto] | None = None
+    tool_calls: list[ToolCallRefDto] | None = None
     usage: dict | None = None
 
 
