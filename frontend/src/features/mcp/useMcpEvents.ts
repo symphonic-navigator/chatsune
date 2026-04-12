@@ -7,6 +7,7 @@ import { sendMessage } from "../../core/websocket/connection"
 import { mcpToolsList } from "./mcpClient"
 import type { BaseEvent } from "../../core/types/events"
 import { Topics } from "../../core/types/events"
+import type { McpSessionGateway } from "./types"
 
 interface McpGatewayErrorPayload {
   gateway_name: string
@@ -33,7 +34,7 @@ interface McpToolsRegisteredPayload {
  */
 async function registerLocalGateways(): Promise<void> {
   const gateways = useMcpStore.getState().localGateways
-  const localEntries: Array<{ namespace: string; tier: string; tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> }> = []
+  const localEntries: McpSessionGateway[] = []
 
   for (const gw of gateways) {
     if (!gw.enabled) continue
@@ -59,11 +60,11 @@ async function registerLocalGateways(): Promise<void> {
       // Collect for local UI display
       localEntries.push({
         namespace: gw.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
-        tier: "local",
+        tier: "local" as const,
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          server_name: gw.name,
+          server_name: t._gateway_server ?? gw.name,
         })),
         collisions: [],
       })
@@ -113,15 +114,15 @@ export function useMcpEvents() {
 
     const unsubRegistered = eventBus.on(Topics.MCP_TOOLS_REGISTERED, (event: BaseEvent) => {
       const payload = event.payload as unknown as McpToolsRegisteredPayload
-      const entries = payload.gateways.map((gw) => ({
+      const entries: McpSessionGateway[] = payload.gateways.map((gw) => ({
         namespace: gw.namespace,
-        tier: gw.tier,
-        tools: gw.tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          server_name: t.server_name ?? gw.namespace,
+        tier: gw.tier as McpSessionGateway['tier'],
+        tools: gw.tools.map((t: Record<string, unknown>) => ({
+          name: t.name as string,
+          description: (t.description ?? '') as string,
+          server_name: (t.server_name ?? gw.namespace) as string,
         })),
-        collisions: gw.collisions ?? [],
+        collisions: (gw.collisions ?? []) as string[],
       }))
       // The event carries the full registry state (all tiers) — replace entirely
       useMcpStore.getState().setSessionGateways(entries)

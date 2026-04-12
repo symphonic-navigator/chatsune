@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { PersonaDto } from '../../../core/types/persona'
+import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaMcpConfig } from '../../../features/mcp/types'
 import { mcpApi } from '../../../features/mcp/mcpApi'
 import { useMcpStore } from '../../../features/mcp/mcpStore'
 
 interface McpTabProps {
   persona: PersonaDto
-  chakra: { hex: string; hsl: string }
+  chakra: ChakraPaletteEntry
 }
 
 const EMPTY_CONFIG: PersonaMcpConfig = {

@@ -20,6 +20,7 @@ const base: PersonaDto = {
   pinned: false,
   profile_image: null,
   profile_crop: null,
+  mcp_config: null,
   created_at: "2026-01-01",
   updated_at: "2026-01-01",
 }

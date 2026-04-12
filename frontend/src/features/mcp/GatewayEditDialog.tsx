@@ -69,6 +69,8 @@ export function GatewayEditDialog({
       api_key: apiKey.trim() || null,
       enabled,
       disabled_tools: gateway?.disabled_tools ?? [],
+      server_configs: gateway?.server_configs ?? {},
+      tool_overrides: gateway?.tool_overrides ?? [],
     })
   }
 

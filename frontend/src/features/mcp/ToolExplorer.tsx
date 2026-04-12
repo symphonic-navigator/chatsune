@@ -72,7 +72,7 @@ export function ToolExplorer({
   const toolsByServer = useMemo(() => {
     const grouped: Record<string, McpToolDefinition[]> = {}
     for (const tool of tools) {
-      const server = (tool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+      const server = tool._gateway_server ?? '_unknown'
       if (!grouped[server]) grouped[server] = []
       grouped[server].push(tool)
     }
@@ -442,7 +442,7 @@ export function ToolExplorer({
                 {!readOnly && (
                   <button
                     onClick={() => {
-                      const serverName = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const serverName = selectedTool._gateway_server ?? '_unknown'
                       const override = gateway.tool_overrides?.find(
                         o => o.original_name === selectedTool.name && o.server_name === serverName
                       )
@@ -451,18 +451,18 @@ export function ToolExplorer({
                     }}
                     style={{
                       background: (() => {
-                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const sn = selectedTool._gateway_server ?? '_unknown'
                         const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
                         return (o?.hidden ?? false) ? 'rgba(243,139,168,0.15)' : 'rgba(166,218,149,0.15)'
                       })(),
                       border: `1px solid ${(() => {
-                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const sn = selectedTool._gateway_server ?? '_unknown'
                         const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
                         return (o?.hidden ?? false) ? 'rgba(243,139,168,0.3)' : 'rgba(166,218,149,0.3)'
                       })()}`,
                       borderRadius: '4px',
                       color: (() => {
-                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const sn = selectedTool._gateway_server ?? '_unknown'
                         const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
                         return (o?.hidden ?? false) ? 'rgba(243,139,168,0.8)' : 'rgba(166,218,149,0.8)'
                       })(),
@@ -472,7 +472,7 @@ export function ToolExplorer({
                     }}
                   >
                     {(() => {
-                      const serverName = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const serverName = selectedTool._gateway_server ?? '_unknown'
                       const override = gateway.tool_overrides?.find(
                         o => o.original_name === selectedTool.name && o.server_name === serverName
                       )
@@ -505,11 +505,11 @@ export function ToolExplorer({
                     type="text"
                     placeholder={selectedTool.name}
                     value={(() => {
-                      const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const sn = selectedTool._gateway_server ?? '_unknown'
                       return gateway.tool_overrides?.find(o => o.original_name === selectedTool.name && o.server_name === sn)?.display_name ?? ''
                     })()}
                     onChange={e => {
-                      const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const sn = selectedTool._gateway_server ?? '_unknown'
                       onRenameTool(selectedTool.name, sn, e.target.value || null)
                     }}
                     style={{
