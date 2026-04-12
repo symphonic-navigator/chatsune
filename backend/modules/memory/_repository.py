@@ -270,6 +270,24 @@ class MemoryRepository:
             entries_processed=source["entries_processed"],
         )
 
+    async def delete_memory_body_version(
+        self, user_id: str, persona_id: str, *, version: int,
+    ) -> None:
+        """Delete a specific memory body version. Raises ValueError if it is the current (latest) version."""
+        latest = await self._bodies.find_one(
+            {"user_id": user_id, "persona_id": persona_id},
+            sort=[("version", -1)],
+        )
+        if latest and latest["version"] == version:
+            raise ValueError("Cannot delete the current memory body version")
+
+        result = await self._bodies.delete_one(
+            {"user_id": user_id, "persona_id": persona_id, "version": version},
+        )
+        if result.deleted_count == 0:
+            msg = f"Memory body version {version} not found for persona {persona_id}"
+            raise ValueError(msg)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
