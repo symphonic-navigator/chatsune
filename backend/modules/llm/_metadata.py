@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
+from backend.modules.metrics import models_available
 from backend.modules.llm._provider_status import set_status
 from shared.dtos.llm import FaultyProviderDto, ModelMetaDto
 from shared.events.llm import (
@@ -119,8 +120,10 @@ async def refresh_all_providers(
         try:
             models = await _fetch_and_cache_provider(provider_id, redis, adapter)
             all_models.extend(models)
+            models_available.labels(provider=provider_id).set(len(models))
         except NotImplementedError:
             _log.debug("Provider %s has not implemented fetch_models", provider_id)
+            models_available.labels(provider=provider_id).set(0)
             provider_failed = True
         except Exception as exc:
             _log.warning("Failed to fetch models from %s: %s", provider_id, exc)
@@ -129,6 +132,7 @@ async def refresh_all_providers(
                 display_name=display_names.get(provider_id, provider_id),
                 error_message=str(exc),
             ))
+            models_available.labels(provider=provider_id).set(0)
             provider_failed = True
 
         available = (not provider_failed) and len(models) > 0
