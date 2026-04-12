@@ -18,6 +18,9 @@ export default function MemoryBodySection({ personaId }: Props) {
   const [versions, setVersions] = useState<MemoryBodyVersionDto[]>([])
   const [viewingVersion, setViewingVersion] = useState<MemoryBodyDto | null>(null)
   const [loadingVersion, setLoadingVersion] = useState<number | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [editContent, setEditContent] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const loadBodyAndVersions = async (cancelled: { value: boolean }) => {
     try {
@@ -87,6 +90,49 @@ export default function MemoryBodySection({ personaId }: Props) {
     }
   }
 
+  const handleStartEdit = () => {
+    if (!body) return
+    setEditContent(body.content)
+    setEditing(true)
+  }
+
+  const handleSaveEdit = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await memoryApi.updateBody(personaId, editContent)
+      setEditing(false)
+      // Reload body and versions to reflect new version
+      cancelRef.current.value = true
+      cancelRef.current = { value: false }
+      loadBodyAndVersions(cancelRef.current)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditing(false)
+    setEditContent('')
+  }
+
+  const [deleteBusy, setDeleteBusy] = useState(false)
+
+  const handleDeleteVersion = async () => {
+    if (!viewingVersion || deleteBusy) return
+    setDeleteBusy(true)
+    try {
+      await memoryApi.deleteBodyVersion(personaId, viewingVersion.version)
+      setViewingVersion(null)
+      // Reload versions
+      cancelRef.current.value = true
+      cancelRef.current = { value: false }
+      loadBodyAndVersions(cancelRef.current)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   const displayed = viewingVersion ?? body
   const isViewingOld = viewingVersion !== null && body !== null && viewingVersion.version !== body.version
 
@@ -98,6 +144,14 @@ export default function MemoryBodySection({ personaId }: Props) {
           <span className="text-[11px] text-white/30">
             {displayed.token_count} / {TOKEN_LIMIT} tokens
           </span>
+        )}
+        {body && !editing && !isViewingOld && !isDreaming && (
+          <button
+            onClick={handleStartEdit}
+            className="ml-auto px-2.5 py-1 rounded text-[11px] text-white/40 hover:text-white/60 hover:bg-white/5 transition-colors"
+          >
+            Edit
+          </button>
         )}
         {isDreaming && (
           <span className="flex items-center gap-1.5 text-[11px] text-purple-400">
@@ -125,6 +179,13 @@ export default function MemoryBodySection({ personaId }: Props) {
                 Rollback to this version
               </button>
               <button
+                onClick={handleDeleteVersion}
+                disabled={deleteBusy}
+                className="px-2.5 py-1 rounded text-[11px] bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+              >
+                Delete this version
+              </button>
+              <button
                 onClick={() => setViewingVersion(null)}
                 className="px-2.5 py-1 rounded text-[11px] text-white/40 hover:text-white/60 transition-colors"
               >
@@ -134,7 +195,30 @@ export default function MemoryBodySection({ personaId }: Props) {
           </div>
         )}
 
-        {displayed ? (
+        {editing ? (
+          <div className="space-y-2">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full min-h-[200px] bg-white/5 border border-white/10 rounded-md p-3 text-sm text-white/80 leading-relaxed font-sans resize-y focus:outline-none focus:border-white/20"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={handleCancelEdit}
+                className="px-3 py-1.5 rounded text-[11px] text-white/40 hover:text-white/60 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="px-3 py-1.5 rounded text-[11px] bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 disabled:opacity-40 transition-colors"
+              >
+                {saving ? 'Saving...' : 'Save as new version'}
+              </button>
+            </div>
+          </div>
+        ) : displayed ? (
           <pre className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed font-sans">
             {displayed.content}
           </pre>
