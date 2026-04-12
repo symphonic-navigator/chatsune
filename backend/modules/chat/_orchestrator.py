@@ -325,7 +325,7 @@ async def run_inference(
         return
 
     provider_id, model_slug = model_unique_id.split(":", 1)
-    from backend.modules.llm._registry import PROVIDER_DISPLAY_NAMES
+    from backend.modules.llm import PROVIDER_DISPLAY_NAMES
     provider_display_name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id)
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:

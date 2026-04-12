@@ -28,7 +28,7 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._credentials import CredentialRepository
 from backend.modules.llm._curation import CurationRepository
 from backend.modules.llm._handlers import router
-from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS
+from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS, PROVIDER_DISPLAY_NAMES
 from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.modules.llm._metadata import get_models, refresh_all_providers
 from backend.database import get_db, get_redis
