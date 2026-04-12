@@ -63,11 +63,19 @@ export const memoryApi = {
   rollbackBody: (personaId: string, toVersion: number) =>
     api.post<void>(`/api/memory/${personaId}/body/rollback`, { to_version: toVersion }),
 
+  updateBody: (personaId: string, content: string) =>
+    api.put<{ version: number; token_count: number }>(`/api/memory/${personaId}/body`, { content }),
+
+  deleteBodyVersion: (personaId: string, version: number) =>
+    api.delete<void>(`/api/memory/${personaId}/body/versions/${version}`),
+
   getContext: (personaId: string) =>
     api.get<MemoryContextDto>(`/api/memory/${personaId}/context`),
 
-  triggerExtraction: (personaId: string) =>
-    api.post<void>(`/api/memory/${personaId}/extract`),
+  triggerExtraction: (personaId: string, force = false) => {
+    const query = force ? '?force=true' : ''
+    return api.post<void>(`/api/memory/${personaId}/extract${query}`)
+  },
 
   triggerDream: (personaId: string) =>
     api.post<void>(`/api/memory/${personaId}/dream`),

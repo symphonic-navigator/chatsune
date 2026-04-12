@@ -78,6 +78,8 @@ export const Topics = {
   MEMORY_EXTRACTION_COMPLETED: "memory.extraction.completed",
   MEMORY_EXTRACTION_FAILED: "memory.extraction.failed",
   MEMORY_BODY_ROLLBACK: "memory.body.rollback",
+  MEMORY_BODY_UPDATED: "memory.body.updated",
+  MEMORY_BODY_VERSION_DELETED: "memory.body.version_deleted",
   KNOWLEDGE_LIBRARY_CREATED: "knowledge.library.created",
   KNOWLEDGE_LIBRARY_UPDATED: "knowledge.library.updated",
   KNOWLEDGE_LIBRARY_DELETED: "knowledge.library.deleted",
