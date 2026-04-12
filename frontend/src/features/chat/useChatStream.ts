@@ -106,6 +106,7 @@ export function handleChatEvent(
       const knowledgeContext = getStore().streamingKnowledgeContext
       const artefactRefs = getStore().streamingArtefactRefs
       const refusalText = getStore().streamingRefusalText
+      const toolCalls = getStore().activeToolCalls
       if (backendMessageId && (content || thinking || messageStatus === 'refused')) {
         getStore().finishStreaming(
           {
@@ -119,6 +120,14 @@ export function handleChatEvent(
             web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
             knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
             artefact_refs: artefactRefs.length > 0 ? artefactRefs : null,
+            tool_calls: toolCalls.length > 0
+              ? toolCalls.map((tc) => ({
+                  tool_call_id: tc.id,
+                  tool_name: tc.toolName,
+                  arguments: tc.arguments,
+                  success: tc.status === 'done',
+                }))
+              : null,
             refusal_text: refusalText || null,
             created_at: new Date().toISOString(),
             status: messageStatus,
