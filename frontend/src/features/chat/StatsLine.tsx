@@ -17,7 +17,7 @@ function formatTtft(ms: number): string {
 export function StatsLine({
   timeToFirstTokenMs,
   tokensPerSecond,
-  generationDurationMs,
+  // generationDurationMs reserved for future use
   outputTokens,
   providerName,
   modelName,
