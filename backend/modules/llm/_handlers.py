@@ -481,15 +481,14 @@ async def get_provider_status(user: dict = Depends(require_active_session)):
     return {"statuses": statuses}
 
 
-@router.get("/admin/ollama-local/ps")
-async def ollama_local_ps(user: dict = Depends(require_admin)):
-    """Proxy to Ollama Local /api/ps — returns currently running models."""
+async def _proxy_ollama_local(path: str) -> dict:
+    """Forward a GET request to the local Ollama instance."""
     base_url = PROVIDER_BASE_URLS.get("ollama_local")
     if not base_url:
         raise HTTPException(status_code=404, detail="ollama_local provider not configured")
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
-            resp = await client.get(f"{base_url}/api/ps")
+            resp = await client.get(f"{base_url}{path}")
             resp.raise_for_status()
             return resp.json()
     except httpx.ConnectError:
@@ -498,22 +497,15 @@ async def ollama_local_ps(user: dict = Depends(require_admin)):
         raise HTTPException(status_code=502, detail=f"Ollama returned {exc.response.status_code}")
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Ollama Local request timed out")
+
+
+@router.get("/admin/ollama-local/ps")
+async def ollama_local_ps(user: dict = Depends(require_admin)):
+    """Proxy to Ollama Local /api/ps — returns currently running models."""
+    return await _proxy_ollama_local("/api/ps")
 
 
 @router.get("/admin/ollama-local/tags")
 async def ollama_local_tags(user: dict = Depends(require_admin)):
     """Proxy to Ollama Local /api/tags — returns all available models."""
-    base_url = PROVIDER_BASE_URLS.get("ollama_local")
-    if not base_url:
-        raise HTTPException(status_code=404, detail="ollama_local provider not configured")
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
-            resp = await client.get(f"{base_url}/api/tags")
-            resp.raise_for_status()
-            return resp.json()
-    except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="Cannot connect to Ollama Local")
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"Ollama returned {exc.response.status_code}")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Ollama Local request timed out")
+    return await _proxy_ollama_local("/api/tags")

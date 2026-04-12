@@ -42,7 +42,7 @@ export function OllamaTab() {
           setError(null)
           setLastUpdated(new Date())
         } catch (err) {
-          if (err instanceof ApiError && (err.status === 503 || err.status === 502 || err.status === 504)) {
+          if (err instanceof ApiError && [404, 502, 503, 504].includes(err.status)) {
             setError("No connection to Ollama Local")
           } else {
             setError(err instanceof Error ? err.message : "Failed to fetch data")
