@@ -16,8 +16,9 @@ interface McpGatewayErrorPayload {
 
 interface McpGatewayToolEntry {
   namespace: string
-  tier: string
-  tools: Array<{ name: string; description: string }>
+  tier: 'admin' | 'remote' | 'local'
+  tools: Array<{ name: string; description: string; server_name: string }>
+  collisions: string[]
 }
 
 interface McpToolsRegisteredPayload {
@@ -62,8 +63,9 @@ async function registerLocalGateways(): Promise<void> {
         tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          inputSchema: t.inputSchema ?? {},
+          server_name: gw.name,
         })),
+        collisions: [],
       })
     } catch {
       // Gateway unreachable — skip silently
@@ -71,9 +73,9 @@ async function registerLocalGateways(): Promise<void> {
   }
 
   if (localEntries.length > 0) {
-    // Merge local tools into session tools (keep existing admin/remote entries)
-    const existing = useMcpStore.getState().sessionTools.filter((e) => e.tier !== "local")
-    useMcpStore.getState().setSessionTools([...existing, ...localEntries])
+    // Merge local gateways into session gateways (keep existing admin/remote entries)
+    const existing = useMcpStore.getState().sessionGateways.filter((e) => e.tier !== "local")
+    useMcpStore.getState().setSessionGateways([...existing, ...localEntries])
   }
 }
 
@@ -117,11 +119,12 @@ export function useMcpEvents() {
         tools: gw.tools.map((t) => ({
           name: t.name,
           description: t.description,
-          inputSchema: {},
+          server_name: t.server_name ?? gw.namespace,
         })),
+        collisions: gw.collisions ?? [],
       }))
       // The event carries the full registry state (all tiers) — replace entirely
-      useMcpStore.getState().setSessionTools(entries)
+      useMcpStore.getState().setSessionGateways(entries)
     })
 
     return () => {

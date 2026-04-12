@@ -22,7 +22,7 @@ export function ToolPopover({ disabledToolGroups, onClose }: ToolPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const [toolGroups, setToolGroups] = useState<ToolGroupDto[]>([])
   const [query, setQuery] = useState('')
-  const sessionTools = useMcpStore((s) => s.sessionTools)
+  const sessionTools = useMcpStore((s) => s.sessionGateways)
 
   useEffect(() => {
     chatApi.listToolGroups().then(setToolGroups).catch(console.error)

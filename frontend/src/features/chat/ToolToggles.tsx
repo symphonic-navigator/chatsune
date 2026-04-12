@@ -40,11 +40,11 @@ export function ToolToggles({
     [sessionId, disabledToolGroups, onToggle, disabled, modelSupportsTools],
   )
 
-  const { localGateways, sessionTools } = useMcpStore()
+  const { localGateways, sessionGateways } = useMcpStore()
   // Count total MCP tools from session
-  const mcpToolCount = sessionTools.reduce((sum, g) => sum + g.tools.length, 0)
+  const mcpToolCount = sessionGateways.reduce((sum, g) => sum + g.tools.length, 0)
   // MCP toggle is visible if there are any configured gateways (local or remote discovered)
-  const hasMcpGateways = localGateways.some((gw) => gw.enabled) || sessionTools.length > 0
+  const hasMcpGateways = localGateways.some((gw) => gw.enabled) || sessionGateways.length > 0
   const mcpEnabled = modelSupportsTools && !disabledToolGroups.includes('mcp')
 
   const reasoningEnabled = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault

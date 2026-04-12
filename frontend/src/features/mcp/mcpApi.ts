@@ -1,5 +1,5 @@
 import { api } from '../../core/api/client'
-import type { McpGatewayConfig } from './types'
+import type { McpGatewayConfig, PersonaMcpConfig } from './types'
 
 export const mcpApi = {
   // User remote gateways
@@ -27,4 +27,8 @@ export const mcpApi = {
 
   deleteAdminGateway: (id: string) =>
     api.delete(`/api/admin/mcp/gateways/${id}`),
+
+  // Persona MCP config
+  updatePersonaMcp: (personaId: string, config: PersonaMcpConfig) =>
+    api.patch(`/api/personas/${personaId}/mcp`, config),
 }

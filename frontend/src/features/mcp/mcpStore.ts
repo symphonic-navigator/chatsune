@@ -1,26 +1,28 @@
 import { create } from 'zustand'
-import type { McpGatewayConfig, McpToolDefinition } from './types'
+import type { McpGatewayConfig, McpSessionGateway } from './types'
 
 const LOCAL_STORAGE_KEY = 'chatsune:mcp_local_gateways'
-
-interface SessionToolEntry {
-  namespace: string
-  tier: string
-  tools: McpToolDefinition[]
-}
 
 interface McpState {
   /** User's local gateways (localStorage, this device only) */
   localGateways: McpGatewayConfig[]
-  /** All discovered MCP tools for current session (set after discovery) */
-  sessionTools: SessionToolEntry[]
+  /** All discovered MCP gateways for current session (set after discovery) */
+  sessionGateways: McpSessionGateway[]
 
   loadLocalGateways: () => void
   addLocalGateway: (gw: McpGatewayConfig) => void
   updateLocalGateway: (id: string, updates: Partial<McpGatewayConfig>) => void
   deleteLocalGateway: (id: string) => void
-  setSessionTools: (tools: SessionToolEntry[]) => void
-  clearSessionTools: () => void
+  setSessionGateways: (gateways: McpSessionGateway[]) => void
+  clearSessionGateways: () => void
+}
+
+function migrateGateway(gw: McpGatewayConfig): McpGatewayConfig {
+  return {
+    ...gw,
+    server_configs: gw.server_configs ?? {},
+    tool_overrides: gw.tool_overrides ?? [],
+  }
 }
 
 function readLocalGateways(): McpGatewayConfig[] {
@@ -38,10 +40,10 @@ function writeLocalGateways(gateways: McpGatewayConfig[]): void {
 
 export const useMcpStore = create<McpState>((set, get) => ({
   localGateways: [],
-  sessionTools: [],
+  sessionGateways: [],
 
   loadLocalGateways: () => {
-    set({ localGateways: readLocalGateways() })
+    set({ localGateways: readLocalGateways().map(migrateGateway) })
   },
 
   addLocalGateway: (gw) => {
@@ -64,6 +66,6 @@ export const useMcpStore = create<McpState>((set, get) => ({
     set({ localGateways: updated })
   },
 
-  setSessionTools: (tools) => set({ sessionTools: tools }),
-  clearSessionTools: () => set({ sessionTools: [] }),
+  setSessionGateways: (gateways) => set({ sessionGateways: gateways }),
+  clearSessionGateways: () => set({ sessionGateways: [] }),
 }))

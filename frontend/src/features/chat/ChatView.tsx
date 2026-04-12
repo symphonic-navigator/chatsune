@@ -248,7 +248,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const toggleArtefactSidebar = useArtefactStore((s) => s.toggleSidebar)
   const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? EMPTY_MEMORY_ENTRIES)
   const memoryCount = memoryEntries.length
-  const mcpSessionTools = useMcpStore((s) => s.sessionTools)
+  const mcpSessionTools = useMcpStore((s) => s.sessionGateways)
   const mcpToolCount = mcpSessionTools.reduce((acc, e) => acc + e.tools.length, 0)
   // totalToolCount is computed once tool groups are loaded inside ToolPopover;
   // here we use MCP count only for the badge — built-in count is always > 0 in practice.
