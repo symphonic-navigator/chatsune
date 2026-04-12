@@ -73,8 +73,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 }))
 
 // Wire up the API client to use the auth store
+import { useEventStore } from "./eventStore"
+
 configureClient({
   getAccessToken: () => useAuthStore.getState().accessToken,
   setAccessToken: (token: string) => useAuthStore.getState().setToken(token),
   onAuthFailure: () => useAuthStore.getState().clear(),
+  onBackendUnavailable: () => useEventStore.getState().setBackendAvailable(false),
 })

@@ -1,7 +1,9 @@
 import { useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useAuthStore } from "./core/store/authStore"
+import { useEventStore } from "./core/store/eventStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
+import BackendUnavailablePage from "./app/pages/BackendUnavailablePage"
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
@@ -65,6 +67,7 @@ function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
 function AppRoutes() {
   useBootstrap()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const backendAvailable = useEventStore((s) => s.backendAvailable)
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -74,6 +77,8 @@ function AppRoutes() {
       unregisterClientTool()
     }
   }, [isAuthenticated])
+
+  if (!backendAvailable) return <BackendUnavailablePage />
 
   return (
     <>

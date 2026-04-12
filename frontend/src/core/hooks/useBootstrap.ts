@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react"
 import { authApi } from "../api/auth"
 import { meApi } from "../api/meApi"
+import { ApiError } from "../api/client"
 import { useAuthStore } from "../store/authStore"
+import { useEventStore } from "../store/eventStore"
 
 /** Checks setup status, then attempts a silent token refresh if setup is complete. */
 export function useBootstrap() {
@@ -36,8 +38,13 @@ export function useBootstrap() {
         } catch {
           // No valid session — stay logged out
         }
-      } catch {
-        // Status endpoint failed — assume setup is complete, show login
+      } catch (err) {
+        // Backend unreachable — show unavailable page instead of login
+        if (err instanceof ApiError && err.status === 0) {
+          useEventStore.getState().setBackendAvailable(false)
+          return
+        }
+        // Other error — assume setup is complete, show login
         setSetupComplete(true)
       } finally {
         setInitialised()

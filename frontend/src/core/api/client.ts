@@ -3,24 +3,31 @@ type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 let getAccessToken: () => string | null = () => null
 let setAccessToken: (token: string) => void = () => {}
 let onAuthFailure: () => void = () => {}
+let onBackendUnavailable: () => void = () => {}
 
 export function configureClient(config: {
   getAccessToken: () => string | null
   setAccessToken: (token: string) => void
   onAuthFailure: () => void
+  onBackendUnavailable?: () => void
 }) {
   getAccessToken = config.getAccessToken
   setAccessToken = config.setAccessToken
   onAuthFailure = config.onAuthFailure
+  onBackendUnavailable = config.onBackendUnavailable ?? (() => {})
 }
 
 function baseUrl(): string {
   return import.meta.env.VITE_API_URL ?? ""
 }
 
-let currentRefresh: Promise<boolean> | null = null
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError && (err.message === "Failed to fetch" || err.message === "Load failed")
+}
 
-async function refreshToken(): Promise<boolean> {
+let currentRefresh: Promise<boolean | "network_error"> | null = null
+
+async function refreshToken(): Promise<boolean | "network_error"> {
   // Share the in-flight refresh promise so parallel 401s coalesce into a single refresh call
   if (currentRefresh) return currentRefresh
   currentRefresh = (async () => {
@@ -33,8 +40,8 @@ async function refreshToken(): Promise<boolean> {
       const data = await res.json()
       setAccessToken(data.access_token)
       return true
-    } catch {
-      return false
+    } catch (err) {
+      return isNetworkError(err) ? "network_error" : false
     } finally {
       currentRefresh = null
     }
@@ -61,16 +68,25 @@ export async function apiRequest<T>(
     }
   }
 
-  let res = await fetch(`${baseUrl()}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  })
+  let res: Response
+  try {
+    res = await fetch(`${baseUrl()}${path}`, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "include",
+    })
+  } catch (err) {
+    if (isNetworkError(err)) {
+      onBackendUnavailable()
+      throw new ApiError(0, "Backend unreachable")
+    }
+    throw err
+  }
 
   if (res.status === 401 && !skipAuth) {
     const refreshed = await refreshToken()
-    if (refreshed) {
+    if (refreshed === true) {
       const token = getAccessToken()
       if (token) {
         headers["Authorization"] = `Bearer ${token}`
@@ -81,6 +97,9 @@ export async function apiRequest<T>(
         body: body !== undefined ? JSON.stringify(body) : undefined,
         credentials: "include",
       })
+    } else if (refreshed === "network_error") {
+      onBackendUnavailable()
+      throw new ApiError(0, "Backend unreachable")
     } else {
       onAuthFailure()
       throw new ApiError(401, "Authentication failed")

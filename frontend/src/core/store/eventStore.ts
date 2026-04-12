@@ -35,19 +35,24 @@ interface EventState {
   status: ConnectionStatus
   lastSequence: string | null
   connectionId: string | null
+  /** Whether the backend is reachable. Set to false on network errors. */
+  backendAvailable: boolean
   setStatus: (status: ConnectionStatus) => void
   setLastSequence: (seq: string | null) => void
   setConnectionId: (id: string | null) => void
+  setBackendAvailable: (available: boolean) => void
 }
 
 export const useEventStore = create<EventState>((set) => ({
   status: "disconnected",
   lastSequence: readPersistedSequence(),
   connectionId: null,
+  backendAvailable: true,
   setStatus: (status) => set({ status }),
   setLastSequence: (lastSequence) => {
     writePersistedSequence(lastSequence)
     set({ lastSequence })
   },
   setConnectionId: (connectionId) => set({ connectionId }),
+  setBackendAvailable: (backendAvailable) => set({ backendAvailable }),
 }))

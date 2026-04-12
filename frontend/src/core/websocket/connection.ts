@@ -169,8 +169,14 @@ async function handleTokenRefresh(): Promise<boolean> {
       intentionalClose = false
       connect()
       return true
-    } catch {
-      useAuthStore.getState().clear()
+    } catch (err) {
+      // Network error = backend unreachable, don't clear auth state
+      if (err instanceof TypeError && (err.message === "Failed to fetch" || err.message === "Load failed")) {
+        const { useEventStore } = await import("../store/eventStore")
+        useEventStore.getState().setBackendAvailable(false)
+      } else {
+        useAuthStore.getState().clear()
+      }
       return false
     } finally {
       currentRefresh = null
