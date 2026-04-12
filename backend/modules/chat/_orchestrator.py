@@ -46,7 +46,10 @@ from backend.modules.storage import (
     get_cached_vision_description,
     store_vision_description,
 )
-from backend.modules.tools import execute_tool, get_active_definitions
+from backend.modules.tools import execute_tool, get_active_definitions, set_mcp_registry, get_mcp_registry
+from backend.modules.tools._mcp_discovery import discover_backend_gateways
+from backend.modules.user import get_user_mcp_gateways, get_admin_mcp_gateways
+from shared.dtos.mcp import McpGatewayConfigDto
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
@@ -470,7 +473,26 @@ async def run_inference(
 
     # Resolve active tool definitions based on session toggle state
     disabled_tool_groups = session.get("disabled_tool_groups", [])
-    active_tools = get_active_definitions(disabled_tool_groups) or None
+
+    # MCP discovery: build or retrieve per-connection registry
+    mcp_registry = get_mcp_registry(connection_id) if connection_id else None
+    if mcp_registry is None and connection_id and "mcp" not in set(disabled_tool_groups):
+        # First inference on this connection: discover backend MCP gateways
+        admin_gw_raw = await get_admin_mcp_gateways()
+        user_gw_raw = await get_user_mcp_gateways(user_id)
+        admin_gateways = [McpGatewayConfigDto(**gw) for gw in admin_gw_raw]
+        user_gateways = [McpGatewayConfigDto(**gw) for gw in user_gw_raw]
+
+        mcp_registry = await discover_backend_gateways(
+            admin_gateways=admin_gateways,
+            user_remote_gateways=user_gateways,
+            session_id=session_id,
+            user_id=user_id,
+            correlation_id=correlation_id,
+        )
+        set_mcp_registry(connection_id, mcp_registry)
+
+    active_tools = get_active_definitions(disabled_tool_groups, mcp_registry=mcp_registry) or None
 
     request = CompletionRequest(
         model=model_slug,

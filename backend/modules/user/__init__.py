@@ -58,6 +58,21 @@ async def get_user_about_me(user_id: str) -> str | None:
     return await repo.get_about_me(user_id)
 
 
+async def get_user_mcp_gateways(user_id: str) -> list[dict]:
+    """Return the user's remote MCP gateway configurations."""
+    repo = UserRepository(get_db())
+    return await repo.get_mcp_gateways(user_id)
+
+
+async def get_admin_mcp_gateways() -> list[dict]:
+    """Return admin-configured MCP gateways. Used by the chat orchestrator."""
+    db = get_db()
+    doc = await db["admin_settings"].find_one({"_id": "mcp"})
+    if not doc:
+        return []
+    return doc.get("gateways", [])
+
+
 async def get_username(user_id: str) -> str | None:
     """Return the username for a user_id, or None if not found.
 
@@ -96,4 +111,6 @@ __all__ = [
     "get_user_about_me",
     "get_username",
     "get_usernames",
+    "get_user_mcp_gateways",
+    "get_admin_mcp_gateways",
 ]

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { chatApi, type ToolGroupDto } from '../../core/api/chat'
+import { useMcpStore } from '../mcp/mcpStore'
 
 interface ToolTogglesProps {
   sessionId: string
@@ -38,6 +39,13 @@ export function ToolToggles({
     },
     [sessionId, disabledToolGroups, onToggle, disabled, modelSupportsTools],
   )
+
+  const { localGateways, sessionTools } = useMcpStore()
+  // Count total MCP tools from session
+  const mcpToolCount = sessionTools.reduce((sum, g) => sum + g.tools.length, 0)
+  // MCP toggle is visible if there are any configured gateways (local or remote discovered)
+  const hasMcpGateways = localGateways.some((gw) => gw.enabled) || sessionTools.length > 0
+  const mcpEnabled = modelSupportsTools && !disabledToolGroups.includes('mcp')
 
   const reasoningEnabled = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
 
@@ -101,6 +109,46 @@ export function ToolToggles({
           </button>
         )
       })}
+      {hasMcpGateways && (
+        <>
+          <div
+            className="mx-0.5 h-3.5 w-px"
+            style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+          />
+          <button
+            type="button"
+            onClick={() => handleToggle('mcp')}
+            disabled={disabled || !modelSupportsTools}
+            className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+            style={{
+              color: mcpEnabled ? 'rgba(166,218,149,0.9)' : 'rgba(255,255,255,0.2)',
+              fontFamily: "'Courier New', monospace",
+            }}
+            title="MCP tools from connected gateways"
+          >
+            <span
+              className="inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                backgroundColor: mcpEnabled
+                  ? 'rgba(166,218,149,0.9)'
+                  : 'rgba(255,255,255,0.15)',
+              }}
+            />
+            MCP
+            {mcpEnabled && mcpToolCount > 0 && (
+              <span
+                style={{
+                  color: 'rgba(166,218,149,0.5)',
+                  fontSize: '9px',
+                  marginLeft: '2px',
+                }}
+              >
+                {mcpToolCount}
+              </span>
+            )}
+          </button>
+        </>
+      )}
     </div>
   )
 }

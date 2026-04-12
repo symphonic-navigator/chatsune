@@ -7,6 +7,8 @@ import type { BaseEvent } from '../../core/types/events'
 import { eventBus } from '../../core/websocket/eventBus'
 import { sendMessage } from '../../core/websocket/connection'
 import { runSandbox } from './sandboxHost'
+import { mcpToolsCall } from '../mcp/mcpClient'
+import { useMcpStore } from '../mcp/mcpStore'
 
 const MAX_OUTPUT_BYTES = 4096
 
@@ -40,6 +42,12 @@ export function registerClientToolHandler(): () => void {
 }
 
 async function handleDispatch(ev: DispatchPayload): Promise<void> {
+  // Check if this is an MCP tool (contains __ separator)
+  if (ev.tool_name.includes('__')) {
+    await handleMcpDispatch(ev)
+    return
+  }
+
   if (ev.tool_name !== 'calculate_js') {
     sendResult(ev.tool_call_id, {
       stdout: '',
@@ -61,6 +69,43 @@ async function handleDispatch(ev: DispatchPayload): Promise<void> {
     sendResult(ev.tool_call_id, {
       stdout: '',
       error: `Sandbox host crashed: ${e instanceof Error ? e.message : String(e)}`,
+    })
+  }
+}
+
+async function handleMcpDispatch(ev: DispatchPayload): Promise<void> {
+  const separatorIdx = ev.tool_name.indexOf('__')
+  const namespace = ev.tool_name.substring(0, separatorIdx)
+  const originalToolName = ev.tool_name.substring(separatorIdx + 2)
+
+  // Find the local gateway for this namespace
+  const localGateways = useMcpStore.getState().localGateways
+  const gateway = localGateways.find((gw) => {
+    const normalised = gw.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+    return normalised === namespace
+  })
+
+  if (!gateway) {
+    sendResult(ev.tool_call_id, {
+      stdout: '',
+      error: `No local MCP gateway found for namespace '${namespace}'`,
+    })
+    return
+  }
+
+  try {
+    const result = await mcpToolsCall(
+      gateway.url,
+      gateway.api_key,
+      originalToolName,
+      ev.arguments as Record<string, unknown>,
+      ev.timeout_ms,
+    )
+    sendResult(ev.tool_call_id, result)
+  } catch (e) {
+    sendResult(ev.tool_call_id, {
+      stdout: '',
+      error: `MCP call failed: ${e instanceof Error ? e.message : String(e)}`,
     })
   }
 }
