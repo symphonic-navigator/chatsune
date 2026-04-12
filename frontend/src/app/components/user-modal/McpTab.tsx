@@ -3,7 +3,7 @@ import { mcpApi } from '../../../features/mcp/mcpApi'
 import { useMcpStore } from '../../../features/mcp/mcpStore'
 import { GatewayEditDialog } from '../../../features/mcp/GatewayEditDialog'
 import { ToolExplorer } from '../../../features/mcp/ToolExplorer'
-import type { McpGatewayConfig } from '../../../features/mcp/types'
+import type { McpGatewayConfig, McpServerConfig } from '../../../features/mcp/types'
 
 // ─── colour tokens ────────────────────────────────────────────────────────────
 const REMOTE_ACCENT = 'rgba(166,218,149,1)'
@@ -161,22 +161,51 @@ export function McpTab() {
     fetchAdmin()
   }, [fetchRemote, fetchAdmin, loadLocalGateways])
 
-  // ── handle ToolExplorer toggle (disabled_tools) ──
-  function handleToggleTool(gateway: McpGatewayConfig, tier: 'remote' | 'local', toolName: string, disable: boolean) {
-    const updated: McpGatewayConfig = {
-      ...gateway,
-      disabled_tools: disable
-        ? [...gateway.disabled_tools, toolName]
-        : gateway.disabled_tools.filter((t) => t !== toolName),
-    }
-    if (tier === 'remote') {
-      mcpApi.updateGateway(gateway.id, { disabled_tools: updated.disabled_tools }).then(() => {
-        setRemoteGateways((prev) => prev.map((g) => (g.id === gateway.id ? updated : g)))
-      })
-      // optimistic update
-      setRemoteGateways((prev) => prev.map((g) => (g.id === gateway.id ? updated : g)))
+  // ── handle ToolExplorer toggle (tool_overrides) ──
+  function handleToggleTool(gateway: McpGatewayConfig, tier: 'remote' | 'local', toolName: string, serverName: string, hidden: boolean) {
+    const overrides = [...(gateway.tool_overrides ?? [])]
+    const idx = overrides.findIndex(o => o.original_name === toolName && o.server_name === serverName)
+    if (idx >= 0) {
+      overrides[idx] = { ...overrides[idx], hidden }
     } else {
-      useMcpStore.getState().updateLocalGateway(gateway.id, { disabled_tools: updated.disabled_tools })
+      overrides.push({ original_name: toolName, server_name: serverName, display_name: null, hidden })
+    }
+
+    if (tier === 'remote') {
+      mcpApi.updateGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchRemote())
+      setRemoteGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
+    } else {
+      useMcpStore.getState().updateLocalGateway(gateway.id, { tool_overrides: overrides })
+    }
+  }
+
+  function handleRenameTool(gateway: McpGatewayConfig, tier: 'remote' | 'local', originalName: string, serverName: string, displayName: string | null) {
+    const overrides = [...(gateway.tool_overrides ?? [])]
+    const idx = overrides.findIndex(o => o.original_name === originalName && o.server_name === serverName)
+    if (idx >= 0) {
+      overrides[idx] = { ...overrides[idx], display_name: displayName }
+    } else {
+      overrides.push({ original_name: originalName, server_name: serverName, display_name: displayName, hidden: false })
+    }
+
+    if (tier === 'remote') {
+      mcpApi.updateGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchRemote())
+      setRemoteGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
+    } else {
+      useMcpStore.getState().updateLocalGateway(gateway.id, { tool_overrides: overrides })
+    }
+  }
+
+  function handleUpdateServerConfig(gateway: McpGatewayConfig, tier: 'remote' | 'local', serverName: string, config: Partial<McpServerConfig>) {
+    const configs = { ...(gateway.server_configs ?? {}) }
+    const existing = configs[serverName] ?? { server_name: serverName, prefix_enabled: false, custom_prefix: null, hidden: false }
+    configs[serverName] = { ...existing, ...config }
+
+    if (tier === 'remote') {
+      mcpApi.updateGateway(gateway.id, { server_configs: configs }).then(() => fetchRemote())
+      setRemoteGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, server_configs: configs } : g))
+    } else {
+      useMcpStore.getState().updateLocalGateway(gateway.id, { server_configs: configs })
     }
   }
 
@@ -230,10 +259,19 @@ export function McpTab() {
           gateway={gateway}
           tier={tier}
           onBack={() => setView({ kind: 'list' })}
-          onToggleTool={(toolName, disable) => {
-            if (tier === 'admin') return // read-only
-            handleToggleTool(gateway, tier as 'remote' | 'local', toolName, disable)
+          onToggleTool={(toolName, serverName, hidden) => {
+            if (tier === 'admin') return
+            handleToggleTool(gateway, tier as 'remote' | 'local', toolName, serverName, hidden)
           }}
+          onRenameTool={(orig, server, display) => {
+            if (tier === 'admin') return
+            handleRenameTool(gateway, tier as 'remote' | 'local', orig, server, display)
+          }}
+          onUpdateServerConfig={(server, cfg) => {
+            if (tier === 'admin') return
+            handleUpdateServerConfig(gateway, tier as 'remote' | 'local', server, cfg)
+          }}
+          readOnly={tier === 'admin'}
         />
       </div>
     )

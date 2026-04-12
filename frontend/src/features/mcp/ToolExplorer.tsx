@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { McpGatewayConfig, McpToolDefinition } from './types'
+import type { McpGatewayConfig, McpToolDefinition, McpServerConfig } from './types'
 import { mcpToolsList, mcpToolsCall, mcpProxyToolsList, mcpProxyToolsCall } from './mcpClient'
 
 interface ToolExplorerProps {
   gateway: McpGatewayConfig
   tier: 'admin' | 'remote' | 'local'
   onBack: () => void
-  onToggleTool: (toolName: string, disabled: boolean) => void
+  onToggleTool: (toolName: string, serverName: string, hidden: boolean) => void
+  onRenameTool: (originalName: string, serverName: string, displayName: string | null) => void
+  onUpdateServerConfig: (serverName: string, config: Partial<McpServerConfig>) => void
+  readOnly?: boolean
 }
 
 const TIER_COLOUR: Record<string, string> = {
@@ -23,7 +26,15 @@ function normaliseNamespace(name: string): string {
     .replace(/_+/g, '_')
 }
 
-export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplorerProps) {
+export function ToolExplorer({
+  gateway,
+  tier,
+  onBack,
+  onToggleTool,
+  onRenameTool,
+  onUpdateServerConfig,
+  readOnly = false,
+}: ToolExplorerProps) {
   const [tools, setTools] = useState<McpToolDefinition[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -58,23 +69,33 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gateway.url])
 
-  const filteredTools = useMemo(() => {
-    if (!search.trim()) return tools
-    const tokens = search.toLowerCase().split(/\s+/).filter(Boolean)
-    return tools.filter((t) => {
-      const haystack = `${t.name} ${t.description}`.toLowerCase()
-      return tokens.every((tok) => haystack.includes(tok))
-    })
-  }, [tools, search])
+  const toolsByServer = useMemo(() => {
+    const grouped: Record<string, McpToolDefinition[]> = {}
+    for (const tool of tools) {
+      const server = (tool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+      if (!grouped[server]) grouped[server] = []
+      grouped[server].push(tool)
+    }
+    const sorted: Record<string, McpToolDefinition[]> = {}
+    for (const key of Object.keys(grouped).sort()) {
+      sorted[key] = grouped[key]
+    }
+    return sorted
+  }, [tools])
+
+  const collisions = useMemo(() => {
+    const seen = new Map<string, number>()
+    for (const tool of tools) {
+      seen.set(tool.name, (seen.get(tool.name) ?? 0) + 1)
+    }
+    return Array.from(seen.entries())
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name)
+  }, [tools])
 
   const selectedTool = useMemo(
     () => tools.find((t) => t.name === selectedName) ?? null,
     [tools, selectedName],
-  )
-
-  const isDisabled = useCallback(
-    (toolName: string) => gateway.disabled_tools.includes(toolName),
-    [gateway.disabled_tools],
   )
 
   const namespace = normaliseNamespace(gateway.name)
@@ -201,7 +222,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
               width: '100%',
             }}
           >
-            {loading ? 'Refreshing…' : 'Refresh'}
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
 
@@ -209,7 +230,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
         <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <input
             type="text"
-            placeholder="Search tools…"
+            placeholder="Search tools..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -226,11 +247,11 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
           />
         </div>
 
-        {/* Tool list */}
+        {/* Tool list grouped by server */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
           {loading && (
             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', padding: '12px' }}>
-              Loading…
+              Loading...
             </div>
           )}
           {loadError && !loading && (
@@ -238,77 +259,158 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
               {loadError}
             </div>
           )}
-          {!loading &&
-            !loadError &&
-            filteredTools.map((tool) => {
-              const off = isDisabled(tool.name)
-              const selected = tool.name === selectedName
-              return (
-                <button
-                  key={tool.name}
-                  onClick={() => handleSelectTool(tool.name)}
-                  style={{
-                    background: selected ? 'rgba(137,180,250,0.08)' : 'none',
-                    border: 'none',
-                    borderRadius: 0,
-                    cursor: 'pointer',
-                    display: 'block',
-                    opacity: off ? 0.4 : 1,
-                    padding: '7px 12px',
-                    textAlign: 'left',
-                    width: '100%',
-                  }}
-                >
-                  <div
-                    style={{
-                      alignItems: 'center',
-                      display: 'flex',
-                      gap: '6px',
-                      justifyContent: 'space-between',
-                    }}
-                  >
-                    <span
+
+          {/* Collision warning */}
+          {!loading && !loadError && collisions.length > 0 && (
+            <div style={{
+              padding: '8px 12px', margin: '4px 8px 8px', borderRadius: 6,
+              background: 'rgba(245,169,127,0.12)', border: '1px solid rgba(245,169,127,0.25)',
+              fontSize: '11px', color: 'rgba(245,194,131,0.9)',
+            }}>
+              Name collisions: {collisions.join(', ')} — enable server prefixes or rename to resolve.
+            </div>
+          )}
+
+          {!loading && !loadError && Object.entries(toolsByServer).map(([serverName, serverTools]) => {
+            const serverCfg = gateway.server_configs?.[serverName]
+            const isServerHidden = serverCfg?.hidden ?? false
+
+            // Apply search filter
+            const filtered = serverTools.filter(t => {
+              if (!search.trim()) return true
+              const tokens = search.toLowerCase().split(/\s+/).filter(Boolean)
+              const hay = `${t.name} ${t.description}`.toLowerCase()
+              return tokens.every(tok => hay.includes(tok))
+            })
+            if (filtered.length === 0 && search) return null
+
+            return (
+              <div key={serverName} style={{ marginBottom: 8 }}>
+                {/* Server header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 12px',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)',
+                }}>
+                  <span style={{
+                    fontWeight: 600, fontSize: 11, flex: 1,
+                    color: 'rgba(255,255,255,0.55)',
+                    opacity: isServerHidden ? 0.4 : 1,
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                  }}>
+                    {serverName}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                    {serverTools.length}
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => onUpdateServerConfig(serverName, {
+                        server_name: serverName,
+                        hidden: !isServerHidden,
+                        prefix_enabled: serverCfg?.prefix_enabled ?? false,
+                        custom_prefix: serverCfg?.custom_prefix ?? null,
+                      })}
                       style={{
-                        color: selected ? 'rgba(137,180,250,0.9)' : 'rgba(255,255,255,0.75)',
-                        fontFamily: 'monospace',
-                        fontSize: '12px',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
+                        fontSize: 10, color: 'rgba(255,255,255,0.35)', cursor: 'pointer',
+                        background: 'none', border: 'none', padding: '0 2px',
                       }}
                     >
-                      {tool.name}
-                    </span>
-                    {off && (
-                      <span
+                      {isServerHidden ? 'show' : 'hide'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Server prefix controls */}
+                {!readOnly && !isServerHidden && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 12px', fontSize: 11,
+                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: 'rgba(255,255,255,0.4)' }}>
+                      <input
+                        type="checkbox"
+                        checked={serverCfg?.prefix_enabled ?? false}
+                        onChange={e => onUpdateServerConfig(serverName, {
+                          server_name: serverName,
+                          prefix_enabled: e.target.checked,
+                          hidden: serverCfg?.hidden ?? false,
+                          custom_prefix: serverCfg?.custom_prefix ?? null,
+                        })}
+                        style={{ accentColor: 'rgba(137,180,250,0.8)' }}
+                      />
+                      Prefix
+                    </label>
+                    {(serverCfg?.prefix_enabled) && (
+                      <input
+                        type="text"
+                        placeholder={normaliseNamespace(serverName)}
+                        value={serverCfg?.custom_prefix ?? ''}
+                        onChange={e => onUpdateServerConfig(serverName, {
+                          server_name: serverName,
+                          prefix_enabled: true,
+                          hidden: serverCfg?.hidden ?? false,
+                          custom_prefix: e.target.value || null,
+                        })}
                         style={{
-                          background: 'rgba(243,139,168,0.2)',
-                          borderRadius: '3px',
-                          color: 'rgba(243,139,168,0.8)',
-                          fontSize: '10px',
-                          flexShrink: 0,
-                          padding: '1px 4px',
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 3, padding: '2px 6px', color: 'rgba(255,255,255,0.7)',
+                          fontSize: 11, width: 100, outline: 'none',
                         }}
-                      >
-                        off
-                      </span>
+                      />
                     )}
                   </div>
-                  <div
-                    style={{
-                      color: 'rgba(255,255,255,0.3)',
-                      fontSize: '11px',
-                      marginTop: '1px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {tool.description}
-                  </div>
-                </button>
-              )
-            })}
+                )}
+
+                {/* Tools in this server */}
+                {!isServerHidden && filtered.map(tool => {
+                  const override = gateway.tool_overrides?.find(
+                    o => o.original_name === tool.name && o.server_name === serverName
+                  )
+                  const isHidden = override?.hidden ?? false
+                  const selected = tool.name === selectedName
+                  return (
+                    <button
+                      key={`${serverName}:${tool.name}`}
+                      onClick={() => handleSelectTool(tool.name)}
+                      style={{
+                        background: selected ? 'rgba(137,180,250,0.08)' : 'none',
+                        border: 'none', borderRadius: 0, cursor: 'pointer',
+                        display: 'block', opacity: isHidden ? 0.35 : 1,
+                        padding: '6px 12px 6px 20px', textAlign: 'left', width: '100%',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between' }}>
+                        <span style={{
+                          color: selected ? 'rgba(137,180,250,0.9)' : 'rgba(255,255,255,0.75)',
+                          fontFamily: 'monospace', fontSize: 12,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {override?.display_name ?? tool.name}
+                        </span>
+                        {isHidden && (
+                          <span style={{
+                            background: 'rgba(243,139,168,0.2)', borderRadius: 3,
+                            color: 'rgba(243,139,168,0.8)', fontSize: 10, flexShrink: 0, padding: '1px 4px',
+                          }}>
+                            hidden
+                          </span>
+                        )}
+                      </div>
+                      <div style={{
+                        color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 1,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>
+                        {tool.description}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       </div>
 
@@ -336,25 +438,48 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
                   {selectedTool.name}
                 </span>
 
-                {/* Enable/disable toggle */}
-                <button
-                  onClick={() => onToggleTool(selectedTool.name, !isDisabled(selectedTool.name))}
-                  style={{
-                    background: isDisabled(selectedTool.name)
-                      ? 'rgba(243,139,168,0.15)'
-                      : 'rgba(166,218,149,0.15)',
-                    border: `1px solid ${isDisabled(selectedTool.name) ? 'rgba(243,139,168,0.3)' : 'rgba(166,218,149,0.3)'}`,
-                    borderRadius: '4px',
-                    color: isDisabled(selectedTool.name)
-                      ? 'rgba(243,139,168,0.8)'
-                      : 'rgba(166,218,149,0.8)',
-                    cursor: 'pointer',
-                    fontSize: '11px',
-                    padding: '3px 8px',
-                  }}
-                >
-                  {isDisabled(selectedTool.name) ? 'Enable' : 'Disable'}
-                </button>
+                {/* Hide/show toggle */}
+                {!readOnly && (
+                  <button
+                    onClick={() => {
+                      const serverName = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const override = gateway.tool_overrides?.find(
+                        o => o.original_name === selectedTool.name && o.server_name === serverName
+                      )
+                      const currentlyHidden = override?.hidden ?? false
+                      onToggleTool(selectedTool.name, serverName, !currentlyHidden)
+                    }}
+                    style={{
+                      background: (() => {
+                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
+                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.15)' : 'rgba(166,218,149,0.15)'
+                      })(),
+                      border: `1px solid ${(() => {
+                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
+                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.3)' : 'rgba(166,218,149,0.3)'
+                      })()}`,
+                      borderRadius: '4px',
+                      color: (() => {
+                        const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                        const o = gateway.tool_overrides?.find(x => x.original_name === selectedTool.name && x.server_name === sn)
+                        return (o?.hidden ?? false) ? 'rgba(243,139,168,0.8)' : 'rgba(166,218,149,0.8)'
+                      })(),
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      padding: '3px 8px',
+                    }}
+                  >
+                    {(() => {
+                      const serverName = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      const override = gateway.tool_overrides?.find(
+                        o => o.original_name === selectedTool.name && o.server_name === serverName
+                      )
+                      return (override?.hidden ?? false) ? 'Show' : 'Hide'
+                    })()}
+                  </button>
+                )}
               </div>
 
               <div
@@ -371,6 +496,31 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
               <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '13px', lineHeight: 1.5 }}>
                 {selectedTool.description}
               </div>
+
+              {/* Rename field */}
+              {!readOnly && (
+                <div style={{ marginTop: 8, marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Display name override</label>
+                  <input
+                    type="text"
+                    placeholder={selectedTool.name}
+                    value={(() => {
+                      const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      return gateway.tool_overrides?.find(o => o.original_name === selectedTool.name && o.server_name === sn)?.display_name ?? ''
+                    })()}
+                    onChange={e => {
+                      const sn = (selectedTool as Record<string, unknown>)._gateway_server as string ?? '_unknown'
+                      onRenameTool(selectedTool.name, sn, e.target.value || null)
+                    }}
+                    style={{
+                      display: 'block', width: '100%', marginTop: 4,
+                      background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 4, padding: '5px 8px', color: 'rgba(255,255,255,0.7)',
+                      fontSize: 12, outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Parameters */}
@@ -456,7 +606,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
 
                         <input
                           type="text"
-                          placeholder={`${pName}…`}
+                          placeholder={`${pName}...`}
                           value={paramValues[pName] ?? ''}
                           onChange={(e) => handleParamChange(pName, e.target.value)}
                           style={{
@@ -494,7 +644,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
                   padding: '7px 18px',
                 }}
               >
-                {executing ? 'Executing…' : 'Execute'}
+                {executing ? 'Executing...' : 'Execute'}
               </button>
             </div>
 
@@ -516,7 +666,7 @@ export function ToolExplorer({ gateway, tier, onBack, onToggleTool }: ToolExplor
               }}
             >
               {response ?? (
-                <span style={{ color: 'rgba(255,255,255,0.2)' }}>Response will appear here…</span>
+                <span style={{ color: 'rgba(255,255,255,0.2)' }}>Response will appear here...</span>
               )}
             </div>
           </>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { mcpApi } from '../../../features/mcp/mcpApi'
 import { GatewayEditDialog } from '../../../features/mcp/GatewayEditDialog'
 import { ToolExplorer } from '../../../features/mcp/ToolExplorer'
-import type { McpGatewayConfig } from '../../../features/mcp/types'
+import type { McpGatewayConfig, McpServerConfig } from '../../../features/mcp/types'
 
 type View =
   | { kind: 'list' }
@@ -31,15 +31,51 @@ export function AdminMcpTab() {
     fetchGateways()
   }, [fetchGateways])
 
+  // ── curation handlers ────────────────────────────────────────────────
+  function handleToggleTool(gateway: McpGatewayConfig, toolName: string, serverName: string, hidden: boolean) {
+    const overrides = [...(gateway.tool_overrides ?? [])]
+    const idx = overrides.findIndex(o => o.original_name === toolName && o.server_name === serverName)
+    if (idx >= 0) {
+      overrides[idx] = { ...overrides[idx], hidden }
+    } else {
+      overrides.push({ original_name: toolName, server_name: serverName, display_name: null, hidden })
+    }
+    mcpApi.updateAdminGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchGateways())
+    setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
+  }
+
+  function handleRenameTool(gateway: McpGatewayConfig, originalName: string, serverName: string, displayName: string | null) {
+    const overrides = [...(gateway.tool_overrides ?? [])]
+    const idx = overrides.findIndex(o => o.original_name === originalName && o.server_name === serverName)
+    if (idx >= 0) {
+      overrides[idx] = { ...overrides[idx], display_name: displayName }
+    } else {
+      overrides.push({ original_name: originalName, server_name: serverName, display_name: displayName, hidden: false })
+    }
+    mcpApi.updateAdminGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchGateways())
+    setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
+  }
+
+  function handleUpdateServerConfig(gateway: McpGatewayConfig, serverName: string, config: Partial<McpServerConfig>) {
+    const configs = { ...(gateway.server_configs ?? {}) }
+    const existing = configs[serverName] ?? { server_name: serverName, prefix_enabled: false, custom_prefix: null, hidden: false }
+    configs[serverName] = { ...existing, ...config }
+    mcpApi.updateAdminGateway(gateway.id, { server_configs: configs }).then(() => fetchGateways())
+    setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, server_configs: configs } : g))
+  }
+
   // ── Explore view ────────────────────────────────────────────────────
   if (view.kind === 'explore') {
+    const gw = view.gateway
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
         <ToolExplorer
-          gateway={view.gateway}
+          gateway={gw}
           tier="admin"
           onBack={() => setView({ kind: 'list' })}
-          onToggleTool={() => {}}
+          onToggleTool={(toolName, serverName, hidden) => handleToggleTool(gw, toolName, serverName, hidden)}
+          onRenameTool={(orig, server, display) => handleRenameTool(gw, orig, server, display)}
+          onUpdateServerConfig={(server, cfg) => handleUpdateServerConfig(gw, server, cfg)}
         />
       </div>
     )
