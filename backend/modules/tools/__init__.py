@@ -220,6 +220,98 @@ async def execute_tool(
     raise ToolNotFoundError(f"No executor registered for tool '{tool_name}'")
 
 
+async def eager_discover_mcp(
+    connection_id: str,
+    user_id: str,
+) -> None:
+    """Eagerly discover MCP tools for a connection (called on WebSocket connect).
+
+    Populates the per-connection registry so tools are available before the
+    first chat message. Emits McpToolsRegisteredEvent to the frontend.
+    """
+    from backend.modules.user import get_user_mcp_gateways, get_admin_mcp_gateways
+    from backend.modules.tools._mcp_discovery import discover_backend_gateways
+    from shared.dtos.mcp import McpGatewayConfigDto
+    from shared.events.mcp import McpGatewayToolEntry, McpToolsRegisteredEvent
+    from shared.topics import Topics
+    from backend.ws.event_bus import get_event_bus
+
+    # Skip if already discovered (e.g. rapid reconnect)
+    existing = get_mcp_registry(connection_id)
+    if existing and existing.backend_discovered:
+        return
+
+    admin_gw_raw = await get_admin_mcp_gateways()
+    user_gw_raw = await get_user_mcp_gateways(user_id)
+    admin_gateways = [McpGatewayConfigDto(**gw) for gw in admin_gw_raw]
+    user_gateways = [McpGatewayConfigDto(**gw) for gw in user_gw_raw]
+
+    if not any(gw.enabled for gw in admin_gateways) and not any(gw.enabled for gw in user_gateways):
+        return  # no gateways configured — nothing to discover
+
+    correlation_id = f"mcp-eager-{connection_id[:8]}"
+
+    backend_registry = await discover_backend_gateways(
+        admin_gateways=admin_gateways,
+        user_remote_gateways=user_gateways,
+        session_id="",  # no session yet — discovery is connection-scoped
+        user_id=user_id,
+        correlation_id=correlation_id,
+    )
+
+    # Merge into existing registry (may already contain local tools)
+    mcp_registry = get_mcp_registry(connection_id)
+    if mcp_registry is None:
+        mcp_registry = backend_registry
+    else:
+        for gw in backend_registry.gateways.values():
+            try:
+                mcp_registry.register(gw)
+            except ValueError:
+                pass  # namespace conflict with existing local gateway
+    mcp_registry.backend_discovered = True
+    set_mcp_registry(connection_id, mcp_registry)
+
+    # Notify frontend about discovered tools
+    if mcp_registry.gateways:
+        gateway_entries = [
+            McpGatewayToolEntry(
+                namespace=gw.name,
+                tier=gw.tier,
+                tools=[
+                    {
+                        "name": td.name,
+                        "description": td.description,
+                        "server_name": mcp_registry.server_name_for_tool(td.name) or "_unknown",
+                    }
+                    for td in gw.tool_definitions
+                ],
+                collisions=gw.collisions,
+            )
+            for gw in mcp_registry.gateways.values()
+        ]
+        event_bus = get_event_bus()
+        await event_bus.publish(
+            Topics.MCP_TOOLS_REGISTERED,
+            McpToolsRegisteredEvent(
+                session_id="",
+                gateways=gateway_entries,
+                total_tools=len(mcp_registry.all_definitions()),
+                correlation_id=correlation_id,
+                timestamp=datetime.now(timezone.utc),
+            ),
+            scope=f"user:{user_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+
+    _log.info(
+        "Eager MCP discovery for connection=%s user=%s: %d gateways, %d tools",
+        connection_id[:8], user_id,
+        len(mcp_registry.gateways), len(mcp_registry.all_definitions()),
+    )
+
+
 def get_max_tool_iterations() -> int:
     """Return the maximum number of tool loop iterations."""
     return _MAX_TOOL_ITERATIONS
@@ -234,5 +326,6 @@ __all__ = [
     "set_mcp_registry",
     "get_mcp_registry",
     "remove_mcp_registry",
+    "eager_discover_mcp",
     "ToolNotFoundError",
 ]

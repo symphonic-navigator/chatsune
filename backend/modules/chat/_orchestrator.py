@@ -47,10 +47,6 @@ from backend.modules.storage import (
     store_vision_description,
 )
 from backend.modules.tools import execute_tool, get_active_definitions, set_mcp_registry, get_mcp_registry
-from backend.modules.tools._mcp_discovery import discover_backend_gateways
-from backend.modules.user import get_user_mcp_gateways, get_admin_mcp_gateways
-from shared.dtos.mcp import McpGatewayConfigDto
-from shared.events.mcp import McpGatewayToolEntry, McpToolsRegisteredEvent
 from shared.topics import Topics
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
@@ -476,71 +472,17 @@ async def run_inference(
     # Resolve active tool definitions based on session toggle state
     disabled_tool_groups = session.get("disabled_tool_groups", [])
 
-    # MCP discovery: build or retrieve per-connection registry
+    # MCP registry: populated eagerly on WebSocket connect (eager_discover_mcp).
+    # Fallback: if the eager task hasn't finished yet, run discovery inline.
     mcp_registry = get_mcp_registry(connection_id) if connection_id else None
-    needs_backend_discovery = (
+    if (
         connection_id
         and "mcp" not in set(disabled_tool_groups)
         and (mcp_registry is None or not mcp_registry.backend_discovered)
-    )
-    if needs_backend_discovery:
-        admin_gw_raw = await get_admin_mcp_gateways()
-        user_gw_raw = await get_user_mcp_gateways(user_id)
-        admin_gateways = [McpGatewayConfigDto(**gw) for gw in admin_gw_raw]
-        user_gateways = [McpGatewayConfigDto(**gw) for gw in user_gw_raw]
-
-        backend_registry = await discover_backend_gateways(
-            admin_gateways=admin_gateways,
-            user_remote_gateways=user_gateways,
-            session_id=session_id,
-            user_id=user_id,
-            correlation_id=correlation_id,
-        )
-
-        # Merge into existing registry (may already contain local tools)
-        if mcp_registry is None:
-            mcp_registry = backend_registry
-        else:
-            for gw in backend_registry.gateways.values():
-                try:
-                    mcp_registry.register(gw)
-                except ValueError:
-                    pass  # namespace conflict with existing local gateway
-        mcp_registry.backend_discovered = True
-        set_mcp_registry(connection_id, mcp_registry)
-
-        # Notify frontend about discovered tools so it can display them
-        if mcp_registry.gateways:
-            gateway_entries = [
-                McpGatewayToolEntry(
-                    namespace=gw.name,
-                    tier=gw.tier,
-                    tools=[
-                        {
-                            "name": td.name,
-                            "description": td.description,
-                            "server_name": mcp_registry.server_name_for_tool(td.name) or "_unknown",
-                        }
-                        for td in gw.tool_definitions
-                    ],
-                    collisions=gw.collisions,
-                )
-                for gw in mcp_registry.gateways.values()
-            ]
-            event_bus = get_event_bus()
-            await event_bus.publish(
-                Topics.MCP_TOOLS_REGISTERED,
-                McpToolsRegisteredEvent(
-                    session_id=session_id,
-                    gateways=gateway_entries,
-                    total_tools=len(mcp_registry.all_definitions()),
-                    correlation_id=correlation_id,
-                    timestamp=datetime.now(timezone.utc),
-                ),
-                scope=f"session:{session_id}",
-                target_user_ids=[user_id],
-                correlation_id=correlation_id,
-            )
+    ):
+        from backend.modules.tools import eager_discover_mcp
+        await eager_discover_mcp(connection_id, user_id)
+        mcp_registry = get_mcp_registry(connection_id)
 
     # Extract persona MCP config for tool filtering
     persona_mcp_config = None

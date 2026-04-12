@@ -19,7 +19,7 @@ from backend.modules.chat import (
     handle_incognito_send,
     trigger_disconnect_extraction,
 )
-from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry
+from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry, eager_discover_mcp
 from backend.modules.tools._mcp_discovery import register_local_tools
 from backend.modules.tools._namespace import normalise_namespace
 from backend.modules.user import decode_access_token
@@ -71,6 +71,17 @@ async def websocket_endpoint(
         await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
     except Exception:
         _log.warning("Failed to send ws.hello to user %s", user_id)
+
+    # Eagerly discover MCP tools so they are ready before the first message
+    async def _eager_mcp() -> None:
+        try:
+            await eager_discover_mcp(connection_id, user_id)
+        except Exception:
+            _log.exception("Eager MCP discovery failed for user %s", user_id)
+
+    mcp_task = asyncio.create_task(_eager_mcp())
+    _background_tasks.add(mcp_task)
+    mcp_task.add_done_callback(_background_tasks.discard)
 
     expiry_task: asyncio.Task | None = None
 
