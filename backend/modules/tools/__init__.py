@@ -5,7 +5,10 @@ Public API: import only from this file.
 
 import json
 import logging
+import time as _time
 from datetime import datetime, timezone
+
+from backend.modules.metrics import tool_calls_total, tool_call_duration_seconds
 
 from backend.modules.tools._client_dispatcher import ClientToolDispatcher
 from backend.modules.tools._registry import ToolGroup, get_groups
@@ -74,6 +77,7 @@ async def execute_tool(
     tool_call_id: str,
     session_id: str,
     originating_connection_id: str,
+    model: str = "",
 ) -> str:
     """Dispatch a tool call to the appropriate executor.
 
@@ -86,25 +90,31 @@ async def execute_tool(
     ``ToolNotFoundError`` only if the tool name is unknown.
     """
     arguments = json.loads(arguments_json)
+    t_start = _time.monotonic()
 
     for group in get_groups().values():
         if tool_name not in group.tool_names:
             continue
 
-        if group.side == "client":
-            return await _dispatcher_singleton.dispatch(
-                user_id=user_id,
-                session_id=session_id,
-                tool_call_id=tool_call_id,
-                tool_name=tool_name,
-                arguments=arguments,
-                server_timeout_ms=_CLIENT_TOOL_SERVER_TIMEOUT_MS,
-                client_timeout_ms=_CLIENT_TOOL_CLIENT_TIMEOUT_MS,
-                target_connection_id=originating_connection_id,
-            )
+        try:
+            if group.side == "client":
+                return await _dispatcher_singleton.dispatch(
+                    user_id=user_id,
+                    session_id=session_id,
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    server_timeout_ms=_CLIENT_TOOL_SERVER_TIMEOUT_MS,
+                    client_timeout_ms=_CLIENT_TOOL_CLIENT_TIMEOUT_MS,
+                    target_connection_id=originating_connection_id,
+                )
 
-        if group.executor is not None:
-            return await group.executor.execute(user_id, tool_name, arguments)
+            if group.executor is not None:
+                return await group.executor.execute(user_id, tool_name, arguments)
+        finally:
+            duration = _time.monotonic() - t_start
+            tool_calls_total.labels(model=model, tool_name=tool_name).inc()
+            tool_call_duration_seconds.labels(model=model, tool_name=tool_name).observe(duration)
 
     raise ToolNotFoundError(f"No executor registered for tool '{tool_name}'")
 

@@ -106,6 +106,7 @@ def _make_tool_executor(
     persona: dict | None,
     correlation_id: str = "",
     connection_id: str | None = None,
+    model_slug: str = "",
 ):
     """Wrap execute_tool to inject session context and forward the
     originating WebSocket connection id for client-side tools."""
@@ -152,6 +153,7 @@ def _make_tool_executor(
             tool_call_id=tool_call_id,
             session_id=session.get("_id", ""),
             originating_connection_id=connection_id or "",
+            model=model_slug,
         )
 
     return _executor
@@ -586,7 +588,7 @@ async def run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
-            tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id) if active_tools else None,
+            tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
         )
         # Persist the latest context-window utilisation on the session so
         # that opening the chat later can hydrate the indicator without
