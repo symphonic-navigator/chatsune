@@ -134,3 +134,21 @@ class MemoryBodyRollbackEvent(BaseModel):
     new_version: int
     correlation_id: str
     timestamp: datetime
+
+
+class MemoryBodyUpdatedEvent(BaseModel):
+    type: str = "memory.body.updated"
+    persona_id: str
+    version: int
+    token_count: int
+    edited_by: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class MemoryBodyVersionDeletedEvent(BaseModel):
+    type: str = "memory.body.version_deleted"
+    persona_id: str
+    deleted_version: int
+    correlation_id: str
+    timestamp: datetime

@@ -85,6 +85,8 @@ class Topics:
     MEMORY_DREAM_FAILED = "memory.dream.failed"
     MEMORY_ENTRIES_DISCARDED = "memory.entries.discarded"
     MEMORY_BODY_ROLLBACK = "memory.body.rollback"
+    MEMORY_BODY_UPDATED = "memory.body.updated"
+    MEMORY_BODY_VERSION_DELETED = "memory.body.version_deleted"
     # Embedding
     EMBEDDING_MODEL_LOADING = "embedding.model.loading"
     EMBEDDING_MODEL_READY = "embedding.model.ready"
