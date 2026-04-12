@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
@@ -57,6 +57,25 @@ export function MessageList({
   const correlationId = useChatStore((s) => s.correlationId)
   const streamingSlow = useChatStore((s) => s.streamingSlow)
 
+  const [slowElapsed, setSlowElapsed] = useState<number>(0)
+  const slowSinceRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!streamingSlow) {
+      slowSinceRef.current = null
+      setSlowElapsed(0)
+      return
+    }
+    slowSinceRef.current = Date.now()
+    setSlowElapsed(0)
+    const interval = setInterval(() => {
+      if (slowSinceRef.current) {
+        setSlowElapsed(Math.floor((Date.now() - slowSinceRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [streamingSlow])
+
   // Live vision descriptions only apply to the most recent user message while
   // a stream is active; persisted messages render from their own snapshots.
   const lastUserMessageId = useMemo(() => {
@@ -77,6 +96,13 @@ export function MessageList({
       }
     }
     return Object.keys(result).length > 0 ? result : undefined
+  }
+
+  function formatElapsed(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${m}m ${s}s`
   }
 
   const scrollbarStyle = `
@@ -145,7 +171,13 @@ export function MessageList({
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
                   canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate}
                   status={msg.status ?? 'completed'}
-                  refusalText={msg.refusal_text ?? null} />
+                  refusalText={msg.refusal_text ?? null}
+                  timeToFirstTokenMs={msg.time_to_first_token_ms}
+                  tokensPerSecond={msg.tokens_per_second}
+                  generationDurationMs={msg.generation_duration_ms}
+                  outputTokens={msg.usage?.output_tokens}
+                  providerName={msg.provider_name}
+                  modelName={msg.model_name} />
               </div>
             )
           }
@@ -185,7 +217,7 @@ export function MessageList({
             )}
             {streamingSlow && (
               <div className="mt-1 text-[11px] italic text-white/45">
-                Model still working…
+                Model still working… {slowElapsed > 0 && formatElapsed(slowElapsed)}
               </div>
             )}
           </div>
