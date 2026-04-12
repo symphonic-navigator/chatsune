@@ -86,6 +86,11 @@ export function handleChatEvent(
           : rawStatus === 'aborted'
             ? 'aborted'
             : 'completed'
+      const ttft = (p.time_to_first_token_ms as number | undefined) ?? null
+      const tps = (p.tokens_per_second as number | undefined) ?? null
+      const genDuration = (p.generation_duration_ms as number | undefined) ?? null
+      const providerName = (p.provider_name as string | undefined) ?? null
+      const modelName = (p.model_name as string | undefined) ?? null
 
       // Finalise the streamed message whenever the backend persisted
       // it — even on cancelled/error runs, the backend now saves the
@@ -117,6 +122,11 @@ export function handleChatEvent(
             refusal_text: refusalText || null,
             created_at: new Date().toISOString(),
             status: messageStatus,
+            time_to_first_token_ms: ttft,
+            tokens_per_second: tps,
+            generation_duration_ms: genDuration,
+            provider_name: providerName,
+            model_name: modelName,
           },
           contextStatus,
           fillPercentage,
