@@ -5,9 +5,9 @@ man kann für einen existierenden Chat das Modell nicht wechseln~~ ERLEDIGT
 
 ## Missing features
 
-* Man kann Memories nicht editieren
-* Man sollte auf der Memories-Seite der Persona einen Button haben,
-mit dem man triggern kann, dass Memories extrahiert werden
+* ~~Man kann Memories nicht editieren~~ ERLEDIGT
+* ~~Man sollte auf der Memories-Seite der Persona einen Button haben,
+mit dem man triggern kann, dass Memories extrahiert werden~~ ERLEDIGT
 
 ## Neue Features
 
