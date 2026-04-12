@@ -24,6 +24,7 @@ dependencies = [
     "onnxruntime>=1.20",
     "transformers>=4.47",
     "grapheme>=0.6",
+    "prometheus-client>=0.21",
 ]
 
 [project.optional-dependencies]
