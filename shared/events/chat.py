@@ -55,6 +55,11 @@ class ChatStreamEndedEvent(BaseModel):
     usage: dict | None = None
     context_status: Literal["green", "yellow", "orange", "red"]
     context_fill_percentage: float = 0.0
+    time_to_first_token_ms: int | None = None
+    tokens_per_second: float | None = None
+    generation_duration_ms: int | None = None
+    provider_name: str | None = None
+    model_name: str | None = None
     timestamp: datetime
 
 
