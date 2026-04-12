@@ -8,6 +8,7 @@ import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useKnowledgeEvents } from "../../features/knowledge/useKnowledgeEvents"
 import { useJobEvents } from "../../features/jobs/useJobEvents"
+import { useMcpEvents } from "../../features/mcp/useMcpEvents"
 import { chatApi } from "../../core/api/chat"
 import { useAuthStore } from "../../core/store/authStore"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
@@ -29,6 +30,7 @@ export default function AppLayout() {
   useWebSocket()
   useKnowledgeEvents()
   useJobEvents()
+  useMcpEvents()
   const navigate = useNavigate()
   const location = useLocation()
   const { isDesktop } = useViewport()
