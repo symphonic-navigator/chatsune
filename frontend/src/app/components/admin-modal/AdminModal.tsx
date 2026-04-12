@@ -3,8 +3,9 @@ import { UsersTab } from './UsersTab'
 import { ModelsTab } from './ModelsTab'
 import { SystemTab } from './SystemTab'
 import { DebugTab } from './DebugTab'
+import { OllamaTab } from './OllamaTab'
 
-export type AdminModalTab = 'users' | 'models' | 'system' | 'debug'
+export type AdminModalTab = 'users' | 'models' | 'system' | 'debug' | 'ollama'
 
 interface Tab {
   id: AdminModalTab
@@ -16,6 +17,7 @@ const TABS: Tab[] = [
   { id: 'models', label: 'Models' },
   { id: 'system', label: 'System' },
   { id: 'debug', label: 'Debug' },
+  { id: 'ollama', label: 'Ollama Local' },
 ]
 
 interface AdminModalProps {
@@ -133,6 +135,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'system' && <SystemTab />}
           {activeTab === 'debug' && <DebugTab />}
+          {activeTab === 'ollama' && <OllamaTab />}
         </div>
       </div>
     </>
