@@ -19,7 +19,7 @@ from backend.modules.chat import (
     handle_incognito_send,
     trigger_disconnect_extraction,
 )
-from backend.modules.tools import get_client_dispatcher, get_mcp_registry, remove_mcp_registry
+from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry
 from backend.modules.tools._mcp_discovery import register_local_tools
 from backend.modules.tools._namespace import normalise_namespace
 from backend.modules.user import decode_access_token
@@ -211,22 +211,25 @@ async def websocket_endpoint(
                     )
                 else:
                     registry = get_mcp_registry(connection_id)
-                    if registry is not None:
-                        namespace = normalise_namespace(payload.name)
-                        try:
-                            register_local_tools(
-                                registry=registry,
-                                gateway_id=payload.gateway_id,
-                                namespace=namespace,
-                                url="",  # local gateways: URL not needed server-side
-                                tools=payload.tools,
-                            )
-                            _log.info(
-                                "Registered %d local MCP tools from gateway '%s' for user=%s",
-                                len(payload.tools), namespace, user_id,
-                            )
-                        except ValueError as exc:
-                            _log.warning("MCP registration failed: %s", exc)
+                    if registry is None:
+                        from backend.modules.tools._mcp_registry import SessionMcpRegistry
+                        registry = SessionMcpRegistry()
+                        set_mcp_registry(connection_id, registry)
+                    namespace = normalise_namespace(payload.name)
+                    try:
+                        register_local_tools(
+                            registry=registry,
+                            gateway_id=payload.gateway_id,
+                            namespace=namespace,
+                            url="",  # local gateways: URL not needed server-side
+                            tools=payload.tools,
+                        )
+                        _log.info(
+                            "Registered %d local MCP tools from gateway '%s' for user=%s",
+                            len(payload.tools), namespace, user_id,
+                        )
+                    except ValueError as exc:
+                        _log.warning("MCP registration failed: %s", exc)
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
