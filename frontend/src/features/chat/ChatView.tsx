@@ -23,6 +23,8 @@ import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
 import { KnowledgeDropdown } from './KnowledgeDropdown'
+import { ToolPopover } from './ToolPopover'
+import { useMcpStore } from '../mcp/mcpStore'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
 import { useMemoryStore } from '../../core/store/memoryStore'
 import { InferenceWaitBanner } from './InferenceWaitBanner'
@@ -55,6 +57,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const [showKnowledge, setShowKnowledge] = useState(false)
+  const [toolPopoverOpen, setToolPopoverOpen] = useState(false)
   // Mobile-only expandable tray for Tool-Toggles (< lg:). Desktop renders them inline.
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
@@ -245,6 +248,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const toggleArtefactSidebar = useArtefactStore((s) => s.toggleSidebar)
   const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? EMPTY_MEMORY_ENTRIES)
   const memoryCount = memoryEntries.length
+  const mcpSessionTools = useMcpStore((s) => s.sessionTools)
+  const mcpToolCount = mcpSessionTools.reduce((acc, e) => acc + e.tools.length, 0)
+  // totalToolCount is computed once tool groups are loaded inside ToolPopover;
+  // here we use MCP count only for the badge — built-in count is always > 0 in practice.
+  const totalToolCount = mcpToolCount
   const { openPersonaOverlay } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
   }>()
@@ -592,6 +600,30 @@ export function ChatView({ persona }: ChatViewProps) {
                 sessionId={effectiveSessionId}
                 isOpen={showKnowledge}
                 onClose={() => setShowKnowledge(false)}
+              />
+            )}
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setToolPopoverOpen((v) => !v)}
+              className="relative rounded px-1.5 py-0.5 text-sm transition-colors hover:bg-white/5"
+              title="Active tools"
+            >
+              🔧
+              {totalToolCount > 0 && (
+                <span
+                  className="absolute -right-1.5 -top-1 rounded-full px-1 text-[8px] font-bold"
+                  style={{ backgroundColor: 'rgba(166,218,149,0.8)', color: '#0f0d16' }}
+                >
+                  {totalToolCount}
+                </span>
+              )}
+            </button>
+            {toolPopoverOpen && (
+              <ToolPopover
+                disabledToolGroups={disabledToolGroups}
+                onClose={() => setToolPopoverOpen(false)}
               />
             )}
           </div>
