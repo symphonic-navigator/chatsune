@@ -834,6 +834,7 @@ export function ChatView({ persona }: ChatViewProps) {
                     reasoningOverride={reasoningOverride}
                     personaReasoningDefault={personaReasoningDefault}
                     onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+                    filteredMcpToolCount={mcpToolCount}
                   />
                 </div>
                 {/* Mobile: icon-only button row + collapsible tool toggles. */}
@@ -904,6 +905,7 @@ export function ChatView({ persona }: ChatViewProps) {
                           reasoningOverride={reasoningOverride}
                           personaReasoningDefault={personaReasoningDefault}
                           onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
+                          filteredMcpToolCount={mcpToolCount}
                         />
                       </div>
                     </div>
