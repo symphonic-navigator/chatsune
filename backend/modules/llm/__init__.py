@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.modules.llm import _tracker
+from backend.modules.metrics import inference_total, inference_duration_seconds
 from backend.modules.llm._concurrency import get_lock_registry
 from backend.modules.llm._registry import ADAPTER_REGISTRY as _ADAPTER_REGISTRY_REF
 from backend.modules.llm._adapters._events import (
@@ -117,6 +118,7 @@ async def stream_completion(
         source=source,
     )
     started_at_perf = _now_perf()
+    inference_total.labels(model=request.model, provider=provider_id, source=source).inc()
     try:
         if lock is not None:
             try:
@@ -135,6 +137,9 @@ async def stream_completion(
                 yield event
     finally:
         _tracker.unregister(inference_id)
+        inference_duration_seconds.labels(
+            model=request.model, provider=provider_id,
+        ).observe(_now_perf() - started_at_perf)
         await _publish_inference_finished(
             inference_id=inference_id,
             user_id=user_id,
