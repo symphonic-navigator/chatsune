@@ -54,6 +54,24 @@ def remove_mcp_registry(connection_id: str) -> None:
     _mcp_registries.pop(connection_id, None)
 
 
+def invalidate_mcp_registries(connection_ids: list[str] | None = None) -> int:
+    """Clear cached MCP registries so the next inference re-discovers tools.
+
+    If *connection_ids* is ``None``, ALL registries are cleared (admin gateway
+    change). Otherwise only the listed connections are invalidated (user
+    gateway change).  Returns the number of registries removed.
+    """
+    if connection_ids is None:
+        count = len(_mcp_registries)
+        _mcp_registries.clear()
+        return count
+    count = 0
+    for cid in connection_ids:
+        if _mcp_registries.pop(cid, None) is not None:
+            count += 1
+    return count
+
+
 def get_client_dispatcher() -> ClientToolDispatcher:
     """Return the singleton client-tool dispatcher (for WS router and disconnect hooks)."""
     return _dispatcher_singleton
