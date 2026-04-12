@@ -48,6 +48,14 @@ Always ensure clean compilation/build after changes.
 - **Backend:** run `uv run python -m py_compile <changed_file>` for syntax checks
 - Do not consider a task complete until the build is clean
 
+### Dependency Management
+
+We build for Docker — `pyproject.toml` (backend) and `package.json` (frontend)
+must always list dependencies **explicitly with pinned minimum versions**.
+Never rely on transitive installs. If code imports a package, that package
+must appear in the dependency file. This prevents Docker builds from breaking
+when intermediate images lack packages that happened to be installed locally.
+
 ---
 
 ## LLM Test Harness
