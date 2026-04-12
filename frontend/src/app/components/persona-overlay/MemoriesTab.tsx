@@ -19,6 +19,8 @@ interface MemoriesTabProps {
 export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   const personaId = persona.id
   const [dreamBusy, setDreamBusy] = useState(false)
+  const [extractBusy, setExtractBusy] = useState(false)
+  const isExtracting = useMemoryStore((s) => s.isExtracting[personaId] ?? false)
 
   const uncommittedEntries = useMemoryStore((s) =>
     s.uncommittedEntries[personaId] ?? EMPTY_ENTRIES
@@ -70,6 +72,16 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
     }
   }
 
+  const handleExtract = async () => {
+    if (extractBusy || isExtracting) return
+    setExtractBusy(true)
+    try {
+      await memoryApi.triggerExtraction(personaId, true)
+    } finally {
+      setExtractBusy(false)
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
       <div className="flex items-center justify-between">
@@ -85,14 +97,24 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={handleDream}
-          disabled={dreamDisabled}
-          className="px-3 py-1.5 rounded-md text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title={committedEntries.length === 0 ? 'No committed entries to consolidate' : 'Consolidate committed entries into memory body'}
-        >
-          Dream Now
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExtract}
+            disabled={extractBusy || isExtracting}
+            className="px-3 py-1.5 rounded-md text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title="Extract memories from recent chat messages"
+          >
+            {isExtracting ? 'Extracting...' : 'Extract Now'}
+          </button>
+          <button
+            onClick={handleDream}
+            disabled={dreamDisabled}
+            className="px-3 py-1.5 rounded-md text-xs bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            title={committedEntries.length === 0 ? 'No committed entries to consolidate' : 'Consolidate committed entries into memory body'}
+          >
+            Dream Now
+          </button>
+        </div>
       </div>
 
       <UncommittedSection personaId={personaId} entries={uncommittedEntries} />
