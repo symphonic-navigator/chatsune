@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from backend.config import settings
+from backend.modules.metrics import embedding_calls_total
 from backend.modules.embedding._model import EmbeddingModel
 from backend.modules.embedding._query_cache import QueryCache
 from backend.modules.embedding._queue import EmbeddingQueue
@@ -111,6 +112,7 @@ async def query_embed(text: str) -> list[float]:
         raise RuntimeError("Embedding module not initialised")
 
     if not settings.embedding_cache_enabled:
+        embedding_calls_total.labels(cache_status="uncached").inc()
         return await _queue.submit_query(text)
 
     if _cache is None and _model is not None:
@@ -122,17 +124,20 @@ async def query_embed(text: str) -> list[float]:
         )
 
     if _cache is None:
+        embedding_calls_total.labels(cache_status="uncached").inc()
         return await _queue.submit_query(text)
 
     normalized = _cache.normalize(text)
     cached = await _cache.get(normalized)
     if cached is not None:
         _log.debug("query embedding cache hit")
+        embedding_calls_total.labels(cache_status="cached").inc()
         return cached
 
     _log.debug("query embedding cache miss")
     vector = await _queue.submit_query(normalized)
     await _cache.set(normalized, vector)
+    embedding_calls_total.labels(cache_status="uncached").inc()
     return vector
 
 
