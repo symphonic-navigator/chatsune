@@ -57,12 +57,13 @@ async function registerLocalGateways(): Promise<void> {
         },
       })
 
-      // Collect for local UI display
+      // Collect for local UI display (use namespaced names matching what the backend uses)
+      const ns = gw.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
       localEntries.push({
-        namespace: gw.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+        namespace: ns,
         tier: "local" as const,
         tools: tools.map((t) => ({
-          name: t.name,
+          name: `${ns}__${t.name}`,
           description: t.description,
           server_name: t._gateway_server ?? gw.name,
         })),

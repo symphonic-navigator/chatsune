@@ -249,7 +249,14 @@ export function ChatView({ persona }: ChatViewProps) {
   const memoryEntries = useMemoryStore((s) => s.uncommittedEntries[personaId ?? ''] ?? EMPTY_MEMORY_ENTRIES)
   const memoryCount = memoryEntries.length
   const mcpSessionTools = useMcpStore((s) => s.sessionGateways)
-  const mcpToolCount = mcpSessionTools.reduce((acc, e) => acc + e.tools.length, 0)
+  const mcpExcludedGateways = new Set(persona?.mcp_config?.excluded_gateways ?? [])
+  const mcpExcludedServers = new Set(persona?.mcp_config?.excluded_servers ?? [])
+  const mcpExcludedTools = new Set(persona?.mcp_config?.excluded_tools ?? [])
+  const mcpToolCount = mcpSessionTools
+    .filter((e) => !mcpExcludedGateways.has(e.namespace))
+    .reduce((acc, e) => acc + e.tools.filter((t) =>
+      !mcpExcludedServers.has(`${e.namespace}:${t.server_name}`) && !mcpExcludedTools.has(t.name)
+    ).length, 0)
   // totalToolCount is computed once tool groups are loaded inside ToolPopover;
   // here we use MCP count only for the badge — built-in count is always > 0 in practice.
   const totalToolCount = mcpToolCount
@@ -623,6 +630,7 @@ export function ChatView({ persona }: ChatViewProps) {
             {toolPopoverOpen && (
               <ToolPopover
                 disabledToolGroups={disabledToolGroups}
+                personaMcpConfig={persona?.mcp_config ?? null}
                 onClose={() => setToolPopoverOpen(false)}
               />
             )}

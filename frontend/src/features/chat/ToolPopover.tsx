@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { chatApi, type ToolGroupDto } from '../../core/api/chat'
 import { useMcpStore } from '../mcp/mcpStore'
+import type { PersonaDto } from '../../core/types/persona'
 
 interface ToolPopoverProps {
   disabledToolGroups: string[]
+  personaMcpConfig: PersonaDto['mcp_config']
   onClose: () => void
 }
 
@@ -18,7 +20,7 @@ function tokenMatch(text: string, tokens: string[]): boolean {
   return tokens.every((t) => lower.includes(t))
 }
 
-export function ToolPopover({ disabledToolGroups, onClose }: ToolPopoverProps) {
+export function ToolPopover({ disabledToolGroups, personaMcpConfig, onClose }: ToolPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
   const [toolGroups, setToolGroups] = useState<ToolGroupDto[]>([])
   const [query, setQuery] = useState('')
@@ -62,20 +64,27 @@ export function ToolPopover({ disabledToolGroups, onClose }: ToolPopoverProps) {
     [toolGroups, disabledToolGroups, searchTokens],
   )
 
-  const activeMcp = useMemo(
-    () =>
-      sessionTools
-        .map((entry) => ({
-          ...entry,
-          tools: entry.tools.filter(
-            (t) =>
-              searchTokens.length === 0 ||
-              tokenMatch((t.name ?? '') + ' ' + (t.description ?? ''), searchTokens),
-          ),
-        }))
-        .filter((entry) => entry.tools.length > 0),
-    [sessionTools, searchTokens],
-  )
+  const activeMcp = useMemo(() => {
+    const excludedGateways = new Set(personaMcpConfig?.excluded_gateways ?? [])
+    const excludedServers = new Set(personaMcpConfig?.excluded_servers ?? [])
+    const excludedTools = new Set(personaMcpConfig?.excluded_tools ?? [])
+
+    return sessionTools
+      .filter((entry) => !excludedGateways.has(entry.namespace))
+      .map((entry) => ({
+        ...entry,
+        tools: entry.tools.filter((t) => {
+          // Persona server exclusion
+          if (excludedServers.has(`${entry.namespace}:${t.server_name}`)) return false
+          // Persona tool exclusion
+          if (excludedTools.has(t.name)) return false
+          // Search filter
+          if (searchTokens.length > 0 && !tokenMatch((t.name ?? '') + ' ' + (t.description ?? ''), searchTokens)) return false
+          return true
+        }),
+      }))
+      .filter((entry) => entry.tools.length > 0)
+  }, [sessionTools, searchTokens, personaMcpConfig])
 
   const totalActive = activeBuiltIn.length + activeMcp.reduce((acc, e) => acc + e.tools.length, 0)
 
