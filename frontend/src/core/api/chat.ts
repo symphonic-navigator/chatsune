@@ -53,6 +53,11 @@ interface ChatMessageDto {
   refusal_text?: string | null
   artefact_refs?: ArtefactRef[] | null
   usage?: { input_tokens?: number; output_tokens?: number } | null
+  time_to_first_token_ms?: number | null
+  tokens_per_second?: number | null
+  generation_duration_ms?: number | null
+  provider_name?: string | null
+  model_name?: string | null
 }
 
 interface ToolGroupDto {
