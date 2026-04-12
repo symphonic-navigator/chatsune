@@ -29,6 +29,8 @@ from shared.dtos.memory import (
 )
 from shared.events.memory import (
     MemoryBodyRollbackEvent,
+    MemoryBodyUpdatedEvent,
+    MemoryBodyVersionDeletedEvent,
     MemoryEntryCommittedEvent,
     MemoryEntryDeletedEvent,
     MemoryEntryUpdatedEvent,
@@ -69,6 +71,10 @@ class DeleteEntriesRequest(BaseModel):
 
 class RollbackRequest(BaseModel):
     to_version: int
+
+
+class UpdateBodyRequest(BaseModel):
+    content: str
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +320,84 @@ async def rollback_memory_body(
     return {"new_version": new_version}
 
 
+@router.put("/{persona_id}/body")
+async def update_memory_body(
+    persona_id: str,
+    body: UpdateBodyRequest,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> dict:
+    from backend.token_counter import count_tokens
+
+    user_id = user["sub"]
+    repo = _memory_repo()
+    token_count = count_tokens(body.content)
+
+    new_version = await repo.save_memory_body(
+        user_id=user_id,
+        persona_id=persona_id,
+        content=body.content,
+        token_count=token_count,
+        entries_processed=0,
+    )
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+
+    await event_bus.publish(
+        Topics.MEMORY_BODY_UPDATED,
+        MemoryBodyUpdatedEvent(
+            persona_id=persona_id,
+            version=new_version,
+            token_count=token_count,
+            edited_by="user",
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"persona:{persona_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+    return {"version": new_version, "token_count": token_count}
+
+
+@router.delete("/{persona_id}/body/versions/{version}")
+async def delete_memory_body_version(
+    persona_id: str,
+    version: int,
+    user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> dict:
+    repo = _memory_repo()
+    try:
+        await repo.delete_memory_body_version(
+            user["sub"], persona_id, version=version,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status = 409 if "current" in detail.lower() else 404
+        raise HTTPException(status_code=status, detail=detail)
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+
+    await event_bus.publish(
+        Topics.MEMORY_BODY_VERSION_DELETED,
+        MemoryBodyVersionDeletedEvent(
+            persona_id=persona_id,
+            deleted_version=version,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"persona:{persona_id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
+
+    return {"deleted_version": version}
+
+
 # ---------------------------------------------------------------------------
 # Context (for journal dropdown)
 # ---------------------------------------------------------------------------
@@ -388,6 +472,7 @@ async def get_memory_context(
 @router.post("/{persona_id}/extract", status_code=202)
 async def trigger_extraction(
     persona_id: str,
+    force: bool = Query(False),
     user: dict = Depends(require_active_session),
 ) -> dict:
     user_id = user["sub"]
@@ -445,8 +530,8 @@ async def trigger_extraction(
         raise
 
     _log.info(
-        "Manual extraction triggered for persona=%s user=%s correlation=%s",
-        persona_id, user_id, correlation_id,
+        "Manual extraction triggered for persona=%s user=%s force=%s correlation=%s",
+        persona_id, user_id, force, correlation_id,
     )
 
     return {"status": "submitted", "correlation_id": correlation_id}
