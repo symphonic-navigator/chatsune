@@ -29,6 +29,7 @@ class SessionMcpRegistry:
     def __init__(self) -> None:
         self._gateways: dict[str, GatewayHandle] = {}  # namespace -> handle
         self._tool_index: dict[str, str] = {}  # namespaced_name -> namespace
+        self.backend_discovered: bool = False
 
     def register(self, handle: GatewayHandle) -> None:
         """Register a gateway and index its tools."""

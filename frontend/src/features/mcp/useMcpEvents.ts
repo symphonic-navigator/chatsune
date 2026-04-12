@@ -111,7 +111,7 @@ export function useMcpEvents() {
 
     const unsubRegistered = eventBus.on(Topics.MCP_TOOLS_REGISTERED, (event: BaseEvent) => {
       const payload = event.payload as unknown as McpToolsRegisteredPayload
-      const backendEntries = payload.gateways.map((gw) => ({
+      const entries = payload.gateways.map((gw) => ({
         namespace: gw.namespace,
         tier: gw.tier,
         tools: gw.tools.map((t) => ({
@@ -120,9 +120,8 @@ export function useMcpEvents() {
           inputSchema: {},
         })),
       }))
-      // Merge with existing local entries (don't overwrite them)
-      const localEntries = useMcpStore.getState().sessionTools.filter((e) => e.tier === "local")
-      useMcpStore.getState().setSessionTools([...backendEntries, ...localEntries])
+      // The event carries the full registry state (all tiers) — replace entirely
+      useMcpStore.getState().setSessionTools(entries)
     })
 
     return () => {

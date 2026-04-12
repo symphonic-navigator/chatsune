@@ -478,20 +478,35 @@ async def run_inference(
 
     # MCP discovery: build or retrieve per-connection registry
     mcp_registry = get_mcp_registry(connection_id) if connection_id else None
-    if mcp_registry is None and connection_id and "mcp" not in set(disabled_tool_groups):
-        # First inference on this connection: discover backend MCP gateways
+    needs_backend_discovery = (
+        connection_id
+        and "mcp" not in set(disabled_tool_groups)
+        and (mcp_registry is None or not mcp_registry.backend_discovered)
+    )
+    if needs_backend_discovery:
         admin_gw_raw = await get_admin_mcp_gateways()
         user_gw_raw = await get_user_mcp_gateways(user_id)
         admin_gateways = [McpGatewayConfigDto(**gw) for gw in admin_gw_raw]
         user_gateways = [McpGatewayConfigDto(**gw) for gw in user_gw_raw]
 
-        mcp_registry = await discover_backend_gateways(
+        backend_registry = await discover_backend_gateways(
             admin_gateways=admin_gateways,
             user_remote_gateways=user_gateways,
             session_id=session_id,
             user_id=user_id,
             correlation_id=correlation_id,
         )
+
+        # Merge into existing registry (may already contain local tools)
+        if mcp_registry is None:
+            mcp_registry = backend_registry
+        else:
+            for gw in backend_registry.gateways.values():
+                try:
+                    mcp_registry.register(gw)
+                except ValueError:
+                    pass  # namespace conflict with existing local gateway
+        mcp_registry.backend_discovered = True
         set_mcp_registry(connection_id, mcp_registry)
 
         # Notify frontend about discovered tools so it can display them
