@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from shared.dtos.mcp import PersonaMcpConfig
+
 ChakraColour = Literal[
     "root", "sacral", "solar", "heart", "throat", "third_eye", "crown"
 ]
@@ -34,6 +36,7 @@ class PersonaDto(BaseModel):
     pinned: bool
     profile_image: str | None
     profile_crop: ProfileCropDto | None = None
+    mcp_config: PersonaMcpConfig | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -73,3 +76,4 @@ class UpdatePersonaDto(BaseModel):
     pinned: bool | None = None
     profile_image: str | None = None
     profile_crop: ProfileCropDto | None = None
+    mcp_config: PersonaMcpConfig | None = None

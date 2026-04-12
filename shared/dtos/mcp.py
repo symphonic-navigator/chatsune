@@ -5,6 +5,24 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class McpServerConfig(BaseModel):
+    """Per-server settings within a gateway."""
+
+    server_name: str
+    prefix_enabled: bool = False
+    custom_prefix: str | None = None
+    hidden: bool = False
+
+
+class McpToolOverride(BaseModel):
+    """Per-tool overrides within a gateway."""
+
+    original_name: str
+    server_name: str
+    display_name: str | None = None
+    hidden: bool = False
+
+
 class McpGatewayConfigDto(BaseModel):
     """Gateway configuration — used for CRUD and stored in DB / localStorage."""
 
@@ -14,6 +32,8 @@ class McpGatewayConfigDto(BaseModel):
     api_key: str | None = None
     enabled: bool = True
     disabled_tools: list[str] = []
+    server_configs: dict[str, McpServerConfig] = {}
+    tool_overrides: list[McpToolOverride] = []
 
 
 class McpGatewayStatusDto(BaseModel):
@@ -32,6 +52,7 @@ class McpToolDefinitionDto(BaseModel):
     name: str
     description: str
     parameters: dict  # JSON Schema
+    server_name: str = "_unknown"
 
 
 class McpToolRegistrationPayload(BaseModel):
@@ -41,3 +62,11 @@ class McpToolRegistrationPayload(BaseModel):
     name: str
     tier: Literal["local"] = "local"
     tools: list[McpToolDefinitionDto]
+
+
+class PersonaMcpConfig(BaseModel):
+    """Persona-level MCP tool exclusions. Default: everything enabled."""
+
+    excluded_gateways: list[str] = []
+    excluded_servers: list[str] = []
+    excluded_tools: list[str] = []

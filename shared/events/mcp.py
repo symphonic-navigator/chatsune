@@ -12,7 +12,8 @@ class McpGatewayToolEntry(BaseModel):
 
     namespace: str
     tier: str
-    tools: list[dict]  # [{name, description}] — lightweight, no full JSON schema
+    tools: list[dict]  # [{name, description, server_name}] — lightweight, no full JSON schema
+    collisions: list[str] = []  # namespaced names that had duplicates
 
 
 class McpToolsRegisteredEvent(BaseModel):
