@@ -19,9 +19,12 @@ from backend.modules.chat import (
     handle_incognito_send,
     trigger_disconnect_extraction,
 )
-from backend.modules.tools import get_client_dispatcher
+from backend.modules.tools import get_client_dispatcher, get_mcp_registry, remove_mcp_registry
+from backend.modules.tools._mcp_discovery import register_local_tools
+from backend.modules.tools._namespace import normalise_namespace
 from backend.modules.user import decode_access_token
 from backend.ws.manager import get_manager
+from shared.dtos.mcp import McpToolRegistrationPayload
 from shared.dtos.tools import ClientToolResultDto
 
 _log = logging.getLogger(__name__)
@@ -198,6 +201,32 @@ async def websocket_endpoint(
                         received_from_user_id=user_id,
                         result_json=dto.result.model_dump_json(),
                     )
+            elif msg_type == "mcp.tools.register":
+                try:
+                    payload = McpToolRegistrationPayload.model_validate(data.get("payload", data))
+                except ValidationError as e:
+                    _log.warning(
+                        "malformed mcp.tools.register from user=%s connection=%s: %s",
+                        user_id, connection_id, e,
+                    )
+                else:
+                    registry = get_mcp_registry(connection_id)
+                    if registry is not None:
+                        namespace = normalise_namespace(payload.name)
+                        try:
+                            register_local_tools(
+                                registry=registry,
+                                gateway_id=payload.gateway_id,
+                                namespace=namespace,
+                                url="",  # local gateways: URL not needed server-side
+                                tools=payload.tools,
+                            )
+                            _log.info(
+                                "Registered %d local MCP tools from gateway '%s' for user=%s",
+                                len(payload.tools), namespace, user_id,
+                            )
+                        except ValueError as exc:
+                            _log.warning("MCP registration failed: %s", exc)
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
@@ -243,6 +272,7 @@ async def websocket_endpoint(
                         "Failed to cancel pending client tools for user %s",
                         user_id, exc_info=True,
                     )
+                remove_mcp_registry(connection_id)
                 try:
                     await trigger_disconnect_extraction(user_id)
                 except Exception:
