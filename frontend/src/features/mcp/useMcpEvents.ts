@@ -20,7 +20,7 @@ export function useMcpEvents() {
     const addNotification = useNotificationStore.getState().addNotification
 
     const unsub = eventBus.on(Topics.MCP_GATEWAY_ERROR, (event: BaseEvent) => {
-      const payload = event.payload as McpGatewayErrorPayload
+      const payload = event.payload as unknown as McpGatewayErrorPayload
       addNotification({
         level: payload.recoverable ? "warning" : "error",
         title: `MCP: ${payload.gateway_name}`,
