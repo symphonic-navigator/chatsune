@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from backend.modules.metrics import tool_calls_total, tool_call_duration_seconds
 
 from backend.modules.tools._client_dispatcher import ClientToolDispatcher
+from backend.modules.tools._mcp_executor import McpExecutor
+from backend.modules.tools._mcp_registry import SessionMcpRegistry
 from backend.modules.tools._registry import ToolGroup, get_groups
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.tools import ToolGroupDto
@@ -26,7 +28,30 @@ _MAX_TOOL_ITERATIONS = 5
 _CLIENT_TOOL_SERVER_TIMEOUT_MS = 10_000
 _CLIENT_TOOL_CLIENT_TIMEOUT_MS = 5_000
 
+_MCP_SERVER_TIMEOUT_MS = 35_000
+_MCP_CLIENT_TIMEOUT_MS = 30_000
+
 _dispatcher_singleton = ClientToolDispatcher()
+_mcp_executor = McpExecutor()
+
+
+# connection_id -> SessionMcpRegistry
+_mcp_registries: dict[str, SessionMcpRegistry] = {}
+
+
+def set_mcp_registry(connection_id: str, registry: SessionMcpRegistry) -> None:
+    """Store the MCP registry for a connection (called at session start)."""
+    _mcp_registries[connection_id] = registry
+
+
+def get_mcp_registry(connection_id: str) -> SessionMcpRegistry | None:
+    """Retrieve the MCP registry for a connection."""
+    return _mcp_registries.get(connection_id)
+
+
+def remove_mcp_registry(connection_id: str) -> None:
+    """Remove the MCP registry when a connection closes."""
+    _mcp_registries.pop(connection_id, None)
 
 
 def get_client_dispatcher() -> ClientToolDispatcher:
@@ -54,18 +79,22 @@ def get_all_groups() -> list[ToolGroupDto]:
 
 def get_active_definitions(
     disabled_groups: list[str] | None = None,
+    mcp_registry: SessionMcpRegistry | None = None,
 ) -> list[ToolDefinition]:
-    """Return tool definitions for all enabled groups.
-
-    Groups not in ``disabled_groups`` are considered active.
-    Non-toggleable groups are always included regardless.
-    """
+    """Return tool definitions for all enabled groups, plus MCP tools if registry provided."""
     disabled = set(disabled_groups or [])
     definitions: list[ToolDefinition] = []
     for group in get_groups().values():
         if group.id in disabled and group.toggleable:
             continue
+        if group.id == "mcp":
+            continue  # MCP tools come from registry, not from static group
         definitions.extend(group.definitions)
+
+    # Append MCP tools (already sorted alphabetically by registry)
+    if mcp_registry and "mcp" not in disabled:
+        definitions.extend(mcp_registry.all_definitions())
+
     return definitions
 
 
@@ -91,6 +120,37 @@ async def execute_tool(
     """
     arguments = json.loads(arguments_json)
     t_start = _time.monotonic()
+
+    # MCP tool routing: any tool containing __ may be an MCP tool
+    if "__" in tool_name:
+        registry = _mcp_registries.get(originating_connection_id)
+        if registry and registry.is_mcp_tool(tool_name):
+            try:
+                gw, original_name = registry.resolve(tool_name)
+                if gw.tier == "local":
+                    # Frontend-executed: use ClientToolDispatcher
+                    return await _dispatcher_singleton.dispatch(
+                        user_id=user_id,
+                        session_id=session_id,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        server_timeout_ms=_MCP_SERVER_TIMEOUT_MS,
+                        client_timeout_ms=_MCP_CLIENT_TIMEOUT_MS,
+                        target_connection_id=originating_connection_id,
+                    )
+                else:
+                    # Backend-executed: use McpExecutor
+                    return await _mcp_executor.call_tool(
+                        url=gw.url,
+                        api_key=gw.api_key,
+                        tool_name=original_name,
+                        arguments=arguments,
+                    )
+            finally:
+                duration = _time.monotonic() - t_start
+                tool_calls_total.labels(model=model, tool_name=tool_name).inc()
+                tool_call_duration_seconds.labels(model=model, tool_name=tool_name).observe(duration)
 
     for group in get_groups().values():
         if tool_name not in group.tool_names:
@@ -130,5 +190,8 @@ __all__ = [
     "execute_tool",
     "get_max_tool_iterations",
     "get_client_dispatcher",
+    "set_mcp_registry",
+    "get_mcp_registry",
+    "remove_mcp_registry",
     "ToolNotFoundError",
 ]

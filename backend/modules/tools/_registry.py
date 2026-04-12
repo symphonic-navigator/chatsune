@@ -278,6 +278,16 @@ def _build_groups() -> dict[str, ToolGroup]:
             ],
             executor=JournalToolExecutor(),
         ),
+        "mcp": ToolGroup(
+            id="mcp",
+            display_name="MCP",
+            description="Tools from connected MCP gateways",
+            side="client",  # side varies, but group toggle uses this; actual routing is in execute_tool
+            toggleable=True,
+            tool_names=[],  # dynamic — populated per-session, not used for routing
+            definitions=[],  # dynamic — populated per-session
+            executor=None,
+        ),
     }
 
 
