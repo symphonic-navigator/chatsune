@@ -24,6 +24,18 @@ def normalise_namespace(name: str) -> str:
     return result
 
 
+def normalise_prefix(value: str) -> str:
+    """Normalise a server name or custom prefix for use as a tool name prefix.
+
+    Same rules as namespace normalisation — lowercase, alphanumeric + underscore.
+    """
+    result = value.lower().strip()
+    result = re.sub(r"[^a-z0-9]", "_", result)
+    result = re.sub(r"_+", "_", result)
+    result = result.strip("_")
+    return result
+
+
 def validate_namespace(
     name: str,
     existing_namespaces: set[str],
