@@ -18,6 +18,8 @@ from backend.modules.user._audit import AuditRepository
 from backend.modules.user._rate_limit import check_login_rate_limit, get_client_ip
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
+from shared.dtos.mcp import McpGatewayConfigDto
+from backend.modules.tools._namespace import normalise_namespace, validate_namespace
 from shared.dtos.auth import (
     ChangePasswordRequestDto,
     CreateUserRequestDto,
@@ -643,3 +645,199 @@ async def get_audit_log(
         "skip": skip,
         "limit": limit,
     }
+
+
+# ── MCP Gateways ─────────────────────────────────────────────────────
+
+
+from pydantic import BaseModel as _BaseModel
+
+
+class CreateMcpGatewayRequest(_BaseModel):
+    name: str
+    url: str
+    api_key: str | None = None
+    enabled: bool = True
+
+
+class UpdateMcpGatewayRequest(_BaseModel):
+    name: str | None = None
+    url: str | None = None
+    api_key: str | None = None
+    enabled: bool | None = None
+    disabled_tools: list[str] | None = None
+
+
+@router.get("/user/mcp/gateways")
+async def list_mcp_gateways(user: dict = Depends(require_active_session)):
+    repo = _user_repo()
+    gateways = await repo.get_mcp_gateways(user["sub"])
+    return [McpGatewayConfigDto(**gw) for gw in gateways]
+
+
+@router.post("/user/mcp/gateways", status_code=201)
+async def create_mcp_gateway(
+    body: CreateMcpGatewayRequest,
+    user: dict = Depends(require_active_session),
+):
+    from uuid import uuid4
+    repo = _user_repo()
+    existing = await repo.get_mcp_gateways(user["sub"])
+    existing_namespaces = {normalise_namespace(gw["name"]) for gw in existing}
+
+    err = validate_namespace(body.name, existing_namespaces)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+
+    gateway = {
+        "id": str(uuid4()),
+        "name": body.name,
+        "url": body.url,
+        "api_key": body.api_key,
+        "enabled": body.enabled,
+        "disabled_tools": [],
+    }
+    await repo.add_mcp_gateway(user["sub"], gateway)
+    return McpGatewayConfigDto(**gateway)
+
+
+@router.patch("/user/mcp/gateways/{gateway_id}")
+async def update_mcp_gateway(
+    gateway_id: str,
+    body: UpdateMcpGatewayRequest,
+    user: dict = Depends(require_active_session),
+):
+    repo = _user_repo()
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=422, detail="No fields to update")
+
+    if "name" in updates:
+        existing = await repo.get_mcp_gateways(user["sub"])
+        existing_namespaces = {
+            normalise_namespace(gw["name"])
+            for gw in existing
+            if gw["id"] != gateway_id
+        }
+        err = validate_namespace(updates["name"], existing_namespaces)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
+
+    success = await repo.update_mcp_gateway(user["sub"], gateway_id, updates)
+    if not success:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+
+    gateways = await repo.get_mcp_gateways(user["sub"])
+    gw = next((g for g in gateways if g["id"] == gateway_id), None)
+    if not gw:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+    return McpGatewayConfigDto(**gw)
+
+
+@router.delete("/user/mcp/gateways/{gateway_id}", status_code=204)
+async def delete_mcp_gateway(
+    gateway_id: str,
+    user: dict = Depends(require_active_session),
+):
+    repo = _user_repo()
+    success = await repo.delete_mcp_gateway(user["sub"], gateway_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+
+
+# ── Admin MCP Gateways ───────────────────────────────────────────────
+
+
+async def _get_admin_mcp_settings(db) -> dict:
+    """Read the admin MCP settings document."""
+    doc = await db["admin_settings"].find_one({"_id": "mcp"})
+    return doc or {"_id": "mcp", "gateways": []}
+
+
+async def _save_admin_mcp_settings(db, gateways: list[dict]) -> None:
+    """Upsert the admin MCP settings document."""
+    await db["admin_settings"].update_one(
+        {"_id": "mcp"},
+        {"$set": {"gateways": gateways}},
+        upsert=True,
+    )
+
+
+@router.get("/admin/mcp/gateways")
+async def list_admin_mcp_gateways(user: dict = Depends(require_admin)):
+    db = get_db()
+    settings = await _get_admin_mcp_settings(db)
+    return [McpGatewayConfigDto(**gw) for gw in settings.get("gateways", [])]
+
+
+@router.post("/admin/mcp/gateways", status_code=201)
+async def create_admin_mcp_gateway(
+    body: CreateMcpGatewayRequest,
+    user: dict = Depends(require_admin),
+):
+    from uuid import uuid4
+    db = get_db()
+    settings = await _get_admin_mcp_settings(db)
+    existing = settings.get("gateways", [])
+    existing_namespaces = {normalise_namespace(gw["name"]) for gw in existing}
+
+    err = validate_namespace(body.name, existing_namespaces)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+
+    gateway = {
+        "id": str(uuid4()),
+        "name": body.name,
+        "url": body.url,
+        "api_key": body.api_key,
+        "enabled": body.enabled,
+        "disabled_tools": [],
+    }
+    existing.append(gateway)
+    await _save_admin_mcp_settings(db, existing)
+    return McpGatewayConfigDto(**gateway)
+
+
+@router.patch("/admin/mcp/gateways/{gateway_id}")
+async def update_admin_mcp_gateway(
+    gateway_id: str,
+    body: UpdateMcpGatewayRequest,
+    user: dict = Depends(require_admin),
+):
+    db = get_db()
+    settings = await _get_admin_mcp_settings(db)
+    gateways = settings.get("gateways", [])
+
+    target = next((gw for gw in gateways if gw["id"] == gateway_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+
+    updates = body.model_dump(exclude_unset=True)
+    if "name" in updates:
+        existing_namespaces = {
+            normalise_namespace(gw["name"])
+            for gw in gateways
+            if gw["id"] != gateway_id
+        }
+        err = validate_namespace(updates["name"], existing_namespaces)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
+
+    target.update(updates)
+    await _save_admin_mcp_settings(db, gateways)
+    return McpGatewayConfigDto(**target)
+
+
+@router.delete("/admin/mcp/gateways/{gateway_id}", status_code=204)
+async def delete_admin_mcp_gateway(
+    gateway_id: str,
+    user: dict = Depends(require_admin),
+):
+    db = get_db()
+    settings = await _get_admin_mcp_settings(db)
+    gateways = settings.get("gateways", [])
+    original_len = len(gateways)
+    gateways = [gw for gw in gateways if gw["id"] != gateway_id]
+    if len(gateways) == original_len:
+        raise HTTPException(status_code=404, detail="Gateway not found")
+    await _save_admin_mcp_settings(db, gateways)
