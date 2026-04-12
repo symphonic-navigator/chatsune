@@ -165,6 +165,18 @@ async def execute_tool(
     # MCP tool routing: any tool containing __ may be an MCP tool
     if "__" in tool_name:
         registry = _mcp_registries.get(originating_connection_id)
+        if not registry:
+            _log.warning(
+                "MCP tool '%s' requested but no registry for connection=%s (known: %s)",
+                tool_name, originating_connection_id[:8] if originating_connection_id else "none",
+                list(_mcp_registries.keys())[:5],
+            )
+        elif not registry.is_mcp_tool(tool_name):
+            _log.warning(
+                "MCP tool '%s' not in registry for connection=%s (registered: %s)",
+                tool_name, originating_connection_id[:8],
+                [td.name for td in registry.all_definitions()][:10],
+            )
         if registry and registry.is_mcp_tool(tool_name):
             try:
                 gw, original_name = registry.resolve(tool_name)
