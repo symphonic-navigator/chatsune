@@ -33,6 +33,10 @@ class AudioCaptureImpl {
 
     this.vad = await MicVAD.new({
       getStream: defaultGetStream,
+      // Serve ONNX Runtime WASM + VAD model from /voice/ in public dir
+      // so Vite's dev server can resolve them correctly
+      onnxWASMBasePath: '/voice/',
+      baseAssetPath: '/voice/',
       onSpeechStart: () => {
         this.callbacks?.onSpeechStart()
       },

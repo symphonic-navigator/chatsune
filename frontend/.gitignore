@@ -13,6 +13,9 @@ dist-ssr
 *.local
 .env
 
+# Voice mode ONNX/WASM assets (copied from node_modules at install time)
+public/voice/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
