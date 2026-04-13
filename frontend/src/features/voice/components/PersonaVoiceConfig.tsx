@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react'
 import type { PersonaDto } from '../../../core/types/persona'
-import type { ChakraEntry } from '../../../core/types/chakra'
+import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import type { VoicePreset } from '../types'
 
 interface Props {
   persona: PersonaDto
-  chakra: ChakraEntry
+  chakra: ChakraPaletteEntry
   onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
 }
 

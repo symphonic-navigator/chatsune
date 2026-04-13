@@ -27,14 +27,15 @@ class KokoroEngineImpl implements TTSEngine {
   async init(device: 'webgpu' | 'wasm'): Promise<void> {
     this.tts = await KokoroTTS.from_pretrained(
       'onnx-community/Kokoro-82M-v1.0-ONNX',
-      { dtype: device === 'webgpu' ? 'fp32' : 'q8f16' },
+      { dtype: device === 'webgpu' ? 'fp32' : 'q4f16' },
     )
     await modelManager.markDownloaded('kokoro-tts')
   }
 
   async synthesise(text: string, voice: VoicePreset): Promise<Float32Array> {
     if (!this.tts) throw new Error('KokoroEngine not initialised')
-    const result = await this.tts.generate(text, { voice: voice.id })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await this.tts.generate(text, { voice: voice.id as any })
     return result.audio as unknown as Float32Array
   }
 

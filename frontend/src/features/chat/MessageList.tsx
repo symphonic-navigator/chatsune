@@ -39,12 +39,13 @@ interface MessageListProps {
   onRegenerate: () => void
   bookmarkedMessageIds: Set<string>
   onBookmark: (messageId: string) => void
+  voiceEnabled?: boolean
 }
 
 export function MessageList({
   sessionId, messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
-  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark,
+  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, voiceEnabled,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
@@ -181,7 +182,8 @@ export function MessageList({
                   generationDurationMs={msg.generation_duration_ms}
                   outputTokens={msg.usage?.output_tokens}
                   providerName={msg.provider_name}
-                  modelName={msg.model_name} />
+                  modelName={msg.model_name}
+                  voiceEnabled={voiceEnabled} />
               </div>
             )
           }
@@ -215,7 +217,8 @@ export function MessageList({
             )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
-                isStreaming={true} accentColour={accentColour} highlighter={highlighter} />
+                isStreaming={true} accentColour={accentColour} highlighter={highlighter}
+                voiceEnabled={voiceEnabled} />
             ) : (
               <StreamingIndicator accentColour={accentColour} />
             )}

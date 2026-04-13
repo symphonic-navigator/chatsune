@@ -36,6 +36,13 @@ import { useArtefactEvents } from '../artefact/useArtefactEvents'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
+import { useVoiceSettings } from '../voice/stores/voiceSettingsStore'
+import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
+import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
+import { voicePipeline } from '../voice/pipeline/voicePipeline'
+import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
+import { SetupModal } from '../voice/components/SetupModal'
+import { sttRegistry } from '../voice/engines/registry'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -62,6 +69,14 @@ export function ChatView({ persona }: ChatViewProps) {
   const [toolPopoverOpen, setToolPopoverOpen] = useState(false)
   // Mobile-only expandable tray for Tool-Toggles (< lg:). Desktop renders them inline.
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
+
+  // Voice integration state
+  const voiceEnabled = useVoiceSettings((s) => s.settings.enabled)
+  const voiceInputMode = useVoiceSettings((s) => s.settings.inputMode)
+  const pipelineState = useVoicePipeline((s) => s.state)
+  const setPipelineState = useVoicePipeline((s) => s.setState)
+  const [transcription, setTranscription] = useState('')
+  const [showSetup, setShowSetup] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
   // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
   // Requires plumbing through MessageList/UserMessage; deferred — top-level error banner already exists.
@@ -534,6 +549,53 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [effectiveSessionId, isIncognito, personaId])
 
+  // Voice pipeline callbacks
+  useEffect(() => {
+    if (!voiceEnabled) return
+    voicePipeline.setCallbacks({
+      onStateChange: setPipelineState,
+      onTranscription: (text) => {
+        setTranscription(text)
+        if (voiceInputMode === 'continuous' && text.trim()) {
+          setTimeout(() => { setTranscription('') }, 800)
+        }
+      },
+    })
+    return () => voicePipeline.dispose()
+  }, [voiceEnabled, voiceInputMode, setPipelineState])
+
+  // Mic handlers
+  const handleMicPress = useCallback(() => {
+    if (!sttRegistry.active()) { setShowSetup(true); return }
+    voicePipeline.startRecording('push-to-talk')
+  }, [])
+
+  const handleMicRelease = useCallback(() => {
+    voicePipeline.stopRecording()
+  }, [])
+
+  const handleStopVoice = useCallback(() => {
+    voicePipeline.stopRecording()
+    voicePipeline.stopPlayback()
+  }, [])
+
+  const handleToggleContinuous = useCallback(() => {
+    if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
+      voicePipeline.stopRecording()
+    } else {
+      if (!sttRegistry.active()) { setShowSetup(true); return }
+      voicePipeline.startRecording('continuous')
+    }
+  }, [pipelineState.phase])
+
+  // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle continuous
+  useCtrlSpace({
+    enabled: voiceEnabled,
+    onHoldStart: handleMicPress,
+    onHoldEnd: handleMicRelease,
+    onTap: handleToggleContinuous,
+  })
+
   if (!effectiveSessionId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
@@ -803,6 +865,7 @@ export function ChatView({ persona }: ChatViewProps) {
               onEdit={handleEdit} onRegenerate={handleRegenerate}
               bookmarkedMessageIds={bookmarkedMessageIds}
               onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
+              voiceEnabled={voiceEnabled}
             />
           )}
 
@@ -818,9 +881,16 @@ export function ChatView({ persona }: ChatViewProps) {
             <InferenceWaitBanner holderSource={waitingForLock.holderSource} />
           )}
 
+          {transcription && <TranscriptionOverlay text={transcription} mode={voiceInputMode} />}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
+            voiceEnabled={voiceEnabled}
+            voicePhase={pipelineState.phase}
+            volumeLevel={0}
+            onMicPress={handleMicPress}
+            onMicRelease={handleMicRelease}
+            onStopRecording={handleStopVoice}
             attachmentStrip={attachments.hasAttachments ? (
               <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
             ) : undefined}
@@ -951,6 +1021,7 @@ export function ChatView({ persona }: ChatViewProps) {
         }}
         accentColour={accentColour}
       />
+      {showSetup && <SetupModal onComplete={() => setShowSetup(false)} onCancel={() => setShowSetup(false)} />}
     </div>
   )
 }
