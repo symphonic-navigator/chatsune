@@ -34,6 +34,7 @@ import { ArtefactOverlay } from '../artefact/ArtefactOverlay'
 import { useArtefactEvents } from '../artefact/useArtefactEvents'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
+import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -837,6 +838,9 @@ export function ChatView({ persona }: ChatViewProps) {
                     filteredMcpToolCount={mcpToolCount}
                   />
                 </div>
+                <div className="hidden lg:block">
+                  <ChatIntegrationsPanel />
+                </div>
                 {/* Mobile: icon-only button row + collapsible tool toggles. */}
                 <div className="lg:hidden">
                   <div className="flex items-center gap-1.5">
@@ -892,6 +896,7 @@ export function ChatView({ persona }: ChatViewProps) {
                       </svg>
                     </button>
                   </div>
+                  <ChatIntegrationsPanel />
                   {mobileToolsOpen && (
                     <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
                       <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-2">
