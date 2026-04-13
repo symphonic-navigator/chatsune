@@ -31,6 +31,9 @@ export interface PersonaDto {
     excluded_servers: string[]
     excluded_tools: string[]
   } | null;
+  integrations_config: {
+    enabled_integration_ids: string[]
+  } | null;
   created_at: string;
   updated_at: string;
 }

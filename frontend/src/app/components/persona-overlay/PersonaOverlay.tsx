@@ -10,8 +10,9 @@ import { KnowledgeTab } from './KnowledgeTab'
 import { MemoriesTab } from './MemoriesTab'
 import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
+import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
 
-export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp'
+export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations'
 
 interface PersonaOverlayProps {
   persona: PersonaDto | null
@@ -32,6 +33,7 @@ const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
   { id: 'memories', label: 'Memories', subtitle: 'anahata' },
   { id: 'history', label: 'History', subtitle: 'vishuddha' },
   { id: 'mcp', label: 'MCP', subtitle: 'ajna' },
+  { id: 'integrations', label: 'Integrations' },
 ]
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -55,6 +57,7 @@ const DEFAULT_PERSONA: PersonaDto = {
   profile_image: null,
   profile_crop: null,
   mcp_config: null,
+  integrations_config: null,
   created_at: '',
   updated_at: '',
 }
@@ -257,6 +260,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {activeTab === 'memories' && !isCreating && <MemoriesTab persona={resolved} chakra={chakra} />}
           {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} onClose={onClose} />}
           {activeTab === 'mcp' && !isCreating && <McpTab persona={resolved} chakra={chakra} />}
+          {activeTab === 'integrations' && !isCreating && <PersonaIntegrationsTab persona={resolved} onSave={onSave} />}
         </div>
       </div>
     </>

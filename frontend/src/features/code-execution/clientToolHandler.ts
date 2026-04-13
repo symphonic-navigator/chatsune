@@ -9,6 +9,8 @@ import { sendMessage } from '../../core/websocket/connection'
 import { runSandbox } from './sandboxHost'
 import { mcpToolsCall } from '../mcp/mcpClient'
 import { useMcpStore } from '../mcp/mcpStore'
+import { getAllPlugins } from '../integrations/registry'
+import { useIntegrationsStore } from '../integrations/store'
 
 const MAX_OUTPUT_BYTES = 4096
 
@@ -42,6 +44,10 @@ export function registerClientToolHandler(): () => void {
 }
 
 async function handleDispatch(ev: DispatchPayload): Promise<void> {
+  // Check if this is an integration plugin tool (e.g. lovense_get_toys → plugin 'lovense')
+  const integrationResult = await tryIntegrationDispatch(ev)
+  if (integrationResult) return
+
   // Check if this is an MCP tool (contains __ separator)
   if (ev.tool_name.includes('__')) {
     await handleMcpDispatch(ev)
@@ -71,6 +77,38 @@ async function handleDispatch(ev: DispatchPayload): Promise<void> {
       error: `Sandbox host crashed: ${e instanceof Error ? e.message : String(e)}`,
     })
   }
+}
+
+/** Try to route a tool call to an integration plugin. Returns true if handled. */
+async function tryIntegrationDispatch(ev: DispatchPayload): Promise<boolean> {
+  const plugins = getAllPlugins()
+  for (const [pluginId, plugin] of plugins) {
+    if (!plugin.executeTool) continue
+    const prefix = pluginId + '_'
+    if (!ev.tool_name.startsWith(prefix)) continue
+
+    // Verify the integration is enabled for this user
+    const config = useIntegrationsStore.getState().getConfig(pluginId)
+    if (!config?.enabled) {
+      sendResult(ev.tool_call_id, {
+        stdout: '',
+        error: `Integration '${pluginId}' is not enabled`,
+      })
+      return true
+    }
+
+    try {
+      const output = await plugin.executeTool(ev.tool_name, ev.arguments, config.config)
+      sendResult(ev.tool_call_id, { stdout: output, error: null })
+    } catch (e) {
+      sendResult(ev.tool_call_id, {
+        stdout: '',
+        error: `Integration tool failed: ${e instanceof Error ? e.message : String(e)}`,
+      })
+    }
+    return true
+  }
+  return false
 }
 
 async function handleMcpDispatch(ev: DispatchPayload): Promise<void> {

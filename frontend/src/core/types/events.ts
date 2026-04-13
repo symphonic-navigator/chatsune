@@ -109,6 +109,10 @@ export const Topics = {
   INFERENCE_LOCK_WAIT_ENDED: "inference.lock.wait_ended",
   MCP_GATEWAY_ERROR: "mcp.gateway.error",
   MCP_TOOLS_REGISTERED: "mcp.tools.registered",
+  // Integrations
+  INTEGRATION_CONFIG_UPDATED: "integration.config.updated",
+  INTEGRATION_ACTION_EXECUTED: "integration.action.executed",
+  INTEGRATION_EMERGENCY_STOP: "integration.emergency_stop",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]

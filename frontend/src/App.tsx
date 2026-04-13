@@ -5,6 +5,7 @@ import { useEventStore } from "./core/store/eventStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
 import BackendUnavailablePage from "./app/pages/BackendUnavailablePage"
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
+import './features/integrations/plugins/lovense'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"

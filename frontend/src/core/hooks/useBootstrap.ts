@@ -4,6 +4,7 @@ import { meApi } from "../api/meApi"
 import { ApiError } from "../api/client"
 import { useAuthStore } from "../store/authStore"
 import { useEventStore } from "../store/eventStore"
+import { useIntegrationsStore } from "../../features/integrations/store"
 
 /** Checks setup status, then attempts a silent token refresh if setup is complete. */
 export function useBootstrap() {
@@ -35,6 +36,8 @@ export function useBootstrap() {
           } catch {
             // getMe failed — user stays authenticated with fallback display name
           }
+          // Fire-and-forget: load integration definitions and user configs
+          useIntegrationsStore.getState().load()
         } catch {
           // No valid session — stay logged out
         }
