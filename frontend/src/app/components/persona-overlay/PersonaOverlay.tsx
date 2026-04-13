@@ -58,6 +58,7 @@ const DEFAULT_PERSONA: PersonaDto = {
   profile_crop: null,
   mcp_config: null,
   integrations_config: null,
+  voice_config: null,
   created_at: '',
   updated_at: '',
 }

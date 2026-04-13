@@ -34,6 +34,12 @@ export interface PersonaDto {
   integrations_config: {
     enabled_integration_ids: string[]
   } | null;
+  voice_config: {
+    dialogue_voice: string | null
+    narrator_voice: string | null
+    auto_read: boolean
+    roleplay_mode: boolean
+  } | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,4 +74,5 @@ export interface UpdatePersonaRequest {
   display_order?: number;
   pinned?: boolean;
   profile_image?: string | null;
+  voice_config?: PersonaDto['voice_config'];
 }

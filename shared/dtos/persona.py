@@ -18,6 +18,13 @@ class ProfileCropDto(BaseModel):
     height: int = 0
 
 
+class VoiceConfigDto(BaseModel):
+    dialogue_voice: str | None = None
+    narrator_voice: str | None = None
+    auto_read: bool = False
+    roleplay_mode: bool = False
+
+
 class PersonaDto(BaseModel):
     id: str
     user_id: str
@@ -38,6 +45,7 @@ class PersonaDto(BaseModel):
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
     integrations_config: dict | None = None
+    voice_config: VoiceConfigDto | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -56,6 +64,7 @@ class CreatePersonaDto(BaseModel):
     display_order: int = 0
     pinned: bool = False
     profile_image: str | None = None
+    voice_config: VoiceConfigDto | None = None
 
 
 class ReorderPersonasDto(BaseModel):
@@ -79,3 +88,4 @@ class UpdatePersonaDto(BaseModel):
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
     integrations_config: dict | None = None
+    voice_config: VoiceConfigDto | None = None

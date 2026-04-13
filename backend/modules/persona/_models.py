@@ -24,6 +24,7 @@ class PersonaDocument(BaseModel):
     profile_image: str | None
     profile_crop: dict | None = None
     mcp_config: dict | None = None
+    voice_config: dict | None = None
     created_at: datetime
     updated_at: datetime
 
