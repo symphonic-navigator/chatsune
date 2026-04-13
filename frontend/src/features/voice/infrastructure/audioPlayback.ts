@@ -23,15 +23,20 @@ class AudioPlaybackImpl {
 
   stopAll(): void {
     this.queue = []
-    try { this.currentSource?.stop() } catch { /* already stopped */ }
-    this.currentSource = null
+    if (this.currentSource) {
+      this.currentSource.onended = null // prevent stale onended → playNext → onFinished
+      try { this.currentSource.stop() } catch { /* already stopped */ }
+      this.currentSource = null
+    }
     this.playing = false
   }
 
   skipCurrent(): void {
-    try { this.currentSource?.stop() } catch { /* already stopped */ }
-    this.currentSource = null
-    // playNext will be called by the onended handler
+    if (this.currentSource) {
+      // Keep onended intact — it calls playNext for the next segment
+      try { this.currentSource.stop() } catch { /* already stopped */ }
+      this.currentSource = null
+    }
   }
 
   private async playNext(): Promise<void> {
