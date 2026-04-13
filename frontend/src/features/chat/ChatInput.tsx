@@ -1,6 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useViewport } from '../../core/hooks/useViewport'
 import { hapticTap } from '../../core/utils/haptics'
+import { VoiceButton } from '../voice/components/VoiceButton'
+import type { PipelinePhase } from '../voice/types'
 
 const LONG_PASTE_THRESHOLD = 500
 
@@ -14,6 +16,12 @@ interface ChatInputProps {
   hasPendingUploads: boolean
   toolBar?: ReactNode
   attachmentStrip?: ReactNode
+  voiceEnabled?: boolean
+  voicePhase?: PipelinePhase
+  volumeLevel?: number
+  onMicPress?: () => void
+  onMicRelease?: () => void
+  onStopRecording?: () => void
 }
 
 export interface ChatInputHandle {
@@ -26,7 +34,7 @@ export interface ChatInputHandle {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-  { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip }, ref,
+  { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip, voiceEnabled, voicePhase, volumeLevel, onMicPress, onMicRelease, onStopRecording }, ref,
 ) {
   const { isMobile } = useViewport()
   const [text, setText] = useState('')
@@ -203,33 +211,51 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           rows={1}
           className="chat-text max-h-[40vh] flex-1 resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden"
         />
-        {isStreaming ? (
-          <button
-            type="button"
-            data-testid="cancel-button"
-            onClick={onCancel}
-            title="Cancel response"
-            aria-label="Cancel response"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
-            </svg>
-          </button>
+        {voiceEnabled ? (
+          <VoiceButton
+            phase={voicePhase ?? 'idle'}
+            hasText={!!text.trim()}
+            isStreaming={isStreaming}
+            disabled={disabled}
+            hasPendingUploads={hasPendingUploads}
+            volumeLevel={volumeLevel ?? 0}
+            onSend={handleSend}
+            onCancel={onCancel}
+            onMicPress={onMicPress ?? (() => {})}
+            onMicRelease={onMicRelease ?? (() => {})}
+            onStopRecording={onStopRecording ?? (() => {})}
+          />
         ) : (
-          <button
-            type="button"
-            data-testid="send-button"
-            onClick={handleSend}
-            disabled={!text.trim() || disabled || hasPendingUploads}
-            title="Send message"
-            aria-label="Send message"
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />
-            </svg>
-          </button>
+          <>
+            {isStreaming ? (
+              <button
+                type="button"
+                data-testid="cancel-button"
+                onClick={onCancel}
+                title="Cancel response"
+                aria-label="Cancel response"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="send-button"
+                onClick={handleSend}
+                disabled={!text.trim() || disabled || hasPendingUploads}
+                title="Send message"
+                aria-label="Send message"
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />
+                </svg>
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
