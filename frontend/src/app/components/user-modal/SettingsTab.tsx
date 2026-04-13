@@ -1,4 +1,5 @@
 import { useDisplaySettings } from '../../../core/store/displaySettingsStore'
+import { VoiceSettings } from '../../../features/voice/components/VoiceSettings'
 import { useHapticsStore } from '../../../core/store/hapticsStore'
 import {
   UI_SCALE_OPTIONS,
@@ -148,6 +149,10 @@ export function SettingsTab() {
         >
           {hapticsEnabled ? 'On' : 'Off'}
         </button>
+      </div>
+
+      <div className="border-t border-white/8 pt-6">
+        <VoiceSettings />
       </div>
     </div>
   )
