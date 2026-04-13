@@ -1,0 +1,21 @@
+"""Internal document models for the integrations module."""
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+from shared.dtos.inference import ToolDefinition
+
+
+@dataclass(frozen=True)
+class IntegrationDefinition:
+    """Static definition of an available integration."""
+    id: str
+    display_name: str
+    description: str
+    icon: str
+    execution_mode: Literal["frontend", "backend", "hybrid"]
+    config_fields: list[dict]
+    system_prompt_template: str = ""
+    response_tag_prefix: str = ""
+    tool_definitions: list[ToolDefinition] = field(default_factory=list)
+    tool_side: Literal["server", "client"] = "client"
