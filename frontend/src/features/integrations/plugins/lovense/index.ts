@@ -15,8 +15,24 @@ const lovensePlugin: IntegrationPlugin = {
 
     if (toolName === 'lovense_get_toys') {
       try {
-        const result = await api.getToys(ip)
-        return JSON.stringify(result)
+        const raw = await api.getToys(ip)
+        const parsed = api.parseGetToysResponse(raw)
+        if (!parsed.ok) {
+          return JSON.stringify({ error: 'Failed to query toys', raw })
+        }
+        // Return a clean, LLM-friendly summary
+        const toys = parsed.toys.map((t) => ({
+          name: t.name,
+          nickName: t.nickName || undefined,
+          status: t.status,
+          battery: t.battery,
+          capabilities: t.capabilities,
+        }))
+        return JSON.stringify({
+          connected_toys: toys,
+          count: toys.length,
+          platform: parsed.platform,
+        })
       } catch (err) {
         return JSON.stringify({ error: err instanceof Error ? err.message : String(err) })
       }
