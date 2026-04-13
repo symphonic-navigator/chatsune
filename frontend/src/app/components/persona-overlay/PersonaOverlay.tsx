@@ -11,8 +11,10 @@ import { MemoriesTab } from './MemoriesTab'
 import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
+import { useVoiceSettings } from '../../../features/voice/stores/voiceSettingsStore'
+import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 
-export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations'
+export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations' | 'voice'
 
 interface PersonaOverlayProps {
   persona: PersonaDto | null
@@ -33,6 +35,7 @@ const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
   { id: 'memories', label: 'Memories', subtitle: 'anahata' },
   { id: 'history', label: 'History', subtitle: 'vishuddha' },
   { id: 'mcp', label: 'MCP', subtitle: 'ajna' },
+  { id: 'voice', label: 'Voice', subtitle: 'sahasrara' },
   { id: 'integrations', label: 'Integrations' },
 ]
 
@@ -110,6 +113,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   }, [onClose])
 
   const addNotification = useNotificationStore((s) => s.addNotification)
+  const voiceEnabled = useVoiceSettings((s) => s.settings.enabled)
 
   const handleDeletePersona = async () => {
     if (!resolved?.id) return
@@ -187,7 +191,11 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           style={{ borderBottom: `1px solid ${borderColour}` }}
         >
           {TABS
-            .filter((tab) => !isCreating || tab.id === 'edit')
+            .filter((tab) => {
+              if (isCreating && tab.id !== 'edit') return false
+              if (tab.id === 'voice' && !voiceEnabled) return false
+              return true
+            })
             .map((tab) => {
               const isActive = activeTab === tab.id
               return (
@@ -262,6 +270,9 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} onClose={onClose} />}
           {activeTab === 'mcp' && !isCreating && <McpTab persona={resolved} chakra={chakra} />}
           {activeTab === 'integrations' && !isCreating && <PersonaIntegrationsTab persona={resolved} onSave={onSave} />}
+          {activeTab === 'voice' && !isCreating && (
+            <PersonaVoiceConfig persona={resolved} chakra={chakra} onSave={onSave} />
+          )}
         </div>
       </div>
     </>
