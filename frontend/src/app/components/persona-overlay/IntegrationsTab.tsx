@@ -24,20 +24,16 @@ export function IntegrationsTab({ persona, onSave }: Props) {
 
   const availableDefs = definitions.filter((d) => configs[d.id]?.enabled)
 
-  const isDirty = JSON.stringify(enabledIds.sort()) !==
-    JSON.stringify((persona.integrations_config?.enabled_integration_ids ?? []).sort())
+  const handleToggle = useCallback(async (id: string) => {
+    const next = enabledIds.includes(id)
+      ? enabledIds.filter((x) => x !== id)
+      : [...enabledIds, id]
+    setEnabledIds(next)
 
-  const handleToggle = useCallback((id: string) => {
-    setEnabledIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    )
-  }, [])
-
-  const handleSave = useCallback(async () => {
     setSaving(true)
     try {
       await onSave(persona.id, {
-        integrations_config: { enabled_integration_ids: enabledIds },
+        integrations_config: { enabled_integration_ids: next },
       })
     } finally {
       setSaving(false)
@@ -68,9 +64,11 @@ export function IntegrationsTab({ persona, onSave }: Props) {
               <button
                 key={d.id}
                 type="button"
+                disabled={saving}
                 onClick={() => handleToggle(d.id)}
                 className={[
                   'flex items-center gap-3 px-4 py-2.5 rounded-lg border text-left transition-all',
+                  saving ? 'opacity-50 cursor-wait' : '',
                   active
                     ? 'border-gold/40 bg-gold/8 text-gold'
                     : 'border-white/8 bg-white/[0.02] text-white/50 hover:text-white/70 hover:border-white/15',
@@ -94,17 +92,6 @@ export function IntegrationsTab({ persona, onSave }: Props) {
             )
           })}
         </div>
-      )}
-
-      {isDirty && (
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="self-start px-5 py-2 rounded-lg font-mono text-[11px] uppercase tracking-wider border border-gold/60 bg-gold/12 text-gold hover:bg-gold/20 transition-all"
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
       )}
     </div>
   )
