@@ -8,10 +8,14 @@ export interface AudioCaptureCallbacks {
 
 // vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
 // We cannot configure that internal ORT instance from outside, so we
-// let vad-web load ONNX Runtime WASM + VAD model from a CDN instead
-// of trying to serve them from public/.
-// This loads ~14 MB of code (WASM binary + model) — cached by browser after first load.
-// No voice data is sent — only engine code is fetched.
+// let vad-web load ONNX Runtime WASM + VAD model from CDN instead of
+// trying to serve them from public/ (Vite 8 blocks .mjs from public/).
+//
+// baseAssetPath: used for both the VAD model AND the AudioWorklet JS
+// onnxWASMBasePath: used for ONNX Runtime .wasm + .mjs files
+//
+// ~14 MB total (WASM + model) — browser-cached after first load.
+// Only engine code is fetched — no voice data leaves the browser.
 const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'
 const VAD_CDN = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
 
@@ -41,7 +45,7 @@ class AudioCaptureImpl {
     this.vad = await MicVAD.new({
       getStream,
       onnxWASMBasePath: ORT_CDN,
-      modelURL: VAD_CDN + 'silero_vad_legacy.onnx',
+      baseAssetPath: VAD_CDN,
       onSpeechStart: () => {
         this.callbacks?.onSpeechStart()
       },
