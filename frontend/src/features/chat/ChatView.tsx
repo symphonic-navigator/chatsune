@@ -557,7 +557,16 @@ export function ChatView({ persona }: ChatViewProps) {
       onTranscription: (text) => {
         setTranscription(text)
         if (voiceInputMode === 'continuous' && text.trim()) {
-          setTimeout(() => { setTranscription('') }, 800)
+          // Continuous mode: briefly show, then auto-send
+          setTimeout(() => {
+            handleSend(text)
+            setTranscription('')
+          }, 800)
+        } else {
+          // PTT mode: put text in input field for editing before send
+          chatInputRef.current?.setText(text)
+          // Clear overlay after a moment
+          setTimeout(() => setTranscription(''), 1500)
         }
       },
     })

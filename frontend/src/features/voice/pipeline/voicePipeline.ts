@@ -61,10 +61,19 @@ class VoicePipelineImpl {
   private async handleAudio(audio: Float32Array): Promise<void> {
     const stt = sttRegistry.active()
     if (!stt) { this.setState({ phase: 'idle' }); return }
-    const result = await stt.transcribe(audio)
-    this.callbacks?.onTranscription(result.text)
-    if (this.mode === 'continuous') this.setState({ phase: 'listening' })
-    else this.setState({ phase: 'idle' })
+    try {
+      const result = await stt.transcribe(audio)
+      const text = result.text.trim()
+      if (text) {
+        this.callbacks?.onTranscription(text)
+      }
+    } catch (err) {
+      console.error('[VoicePipeline] Transcription failed:', err)
+    } finally {
+      // Always transition out of transcribing — never leave button stuck
+      if (this.mode === 'continuous') this.setState({ phase: 'listening' })
+      else this.setState({ phase: 'idle' })
+    }
   }
 
   async speakResponse(

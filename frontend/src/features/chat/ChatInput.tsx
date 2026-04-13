@@ -31,6 +31,8 @@ export interface ChatInputHandle {
   openCamera: () => void
   /** Open the native file picker for attaching files. */
   openFilePicker: () => void
+  /** Set the text content of the input field (used by voice transcription). */
+  setText: (text: string) => void
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
@@ -45,6 +47,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
+    setText: (value: string) => { setText(value); textareaRef.current?.focus() },
     openCamera: () => cameraInputRef.current?.click(),
     openFilePicker: () => fileInputRef.current?.click(),
   }))
