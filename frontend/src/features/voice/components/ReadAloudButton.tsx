@@ -17,18 +17,28 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
   const handleClick = useCallback(async () => {
     if (playing) { audioPlayback.stopAll(); setPlaying(false); return }
     const tts = ttsRegistry.active()
-    if (!tts) return
+    if (!tts) {
+      console.warn('[ReadAloud] No TTS engine active — complete voice setup first')
+      return
+    }
     const fallbackVoice = tts.voices[0]
     const dVoice = dialogueVoice ?? fallbackVoice
     const nVoice = narratorVoice ?? fallbackVoice
     const segments = parseForSpeech(content, roleplayMode)
     if (segments.length === 0) return
+
     setPlaying(true)
     audioPlayback.setCallbacks({ onSegmentStart: () => {}, onFinished: () => setPlaying(false) })
-    for (const segment of segments) {
-      const voice = segment.type === 'voice' ? dVoice : nVoice
-      const audio = await tts.synthesise(segment.text, voice)
-      audioPlayback.enqueue(audio, segment)
+
+    try {
+      for (const segment of segments) {
+        const voice = segment.type === 'voice' ? dVoice : nVoice
+        const audio = await tts.synthesise(segment.text, voice)
+        audioPlayback.enqueue(audio, segment)
+      }
+    } catch (err) {
+      console.error('[ReadAloud] TTS synthesis failed:', err)
+      setPlaying(false)
     }
   }, [content, dialogueVoice, narratorVoice, roleplayMode, playing])
 

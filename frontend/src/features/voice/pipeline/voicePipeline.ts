@@ -14,6 +14,10 @@ class VoicePipelineImpl {
   private mode: 'push-to-talk' | 'continuous' = 'push-to-talk'
   private state: PipelineState = { phase: 'idle' }
 
+  // Generation counter: incremented on every new recording session.
+  // handleAudio checks this to discard results from stale sessions.
+  private generation = 0
+
   setCallbacks(callbacks: VoicePipelineCallbacks): void { this.callbacks = callbacks }
 
   private setState(state: PipelineState): void {
@@ -23,23 +27,24 @@ class VoicePipelineImpl {
 
   async startRecording(mode: 'push-to-talk' | 'continuous'): Promise<void> {
     this.mode = mode
+    this.generation++
     this.stopPlayback()
 
+    const gen = this.generation
     const captureCallbacks = {
       onSpeechStart: () => { this.setState({ phase: 'recording' }) },
       onSpeechEnd: async (audio: Float32Array) => {
+        if (gen !== this.generation) return // stale session, discard
         this.setState({ phase: 'transcribing' })
-        await this.handleAudio(audio)
+        await this.handleAudio(audio, gen)
       },
       onVolumeChange: () => {},
     }
 
     if (mode === 'push-to-talk') {
-      // PTT: record raw audio, no VAD needed
       this.setState({ phase: 'recording' })
       await audioCapture.startPTT(captureCallbacks)
     } else {
-      // Continuous: use VAD for automatic speech detection
       this.setState({ phase: 'listening' })
       await audioCapture.startContinuous(captureCallbacks)
     }
@@ -47,8 +52,6 @@ class VoicePipelineImpl {
 
   stopRecording(): void {
     if (this.mode === 'push-to-talk') {
-      // PTT: stopPTT delivers audio via onSpeechEnd callback
-      // Don't reset to idle — the callback will handle state transitions
       audioCapture.stopPTT()
     } else {
       audioCapture.stopContinuous()
@@ -58,11 +61,12 @@ class VoicePipelineImpl {
     }
   }
 
-  private async handleAudio(audio: Float32Array): Promise<void> {
+  private async handleAudio(audio: Float32Array, gen: number): Promise<void> {
     const stt = sttRegistry.active()
     if (!stt) { this.setState({ phase: 'idle' }); return }
     try {
       const result = await stt.transcribe(audio)
+      if (gen !== this.generation) return // new session started while transcribing
       const text = result.text.trim()
       if (text) {
         this.callbacks?.onTranscription(text)
@@ -70,7 +74,7 @@ class VoicePipelineImpl {
     } catch (err) {
       console.error('[VoicePipeline] Transcription failed:', err)
     } finally {
-      // Always transition out of transcribing — never leave button stuck
+      if (gen !== this.generation) return // don't touch state if a new session took over
       if (this.mode === 'continuous') this.setState({ phase: 'listening' })
       else this.setState({ phase: 'idle' })
     }
@@ -106,6 +110,7 @@ class VoicePipelineImpl {
   getPhase(): PipelineState['phase'] { return this.state.phase }
 
   dispose(): void {
+    this.generation++ // invalidate any in-flight transcriptions
     this.stopRecording()
     this.stopPlayback()
     audioPlayback.dispose()

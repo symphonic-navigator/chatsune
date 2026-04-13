@@ -23,36 +23,70 @@ class AudioPlaybackImpl {
 
   stopAll(): void {
     this.queue = []
-    this.currentSource?.stop()
+    try { this.currentSource?.stop() } catch { /* already stopped */ }
     this.currentSource = null
     this.playing = false
   }
 
   skipCurrent(): void {
-    this.currentSource?.stop()
+    try { this.currentSource?.stop() } catch { /* already stopped */ }
     this.currentSource = null
     // playNext will be called by the onended handler
   }
 
-  private playNext(): void {
+  private async playNext(): Promise<void> {
     const entry = this.queue.shift()
-    if (!entry) { this.playing = false; this.callbacks?.onFinished(); return }
+    if (!entry) {
+      this.playing = false
+      this.callbacks?.onFinished()
+      return
+    }
+
     this.playing = true
     this.callbacks?.onSegmentStart(entry.segment)
-    if (!this.ctx) this.ctx = new AudioContext()
-    const buffer = this.ctx.createBuffer(1, entry.audio.length, 24_000)
-    buffer.getChannelData(0).set(entry.audio)
-    const source = this.ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(this.ctx.destination)
-    this.currentSource = source
-    source.onended = () => { this.currentSource = null; this.playNext() }
-    source.start()
+
+    try {
+      if (!this.ctx || this.ctx.state === 'closed') {
+        this.ctx = new AudioContext({ sampleRate: 24_000 })
+      }
+
+      // Resume suspended AudioContext (browser policy: needs user gesture)
+      if (this.ctx.state === 'suspended') {
+        await this.ctx.resume()
+      }
+
+      const buffer = this.ctx.createBuffer(1, entry.audio.length, 24_000)
+      buffer.getChannelData(0).set(entry.audio)
+
+      const source = this.ctx.createBufferSource()
+      source.buffer = buffer
+      source.connect(this.ctx.destination)
+      this.currentSource = source
+
+      source.onended = () => {
+        this.currentSource = null
+        this.playNext()
+      }
+
+      source.start()
+    } catch (err) {
+      console.error('[AudioPlayback] Failed to play segment:', err)
+      this.currentSource = null
+      // Try next segment instead of getting permanently stuck
+      this.playNext()
+    }
   }
 
   isPlaying(): boolean { return this.playing }
 
-  dispose(): void { this.stopAll(); this.ctx?.close(); this.ctx = null; this.callbacks = null }
+  dispose(): void {
+    this.stopAll()
+    if (this.ctx && this.ctx.state !== 'closed') {
+      this.ctx.close()
+    }
+    this.ctx = null
+    this.callbacks = null
+  }
 }
 
 export const audioPlayback = new AudioPlaybackImpl()
