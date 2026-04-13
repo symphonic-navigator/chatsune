@@ -43,6 +43,8 @@ import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
 import { SetupModal } from '../voice/components/SetupModal'
 import { useEngineLoader } from '../voice/stores/engineLoaderStore'
+import { setActiveReader } from '../voice/components/ReadAloudButton'
+import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -583,6 +585,9 @@ export function ChatView({ persona }: ChatViewProps) {
   // Mic handlers
   const handleMicPress = useCallback(() => {
     if (!voiceReady) { setShowSetup(true); return }
+    // Cancel any active Read Aloud
+    setActiveReader(null)
+    audioPlayback.stopAll()
     voicePipeline.startRecording('push-to-talk')
   }, [voiceReady])
 
@@ -600,6 +605,8 @@ export function ChatView({ persona }: ChatViewProps) {
       voicePipeline.stopRecording()
     } else {
       if (!voiceReady) { setShowSetup(true); return }
+      setActiveReader(null)
+      audioPlayback.stopAll()
       voicePipeline.startRecording('continuous')
     }
   }, [pipelineState.phase, voiceReady])

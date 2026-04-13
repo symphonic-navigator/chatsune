@@ -23,7 +23,7 @@ type Listener = () => void
 let activeMessageId: string | null = null
 const listeners = new Set<Listener>()
 
-function setActiveReader(id: string | null): void {
+export function setActiveReader(id: string | null): void {
   activeMessageId = id
   listeners.forEach((fn) => fn())
 }
