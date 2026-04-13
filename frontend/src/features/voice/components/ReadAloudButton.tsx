@@ -52,6 +52,9 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
       return
     }
 
+    // Clean any stale playback state from previous reads
+    audioPlayback.stopAll()
+
     audioPlayback.setCallbacks({
       onSegmentStart: () => setState('playing'),
       onFinished: () => setState('idle'),
