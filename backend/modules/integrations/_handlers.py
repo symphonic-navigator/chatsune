@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.modules.user import require_active_session
+from backend.dependencies import require_active_session
 from backend.modules.integrations._registry import get_all, get as get_definition
 from backend.modules.integrations._repository import IntegrationRepository
 from backend.database import get_db
