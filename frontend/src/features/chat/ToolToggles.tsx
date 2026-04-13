@@ -159,14 +159,16 @@ export function ToolToggles({
 
 /** Read-only indicator for active integration tools. */
 function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: boolean }) {
-  const { definitions, configs } = useIntegrationsStore()
+  const definitions = useIntegrationsStore((s) => s.definitions)
+  const configs = useIntegrationsStore((s) => s.configs)
+  const loaded = useIntegrationsStore((s) => s.loaded)
+
+  if (!loaded) return null
 
   const enabledDefs = definitions.filter((d) => configs.get(d.id)?.enabled && d.has_tools)
   if (enabledDefs.length === 0) return null
 
   const toolCount = enabledDefs.reduce((sum, d) => {
-    // Count is not available from definition DTO, so use a simple heuristic:
-    // each integration with has_tools=true contributes at least its tools
     return sum + (d.has_tools ? 2 : 0) // get_toys + control per integration
   }, 0)
 

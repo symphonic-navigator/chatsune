@@ -233,9 +233,14 @@ async def execute_tool(
     from backend.modules.integrations import get_all_integrations
     for defn in get_all_integrations().values():
         if any(td.name == tool_name for td in defn.tool_definitions):
+            _log.info(
+                "Routing integration tool '%s' (integration=%s, side=%s) to client dispatcher, connection=%s",
+                tool_name, defn.id, defn.tool_side,
+                originating_connection_id[:8] if originating_connection_id else "none",
+            )
             try:
                 if defn.tool_side == "client":
-                    return await _dispatcher_singleton.dispatch(
+                    result = await _dispatcher_singleton.dispatch(
                         user_id=user_id,
                         session_id=session_id,
                         tool_call_id=tool_call_id,
@@ -245,6 +250,8 @@ async def execute_tool(
                         client_timeout_ms=_CLIENT_TOOL_CLIENT_TIMEOUT_MS,
                         target_connection_id=originating_connection_id,
                     )
+                    _log.info("Integration tool '%s' completed: %s", tool_name, result[:200] if result else "empty")
+                    return result
                 # Backend-side integration tools would go here in the future
             finally:
                 duration = _time.monotonic() - t_start

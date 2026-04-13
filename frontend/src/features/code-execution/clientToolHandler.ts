@@ -87,9 +87,12 @@ async function tryIntegrationDispatch(ev: DispatchPayload): Promise<boolean> {
     const prefix = pluginId + '_'
     if (!ev.tool_name.startsWith(prefix)) continue
 
+    console.debug('[integration-dispatch] matched plugin=%s tool=%s', pluginId, ev.tool_name)
+
     // Verify the integration is enabled for this user
     const config = useIntegrationsStore.getState().getConfig(pluginId)
     if (!config?.enabled) {
+      console.warn('[integration-dispatch] plugin=%s is not enabled', pluginId)
       sendResult(ev.tool_call_id, {
         stdout: '',
         error: `Integration '${pluginId}' is not enabled`,
@@ -97,10 +100,13 @@ async function tryIntegrationDispatch(ev: DispatchPayload): Promise<boolean> {
       return true
     }
 
+    console.debug('[integration-dispatch] executing tool=%s config=%o args=%o', ev.tool_name, config.config, ev.arguments)
     try {
       const output = await plugin.executeTool(ev.tool_name, ev.arguments, config.config)
+      console.debug('[integration-dispatch] tool=%s result=%s', ev.tool_name, output.slice(0, 200))
       sendResult(ev.tool_call_id, { stdout: output, error: null })
     } catch (e) {
+      console.error('[integration-dispatch] tool=%s error:', ev.tool_name, e)
       sendResult(ev.tool_call_id, {
         stdout: '',
         error: `Integration tool failed: ${e instanceof Error ? e.message : String(e)}`,

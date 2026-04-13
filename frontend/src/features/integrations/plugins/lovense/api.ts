@@ -5,12 +5,18 @@ function buildUrl(ip: string): string {
 
 export async function sendCommand(ip: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   const url = buildUrl(ip)
+  console.debug('[lovense] POST %s %o', url, body)
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  return await res.json()
+  const json = await res.json()
+  console.debug('[lovense] response status=%d %o', res.status, json)
+  if (!res.ok) {
+    console.warn('[lovense] HTTP %d for %s', res.status, url)
+  }
+  return json
 }
 
 export interface ToyInfo {
