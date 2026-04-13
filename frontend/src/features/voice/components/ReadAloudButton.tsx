@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
@@ -25,7 +25,6 @@ const cache = new Map<string, CachedAudio>()
 function cacheGet(id: string): CachedAudio | undefined {
   const entry = cache.get(id)
   if (entry) {
-    // Move to end (most recently used)
     cache.delete(id)
     cache.set(id, entry)
   }
@@ -33,9 +32,8 @@ function cacheGet(id: string): CachedAudio | undefined {
 }
 
 function cachePut(id: string, entry: CachedAudio): void {
-  cache.delete(id) // remove if exists (for re-ordering)
+  cache.delete(id)
   cache.set(id, entry)
-  // Evict oldest if over limit
   if (cache.size > CACHE_MAX) {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
@@ -43,16 +41,24 @@ function cachePut(id: string, entry: CachedAudio): void {
 }
 
 export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
-  const [state, setState] = useState<ReadState>('idle')
+  const [displayState, setDisplayState] = useState<ReadState>('idle')
+  // Ref mirrors displayState to avoid stale closures in async callbacks
+  const stateRef = useRef<ReadState>('idle')
+
+  const setState = useCallback((s: ReadState) => {
+    stateRef.current = s
+    setDisplayState(s)
+  }, [])
 
   const handleClick = useCallback(async () => {
-    if (state === 'playing' || state === 'synthesising') {
+    const current = stateRef.current
+    if (current === 'playing' || current === 'synthesising') {
       audioPlayback.stopAll()
       setState('idle')
       return
     }
 
-    // Clean any stale playback state from previous reads
+    // Clean any stale playback state
     audioPlayback.stopAll()
 
     audioPlayback.setCallbacks({
@@ -97,18 +103,18 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
       console.error('[ReadAloud] TTS synthesis failed:', err)
       setState('idle')
     }
-  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, state])
+  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState])
 
-  const label = state === 'synthesising' ? 'Preparing...' : state === 'playing' ? 'Stop' : 'Read'
-  const active = state !== 'idle'
+  const label = displayState === 'synthesising' ? 'Preparing...' : displayState === 'playing' ? 'Stop' : 'Read'
+  const active = displayState !== 'idle'
 
   return (
     <button type="button" onClick={handleClick}
       className={`flex items-center gap-1 text-[11px] transition-colors ${active ? 'text-gold' : 'text-white/25 hover:text-white/50'}`}
       title={label}>
-      {state === 'synthesising' ? (
+      {displayState === 'synthesising' ? (
         <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-gold/30 border-t-gold" />
-      ) : state === 'playing' ? (
+      ) : displayState === 'playing' ? (
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" /></svg>
       ) : (
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
