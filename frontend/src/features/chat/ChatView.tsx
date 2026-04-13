@@ -42,7 +42,7 @@ import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
 import { SetupModal } from '../voice/components/SetupModal'
-import { sttRegistry } from '../voice/engines/registry'
+import { useEngineLoader } from '../voice/stores/engineLoaderStore'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -75,6 +75,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const voiceInputMode = useVoiceSettings((s) => s.settings.inputMode)
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
+  const voiceReady = useEngineLoader((s) => s.ready)
+  const startEngineLoading = useEngineLoader((s) => s.startLoading)
   const [transcription, setTranscription] = useState('')
   const [showSetup, setShowSetup] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
@@ -549,6 +551,11 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [effectiveSessionId, isIncognito, personaId])
 
+  // Start loading voice engines in background when voice is enabled
+  useEffect(() => {
+    if (voiceEnabled) startEngineLoading()
+  }, [voiceEnabled, startEngineLoading])
+
   // Voice pipeline callbacks
   useEffect(() => {
     if (!voiceEnabled) return
@@ -575,9 +582,9 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
-    if (!sttRegistry.active()) { setShowSetup(true); return }
+    if (!voiceReady) { setShowSetup(true); return }
     voicePipeline.startRecording('push-to-talk')
-  }, [])
+  }, [voiceReady])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -592,10 +599,10 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
-      if (!sttRegistry.active()) { setShowSetup(true); return }
+      if (!voiceReady) { setShowSetup(true); return }
       voicePipeline.startRecording('continuous')
     }
-  }, [pipelineState.phase])
+  }, [pipelineState.phase, voiceReady])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle continuous
   useCtrlSpace({
