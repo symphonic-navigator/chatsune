@@ -157,7 +157,7 @@ export function ToolToggles({
   )
 }
 
-/** Read-only indicator for active integration tools. */
+/** Read-only indicators for active integration tools — one pill per integration. */
 function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: boolean }) {
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
@@ -168,10 +168,6 @@ function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: 
   const enabledDefs = definitions.filter((d) => configs[d.id]?.enabled && d.has_tools)
   if (enabledDefs.length === 0) return null
 
-  const toolCount = enabledDefs.reduce((sum, d) => {
-    return sum + (d.has_tools ? 2 : 0) // get_toys + control per integration
-  }, 0)
-
   const active = modelSupportsTools
 
   return (
@@ -180,33 +176,25 @@ function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: 
         className="mx-0.5 h-3.5 w-px"
         style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
       />
-      <span
-        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide"
-        style={{
-          color: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.2)',
-          fontFamily: "'Courier New', monospace",
-        }}
-        title={`Integration tools from: ${enabledDefs.map((d) => d.display_name).join(', ')}`}
-      >
+      {enabledDefs.map((d) => (
         <span
-          className="inline-block h-1.5 w-1.5 rounded-full"
+          key={d.id}
+          className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide"
           style={{
-            backgroundColor: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.15)',
+            color: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.2)',
+            fontFamily: "'Courier New', monospace",
           }}
-        />
-        Integrations
-        {active && toolCount > 0 && (
+          title={`${d.display_name} integration tools`}
+        >
           <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
             style={{
-              color: 'rgba(196,167,231,0.5)',
-              fontSize: '9px',
-              marginLeft: '2px',
+              backgroundColor: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.15)',
             }}
-          >
-            {toolCount}
-          </span>
-        )}
-      </span>
+          />
+          {d.display_name}
+        </span>
+      ))}
     </>
   )
 }

@@ -1,12 +1,47 @@
+import { useEffect } from 'react'
 import { useIntegrationsStore } from './store'
 import { getPlugin } from './registry'
 
 import './plugins/lovense'
 
+/**
+ * Compact integration status & controls shown in the chat toolbar.
+ * Displays enabled integrations with health dots and an emergency stop button.
+ * Runs health checks on mount and periodically.
+ */
 export function ChatIntegrationsPanel() {
-  const { definitions, configs, healthStatus } = useIntegrationsStore()
+  const definitions = useIntegrationsStore((s) => s.definitions)
+  const configs = useIntegrationsStore((s) => s.configs)
+  const healthStatus = useIntegrationsStore((s) => s.healthStatus)
+  const setHealth = useIntegrationsStore((s) => s.setHealth)
 
   const enabledDefs = definitions.filter((d) => configs[d.id]?.enabled)
+
+  // Run health checks on mount and every 30 seconds
+  useEffect(() => {
+    if (enabledDefs.length === 0) return
+
+    async function checkAll() {
+      for (const d of enabledDefs) {
+        const plugin = getPlugin(d.id)
+        const config = configs[d.id]?.config ?? {}
+        if (plugin?.healthCheck) {
+          try {
+            const status = await plugin.healthCheck(config)
+            setHealth(d.id, status)
+          } catch {
+            setHealth(d.id, 'unreachable')
+          }
+        }
+      }
+    }
+
+    checkAll()
+    const interval = setInterval(checkAll, 30_000)
+    return () => clearInterval(interval)
+  // Only re-run when enabled integration IDs change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabledDefs.map((d) => d.id).join(',')])
 
   if (enabledDefs.length === 0) return null
 
