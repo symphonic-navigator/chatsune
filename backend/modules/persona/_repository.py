@@ -158,6 +158,7 @@ class PersonaRepository:
             profile_image=doc.get("profile_image"),
             profile_crop=ProfileCropDto(**doc["profile_crop"]) if doc.get("profile_crop") else None,
             mcp_config=PersonaMcpConfig(**doc["mcp_config"]) if doc.get("mcp_config") else None,
+            integrations_config=doc.get("integrations_config"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
