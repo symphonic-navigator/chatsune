@@ -82,6 +82,11 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    headers: {
+      // Required for SharedArrayBuffer (multi-threaded WASM in voice mode)
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
     proxy: {
       "/api": backendUrl,
       "/ws": {

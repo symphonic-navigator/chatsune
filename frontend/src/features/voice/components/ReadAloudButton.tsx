@@ -11,11 +11,17 @@ interface ReadAloudButtonProps {
   roleplayMode?: boolean
 }
 
+type ReadState = 'idle' | 'synthesising' | 'playing'
+
 export function ReadAloudButton({ content, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
-  const [playing, setPlaying] = useState(false)
+  const [state, setState] = useState<ReadState>('idle')
 
   const handleClick = useCallback(async () => {
-    if (playing) { audioPlayback.stopAll(); setPlaying(false); return }
+    if (state === 'playing' || state === 'synthesising') {
+      audioPlayback.stopAll()
+      setState('idle')
+      return
+    }
     const tts = ttsRegistry.active()
     if (!tts) {
       console.warn('[ReadAloud] No TTS engine active — complete voice setup first')
@@ -27,8 +33,11 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
     const segments = parseForSpeech(content, roleplayMode)
     if (segments.length === 0) return
 
-    setPlaying(true)
-    audioPlayback.setCallbacks({ onSegmentStart: () => {}, onFinished: () => setPlaying(false) })
+    setState('synthesising')
+    audioPlayback.setCallbacks({
+      onSegmentStart: () => setState('playing'),
+      onFinished: () => setState('idle'),
+    })
 
     try {
       for (const segment of segments) {
@@ -38,15 +47,20 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
       }
     } catch (err) {
       console.error('[ReadAloud] TTS synthesis failed:', err)
-      setPlaying(false)
+      setState('idle')
     }
-  }, [content, dialogueVoice, narratorVoice, roleplayMode, playing])
+  }, [content, dialogueVoice, narratorVoice, roleplayMode, state])
+
+  const label = state === 'synthesising' ? 'Preparing...' : state === 'playing' ? 'Stop' : 'Read'
+  const active = state !== 'idle'
 
   return (
     <button type="button" onClick={handleClick}
-      className={`flex items-center gap-1 text-[11px] transition-colors ${playing ? 'text-gold' : 'text-white/25 hover:text-white/50'}`}
-      title={playing ? 'Stop reading' : 'Read aloud'}>
-      {playing ? (
+      className={`flex items-center gap-1 text-[11px] transition-colors ${active ? 'text-gold' : 'text-white/25 hover:text-white/50'}`}
+      title={label}>
+      {state === 'synthesising' ? (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-gold/30 border-t-gold" />
+      ) : state === 'playing' ? (
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" /></svg>
       ) : (
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
@@ -55,7 +69,7 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
           <path d="M11 3C12.5 4.5 12.5 9.5 11 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
         </svg>
       )}
-      {playing ? 'Stop' : 'Read'}
+      {label}
     </button>
   )
 }

@@ -1,6 +1,18 @@
-import { pipeline, AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+import { pipeline, env as transformersEnv, AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
 import type { STTEngine, STTOptions, STTResult } from '../types'
 import { modelManager } from '../infrastructure/modelManager'
+
+// ONNX Runtime defaults to min(4, ceil(cores/2)) threads.
+// Override to use all available cores for faster inference.
+// Requires SharedArrayBuffer (enabled via COOP/COEP headers in vite.config.ts).
+if (typeof navigator !== 'undefined' && crossOriginIsolated) {
+  const cores = navigator.hardwareConcurrency ?? 4
+  transformersEnv.backends.onnx.wasm ??= {}
+  transformersEnv.backends.onnx.wasm.numThreads = cores
+  console.log(`[Whisper] WASM threading: ${cores} threads (cross-origin isolated)`)
+} else if (typeof navigator !== 'undefined') {
+  console.log('[Whisper] WASM threading: single-threaded (no cross-origin isolation)')
+}
 
 class WhisperEngineImpl implements STTEngine {
   readonly id = 'whisper-tiny'
