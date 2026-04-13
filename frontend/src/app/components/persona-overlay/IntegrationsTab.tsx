@@ -22,7 +22,7 @@ export function IntegrationsTab({ persona, onSave }: Props) {
     if (!loaded) load()
   }, [loaded, load])
 
-  const availableDefs = definitions.filter((d) => configs.get(d.id)?.enabled)
+  const availableDefs = definitions.filter((d) => configs[d.id]?.enabled)
 
   const isDirty = JSON.stringify(enabledIds.sort()) !==
     JSON.stringify((persona.integrations_config?.enabled_integration_ids ?? []).sort())

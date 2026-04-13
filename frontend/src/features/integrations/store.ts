@@ -4,8 +4,9 @@ import { integrationsApi } from './api'
 
 interface IntegrationsState {
   definitions: IntegrationDefinition[]
-  configs: Map<string, UserIntegrationConfig>
-  healthStatus: Map<string, HealthStatus>
+  /** Plain object keyed by integration_id — avoids Map reactivity issues with Zustand. */
+  configs: Record<string, UserIntegrationConfig>
+  healthStatus: Record<string, HealthStatus>
   loaded: boolean
   loading: boolean
 
@@ -18,8 +19,8 @@ interface IntegrationsState {
 
 export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
   definitions: [],
-  configs: new Map(),
-  healthStatus: new Map(),
+  configs: {},
+  healthStatus: {},
   loaded: false,
   loading: false,
 
@@ -27,15 +28,17 @@ export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
     if (get().loading) return
     set({ loading: true })
     try {
-      const [definitions, configs] = await Promise.all([
+      const [definitions, rawConfigs] = await Promise.all([
         integrationsApi.listDefinitions(),
         integrationsApi.listConfigs(),
       ])
-      const configMap = new Map<string, UserIntegrationConfig>()
-      for (const c of configs) {
-        configMap.set(c.integration_id, c)
+      const configs: Record<string, UserIntegrationConfig> = {}
+      for (const c of rawConfigs) {
+        configs[c.integration_id] = c
       }
-      set({ definitions, configs: configMap, loaded: true })
+      set({ definitions, configs, loaded: true })
+    } catch (err) {
+      console.error('[integrations] Failed to load:', err)
     } finally {
       set({ loading: false })
     }
@@ -43,27 +46,20 @@ export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
 
   upsertConfig: async (integrationId, enabled, config) => {
     const result = await integrationsApi.upsertConfig(integrationId, enabled, config)
-    set((s) => {
-      const next = new Map(s.configs)
-      next.set(integrationId, result)
-      return { configs: next }
-    })
+    set((s) => ({
+      configs: { ...s.configs, [integrationId]: result },
+    }))
   },
 
   setHealth: (integrationId, status) =>
-    set((s) => {
-      const next = new Map(s.healthStatus)
-      next.set(integrationId, status)
-      return { healthStatus: next }
-    }),
+    set((s) => ({
+      healthStatus: { ...s.healthStatus, [integrationId]: status },
+    })),
 
-  getConfig: (integrationId) => get().configs.get(integrationId),
+  getConfig: (integrationId) => get().configs[integrationId],
 
   getEnabledIds: () => {
-    const ids: string[] = []
-    for (const [id, c] of get().configs) {
-      if (c.enabled) ids.push(id)
-    }
-    return ids
+    const configs = get().configs
+    return Object.keys(configs).filter((id) => configs[id].enabled)
   },
 }))

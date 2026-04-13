@@ -10,10 +10,10 @@ const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 
 
 function IntegrationCard({ definition }: { definition: IntegrationDefinition }) {
   const { configs, upsertConfig, healthStatus, setHealth } = useIntegrationsStore()
-  const config = configs.get(definition.id)
+  const config = configs[definition.id]
   const enabled = config?.enabled ?? false
   const userConfig = config?.config ?? {}
-  const health = healthStatus.get(definition.id) ?? 'unknown'
+  const health = healthStatus[definition.id] ?? 'unknown'
 
   const [localConfig, setLocalConfig] = useState<Record<string, unknown>>(userConfig)
   const [saving, setSaving] = useState(false)

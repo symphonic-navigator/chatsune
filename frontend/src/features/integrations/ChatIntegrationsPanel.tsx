@@ -6,14 +6,14 @@ import './plugins/lovense'
 export function ChatIntegrationsPanel() {
   const { definitions, configs, healthStatus } = useIntegrationsStore()
 
-  const enabledDefs = definitions.filter((d) => configs.get(d.id)?.enabled)
+  const enabledDefs = definitions.filter((d) => configs[d.id]?.enabled)
 
   if (enabledDefs.length === 0) return null
 
   const handleEmergencyStop = async () => {
     for (const d of enabledDefs) {
       const plugin = getPlugin(d.id)
-      const config = configs.get(d.id)?.config ?? {}
+      const config = configs[d.id]?.config ?? {}
       if (plugin?.emergencyStop) {
         try {
           await plugin.emergencyStop(config)
@@ -27,7 +27,7 @@ export function ChatIntegrationsPanel() {
   return (
     <div className="flex items-center gap-2">
       {enabledDefs.map((d) => {
-        const health = healthStatus.get(d.id) ?? 'unknown'
+        const health = healthStatus[d.id] ?? 'unknown'
         const dotColour = health === 'connected' ? 'bg-green-400'
           : health === 'reachable' ? 'bg-yellow-400'
           : health === 'unreachable' ? 'bg-red-400'
