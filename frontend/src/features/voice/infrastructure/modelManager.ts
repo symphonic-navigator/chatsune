@@ -47,8 +47,15 @@ class ModelManagerImpl {
     return Object.entries(MODEL_URLS).map(([id, meta]) => ({ id, label: meta.label, size: meta.size, downloaded: false }))
   }
 
-  detectDevice(): 'webgpu' | 'wasm' {
-    if (typeof navigator !== 'undefined' && 'gpu' in navigator) return 'webgpu'
+  async detectDevice(): Promise<'webgpu' | 'wasm'> {
+    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter()
+        if (adapter) return 'webgpu'
+      } catch {
+        // WebGPU API exists but no adapter available
+      }
+    }
     return 'wasm'
   }
 }

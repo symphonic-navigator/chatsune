@@ -62,9 +62,9 @@ export function SetupModal({ onComplete, onCancel }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    const device = modelManager.detectDevice()
 
     async function run() {
+      const device = await modelManager.detectDevice()
       // Step 1: Whisper
       setStatus('whisper-tiny', 'downloading')
       try {
