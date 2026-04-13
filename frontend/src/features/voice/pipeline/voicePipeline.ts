@@ -58,8 +58,10 @@ class VoicePipelineImpl {
 
   stopRecording(): void {
     if (this.mode === 'push-to-talk') {
-      // Show transcribing state immediately so user sees feedback
-      this.setState({ phase: 'transcribing' })
+      if (this.state.phase === 'recording') {
+        // Show transcribing spinner immediately so user sees feedback
+        this.setState({ phase: 'transcribing' })
+      }
       audioCapture.stopPTT()
     } else {
       audioCapture.stopContinuous()
