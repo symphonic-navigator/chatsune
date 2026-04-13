@@ -73,6 +73,69 @@ export function parseGetToysResponse(raw: Record<string, unknown>): GetToysResul
   return { ok: true, toys, platform, raw }
 }
 
+// ---------------------------------------------------------------------------
+// Toy name → ID cache (the Lovense API expects IDs, the LLM uses names)
+// ---------------------------------------------------------------------------
+
+const CACHE_TTL_MS = 15_000
+
+interface ToyCache {
+  /** name (lowercase) → id */
+  nameToId: Map<string, string>
+  /** nickName (lowercase) → id */
+  nickToId: Map<string, string>
+  fetchedAt: number
+  ip: string
+}
+
+let _toyCache: ToyCache | null = null
+
+function cacheIsValid(ip: string): boolean {
+  return _toyCache !== null
+    && _toyCache.ip === ip
+    && Date.now() - _toyCache.fetchedAt < CACHE_TTL_MS
+}
+
+async function ensureCache(ip: string): Promise<ToyCache> {
+  if (cacheIsValid(ip)) return _toyCache!
+
+  console.debug('[lovense] refreshing toy cache for ip=%s', ip)
+  const raw = await getToys(ip)
+  const parsed = parseGetToysResponse(raw)
+
+  const nameToId = new Map<string, string>()
+  const nickToId = new Map<string, string>()
+  for (const t of parsed.toys) {
+    if (t.name) nameToId.set(t.name.toLowerCase(), t.id)
+    if (t.nickName) nickToId.set(t.nickName.toLowerCase(), t.id)
+  }
+
+  _toyCache = { nameToId, nickToId, fetchedAt: Date.now(), ip }
+  console.debug('[lovense] cache populated: %d toys', parsed.toys.length)
+  return _toyCache
+}
+
+/**
+ * Resolve a toy name/nick to its hardware ID.
+ * Falls back to the input unchanged if no match (might already be an ID).
+ */
+export async function resolveToyId(ip: string, nameOrNick: string): Promise<string> {
+  const cache = await ensureCache(ip)
+  const lower = nameOrNick.toLowerCase()
+  const byName = cache.nameToId.get(lower)
+  if (byName) return byName
+  const byNick = cache.nickToId.get(lower)
+  if (byNick) return byNick
+  // Might already be an ID — pass through
+  console.debug('[lovense] no cache hit for "%s", passing through as-is', nameOrNick)
+  return nameOrNick
+}
+
+/** Invalidate the cache (e.g. after emergency stop). */
+export function invalidateToyCache(): void {
+  _toyCache = null
+}
+
 /** All actions supported by the Lovense Function API. */
 export const ACTIONS = [
   'Vibrate', 'Rotate', 'Pump', 'Thrusting', 'Fingering',
@@ -97,11 +160,14 @@ export interface FunctionParams {
   stopPrevious?: boolean
 }
 
-/** Send a Function command to the Lovense API. */
+/** Send a Function command to the Lovense API. Resolves toy names to IDs automatically. */
 export async function functionCommand(ip: string, params: FunctionParams): Promise<Record<string, unknown>> {
   const actionStr = params.action === 'Stop'
     ? 'Stop'
     : `${params.action}:${params.strength ?? 0}`
+
+  // Resolve toy name → ID
+  const toyId = params.toy ? await resolveToyId(ip, params.toy) : undefined
 
   const body: Record<string, unknown> = {
     command: 'Function',
@@ -109,7 +175,7 @@ export async function functionCommand(ip: string, params: FunctionParams): Promi
     timeSec: params.timeSec ?? 0,
     apiVer: 1,
   }
-  if (params.toy) body.toy = params.toy
+  if (toyId) body.toy = toyId
   if (params.loopRunningSec != null && params.loopRunningSec > 1) body.loopRunningSec = params.loopRunningSec
   if (params.loopPauseSec != null && params.loopPauseSec > 1) body.loopPauseSec = params.loopPauseSec
   if (params.stopPrevious === false) body.stopPrevious = 0
@@ -136,19 +202,22 @@ export async function strokeCommand(
     return { code: 400, type: 'ERROR', message: 'Stroke and Thrusting must differ by at least 20 points' }
   }
 
+  // Resolve toy name once for both calls
+  const toyId = toy ? await resolveToyId(ip, toy) : undefined
+
   // Send thrusting first, then stroke with stopPrevious=0 to layer
   await functionCommand(ip, {
     action: 'Thrusting',
     strength: clampedThrust,
     timeSec,
-    toy,
+    toy: toyId,
     stopPrevious,
   })
   return functionCommand(ip, {
     action: 'Thrusting' as Action, // Stroke piggybacks on thrusting
     strength: clampedStroke,
     timeSec,
-    toy,
+    toy: toyId,
     stopPrevious: false, // layer on top
   })
 }
