@@ -37,6 +37,7 @@ class PersonaDto(BaseModel):
     profile_image: str | None
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
+    integrations_config: dict | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -77,3 +78,4 @@ class UpdatePersonaDto(BaseModel):
     profile_image: str | None = None
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
+    integrations_config: dict | None = None
