@@ -54,6 +54,12 @@ class Topics:
     MCP_TOOLS_REGISTER = "mcp.tools.register"
     MCP_TOOLS_REGISTERED = "mcp.tools.registered"
     MCP_GATEWAY_ERROR = "mcp.gateway.error"
+    # Integrations
+    INTEGRATION_CONFIG_UPDATED = "integration.config.updated"
+    INTEGRATION_TOOL_DISPATCH = "integration.tool.dispatch"
+    INTEGRATION_TOOL_RESULT = "integration.tool.result"
+    INTEGRATION_ACTION_EXECUTED = "integration.action.executed"
+    INTEGRATION_EMERGENCY_STOP = "integration.emergency_stop"
     # Storage
     STORAGE_FILE_UPLOADED = "storage.file.uploaded"
     STORAGE_FILE_DELETED = "storage.file.deleted"
