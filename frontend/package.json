@@ -19,6 +19,7 @@
     "katex": "^0.16.45",
     "kokoro-js": "^1.2.1",
     "mermaid": "^11.14.0",
+    "onnxruntime-web": "^1.24.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
