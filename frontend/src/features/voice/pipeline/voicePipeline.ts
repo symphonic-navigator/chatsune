@@ -26,6 +26,12 @@ class VoicePipelineImpl {
   }
 
   async startRecording(mode: 'push-to-talk' | 'continuous'): Promise<void> {
+    // If a previous session is still transcribing, cancel it
+    if (this.state.phase === 'transcribing' || this.state.phase === 'recording') {
+      this.generation++ // invalidate in-flight transcription
+      try { audioCapture.stopPTT() } catch { /* may not be active */ }
+    }
+
     this.mode = mode
     this.generation++
     this.stopPlayback()
@@ -52,6 +58,8 @@ class VoicePipelineImpl {
 
   stopRecording(): void {
     if (this.mode === 'push-to-talk') {
+      // Show transcribing state immediately so user sees feedback
+      this.setState({ phase: 'transcribing' })
       audioCapture.stopPTT()
     } else {
       audioCapture.stopContinuous()
