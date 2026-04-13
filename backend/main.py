@@ -46,6 +46,7 @@ from backend.modules.knowledge import (
 )
 from backend.modules.artefact import router as artefact_router, global_router as artefact_global_router, init_indexes as artefact_init_indexes
 from backend.modules.project import router as project_router, init_indexes as project_init_indexes
+from backend.modules.integrations import router as integrations_router, init_indexes as integrations_init_indexes
 from backend.modules.debug import router as debug_router
 from backend.modules.metrics import router as metrics_router
 from backend.ws.event_bus import EventBus, set_event_bus
@@ -140,6 +141,7 @@ async def lifespan(app: FastAPI):
     await knowledge_init_indexes(db)
     await artefact_init_indexes(db)
     await project_init_indexes(db)
+    await integrations_init_indexes(db)
     manager = ConnectionManager()
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
@@ -564,6 +566,7 @@ app.include_router(knowledge_router)
 app.include_router(artefact_router)
 app.include_router(artefact_global_router)
 app.include_router(project_router)
+app.include_router(integrations_router)
 app.include_router(debug_router)
 app.include_router(jobs_http_router)
 app.include_router(ws_router)
