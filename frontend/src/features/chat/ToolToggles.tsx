@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { chatApi, type ToolGroupDto } from '../../core/api/chat'
 import { useMcpStore } from '../mcp/mcpStore'
+import { useIntegrationsStore } from '../integrations/store'
 
 interface ToolTogglesProps {
   sessionId: string
@@ -151,6 +152,59 @@ export function ToolToggles({
           </button>
         </>
       )}
+      <IntegrationToolIndicator modelSupportsTools={modelSupportsTools} />
     </div>
+  )
+}
+
+/** Read-only indicator for active integration tools. */
+function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: boolean }) {
+  const { definitions, configs } = useIntegrationsStore()
+
+  const enabledDefs = definitions.filter((d) => configs.get(d.id)?.enabled && d.has_tools)
+  if (enabledDefs.length === 0) return null
+
+  const toolCount = enabledDefs.reduce((sum, d) => {
+    // Count is not available from definition DTO, so use a simple heuristic:
+    // each integration with has_tools=true contributes at least its tools
+    return sum + (d.has_tools ? 2 : 0) // get_toys + control per integration
+  }, 0)
+
+  const active = modelSupportsTools
+
+  return (
+    <>
+      <div
+        className="mx-0.5 h-3.5 w-px"
+        style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+      />
+      <span
+        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide"
+        style={{
+          color: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.2)',
+          fontFamily: "'Courier New', monospace",
+        }}
+        title={`Integration tools from: ${enabledDefs.map((d) => d.display_name).join(', ')}`}
+      >
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{
+            backgroundColor: active ? 'rgba(196,167,231,0.9)' : 'rgba(255,255,255,0.15)',
+          }}
+        />
+        Integrations
+        {active && toolCount > 0 && (
+          <span
+            style={{
+              color: 'rgba(196,167,231,0.5)',
+              fontSize: '9px',
+              marginLeft: '2px',
+            }}
+          >
+            {toolCount}
+          </span>
+        )}
+      </span>
+    </>
   )
 }

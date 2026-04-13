@@ -229,6 +229,28 @@ async def execute_tool(
             tool_calls_total.labels(model=model, tool_name=tool_name).inc()
             tool_call_duration_seconds.labels(model=model, tool_name=tool_name).observe(duration)
 
+    # Integration tool routing: frontend-executed tools from the integrations module
+    from backend.modules.integrations import get_all_integrations
+    for defn in get_all_integrations().values():
+        if any(td.name == tool_name for td in defn.tool_definitions):
+            try:
+                if defn.tool_side == "client":
+                    return await _dispatcher_singleton.dispatch(
+                        user_id=user_id,
+                        session_id=session_id,
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        server_timeout_ms=_CLIENT_TOOL_SERVER_TIMEOUT_MS,
+                        client_timeout_ms=_CLIENT_TOOL_CLIENT_TIMEOUT_MS,
+                        target_connection_id=originating_connection_id,
+                    )
+                # Backend-side integration tools would go here in the future
+            finally:
+                duration = _time.monotonic() - t_start
+                tool_calls_total.labels(model=model, tool_name=tool_name).inc()
+                tool_call_duration_seconds.labels(model=model, tool_name=tool_name).observe(duration)
+
     raise ToolNotFoundError(f"No executor registered for tool '{tool_name}'")
 
 
