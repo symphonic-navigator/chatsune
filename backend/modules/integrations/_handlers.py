@@ -52,7 +52,7 @@ async def list_user_configs(
 ) -> list[UserIntegrationConfigDto]:
     """Return all integration configs for the current user."""
     repo = _repo()
-    docs = await repo.get_user_configs(user["_id"])
+    docs = await repo.get_user_configs(user["sub"])
     return [UserIntegrationConfigDto(**d) for d in docs]
 
 
@@ -73,7 +73,7 @@ async def upsert_config(
         raise HTTPException(status_code=404, detail=f"Unknown integration: {integration_id}")
 
     repo = _repo()
-    doc = await repo.upsert_config(user["_id"], integration_id, body.enabled, body.config)
+    doc = await repo.upsert_config(user["sub"], integration_id, body.enabled, body.config)
 
     event_bus = get_event_bus()
     await event_bus.publish(
@@ -85,7 +85,7 @@ async def upsert_config(
             timestamp=datetime.now(timezone.utc),
         ),
         scope=f"user:{user['_id']}",
-        target_user_ids=[user["_id"]],
+        target_user_ids=[user["sub"]],
         correlation_id=f"int-config-{integration_id}",
     )
 
