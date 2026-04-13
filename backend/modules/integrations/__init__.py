@@ -29,13 +29,12 @@ async def get_enabled_integration_ids(user_id: str, persona_id: str | None = Non
         from backend.modules.persona import get_persona
         persona = await get_persona(persona_id, user_id)
         if persona:
-            persona_integrations = (persona.get("integrations_config") or {}).get(
-                "enabled_integration_ids", []
-            )
-            if persona_integrations:
+            integrations_config = persona.get("integrations_config")
+            if integrations_config and integrations_config.get("enabled_integration_ids"):
+                # Persona has explicit integration config — filter to only those
+                persona_integrations = set(integrations_config["enabled_integration_ids"])
                 enabled = [eid for eid in enabled if eid in persona_integrations]
-            else:
-                enabled = []
+            # No integrations_config or empty list = all user-enabled integrations are active
 
     return enabled
 
