@@ -77,7 +77,7 @@ export default defineConfig({
     }),
   ],
   optimizeDeps: {
-    exclude: ["onnxruntime-web", "@ricky0123/vad-web"],
+    exclude: ["onnxruntime-web"],
   },
   server: {
     port: 5173,
