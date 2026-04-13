@@ -35,7 +35,6 @@ function findFile(dir, name, depth = 0) {
 
 const assets = [
   'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.mjs',
   'silero_vad_legacy.onnx',
   'silero_vad_v5.onnx',
 ]
