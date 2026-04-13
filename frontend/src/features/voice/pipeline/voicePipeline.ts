@@ -79,9 +79,6 @@ class VoicePipelineImpl {
     }
     const stt = sttRegistry.active()
     if (!stt) { this.setState({ phase: 'idle' }); return }
-    // Yield so React can paint the transcribing spinner before
-    // Whisper blocks the main thread
-    await new Promise((r) => requestAnimationFrame(r))
     try {
       const result = await stt.transcribe(audio)
       if (gen !== this.generation) return // new session started while transcribing
