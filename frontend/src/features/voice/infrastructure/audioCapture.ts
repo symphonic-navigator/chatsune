@@ -35,6 +35,8 @@ class AudioCaptureImpl {
   private vad: MicVAD | null = null
   private vadContext: AudioContext | null = null
 
+  private pttReady = false
+
   /**
    * Push-to-talk: record raw audio from mic. No VAD needed.
    * Call stopPTT() to get the recorded audio via onSpeechEnd.
@@ -42,6 +44,7 @@ class AudioCaptureImpl {
   async startPTT(callbacks: AudioCaptureCallbacks): Promise<void> {
     this.callbacks = callbacks
     this.pttChunks = []
+    this.pttReady = false
 
     this.pttStream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -69,25 +72,25 @@ class AudioCaptureImpl {
     source.connect(this.analyser)
     this.startVolumeMeter()
 
+    this.pttReady = true
     callbacks.onSpeechStart()
   }
 
   /**
    * Stop PTT recording. Concatenates all chunks and delivers via onSpeechEnd.
+   * Always calls onSpeechEnd (with empty audio if nothing was recorded).
    */
   stopPTT(): void {
     this.stopVolumeMeter()
+    const cb = this.callbacks
 
     // Concatenate recorded chunks
     const totalLength = this.pttChunks.reduce((sum, c) => sum + c.length, 0)
-    if (totalLength > 0 && this.callbacks) {
-      const audio = new Float32Array(totalLength)
-      let offset = 0
-      for (const chunk of this.pttChunks) {
-        audio.set(chunk, offset)
-        offset += chunk.length
-      }
-      this.callbacks.onSpeechEnd(audio)
+    const audio = new Float32Array(totalLength)
+    let offset = 0
+    for (const chunk of this.pttChunks) {
+      audio.set(chunk, offset)
+      offset += chunk.length
     }
     this.pttChunks = []
 
@@ -100,6 +103,10 @@ class AudioCaptureImpl {
     this.pttContext = null
     this.analyser = null
     this.callbacks = null
+    this.pttReady = false
+
+    // Always deliver — pipeline handles empty audio gracefully
+    cb?.onSpeechEnd(audio)
   }
 
   /**

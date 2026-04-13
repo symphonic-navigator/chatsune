@@ -62,6 +62,11 @@ class VoicePipelineImpl {
   }
 
   private async handleAudio(audio: Float32Array, gen: number): Promise<void> {
+    // Skip empty audio (e.g. stopPTT called before any samples were collected)
+    if (audio.length === 0) {
+      if (gen === this.generation) this.setState({ phase: 'idle' })
+      return
+    }
     const stt = sttRegistry.active()
     if (!stt) { this.setState({ phase: 'idle' }); return }
     try {
