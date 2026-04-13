@@ -12,7 +12,7 @@ import { JobLogTab } from './JobLogTab'
 import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
-import { LovenseTestTab } from './LovenseTestTab'
+import { IntegrationsTab } from './IntegrationsTab'
 import type { ProviderCredentialDto } from '../../../core/types/llm'
 
 export type UserModalTab =
@@ -29,7 +29,7 @@ export type UserModalTab =
   | 'settings'
   | 'api-keys'
   | 'mcp'
-  | 'lovense-test'
+  | 'integrations'
 
 interface Tab {
   id: UserModalTab
@@ -50,7 +50,7 @@ const TABS: Tab[] = [
   { id: 'settings', label: 'Settings' },
   { id: 'api-keys', label: 'API-Keys' },
   { id: 'mcp', label: 'MCP' },
-  { id: 'lovense-test', label: 'Lovense' },
+  { id: 'integrations', label: 'Integrations' },
 ]
 
 interface UserModalProps {
@@ -190,7 +190,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
           {activeTab === 'mcp' && <McpTab />}
-          {activeTab === 'lovense-test' && <LovenseTestTab />}
+          {activeTab === 'integrations' && <IntegrationsTab />}
         </div>
       </div>
     </>
