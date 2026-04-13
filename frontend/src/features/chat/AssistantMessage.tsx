@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from './markdownComponents'
 import { ThinkingBubble } from './ThinkingBubble'
 import { StatsLine } from './StatsLine'
+import { ReadAloudButton } from '../voice/components/ReadAloudButton'
 import type { Highlighter } from 'shiki'
 
 const REFUSAL_FALLBACK_TEXT = 'The model declined this request.'
@@ -20,9 +21,10 @@ interface AssistantMessageProps {
   outputTokens?: number | null;
   providerName?: string | null;
   modelName?: string | null;
+  voiceEnabled?: boolean;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -131,6 +133,9 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
                   </svg>
                   {isBookmarked ? 'Bookmarked' : 'Bookmark'}
                 </button>
+              )}
+              {voiceEnabled && (
+                <ReadAloudButton content={effectiveContent} />
               )}
               {canRegenerate && onRegenerate && (
                 <button type="button" onClick={onRegenerate}
