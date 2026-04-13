@@ -51,6 +51,7 @@ interface ChatState {
   setWaitingForResponse: (waiting: boolean) => void
   startStreaming: (correlationId: string) => void
   appendStreamingContent: (delta: string) => void
+  replaceInStreamingContent: (search: string, replacement: string) => void
   appendStreamingThinking: (delta: string) => void
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
   setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
@@ -120,6 +121,10 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     }),
   appendStreamingContent: (delta) =>
     set((s) => ({ streamingContent: s.streamingContent + delta, streamingSlow: false })),
+  replaceInStreamingContent: (search, replacement) =>
+    set((s) => ({
+      streamingContent: s.streamingContent.replace(search, replacement),
+    })),
   appendStreamingThinking: (delta) =>
     set((s) => ({ streamingThinking: s.streamingThinking + delta, streamingSlow: false })),
   setStreamingWebSearchContext: (items) =>

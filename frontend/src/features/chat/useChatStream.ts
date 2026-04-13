@@ -6,6 +6,10 @@ import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef } from '../../core/api/chat'
+import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
+import { useIntegrationsStore } from '../integrations/store'
+
+let activeTagBuffer: ResponseTagBuffer | null = null
 
 // Module-level handler exported for unit testing. The hook wires this into
 // the event bus; tests call it directly without mounting a component.
@@ -21,11 +25,22 @@ export function handleChatEvent(
     case Topics.CHAT_STREAM_STARTED: {
       if (p.session_id !== sessionId) return
       getStore().startStreaming(event.correlation_id)
+      // Create tag buffer for this streaming session
+      const enabledIds = useIntegrationsStore.getState().getEnabledIds()
+      if (enabledIds.length > 0) {
+        activeTagBuffer = new ResponseTagBuffer((placeholder, replacement) => {
+          getStore().replaceInStreamingContent(placeholder, replacement)
+        })
+      } else {
+        activeTagBuffer = null
+      }
       break
     }
     case Topics.CHAT_CONTENT_DELTA: {
       if (event.correlation_id !== getStore().correlationId) return
-      getStore().appendStreamingContent(p.delta as string)
+      const rawDelta = p.delta as string
+      const visibleDelta = activeTagBuffer ? activeTagBuffer.process(rawDelta) : rawDelta
+      getStore().appendStreamingContent(visibleDelta)
       break
     }
     case Topics.CHAT_THINKING_DELTA: {
@@ -76,6 +91,12 @@ export function handleChatEvent(
     }
     case Topics.CHAT_STREAM_ENDED: {
       if (p.session_id !== sessionId) return
+      // Flush incomplete tag buffer
+      if (activeTagBuffer) {
+        const remainder = activeTagBuffer.flush()
+        if (remainder) getStore().appendStreamingContent(remainder)
+        activeTagBuffer = null
+      }
       getStore().clearWaitingForLock()
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
