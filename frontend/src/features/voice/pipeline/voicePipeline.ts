@@ -24,21 +24,37 @@ class VoicePipelineImpl {
   async startRecording(mode: 'push-to-talk' | 'continuous'): Promise<void> {
     this.mode = mode
     this.stopPlayback()
-    this.setState({ phase: mode === 'continuous' ? 'listening' : 'recording' })
-    await audioCapture.start({
+
+    const captureCallbacks = {
       onSpeechStart: () => { this.setState({ phase: 'recording' }) },
-      onSpeechEnd: async (audio) => {
+      onSpeechEnd: async (audio: Float32Array) => {
         this.setState({ phase: 'transcribing' })
         await this.handleAudio(audio)
       },
       onVolumeChange: () => {},
-    })
+    }
+
+    if (mode === 'push-to-talk') {
+      // PTT: record raw audio, no VAD needed
+      this.setState({ phase: 'recording' })
+      await audioCapture.startPTT(captureCallbacks)
+    } else {
+      // Continuous: use VAD for automatic speech detection
+      this.setState({ phase: 'listening' })
+      await audioCapture.startContinuous(captureCallbacks)
+    }
   }
 
   stopRecording(): void {
-    audioCapture.stop()
-    if (this.state.phase === 'recording' || this.state.phase === 'listening') {
-      this.setState({ phase: 'idle' })
+    if (this.mode === 'push-to-talk') {
+      // PTT: stopPTT delivers audio via onSpeechEnd callback
+      // Don't reset to idle — the callback will handle state transitions
+      audioCapture.stopPTT()
+    } else {
+      audioCapture.stopContinuous()
+      if (this.state.phase === 'recording' || this.state.phase === 'listening') {
+        this.setState({ phase: 'idle' })
+      }
     }
   }
 

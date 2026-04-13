@@ -20,13 +20,93 @@ const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'
 const VAD_CDN = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
 
 class AudioCaptureImpl {
-  private vad: MicVAD | null = null
+  // -- shared state --
   private callbacks: AudioCaptureCallbacks | null = null
   private analyser: AnalyserNode | null = null
   private animFrameId: number | null = null
-  private audioContext: AudioContext | null = null
 
-  async start(callbacks: AudioCaptureCallbacks): Promise<void> {
+  // -- PTT state --
+  private pttContext: AudioContext | null = null
+  private pttStream: MediaStream | null = null
+  private pttProcessor: ScriptProcessorNode | null = null
+  private pttChunks: Float32Array[] = []
+
+  // -- VAD (continuous) state --
+  private vad: MicVAD | null = null
+  private vadContext: AudioContext | null = null
+
+  /**
+   * Push-to-talk: record raw audio from mic. No VAD needed.
+   * Call stopPTT() to get the recorded audio via onSpeechEnd.
+   */
+  async startPTT(callbacks: AudioCaptureCallbacks): Promise<void> {
+    this.callbacks = callbacks
+    this.pttChunks = []
+
+    this.pttStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    })
+
+    this.pttContext = new AudioContext({ sampleRate: 16_000 })
+    const source = this.pttContext.createMediaStreamSource(this.pttStream)
+
+    // Collect raw PCM samples
+    this.pttProcessor = this.pttContext.createScriptProcessor(4096, 1, 1)
+    this.pttProcessor.onaudioprocess = (e) => {
+      const data = e.inputBuffer.getChannelData(0)
+      this.pttChunks.push(new Float32Array(data))
+    }
+    source.connect(this.pttProcessor)
+    this.pttProcessor.connect(this.pttContext.destination)
+
+    // Volume meter
+    this.analyser = this.pttContext.createAnalyser()
+    this.analyser.fftSize = 256
+    source.connect(this.analyser)
+    this.startVolumeMeter()
+
+    callbacks.onSpeechStart()
+  }
+
+  /**
+   * Stop PTT recording. Concatenates all chunks and delivers via onSpeechEnd.
+   */
+  stopPTT(): void {
+    this.stopVolumeMeter()
+
+    // Concatenate recorded chunks
+    const totalLength = this.pttChunks.reduce((sum, c) => sum + c.length, 0)
+    if (totalLength > 0 && this.callbacks) {
+      const audio = new Float32Array(totalLength)
+      let offset = 0
+      for (const chunk of this.pttChunks) {
+        audio.set(chunk, offset)
+        offset += chunk.length
+      }
+      this.callbacks.onSpeechEnd(audio)
+    }
+    this.pttChunks = []
+
+    // Clean up audio nodes
+    this.pttProcessor?.disconnect()
+    this.pttProcessor = null
+    this.pttStream?.getTracks().forEach((t) => t.stop())
+    this.pttStream = null
+    this.pttContext?.close()
+    this.pttContext = null
+    this.analyser = null
+    this.callbacks = null
+  }
+
+  /**
+   * Continuous mode: use VAD to detect speech start/end automatically.
+   * Call stopContinuous() to tear down.
+   */
+  async startContinuous(callbacks: AudioCaptureCallbacks): Promise<void> {
     this.callbacks = callbacks
 
     let capturedStream: MediaStream | null = null
@@ -55,9 +135,9 @@ class AudioCaptureImpl {
     })
 
     if (capturedStream) {
-      this.audioContext = new AudioContext()
-      const source = this.audioContext.createMediaStreamSource(capturedStream)
-      this.analyser = this.audioContext.createAnalyser()
+      this.vadContext = new AudioContext()
+      const source = this.vadContext.createMediaStreamSource(capturedStream)
+      this.analyser = this.vadContext.createAnalyser()
       this.analyser.fftSize = 256
       source.connect(this.analyser)
       this.startVolumeMeter()
@@ -66,19 +146,21 @@ class AudioCaptureImpl {
     await this.vad.start()
   }
 
-  stop(): void {
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId)
-      this.animFrameId = null
-    }
+  /**
+   * Stop continuous (VAD) recording.
+   */
+  stopContinuous(): void {
+    this.stopVolumeMeter()
     this.vad?.pause()
     this.vad?.destroy()
     this.vad = null
-    this.audioContext?.close()
-    this.audioContext = null
+    this.vadContext?.close()
+    this.vadContext = null
     this.analyser = null
     this.callbacks = null
   }
+
+  // -- Volume meter (shared) --
 
   private startVolumeMeter(): void {
     if (!this.analyser || !this.callbacks) return
@@ -92,6 +174,13 @@ class AudioCaptureImpl {
       this.animFrameId = requestAnimationFrame(tick)
     }
     this.animFrameId = requestAnimationFrame(tick)
+  }
+
+  private stopVolumeMeter(): void {
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId)
+      this.animFrameId = null
+    }
   }
 }
 
