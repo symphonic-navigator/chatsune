@@ -22,9 +22,10 @@ interface AssistantMessageProps {
   providerName?: string | null;
   modelName?: string | null;
   voiceEnabled?: boolean;
+  messageId?: string;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled, messageId }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -134,8 +135,8 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
                   {isBookmarked ? 'Bookmarked' : 'Bookmark'}
                 </button>
               )}
-              {voiceEnabled && (
-                <ReadAloudButton content={effectiveContent} />
+              {voiceEnabled && messageId && (
+                <ReadAloudButton messageId={messageId} content={effectiveContent} />
               )}
               {canRegenerate && onRegenerate && (
                 <button type="button" onClick={onRegenerate}

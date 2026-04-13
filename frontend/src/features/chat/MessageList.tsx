@@ -183,7 +183,8 @@ export function MessageList({
                   outputTokens={msg.usage?.output_tokens}
                   providerName={msg.provider_name}
                   modelName={msg.model_name}
-                  voiceEnabled={voiceEnabled} />
+                  voiceEnabled={voiceEnabled}
+                  messageId={msg.id} />
               </div>
             )
           }

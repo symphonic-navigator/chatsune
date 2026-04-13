@@ -2,9 +2,10 @@ import { useCallback, useState } from 'react'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
-import type { VoicePreset } from '../types'
+import type { SpeechSegment, VoicePreset } from '../types'
 
 interface ReadAloudButtonProps {
+  messageId: string
   content: string
   dialogueVoice?: VoicePreset
   narratorVoice?: VoicePreset
@@ -13,7 +14,35 @@ interface ReadAloudButtonProps {
 
 type ReadState = 'idle' | 'synthesising' | 'playing'
 
-export function ReadAloudButton({ content, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
+/** LRU cache of synthesised audio keyed by message ID. */
+interface CachedAudio {
+  segments: Array<{ audio: Float32Array; segment: SpeechSegment }>
+}
+
+const CACHE_MAX = 8
+const cache = new Map<string, CachedAudio>()
+
+function cacheGet(id: string): CachedAudio | undefined {
+  const entry = cache.get(id)
+  if (entry) {
+    // Move to end (most recently used)
+    cache.delete(id)
+    cache.set(id, entry)
+  }
+  return entry
+}
+
+function cachePut(id: string, entry: CachedAudio): void {
+  cache.delete(id) // remove if exists (for re-ordering)
+  cache.set(id, entry)
+  // Evict oldest if over limit
+  if (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+}
+
+export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
   const [state, setState] = useState<ReadState>('idle')
 
   const handleClick = useCallback(async () => {
@@ -22,6 +51,23 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
       setState('idle')
       return
     }
+
+    audioPlayback.setCallbacks({
+      onSegmentStart: () => setState('playing'),
+      onFinished: () => setState('idle'),
+    })
+
+    // Check cache first
+    const cached = cacheGet(messageId)
+    if (cached) {
+      setState('playing')
+      for (const { audio, segment } of cached.segments) {
+        audioPlayback.enqueue(audio, segment)
+      }
+      return
+    }
+
+    // Synthesise fresh
     const tts = ttsRegistry.active()
     if (!tts) {
       console.warn('[ReadAloud] No TTS engine active — complete voice setup first')
@@ -30,26 +76,25 @@ export function ReadAloudButton({ content, dialogueVoice, narratorVoice, rolepla
     const fallbackVoice = tts.voices[0]
     const dVoice = dialogueVoice ?? fallbackVoice
     const nVoice = narratorVoice ?? fallbackVoice
-    const segments = parseForSpeech(content, roleplayMode)
-    if (segments.length === 0) return
+    const parsed = parseForSpeech(content, roleplayMode)
+    if (parsed.length === 0) return
 
     setState('synthesising')
-    audioPlayback.setCallbacks({
-      onSegmentStart: () => setState('playing'),
-      onFinished: () => setState('idle'),
-    })
 
     try {
-      for (const segment of segments) {
+      const results: CachedAudio['segments'] = []
+      for (const segment of parsed) {
         const voice = segment.type === 'voice' ? dVoice : nVoice
         const audio = await tts.synthesise(segment.text, voice)
+        results.push({ audio, segment })
         audioPlayback.enqueue(audio, segment)
       }
+      cachePut(messageId, { segments: results })
     } catch (err) {
       console.error('[ReadAloud] TTS synthesis failed:', err)
       setState('idle')
     }
-  }, [content, dialogueVoice, narratorVoice, roleplayMode, state])
+  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, state])
 
   const label = state === 'synthesising' ? 'Preparing...' : state === 'playing' ? 'Stop' : 'Read'
   const active = state !== 'idle'
