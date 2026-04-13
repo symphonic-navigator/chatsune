@@ -11,9 +11,11 @@ class WhisperEngineImpl implements STTEngine {
   private pipe: AutomaticSpeechRecognitionPipeline | null = null
 
   async init(device: 'webgpu' | 'wasm'): Promise<void> {
+    // q8 quantisation requires WebGPU; WASM needs fp32 or q4
+    const dtype = device === 'webgpu' ? 'q8' : 'fp32'
     this.pipe = await pipeline('automatic-speech-recognition', 'onnx-community/whisper-tiny', {
-      device: device === 'webgpu' ? 'webgpu' : 'wasm',
-      dtype: 'q8',
+      device,
+      dtype,
     })
     await modelManager.markDownloaded('whisper-tiny')
   }

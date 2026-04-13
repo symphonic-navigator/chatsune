@@ -25,9 +25,11 @@ class KokoroEngineImpl implements TTSEngine {
   private tts: KokoroTTS | null = null
 
   async init(device: 'webgpu' | 'wasm'): Promise<void> {
+    // q4f16 may not work on all WASM runtimes; fp32 is safest fallback
+    const dtype = device === 'webgpu' ? 'fp32' : 'fp32'
     this.tts = await KokoroTTS.from_pretrained(
       'onnx-community/Kokoro-82M-v1.0-ONNX',
-      { dtype: device === 'webgpu' ? 'fp32' : 'q4f16' },
+      { dtype },
     )
     await modelManager.markDownloaded('kokoro-tts')
   }
