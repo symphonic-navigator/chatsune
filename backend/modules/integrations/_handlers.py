@@ -84,7 +84,7 @@ async def upsert_config(
             correlation_id=f"int-config-{integration_id}",
             timestamp=datetime.now(timezone.utc),
         ),
-        scope=f"user:{user['_id']}",
+        scope=f"user:{user['sub']}",
         target_user_ids=[user["sub"]],
         correlation_id=f"int-config-{integration_id}",
     )
