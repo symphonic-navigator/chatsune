@@ -77,11 +77,7 @@ export default defineConfig({
     }),
   ],
   optimizeDeps: {
-    include: [
-      "onnxruntime-web",
-      "onnxruntime-web/wasm",
-      "@ricky0123/vad-web",
-    ],
+    include: ["@ricky0123/vad-web"],
   },
   server: {
     port: 5173,

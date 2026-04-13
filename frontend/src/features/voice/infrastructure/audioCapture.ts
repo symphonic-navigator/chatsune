@@ -1,18 +1,19 @@
-import * as ort from 'onnxruntime-web'
 import { MicVAD } from '@ricky0123/vad-web'
-
-// Configure ONNX Runtime WASM before anything loads:
-// 1. Point at the pre-copied .wasm binary in public/voice/
-// 2. Disable multi-threading to avoid loading the worker .mjs file
-//    (Vite blocks dynamic module imports from public/)
-ort.env.wasm.wasmPaths = '/voice/'
-ort.env.wasm.numThreads = 1
 
 export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
   onSpeechEnd: (audio: Float32Array) => void
   onVolumeChange: (level: number) => void
 }
+
+// vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
+// We cannot configure that internal ORT instance from outside, so we
+// let vad-web load ONNX Runtime WASM + VAD model from a CDN instead
+// of trying to serve them from public/.
+// This loads ~14 MB of code (WASM binary + model) — cached by browser after first load.
+// No voice data is sent — only engine code is fetched.
+const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'
+const VAD_CDN = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
 
 class AudioCaptureImpl {
   private vad: MicVAD | null = null
@@ -24,10 +25,8 @@ class AudioCaptureImpl {
   async start(callbacks: AudioCaptureCallbacks): Promise<void> {
     this.callbacks = callbacks
 
-    // Capture the MediaStream by intercepting getStream so we can build a
-    // volume analyser from it without accessing the private _stream field.
     let capturedStream: MediaStream | null = null
-    const defaultGetStream = async (): Promise<MediaStream> => {
+    const getStream = async (): Promise<MediaStream> => {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -40,11 +39,9 @@ class AudioCaptureImpl {
     }
 
     this.vad = await MicVAD.new({
-      getStream: defaultGetStream,
-      // Serve ONNX Runtime WASM + VAD model from /voice/ in public dir
-      // so Vite's dev server can resolve them correctly
-      onnxWASMBasePath: '/voice/',
-      baseAssetPath: '/voice/',
+      getStream,
+      onnxWASMBasePath: ORT_CDN,
+      modelURL: VAD_CDN + 'silero_vad_legacy.onnx',
       onSpeechStart: () => {
         this.callbacks?.onSpeechStart()
       },
