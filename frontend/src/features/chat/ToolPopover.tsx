@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { chatApi, type ToolGroupDto } from '../../core/api/chat'
 import { useMcpStore } from '../mcp/mcpStore'
+import { useIntegrationsStore } from '../integrations/store'
 import type { PersonaDto } from '../../core/types/persona'
 
 interface ToolPopoverProps {
@@ -86,7 +87,36 @@ export function ToolPopover({ disabledToolGroups, personaMcpConfig, onClose }: T
       .filter((entry) => entry.tools.length > 0)
   }, [sessionTools, searchTokens, personaMcpConfig])
 
-  const totalActive = activeBuiltIn.length + activeMcp.reduce((acc, e) => acc + e.tools.length, 0)
+  // Integration tools — grouped by integration
+  const definitions = useIntegrationsStore((s) => s.definitions)
+  const intConfigs = useIntegrationsStore((s) => s.configs)
+
+  const activeIntegrations = useMemo(() => {
+    return definitions
+      .filter((d) => intConfigs[d.id]?.enabled && d.has_tools)
+      .map((d) => ({
+        id: d.id,
+        displayName: d.display_name,
+        // We know the tools from the backend registry — hardcoded per integration for now.
+        // A proper solution would have the backend return tool names per integration.
+        tools: d.id === 'lovense'
+          ? [
+              { name: 'lovense_get_toys', description: 'Query connected toys, status, and battery' },
+              { name: 'lovense_control', description: 'Send function commands to toys' },
+            ]
+          : [],
+      }))
+      .map((entry) => ({
+        ...entry,
+        tools: searchTokens.length === 0
+          ? entry.tools
+          : entry.tools.filter((t) => tokenMatch(t.name + ' ' + t.description, searchTokens)),
+      }))
+      .filter((entry) => entry.tools.length > 0)
+  }, [definitions, intConfigs, searchTokens])
+
+  const integrationToolCount = activeIntegrations.reduce((acc, e) => acc + e.tools.length, 0)
+  const totalActive = activeBuiltIn.length + activeMcp.reduce((acc, e) => acc + e.tools.length, 0) + integrationToolCount
 
   const handleQueryChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQuery(e.target.value)
@@ -219,6 +249,75 @@ export function ToolPopover({ disabledToolGroups, personaMcpConfig, onClose }: T
                 }}
               >
                 {entry.tier}
+              </span>
+            </div>
+            {entry.tools.map((t) => (
+              <div
+                key={t.name}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '3px 10px',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: '11px',
+                    color: 'rgba(255,255,255,0.75)',
+                  }}
+                >
+                  {t.name}
+                </span>
+                {t.description && (
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)' }}>
+                    {t.description}
+                  </span>
+                )}
+              </div>
+            ))}
+          </section>
+        ))}
+
+        {/* Separator before integrations */}
+        {(activeBuiltIn.length > 0 || activeMcp.length > 0) && activeIntegrations.length > 0 && (
+          <div
+            style={{
+              margin: '6px 10px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+            }}
+          />
+        )}
+
+        {/* Integration tools */}
+        {activeIntegrations.map((entry) => (
+          <section key={entry.id}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px 2px',
+                fontSize: '10px',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'rgba(196,167,231,0.6)',
+                fontWeight: 600,
+              }}
+            >
+              {entry.displayName}
+              <span
+                style={{
+                  fontSize: '9px',
+                  padding: '1px 4px',
+                  borderRadius: '3px',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: 'rgba(196,167,231,0.8)',
+                  letterSpacing: '0.04em',
+                  textTransform: 'none',
+                }}
+              >
+                integration
               </span>
             </div>
             {entry.tools.map((t) => (

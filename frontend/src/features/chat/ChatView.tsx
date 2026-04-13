@@ -25,6 +25,7 @@ import { JournalBadge } from './JournalBadge'
 import { KnowledgeDropdown } from './KnowledgeDropdown'
 import { ToolPopover } from './ToolPopover'
 import { useMcpStore } from '../mcp/mcpStore'
+import { useIntegrationsStore } from '../integrations/store'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
 import { useMemoryStore } from '../../core/store/memoryStore'
 import { InferenceWaitBanner } from './InferenceWaitBanner'
@@ -258,9 +259,11 @@ export function ChatView({ persona }: ChatViewProps) {
     .reduce((acc, e) => acc + e.tools.filter((t) =>
       !mcpExcludedServers.has(`${e.namespace}:${t.server_name}`) && !mcpExcludedTools.has(t.name)
     ).length, 0)
-  // totalToolCount is computed once tool groups are loaded inside ToolPopover;
-  // here we use MCP count only for the badge — built-in count is always > 0 in practice.
-  const totalToolCount = mcpToolCount
+  // Integration tool count for the badge
+  const intDefinitions = useIntegrationsStore((s) => s.definitions)
+  const intConfigs = useIntegrationsStore((s) => s.configs)
+  const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.enabled && d.has_tools).length * 2 // get_toys + control per integration
+  const totalToolCount = mcpToolCount + integrationToolCount
   const { openPersonaOverlay } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
   }>()
