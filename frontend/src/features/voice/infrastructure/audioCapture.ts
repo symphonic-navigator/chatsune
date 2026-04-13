@@ -30,12 +30,11 @@ class AudioCaptureImpl {
   private pttStream: MediaStream | null = null
   private pttProcessor: ScriptProcessorNode | null = null
   private pttChunks: Float32Array[] = []
+  private pttSession = 0 // incremented on each start, checked after await
 
   // -- VAD (continuous) state --
   private vad: MicVAD | null = null
   private vadContext: AudioContext | null = null
-
-  private pttReady = false
 
   /**
    * Push-to-talk: record raw audio from mic. No VAD needed.
@@ -44,9 +43,9 @@ class AudioCaptureImpl {
   async startPTT(callbacks: AudioCaptureCallbacks): Promise<void> {
     this.callbacks = callbacks
     this.pttChunks = []
-    this.pttReady = false
+    const session = ++this.pttSession
 
-    this.pttStream = await navigator.mediaDevices.getUserMedia({
+    const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -54,6 +53,13 @@ class AudioCaptureImpl {
       },
     })
 
+    // If stopPTT was called while we were awaiting getUserMedia, abort
+    if (session !== this.pttSession) {
+      stream.getTracks().forEach((t) => t.stop())
+      return
+    }
+
+    this.pttStream = stream
     this.pttContext = new AudioContext({ sampleRate: 16_000 })
     const source = this.pttContext.createMediaStreamSource(this.pttStream)
 
@@ -72,7 +78,6 @@ class AudioCaptureImpl {
     source.connect(this.analyser)
     this.startVolumeMeter()
 
-    this.pttReady = true
     callbacks.onSpeechStart()
   }
 
@@ -81,6 +86,7 @@ class AudioCaptureImpl {
    * Always calls onSpeechEnd (with empty audio if nothing was recorded).
    */
   stopPTT(): void {
+    this.pttSession++ // invalidate any in-flight startPTT
     this.stopVolumeMeter()
     const cb = this.callbacks
 
