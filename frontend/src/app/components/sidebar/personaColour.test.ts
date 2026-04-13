@@ -22,6 +22,7 @@ const base: PersonaDto = {
   profile_crop: null,
   mcp_config: null,
   integrations_config: null,
+  voice_config: null,
   created_at: "2026-01-01",
   updated_at: "2026-01-01",
 }
