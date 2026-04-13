@@ -12,6 +12,11 @@ interface Step {
   size: string
 }
 
+interface StepError {
+  id: string
+  message: string
+}
+
 const STEPS: Step[] = [
   { id: 'whisper-tiny', label: 'Speech Recognition', size: '31 MB' },
   { id: 'silero-vad',   label: 'Voice Detection',    size: '1.5 MB' },
@@ -55,9 +60,16 @@ export function SetupModal({ onComplete, onCancel }: Props) {
     'silero-vad':   'waiting',
     'kokoro-tts':   'waiting',
   })
+  const [errors, setErrors] = useState<StepError[]>([])
 
   const setStatus = useCallback((id: string, status: StepStatus) => {
     setStatuses((prev) => ({ ...prev, [id]: status }))
+  }, [])
+
+  const addError = useCallback((id: string, err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[Voice Setup] ${id} failed:`, err)
+    setErrors((prev) => [...prev, { id, message }])
   }, [])
 
   useEffect(() => {
@@ -65,6 +77,8 @@ export function SetupModal({ onComplete, onCancel }: Props) {
 
     async function run() {
       const device = await modelManager.detectDevice()
+      console.log(`[Voice Setup] Using device: ${device}`)
+
       // Step 1: Whisper
       setStatus('whisper-tiny', 'downloading')
       try {
@@ -73,20 +87,19 @@ export function SetupModal({ onComplete, onCancel }: Props) {
         sttRegistry.register(whisperEngine)
         await sttRegistry.setActive(whisperEngine.id)
         setStatus('whisper-tiny', 'done')
-      } catch {
-        if (!cancelled) setStatus('whisper-tiny', 'error')
+      } catch (err) {
+        if (!cancelled) { setStatus('whisper-tiny', 'error'); addError('whisper-tiny', err) }
         return
       }
 
       // Step 2: VAD — no separate engine, just mark downloaded
       setStatus('silero-vad', 'downloading')
       try {
-        // VAD is initialised lazily inside the pipeline; mark it as ready here
         await modelManager.markDownloaded('silero-vad')
         if (cancelled) return
         setStatus('silero-vad', 'done')
-      } catch {
-        if (!cancelled) setStatus('silero-vad', 'error')
+      } catch (err) {
+        if (!cancelled) { setStatus('silero-vad', 'error'); addError('silero-vad', err) }
         return
       }
 
@@ -98,8 +111,8 @@ export function SetupModal({ onComplete, onCancel }: Props) {
         ttsRegistry.register(kokoroEngine)
         await ttsRegistry.setActive(kokoroEngine.id)
         setStatus('kokoro-tts', 'done')
-      } catch {
-        if (!cancelled) setStatus('kokoro-tts', 'error')
+      } catch (err) {
+        if (!cancelled) { setStatus('kokoro-tts', 'error'); addError('kokoro-tts', err) }
         return
       }
 
@@ -142,6 +155,15 @@ export function SetupModal({ onComplete, onCancel }: Props) {
             )
           })}
         </ul>
+
+        {/* Errors */}
+        {errors.length > 0 && (
+          <div className="mt-4 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2">
+            {errors.map((e) => (
+              <p key={e.id} className="text-[10px] text-red-400 font-mono break-all">{e.message}</p>
+            ))}
+          </div>
+        )}
 
         {/* Total */}
         <p className="mt-4 text-right text-[10px] text-white/35 font-mono">Total: ~72.5 MB</p>
