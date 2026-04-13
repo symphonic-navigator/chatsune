@@ -1,4 +1,9 @@
+import * as ort from 'onnxruntime-web'
 import { MicVAD } from '@ricky0123/vad-web'
+
+// Point ONNX Runtime at the pre-copied WASM files in public/voice/
+// This must happen before any ONNX session is created.
+ort.env.wasm.wasmPaths = '/voice/'
 
 export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
