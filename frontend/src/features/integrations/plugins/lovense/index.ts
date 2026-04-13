@@ -9,18 +9,17 @@ const lovensePlugin: IntegrationPlugin = {
 
   executeTag,
 
-  executeTool: async (toolName, _args, config) => {
+  executeTool: async (toolName, args, config) => {
     const ip = config.ip as string | undefined
     if (!ip) return JSON.stringify({ error: 'No IP configured' })
 
-    if (toolName === 'lovense_get_toys') {
-      try {
+    try {
+      if (toolName === 'lovense_get_toys') {
         const raw = await api.getToys(ip)
         const parsed = api.parseGetToysResponse(raw)
         if (!parsed.ok) {
           return JSON.stringify({ error: 'Failed to query toys', raw })
         }
-        // Return a clean, LLM-friendly summary
         const toys = parsed.toys.map((t) => ({
           name: t.name,
           nickName: t.nickName || undefined,
@@ -33,12 +32,50 @@ const lovensePlugin: IntegrationPlugin = {
           count: toys.length,
           platform: parsed.platform,
         })
-      } catch (err) {
-        return JSON.stringify({ error: err instanceof Error ? err.message : String(err) })
       }
-    }
 
-    return JSON.stringify({ error: `Unknown tool: ${toolName}` })
+      if (toolName === 'lovense_control') {
+        const action = (args.action as string) ?? ''
+        const toy = (args.toy as string) ?? ''
+        const strength = (args.strength as number) ?? 0
+        const timeSec = (args.time_sec as number) ?? 0
+        const loopRun = args.loop_running_sec as number | undefined
+        const loopPause = args.loop_pause_sec as number | undefined
+        const layer = (args.layer as boolean) ?? false
+
+        // Handle stroke separately
+        if (action.toLowerCase() === 'stroke') {
+          const strokePosition = (args.stroke_position as number) ?? 50
+          const result = await api.strokeCommand(ip, strokePosition, strength, timeSec, toy)
+          return JSON.stringify(result)
+        }
+
+        // Handle stop
+        if (action.toLowerCase() === 'stop') {
+          const result = toy
+            ? await api.stopToy(ip, toy)
+            : await api.stopAll(ip)
+          return JSON.stringify(result)
+        }
+
+        // Regular function command
+        const cappedAction = (action.charAt(0).toUpperCase() + action.slice(1)) as api.Action
+        const result = await api.functionCommand(ip, {
+          action: cappedAction,
+          strength,
+          timeSec,
+          toy: toy || undefined,
+          loopRunningSec: loopRun,
+          loopPauseSec: loopPause,
+          stopPrevious: layer ? false : undefined,
+        })
+        return JSON.stringify(result)
+      }
+
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` })
+    } catch (err) {
+      return JSON.stringify({ error: err instanceof Error ? err.message : String(err) })
+    }
   },
 
   healthCheck: async (config) => {

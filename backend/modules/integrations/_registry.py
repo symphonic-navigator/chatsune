@@ -54,29 +54,89 @@ def _register_builtins() -> None:
             '<integrations name="lovense">\n'
             "You have access to Lovense toy control. The user's Lovense Remote app "
             "is connected and you can control their toys.\n\n"
-            "To send a command, write a tag in your response:\n"
-            "  <lovense command toy strength duration>\n\n"
-            "Available commands:\n"
-            "  <lovense vibrate TOYNAME STRENGTH SECONDS> — vibrate (strength 1-20)\n"
-            "  <lovense rotate TOYNAME STRENGTH SECONDS> — rotate (strength 1-20)\n"
-            "  <lovense stop TOYNAME> — stop a specific toy\n"
-            "  <lovense stopall> — stop all toys immediately\n\n"
-            "TOYNAME is the toy's nickname from GetToys. STRENGTH is 1-20. "
-            "SECONDS is duration (0 = indefinite until stopped).\n\n"
-            "You can also use the lovense_get_toys tool to query connected toys.\n"
-            "Be creative and responsive. Integrate toy control naturally into "
-            "conversation — never make it feel mechanical.\n"
+            "## Inline tags\n"
+            "Write tags in your response to control toys:\n\n"
+            "  <lovense TOYNAME ACTION STRENGTH [SECONDS] [loop RUN PAUSE] [layer]>\n"
+            "  <lovense TOYNAME stroke STROKE_POS THRUST_STRENGTH [SECONDS]>\n"
+            "  <lovense TOYNAME stop>\n"
+            "  <lovense stopall>\n\n"
+            "Available actions (strength 0-20 unless noted):\n"
+            "  vibrate, rotate, thrusting, fingering, suction, oscillate, all\n"
+            "  pump (0-3), depth (0-3)\n"
+            "  stroke POSITION(0-100) THRUST(0-20) — combined pattern (20-point gap required)\n\n"
+            "Modifiers:\n"
+            "  SECONDS — duration (omit or 0 = indefinite until stopped)\n"
+            "  loop RUN PAUSE — pulsing pattern (both >1 second)\n"
+            "  layer — add to running actions instead of replacing them\n\n"
+            "Examples:\n"
+            "  <lovense nova vibrate 10 5>           — vibrate at 10 for 5s\n"
+            "  <lovense nova vibrate 8 30 loop 3 2>  — pulse: 3s on, 2s pause, 30s total\n"
+            "  <lovense nova rotate 12 5 layer>       — add rotation on top of vibration\n"
+            "  <lovense nova stroke 50 10 5>          — stroke pattern for 5s\n"
+            "  <lovense stopall>                      — emergency stop\n\n"
+            "## Tools\n"
+            "Use lovense_get_toys to discover connected toys before controlling them.\n"
+            "Use lovense_control for programmatic control with full parameters.\n\n"
+            "TOYNAME is the toy's name from GetToys (e.g. 'nora'). Use names, not IDs.\n"
+            "Be creative and responsive. Integrate control naturally — never mechanical.\n"
             "</integrations>"
         ),
         response_tag_prefix="lovense",
         tool_definitions=[
             ToolDefinition(
                 name="lovense_get_toys",
-                description="Query connected Lovense toys. Returns toy names, types, and status.",
+                description="Query connected Lovense toys. Returns names, capabilities, battery, and online status.",
                 parameters={
                     "type": "object",
                     "properties": {},
                     "required": [],
+                },
+            ),
+            ToolDefinition(
+                name="lovense_control",
+                description=(
+                    "Send a function command to a Lovense toy. "
+                    "Actions: Vibrate, Rotate, Pump, Thrusting, Fingering, Suction, Depth, Oscillate, All, Stop, Stroke. "
+                    "Strength 0-20 (Pump/Depth: 0-3). "
+                    "For Stroke: set stroke_position (0-100) and strength is for thrusting (must differ by 20+)."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "description": "The function to execute (e.g. Vibrate, Rotate, Stop, Stroke)",
+                        },
+                        "toy": {
+                            "type": "string",
+                            "description": "Toy name from GetToys. Omit to target all toys.",
+                        },
+                        "strength": {
+                            "type": "integer",
+                            "description": "Intensity level (0-20, or 0-3 for Pump/Depth)",
+                        },
+                        "time_sec": {
+                            "type": "number",
+                            "description": "Duration in seconds (0 = indefinite)",
+                        },
+                        "stroke_position": {
+                            "type": "integer",
+                            "description": "Stroke position 0-100 (only for Stroke action)",
+                        },
+                        "loop_running_sec": {
+                            "type": "number",
+                            "description": "Active cycle duration for pulsing (>1 second)",
+                        },
+                        "loop_pause_sec": {
+                            "type": "number",
+                            "description": "Pause cycle duration for pulsing (>1 second)",
+                        },
+                        "layer": {
+                            "type": "boolean",
+                            "description": "If true, add to running actions instead of replacing them",
+                        },
+                    },
+                    "required": ["action"],
                 },
             ),
         ],

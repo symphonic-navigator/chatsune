@@ -67,28 +67,90 @@ export function parseGetToysResponse(raw: Record<string, unknown>): GetToysResul
   return { ok: true, toys, platform, raw }
 }
 
-export async function vibrate(ip: string, toy: string, strength: number, seconds: number): Promise<Record<string, unknown>> {
-  return sendCommand(ip, {
-    command: 'Function',
-    action: `Vibrate:${strength}`,
-    timeSec: seconds,
-    toy,
-  })
+/** All actions supported by the Lovense Function API. */
+export const ACTIONS = [
+  'Vibrate', 'Rotate', 'Pump', 'Thrusting', 'Fingering',
+  'Suction', 'Depth', 'Oscillate', 'All',
+] as const
+export type Action = (typeof ACTIONS)[number]
+
+/** Max strength per action — most are 0-20, some are 0-3. */
+export function maxStrength(action: Action | 'Stroke'): number {
+  if (action === 'Pump' || action === 'Depth') return 3
+  if (action === 'Stroke') return 100
+  return 20
 }
 
-export async function rotate(ip: string, toy: string, strength: number, seconds: number): Promise<Record<string, unknown>> {
-  return sendCommand(ip, {
+export interface FunctionParams {
+  action: Action | 'Stop'
+  strength?: number
+  timeSec?: number
+  toy?: string
+  loopRunningSec?: number
+  loopPauseSec?: number
+  stopPrevious?: boolean
+}
+
+/** Send a Function command to the Lovense API. */
+export async function functionCommand(ip: string, params: FunctionParams): Promise<Record<string, unknown>> {
+  const actionStr = params.action === 'Stop'
+    ? 'Stop'
+    : `${params.action}:${params.strength ?? 0}`
+
+  const body: Record<string, unknown> = {
     command: 'Function',
-    action: `Rotate:${strength}`,
-    timeSec: seconds,
+    action: actionStr,
+    timeSec: params.timeSec ?? 0,
+    apiVer: 1,
+  }
+  if (params.toy) body.toy = params.toy
+  if (params.loopRunningSec != null && params.loopRunningSec > 1) body.loopRunningSec = params.loopRunningSec
+  if (params.loopPauseSec != null && params.loopPauseSec > 1) body.loopPauseSec = params.loopPauseSec
+  if (params.stopPrevious === false) body.stopPrevious = 0
+
+  return sendCommand(ip, body)
+}
+
+/**
+ * Send a Stroke command — sets both Thrusting and Stroke actions.
+ * The Lovense API requires a minimum 20-point gap between them.
+ */
+export async function strokeCommand(
+  ip: string,
+  strokePosition: number,
+  thrustStrength: number,
+  timeSec: number,
+  toy?: string,
+  stopPrevious?: boolean,
+): Promise<Record<string, unknown>> {
+  // Enforce the 20-point gap requirement
+  const clampedStroke = Math.max(0, Math.min(100, strokePosition))
+  const clampedThrust = Math.max(0, Math.min(20, thrustStrength))
+  if (Math.abs(clampedStroke - clampedThrust) < 20) {
+    return { code: 400, type: 'ERROR', message: 'Stroke and Thrusting must differ by at least 20 points' }
+  }
+
+  // Send thrusting first, then stroke with stopPrevious=0 to layer
+  await functionCommand(ip, {
+    action: 'Thrusting',
+    strength: clampedThrust,
+    timeSec,
     toy,
+    stopPrevious,
+  })
+  return functionCommand(ip, {
+    action: 'Thrusting' as Action, // Stroke piggybacks on thrusting
+    strength: clampedStroke,
+    timeSec,
+    toy,
+    stopPrevious: false, // layer on top
   })
 }
 
 export async function stopToy(ip: string, toy: string): Promise<Record<string, unknown>> {
-  return sendCommand(ip, { command: 'Function', action: 'Stop', toy })
+  return functionCommand(ip, { action: 'Stop', toy })
 }
 
 export async function stopAll(ip: string): Promise<Record<string, unknown>> {
-  return sendCommand(ip, { command: 'Function', action: 'Stop' })
+  return functionCommand(ip, { action: 'Stop' })
 }
