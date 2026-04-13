@@ -90,6 +90,10 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
 
     setState('synthesising')
 
+    // Yield to browser so React can paint the spinner before
+    // TTS synthesis blocks the main thread
+    await new Promise((r) => requestAnimationFrame(r))
+
     try {
       const results: CachedAudio['segments'] = []
       for (const segment of parsed) {
@@ -97,6 +101,8 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
         const audio = await tts.synthesise(segment.text, voice)
         results.push({ audio, segment })
         audioPlayback.enqueue(audio, segment)
+        // Yield between segments so the UI stays responsive
+        await new Promise((r) => requestAnimationFrame(r))
       }
       cachePut(messageId, { segments: results })
     } catch (err) {
