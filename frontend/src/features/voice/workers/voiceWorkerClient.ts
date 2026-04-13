@@ -7,6 +7,8 @@
  */
 import type { VoicePreset } from '../types'
 
+const log = (msg: string, ...args: unknown[]) => console.log(`[VoiceClient] ${msg}`, ...args)
+
 type PendingResolve = { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
 
 class VoiceWorkerClient {
@@ -17,13 +19,14 @@ class VoiceWorkerClient {
 
   private getWorker(): Worker {
     if (!this.worker) {
+      log('spawning worker')
       this.worker = new Worker(
         new URL('./voiceWorker.ts', import.meta.url),
         { type: 'module' },
       )
       this.worker.onmessage = (e) => this.handleMessage(e.data)
       this.worker.onerror = (e) => {
-        console.error('[VoiceWorker] Worker error:', e)
+        console.error('[VoiceClient] Worker error:', e)
       }
     }
     return this.worker
@@ -32,18 +35,22 @@ class VoiceWorkerClient {
   private handleMessage(msg: Record<string, unknown>): void {
     switch (msg.type) {
       case 'init-stt-done':
+        log('init-stt-done received')
         this.initCallbacks['stt']?.resolve(undefined)
         delete this.initCallbacks['stt']
         break
       case 'init-stt-error':
+        log('init-stt-error received: %s', msg.error)
         this.initCallbacks['stt']?.reject(new Error(msg.error as string))
         delete this.initCallbacks['stt']
         break
       case 'init-tts-done':
+        log('init-tts-done received')
         this.initCallbacks['tts']?.resolve(msg.voices)
         delete this.initCallbacks['tts']
         break
       case 'init-tts-error':
+        log('init-tts-error received: %s', msg.error)
         this.initCallbacks['tts']?.reject(new Error(msg.error as string))
         delete this.initCallbacks['tts']
         break
@@ -53,11 +60,16 @@ class VoiceWorkerClient {
       case 'synthesise-error': {
         const id = msg.id as string
         const p = this.pending.get(id)
-        if (!p) break
+        if (!p) {
+          log('%s received for id=%s but no pending handler (cancelled?)', msg.type, id)
+          break
+        }
         this.pending.delete(id)
         if ((msg.type as string).endsWith('-error')) {
+          log('%s id=%s: %s', msg.type, id, msg.error)
           p.reject(new Error(msg.error as string))
         } else {
+          log('%s id=%s', msg.type, id)
           p.resolve(msg)
         }
         break
@@ -66,6 +78,7 @@ class VoiceWorkerClient {
   }
 
   async initSTT(device: 'webgpu' | 'wasm'): Promise<void> {
+    log('initSTT(%s)', device)
     const w = this.getWorker()
     return new Promise((resolve, reject) => {
       this.initCallbacks['stt'] = { resolve: resolve as (v: unknown) => void, reject }
@@ -74,6 +87,7 @@ class VoiceWorkerClient {
   }
 
   async initTTS(device: 'webgpu' | 'wasm'): Promise<VoicePreset[]> {
+    log('initTTS(%s)', device)
     const w = this.getWorker()
     return new Promise((resolve, reject) => {
       this.initCallbacks['tts'] = { resolve: resolve as (v: unknown) => void, reject }
@@ -84,9 +98,9 @@ class VoiceWorkerClient {
   async transcribe(audio: Float32Array, language?: string): Promise<{ text: string; language: string }> {
     const w = this.getWorker()
     const id = String(this.nextId++)
+    log('transcribe request id=%s, audioLen=%d', id, audio.length)
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject })
-      // Transfer the audio buffer for zero-copy
       w.postMessage({ type: 'transcribe', id, audio, language }, { transfer: [audio.buffer] })
     })
   }
@@ -94,6 +108,7 @@ class VoiceWorkerClient {
   async synthesise(text: string, voiceId: string): Promise<Float32Array> {
     const w = this.getWorker()
     const id = String(this.nextId++)
+    log('synthesise request id=%s, text="%s", voice=%s', id, text.slice(0, 40), voiceId)
     return new Promise((resolve, reject) => {
       this.pending.set(id, {
         resolve: (msg) => resolve((msg as { audio: Float32Array }).audio),
@@ -107,6 +122,7 @@ class VoiceWorkerClient {
   cancel(id: string): void {
     const p = this.pending.get(id)
     if (p) {
+      log('cancel id=%s', id)
       this.pending.delete(id)
       p.reject(new Error('Cancelled'))
     }
@@ -114,6 +130,8 @@ class VoiceWorkerClient {
 
   /** Cancel all pending operations. */
   cancelAll(): void {
+    if (this.pending.size === 0) return
+    log('cancelAll (%d pending)', this.pending.size)
     for (const [id, p] of this.pending) {
       p.reject(new Error('Cancelled'))
       this.pending.delete(id)
@@ -121,6 +139,7 @@ class VoiceWorkerClient {
   }
 
   dispose(): void {
+    log('dispose')
     this.cancelAll()
     this.worker?.terminate()
     this.worker = null

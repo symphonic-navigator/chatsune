@@ -45,6 +45,7 @@ import { SetupModal } from '../voice/components/SetupModal'
 import { useEngineLoader } from '../voice/stores/engineLoaderStore'
 import { setActiveReader } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
+import { voiceWorker } from '../voice/workers/voiceWorkerClient'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -585,9 +586,10 @@ export function ChatView({ persona }: ChatViewProps) {
   // Mic handlers
   const handleMicPress = useCallback(() => {
     if (!voiceReady) { setShowSetup(true); return }
-    // Cancel any active Read Aloud
+    // Cancel any active Read Aloud (stop playback + discard pending synthesis)
     setActiveReader(null)
     audioPlayback.stopAll()
+    voiceWorker.cancelAll()
     voicePipeline.startRecording('push-to-talk')
   }, [voiceReady])
 
@@ -607,6 +609,7 @@ export function ChatView({ persona }: ChatViewProps) {
       if (!voiceReady) { setShowSetup(true); return }
       setActiveReader(null)
       audioPlayback.stopAll()
+      voiceWorker.cancelAll()
       voicePipeline.startRecording('continuous')
     }
   }, [pipelineState.phase, voiceReady])
