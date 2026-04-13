@@ -107,6 +107,12 @@ async def assemble(
     if memory_xml:
         parts.append(memory_xml)
 
+    # Layer: Integration prompt extensions (active integrations for this persona)
+    from backend.modules.integrations import get_integration_prompt_extensions
+    integration_prompt = await get_integration_prompt_extensions(user_id, persona_id)
+    if integration_prompt:
+        parts.append(integration_prompt)
+
     # Layer 4: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():
         cleaned = sanitise(user_about_me.strip())

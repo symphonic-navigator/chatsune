@@ -496,6 +496,15 @@ async def run_inference(
         persona_mcp_config=persona_mcp_config,
     ) or None
 
+    # Merge integration tools (independent of MCP/tool group toggles)
+    from backend.modules.integrations import get_integration_tools
+    integration_tools = await get_integration_tools(user_id, persona_id if persona_id else None)
+    if integration_tools:
+        if active_tools is None:
+            active_tools = integration_tools
+        else:
+            active_tools = list(active_tools) + integration_tools
+
     # Estimate tokens consumed by tool definitions sent with the API call
     tool_definition_tokens = 0
     if active_tools:
