@@ -5,7 +5,8 @@ const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 
 
 export function VoiceSettings() {
   const { settings, update } = useVoiceSettings()
-  const { supported, sttSupported, device } = useVoiceCapabilities()
+  const { caps, supported, sttSupported } = useVoiceCapabilities()
+  const device: 'webgpu' | 'wasm' | null = caps.webgpu ? 'webgpu' : caps.wasm ? 'wasm' : null
 
   if (!supported) {
     return (
