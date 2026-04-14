@@ -205,8 +205,13 @@ async function loadKokoro(entry: DtypeEntry): Promise<KokoroTTS> {
   })
 }
 
+// Warmup text long enough to expose iSTFT instability that only blows
+// up after a number of decoder steps. A single word ("test") completes
+// before broken WebGPU ops can compound into out-of-range values.
+const KOKORO_WARMUP_TEXT = 'Hello, I am your companion. How can I help you today?'
+
 async function warmupKokoro(inst: KokoroTTS): Promise<void> {
-  const result = await inst.generate('test', {
+  const result = await inst.generate(KOKORO_WARMUP_TEXT, {
     voice: 'af_heart' as NonNullable<Parameters<typeof inst.generate>[1]>['voice'],
   })
   // Some (device, dtype) combinations load and run without throwing but
@@ -223,10 +228,12 @@ async function warmupKokoro(inst: KokoroTTS): Promise<void> {
   if (!(audio instanceof Float32Array)) {
     throw new Error(`warmup: unexpected audio type ${Object.prototype.toString.call(audio)}`)
   }
-  const probeLen = Math.min(audio.length, 2048)
+  // Scan the entire warmup buffer — iSTFT instabilities frequently only
+  // surface near the tail, so probing only the first few thousand
+  // samples is not enough.
   let hasUsableSample = false
   let peak = 0
-  for (let i = 0; i < probeLen; i++) {
+  for (let i = 0; i < audio.length; i++) {
     const v = audio[i]!
     if (!Number.isFinite(v)) {
       throw new Error(`warmup produced non-finite sample at index ${i} (len=${audio.length})`)
