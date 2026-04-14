@@ -206,9 +206,30 @@ async function loadKokoro(entry: DtypeEntry): Promise<KokoroTTS> {
 }
 
 async function warmupKokoro(inst: KokoroTTS): Promise<void> {
-  await inst.generate('test', {
+  const result = await inst.generate('test', {
     voice: 'af_heart' as NonNullable<Parameters<typeof inst.generate>[1]>['voice'],
   })
+  // Some (device, dtype) combinations load and run without throwing but
+  // produce numerically broken audio (all NaN or all zero). Most often
+  // seen with q4f16 on GPUs whose fp16 path overflows in the Kokoro
+  // output layer. Detect it here so the ladder falls through to a safer
+  // dtype instead of caching the broken combo as "works".
+  const audio = (result as { audio: unknown }).audio
+  if (!(audio instanceof Float32Array)) {
+    throw new Error(`warmup: unexpected audio type ${Object.prototype.toString.call(audio)}`)
+  }
+  const probeLen = Math.min(audio.length, 2048)
+  let hasUsableSample = false
+  for (let i = 0; i < probeLen; i++) {
+    const v = audio[i]!
+    if (Number.isFinite(v) && v !== 0) {
+      hasUsableSample = true
+      break
+    }
+  }
+  if (!hasUsableSample) {
+    throw new Error(`warmup produced silent or NaN audio (len=${audio.length})`)
+  }
 }
 
 // ── Message handling ──
@@ -290,9 +311,23 @@ self.onmessage = async (e: MessageEvent) => {
         const result = await tts.generate(msg.text, {
           voice: msg.voiceId as NonNullable<Parameters<typeof tts.generate>[1]>['voice'],
         })
+        // Diagnostic: verify the audio payload is a real signal, not silence
+        // or a chunked structure misread as a single Float32Array.
+        const rawAudio: unknown = (result as { audio: unknown }).audio
+        const isFloat32 = rawAudio instanceof Float32Array
+        const isArray = Array.isArray(rawAudio)
+        log('synthesise diag: rawType=%s isFloat32=%s isArray=%s sampling_rate=%o',
+            Object.prototype.toString.call(rawAudio), isFloat32, isArray,
+            (result as { sampling_rate?: number }).sampling_rate)
         const audio = result.audio as unknown as Float32Array
         const elapsed = Math.round(performance.now() - t0)
-        log('synthesise done, id=%s, %dms, audioLen=%d', msg.id, elapsed, audio.length)
+        let max = 0
+        for (let i = 0; i < audio.length; i++) {
+          const v = Math.abs(audio[i] ?? 0)
+          if (v > max) max = v
+        }
+        log('synthesise done, id=%s, %dms, audioLen=%d, max=%f, first10=%o',
+            msg.id, elapsed, audio.length, max, Array.from(audio.slice(0, 10)))
         self.postMessage(
           { type: 'synthesise-done', id: msg.id, audio },
           { transfer: [audio.buffer] },
