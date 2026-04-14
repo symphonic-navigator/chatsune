@@ -210,25 +210,36 @@ async function warmupKokoro(inst: KokoroTTS): Promise<void> {
     voice: 'af_heart' as NonNullable<Parameters<typeof inst.generate>[1]>['voice'],
   })
   // Some (device, dtype) combinations load and run without throwing but
-  // produce numerically broken audio (all NaN or all zero). Most often
-  // seen with q4f16 on GPUs whose fp16 path overflows in the Kokoro
-  // output layer. Detect it here so the ladder falls through to a safer
-  // dtype instead of caching the broken combo as "works".
+  // produce numerically broken audio. Three failure modes seen so far on
+  // browser WebGPU for Kokoro:
+  //   - all-NaN buffer (fp16 overflow in some op)
+  //   - all-zero buffer (silent, nothing rendered)
+  //   - wildly scaled buffer (peak ≫ 1.0, hard-clips to a square wave —
+  //     observed at peak ≈ 1.5e8 with fp32 on AMD RDNA-3)
+  // Float32 PCM physically belongs in [-1, 1]; allow modest headroom
+  // (PEAK_LIMIT) for normal output and reject anything beyond.
+  const PEAK_LIMIT = 2.0
   const audio = (result as { audio: unknown }).audio
   if (!(audio instanceof Float32Array)) {
     throw new Error(`warmup: unexpected audio type ${Object.prototype.toString.call(audio)}`)
   }
   const probeLen = Math.min(audio.length, 2048)
   let hasUsableSample = false
+  let peak = 0
   for (let i = 0; i < probeLen; i++) {
     const v = audio[i]!
-    if (Number.isFinite(v) && v !== 0) {
-      hasUsableSample = true
-      break
+    if (!Number.isFinite(v)) {
+      throw new Error(`warmup produced non-finite sample at index ${i} (len=${audio.length})`)
     }
+    const abs = Math.abs(v)
+    if (abs > peak) peak = abs
+    if (v !== 0) hasUsableSample = true
   }
   if (!hasUsableSample) {
-    throw new Error(`warmup produced silent or NaN audio (len=${audio.length})`)
+    throw new Error(`warmup produced silent audio (len=${audio.length})`)
+  }
+  if (peak > PEAK_LIMIT) {
+    throw new Error(`warmup produced clipped audio: peak=${peak} > ${PEAK_LIMIT} (len=${audio.length})`)
   }
 }
 
