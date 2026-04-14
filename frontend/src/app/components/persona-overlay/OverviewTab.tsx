@@ -182,8 +182,8 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
       {/* Missing-connection banner */}
       {!canStartChat && (
         <div className="w-full max-w-sm p-3 bg-yellow-700/20 border border-yellow-600/40 rounded text-sm text-yellow-200">
-          Diese Persona verweist auf eine Verbindung, die nicht mehr existiert.
-          Bitte ein Modell neu wählen.
+          This persona references a connection that no longer exists.
+          Please pick a model again.
         </div>
       )}
 
@@ -193,7 +193,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           type="button"
           onClick={onContinue}
           disabled={!hasLastChat || !canStartChat}
-          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
+          title={!canStartChat ? 'Model unavailable — please pick a model again.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all"
           style={{
             background: hasLastChat && canStartChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
@@ -208,7 +208,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           type="button"
           onClick={onNewChat}
           disabled={!canStartChat}
-          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
+          title={!canStartChat ? 'Model unavailable — please pick a model again.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
           style={{
             background: canStartChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
@@ -223,7 +223,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           type="button"
           onClick={onNewIncognitoChat}
           disabled={!canStartChat}
-          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
+          title={!canStartChat ? 'Model unavailable — please pick a model again.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
           style={{
             background: 'rgba(255,255,255,0.04)',

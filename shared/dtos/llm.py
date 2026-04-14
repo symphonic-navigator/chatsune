@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, computed_field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class ModelMetaDto(BaseModel):
@@ -68,6 +68,7 @@ class AdapterTemplateDto(BaseModel):
     display_name: str
     slug_prefix: str
     config_defaults: dict[str, Any]
+    required_config_fields: list[str] = Field(default_factory=list)
 
 
 class AdapterDto(BaseModel):

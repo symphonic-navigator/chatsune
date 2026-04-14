@@ -275,8 +275,8 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           <label htmlFor={modelId} className="text-[11px] text-white/40 uppercase tracking-wider">Model</label>
           {connectionMissing && (
             <div className="p-3 bg-yellow-700/20 border border-yellow-600/40 rounded text-sm text-yellow-200">
-              Diese Persona verweist auf eine Verbindung, die nicht mehr existiert.
-              Bitte ein Modell neu wählen.
+              This persona references a connection that no longer exists.
+              Please pick a model again.
             </div>
           )}
           <button

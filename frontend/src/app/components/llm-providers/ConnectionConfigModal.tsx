@@ -10,6 +10,8 @@ export interface NewConnectionPreset {
   display_name: string
   slug: string
   config: Record<string, unknown>
+  /** Fields that must be non-empty — forwarded from the template. */
+  required_config_fields: string[]
 }
 
 interface ConnectionConfigModalProps {
@@ -52,6 +54,12 @@ function placeholderFromPreset(preset: NewConnectionPreset): Connection {
   }
 }
 
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === 'string') return value.trim().length === 0
+  return false
+}
+
 export function ConnectionConfigModal({
   connection,
   newConnectionPreset,
@@ -63,6 +71,14 @@ export function ConnectionConfigModal({
   const initial: Connection = useMemo(
     () => connection ?? placeholderFromPreset(newConnectionPreset!),
     [connection, newConnectionPreset],
+  )
+
+  // Required-field list is only enforced in new mode. In edit mode the
+  // user may legitimately update individual config parts without
+  // re-supplying a field that was saved under a prior policy.
+  const requiredConfigFields = useMemo(
+    () => (isNew ? (newConnectionPreset?.required_config_fields ?? []) : []),
+    [isNew, newConnectionPreset],
   )
 
   const [displayName, setDisplayName] = useState(initial.display_name)
@@ -98,11 +114,25 @@ export function ConnectionConfigModal({
     return () => { cancelled = true }
   }, [initial.adapter_type])
 
+  const missingRequired = useMemo(
+    () => requiredConfigFields.filter((name) => isEmptyValue(config[name])),
+    [requiredConfigFields, config],
+  )
+
   async function handleSave() {
     const trimmedName = displayName.trim()
     const trimmedSlug = slug.trim()
     if (!trimmedName || !trimmedSlug) {
-      setError('Bitte Anzeigename und Slug ausfüllen.')
+      setError('Please fill in the display name and slug.')
+      return
+    }
+    if (missingRequired.length > 0) {
+      // We hand-craft the message for the api_key case since it is by far
+      // the most common, but fall back to a generic list otherwise.
+      const label = missingRequired[0] === 'api_key'
+        ? 'API key'
+        : missingRequired[0]
+      setError(`${label} is required for this template.`)
       return
     }
     setSaving(true)
@@ -128,22 +158,22 @@ export function ConnectionConfigModal({
       if (err instanceof ApiError && err.status === 409 && isSlugErrorBody({ detail: err.body })) {
         const suggested = (err.body as { error: string; suggested_slug: string }).suggested_slug
         setSuggestedSlug(suggested)
-        setError(`Slug "${trimmedSlug}" ist bereits vergeben.`)
+        setError(`Slug "${trimmedSlug}" is already in use.`)
       } else if (err instanceof ApiError && err.body && typeof err.body === 'object') {
         const body = err.body as { detail?: unknown }
         if (typeof body.detail === 'object' && body.detail !== null) {
           const d = body.detail as { error?: unknown; suggested_slug?: unknown }
           if (d.error === 'slug_exists' && typeof d.suggested_slug === 'string') {
             setSuggestedSlug(d.suggested_slug)
-            setError(`Slug "${trimmedSlug}" ist bereits vergeben.`)
+            setError(`Slug "${trimmedSlug}" is already in use.`)
           } else {
-            setError(err.message || 'Speichern fehlgeschlagen.')
+            setError(err.message || 'Save failed.')
           }
         } else {
-          setError(err.message || 'Speichern fehlgeschlagen.')
+          setError(err.message || 'Save failed.')
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+        setError(err instanceof Error ? err.message : 'Save failed.')
       }
       setSaving(false)
     }
@@ -161,32 +191,33 @@ export function ConnectionConfigModal({
       await llmApi.deleteConnection(connection!.id)
       if (onDeleted) await onDeleted()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen.')
+      setError(err instanceof Error ? err.message : 'Delete failed.')
       setDeleting(false)
       setConfirmDelete(false)
     }
   }
 
   const AdapterView = adapter ? resolveAdapterView(adapter.view_id) : null
+  const saveDisabled = saving || missingRequired.length > 0
 
   return (
     <Sheet
       isOpen={true}
       onClose={onClose}
       size="xl"
-      ariaLabel={isNew ? 'Neue Verbindung' : 'Verbindung bearbeiten'}
+      ariaLabel={isNew ? 'New connection' : 'Edit connection'}
       className="border border-white/8 bg-elevated"
     >
       <div className="flex max-h-full flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <h2 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
-            {isNew ? 'Neue Verbindung' : 'Verbindung bearbeiten'}
+            {isNew ? 'New connection' : 'Edit connection'}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Schließen"
+            aria-label="Close"
             className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70"
           >
             ✕
@@ -199,7 +230,7 @@ export function ConnectionConfigModal({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="block text-[11px] font-mono uppercase tracking-wider text-white/50">
-                Anzeigename
+                Display name
               </label>
               <input
                 type="text"
@@ -231,6 +262,7 @@ export function ConnectionConfigModal({
             <div className="rounded border border-white/8 p-4">
               <AdapterView
                 connection={workingConnection}
+                requiredConfigFields={requiredConfigFields}
                 onConfigChange={setConfig}
                 onDisplayNameChange={setDisplayName}
                 onSlugChange={setSlug}
@@ -238,7 +270,7 @@ export function ConnectionConfigModal({
             </div>
           ) : (
             <div className="rounded border border-white/8 p-4 text-sm text-white/50">
-              Keine Konfigurationsansicht für Adapter "{initial.adapter_type}" registriert.
+              No configuration view registered for adapter "{initial.adapter_type}".
             </div>
           )}
 
@@ -256,7 +288,7 @@ export function ConnectionConfigModal({
                   }}
                   className="mt-1.5 rounded border border-red-400/40 px-2 py-0.5 text-[11px] text-red-200 hover:bg-red-500/15"
                 >
-                  Slug "{suggestedSlug}" vorschlagen — übernehmen?
+                  Use suggested slug "{suggestedSlug}"
                 </button>
               )}
             </div>
@@ -280,10 +312,10 @@ export function ConnectionConfigModal({
                 ].join(' ')}
               >
                 {deleting
-                  ? 'Lösche…'
+                  ? 'Deleting…'
                   : confirmDelete
-                    ? 'Wirklich löschen?'
-                    : 'Löschen'}
+                    ? 'Delete this connection?'
+                    : 'Delete'}
               </button>
             )}
           </div>
@@ -293,15 +325,20 @@ export function ConnectionConfigModal({
               onClick={onClose}
               className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/5"
             >
-              Abbrechen
+              Cancel
             </button>
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving}
-              className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80 disabled:opacity-40"
+              disabled={saveDisabled}
+              className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={missingRequired.length > 0
+                ? (missingRequired[0] === 'api_key'
+                    ? 'API key is required for this template'
+                    : `${missingRequired[0]} is required`)
+                : undefined}
             >
-              {saving ? 'Speichere…' : 'Speichern'}
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>

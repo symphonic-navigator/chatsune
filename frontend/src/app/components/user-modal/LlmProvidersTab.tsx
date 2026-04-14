@@ -23,7 +23,7 @@ export function LlmProvidersTab() {
       // server-side updates (e.g. last_test_status flips) flow into the form.
       setEditing((cur) => (cur ? next.find((c) => c.id === cur.id) ?? null : cur))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Konnte Verbindungen nicht laden.')
+      setError(err instanceof Error ? err.message : 'Could not load connections.')
     } finally {
       setLoading(false)
     }
@@ -52,7 +52,7 @@ export function LlmProvidersTab() {
   }, [refresh])
 
   if (loading) {
-    return <div className="p-6 text-sm text-white/60">Lade…</div>
+    return <div className="p-6 text-sm text-white/60">Loading…</div>
   }
 
   if (error) {
@@ -64,7 +64,7 @@ export function LlmProvidersTab() {
           onClick={() => { setLoading(true); void refresh() }}
           className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5"
         >
-          Erneut versuchen
+          Try again
         </button>
       </div>
     )
@@ -73,13 +73,13 @@ export function LlmProvidersTab() {
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
-        <p className="text-white/70">Noch keine LLM-Verbindung eingerichtet.</p>
+        <p className="text-white/70">No LLM connection configured yet.</p>
         <button
           type="button"
           onClick={() => setWizardOpen(true)}
           className="rounded bg-purple/70 px-4 py-2 text-sm text-white hover:bg-purple/80"
         >
-          Verbindung einrichten
+          Set up connection
         </button>
         {wizardOpen && (
           <AddConnectionWizard
@@ -105,7 +105,7 @@ export function LlmProvidersTab() {
           onClick={() => setWizardOpen(true)}
           className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80"
         >
-          + Verbindung
+          + Connection
         </button>
       </div>
       <ul className="flex-1 divide-y divide-white/5 overflow-y-auto px-2 py-2">

@@ -15,6 +15,7 @@ export interface AdapterTemplate {
   display_name: string
   slug_prefix: string
   config_defaults: Record<string, unknown>
+  required_config_fields: string[]
 }
 
 export interface Adapter {

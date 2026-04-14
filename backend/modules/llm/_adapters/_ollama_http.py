@@ -209,6 +209,9 @@ class OllamaHttpAdapter(BaseAdapter):
                     "api_key": "",
                     "max_parallel": 3,
                 },
+                # Cloud requires authentication — surface this to the UI so
+                # the save button stays disabled until a key is entered.
+                required_config_fields=("api_key",),
             ),
             AdapterTemplate(
                 id="custom",

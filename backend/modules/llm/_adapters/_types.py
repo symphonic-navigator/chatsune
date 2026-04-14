@@ -24,6 +24,11 @@ class AdapterTemplate:
     display_name: str
     slug_prefix: str
     config_defaults: dict
+    # Names of config fields that must be non-empty for this specific
+    # template (e.g. `api_key` for Ollama Cloud). Enforced in the frontend
+    # at save-time. Empty tuple means no template-specific requirements
+    # beyond whatever the adapter's config_schema enforces globally.
+    required_config_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

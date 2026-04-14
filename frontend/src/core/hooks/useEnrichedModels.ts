@@ -76,7 +76,7 @@ export function useEnrichedModels(): UseEnrichedModels {
 
       setGroups(nextGroups)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Konnte Modelle nicht laden.')
+      setError(err instanceof Error ? err.message : 'Could not load models.')
     } finally {
       setLoading(false)
     }

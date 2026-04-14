@@ -229,7 +229,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, onProv
                   <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected" aria-label="API key issue detected">!</span>
                 )}
                 {tab.id === 'llm' && hasNoLlmConnection && (
-                  <span className="ml-1.5 text-[10px] text-red-400" title="Keine LLM-Verbindung konfiguriert" aria-label="Keine LLM-Verbindung konfiguriert">!</span>
+                  <span className="ml-1.5 text-[10px] text-red-400" title="No LLM connection configured" aria-label="No LLM connection configured">!</span>
                 )}
               </button>
             )

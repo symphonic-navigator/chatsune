@@ -38,10 +38,10 @@ export const llmApi = {
 
   /** Adapter sub-router — live test against the remote end. */
   testConnection: (id: string) =>
-    api.post<TestResultResponse>(`/api/llm/connections/${id}/test`),
+    api.post<TestResultResponse>(`/api/llm/connections/${id}/adapter/test`),
 
   getConnectionDiagnostics: (id: string) =>
-    api.get<{ ps: unknown; tags: unknown }>(`/api/llm/connections/${id}/diagnostics`),
+    api.get<{ ps: unknown; tags: unknown }>(`/api/llm/connections/${id}/adapter/diagnostics`),
 
   getUserModelConfig: (connectionId: string, modelSlug: string) =>
     api.get<UserModelConfigDto>(

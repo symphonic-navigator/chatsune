@@ -27,7 +27,8 @@ function normaliseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, '').toLowerCase()
 }
 
-export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps) {
+export function OllamaHttpView({ connection, requiredConfigFields, onConfigChange }: AdapterViewProps) {
+  const apiKeyRequired = requiredConfigFields.includes('api_key')
   const urlId = useId()
   const keyId = useId()
   const parId = useId()
@@ -98,7 +99,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
         })
         setCollisionWarning(
           clash
-            ? `Diese URL wird bereits von "${clash.display_name}" verwendet.`
+            ? `You already have a connection to this URL (slug: ${clash.slug}). This may cause unexpected queuing at the backend.`
             : null,
         )
       } catch {
@@ -119,7 +120,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
     } catch (err) {
       setTest({
         loading: false,
-        result: { valid: false, error: err instanceof Error ? err.message : 'Test fehlgeschlagen' },
+        result: { valid: false, error: err instanceof Error ? err.message : 'Test failed' },
       })
     }
   }
@@ -134,7 +135,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
       setDiagnostics({
         loading: false,
         data: null,
-        error: err instanceof Error ? err.message : 'Diagnostics fehlgeschlagen',
+        error: err instanceof Error ? err.message : 'Diagnostics failed',
       })
     }
   }
@@ -147,7 +148,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
     }
   }
 
-  const disabledTooltip = isSaved ? undefined : 'Verbindung zuerst speichern'
+  const disabledTooltip = isSaved ? undefined : 'Save the connection first'
 
   return (
     <div className="space-y-4 text-sm text-white/80">
@@ -173,11 +174,11 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <label htmlFor={keyId} className="block text-[11px] font-mono uppercase tracking-wider text-white/50">
-            API-Key
+            API key{apiKeyRequired && <span className="text-red-400"> *</span>}
           </label>
           {apiKeyState?.is_set && !clearApiKey && (
             <span className="text-[10px] font-mono uppercase tracking-wider text-green-400/80">
-              gespeichert
+              saved
             </span>
           )}
         </div>
@@ -189,8 +190,13 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
             setApiKey(e.target.value)
             if (e.target.value.length > 0) setClearApiKey(false)
           }}
-          placeholder={apiKeyState?.is_set ? '••••••••  (leer lassen, um beizubehalten)' : 'Optional'}
+          placeholder={
+            apiKeyState?.is_set
+              ? '••••••••  (leave empty to keep)'
+              : apiKeyRequired ? 'Required' : 'Optional'
+          }
           autoComplete="new-password"
+          required={apiKeyRequired}
           className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-purple/60"
         />
         {apiKeyState?.is_set && (
@@ -204,7 +210,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
               }}
               className="h-3 w-3"
             />
-            Gespeicherten Key entfernen
+            Remove saved key
           </label>
         )}
       </div>
@@ -212,7 +218,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
       {/* max_parallel */}
       <div className="space-y-1">
         <label htmlFor={parId} className="block text-[11px] font-mono uppercase tracking-wider text-white/50">
-          Max. parallele Anfragen
+          Max parallel requests
         </label>
         <input
           id={parId}
@@ -237,7 +243,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
           title={disabledTooltip}
           className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {test.loading ? 'Teste…' : 'Verbindung testen'}
+          {test.loading ? 'Testing…' : 'Test connection'}
         </button>
         {test.result && (
           <div
@@ -248,7 +254,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
                 : 'border-red-500/30 bg-red-500/10 text-red-300',
             ].join(' ')}
           >
-            {test.result.valid ? 'Verbindung ok.' : `Fehler: ${test.result.error ?? 'unbekannt'}`}
+            {test.result.valid ? 'Connection OK.' : `Error: ${test.result.error ?? 'unknown'}`}
           </div>
         )}
       </div>
@@ -267,7 +273,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
         </button>
         {diagnosticsOpen && (
           <div className="border-t border-white/8 p-3 text-[11px]">
-            {diagnostics.loading && <p className="text-white/60">Lade…</p>}
+            {diagnostics.loading && <p className="text-white/60">Loading…</p>}
             {diagnostics.error && <p className="text-red-300">{diagnostics.error}</p>}
             {diagnostics.data && (
               <div className="space-y-3">
@@ -288,7 +294,7 @@ export function OllamaHttpView({ connection, onConfigChange }: AdapterViewProps)
                   onClick={loadDiagnostics}
                   className="rounded border border-white/15 px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/5"
                 >
-                  Aktualisieren
+                  Refresh
                 </button>
               </div>
             )}

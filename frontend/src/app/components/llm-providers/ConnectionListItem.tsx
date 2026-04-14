@@ -13,8 +13,8 @@ const STATUS_STYLE: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   valid: 'OK',
-  failed: 'Fehler',
-  untested: 'ungetestet',
+  failed: 'failed',
+  untested: 'untested',
 }
 
 export function ConnectionListItem({ connection, onClick }: ConnectionListItemProps) {

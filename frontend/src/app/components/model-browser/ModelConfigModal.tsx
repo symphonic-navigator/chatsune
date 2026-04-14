@@ -42,7 +42,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
         ? null
         : Number.parseInt(customContextWindow, 10)
       if (ctxParsed !== null && (!Number.isFinite(ctxParsed) || ctxParsed <= 0)) {
-        setError('Kontext-Fenster muss eine positive Zahl sein.')
+        setError('Context window must be a positive number.')
         setSaving(false)
         return
       }
@@ -57,7 +57,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
       await llmApi.setUserModelConfig(model.connection_id, model.model_id, body)
       onSaved(model)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Speichern fehlgeschlagen.')
+      setError(err instanceof Error ? err.message : 'Save failed.')
     } finally {
       setSaving(false)
     }
@@ -65,21 +65,21 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
 
   async function handleReset() {
     if (!cfg) { onClose(); return }
-    if (!window.confirm('Alle persönlichen Einstellungen für dieses Modell zurücksetzen?')) return
+    if (!window.confirm('Reset all personal settings for this model?')) return
     setSaving(true)
     setError(null)
     try {
       await llmApi.deleteUserModelConfig(model.connection_id, model.model_id)
       onSaved(model)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Zurücksetzen fehlgeschlagen.')
+      setError(err instanceof Error ? err.message : 'Reset failed.')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Sheet isOpen onClose={onClose} size="lg" ariaLabel={`Konfiguration für ${model.display_name}`} className="bg-surface p-5 space-y-4">
+    <Sheet isOpen onClose={onClose} size="lg" ariaLabel={`Configuration for ${model.display_name}`} className="bg-surface p-5 space-y-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <h3 className="text-lg text-white/90">{model.display_name}</h3>
@@ -89,7 +89,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
           type="button"
           onClick={onClose}
           className="rounded px-2 text-white/50 hover:bg-white/5 hover:text-white/80"
-          aria-label="Schließen"
+          aria-label="Close"
         >
           ✕
         </button>
@@ -103,7 +103,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             onChange={(e) => setIsFavourite(e.target.checked)}
             className="accent-purple-400"
           />
-          Favorit
+          Favourite
         </label>
         <label className="flex items-center gap-2 text-[13px] text-white/80">
           <input
@@ -112,12 +112,12 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             onChange={(e) => setIsHidden(e.target.checked)}
             className="accent-purple-400"
           />
-          Verstecken
+          Hide
         </label>
       </div>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
-        Eigener Anzeigename
+        Custom display name
         <input
           type="text"
           value={customDisplayName}
@@ -128,7 +128,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
       </label>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
-        Eigenes Kontext-Fenster (Tokens)
+        Custom context window (tokens)
         <input
           type="number"
           min={1}
@@ -140,7 +140,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
       </label>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
-        Notizen
+        Notes
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -150,12 +150,12 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
       </label>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
-        System-Prompt Ergänzung
+        System prompt addition
         <textarea
           value={systemPromptAddition}
           onChange={(e) => setSystemPromptAddition(e.target.value)}
           rows={4}
-          placeholder="Wird zusätzlich zum Persona-System-Prompt angehängt."
+          placeholder="Appended to the persona's system prompt."
           className="rounded bg-white/5 border border-white/10 px-3 py-2 text-[13px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25 resize-y"
         />
       </label>
@@ -169,7 +169,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
           disabled={saving || !cfg}
           className="rounded border border-red-500/30 px-3 py-1 text-[12px] text-red-300 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Zurücksetzen
+          Reset
         </button>
         <div className="flex items-center gap-2">
           <button
@@ -178,7 +178,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             disabled={saving}
             className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5"
           >
-            Abbrechen
+            Cancel
           </button>
           <button
             type="button"
@@ -186,7 +186,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             disabled={saving}
             className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {saving ? 'Speichere…' : 'Speichern'}
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

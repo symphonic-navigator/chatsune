@@ -40,7 +40,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
       setProviders(list)
       onProvidersLoaded?.()
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : 'Konnte Web-Search-Provider nicht laden.')
+      setLoadError(err instanceof Error ? err.message : 'Could not load web search providers.')
     } finally {
       setLoading(false)
     }
@@ -84,7 +84,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
     } catch (err) {
       patchRow(provider.provider_id, {
         busy: 'idle',
-        error: err instanceof Error ? err.message : 'Test fehlgeschlagen.',
+        error: err instanceof Error ? err.message : 'Test failed.',
       })
     }
   }
@@ -106,13 +106,13 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
     } catch (err) {
       patchRow(provider.provider_id, {
         busy: 'idle',
-        error: err instanceof Error ? err.message : 'Speichern fehlgeschlagen.',
+        error: err instanceof Error ? err.message : 'Save failed.',
       })
     }
   }
 
   async function handleRemove(provider: WebSearchProvider) {
-    if (!window.confirm(`Schlüssel für ${provider.display_name} wirklich entfernen?`)) return
+    if (!window.confirm(`Really remove the key for ${provider.display_name}?`)) return
     patchRow(provider.provider_id, { busy: 'removing', error: null })
     try {
       await webSearchApi.deleteWebSearchKey(provider.provider_id)
@@ -125,13 +125,13 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
     } catch (err) {
       patchRow(provider.provider_id, {
         busy: 'idle',
-        error: err instanceof Error ? err.message : 'Entfernen fehlgeschlagen.',
+        error: err instanceof Error ? err.message : 'Removal failed.',
       })
     }
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-white/60">Lade…</div>
+    return <div className="p-6 text-sm text-white/60">Loading…</div>
   }
 
   if (loadError) {
@@ -143,7 +143,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
           onClick={() => { setLoading(true); void refresh() }}
           className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5"
         >
-          Erneut versuchen
+          Try again
         </button>
       </div>
     )
@@ -152,16 +152,16 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
   if (providers.length === 0) {
     return (
       <div className="p-6 text-sm text-white/60">
-        Keine Web-Search-Provider registriert.
+        No web search providers registered.
       </div>
     )
   }
 
   return (
     <div className="p-4 space-y-3">
-      <h3 className="text-lg text-white/90">Web-Search Keys</h3>
+      <h3 className="text-lg text-white/90">Web search keys</h3>
       <p className="text-[12px] text-white/50">
-        API-Schlüssel für Web-Suchanbieter. LLM-Zugänge werden im Tab „LLM Providers“ gepflegt.
+        API keys for web search providers. LLM credentials are managed in the "LLM Providers" tab.
       </p>
       <div className="space-y-3">
         {providers.map((p) => {
@@ -181,7 +181,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                   <StatusPill provider={p} />
                   {p.is_configured ? (
                     <span className="rounded bg-green-500/15 px-2 py-0.5 text-[11px] text-green-300 border border-green-500/30">
-                      konfiguriert
+                      configured
                     </span>
                   ) : (
                     <span className="text-[11px] text-white/40">–</span>
@@ -200,7 +200,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                     error: null,
                     lastTestFeedback: null,
                   })}
-                  placeholder={p.is_configured ? '•••  (unverändert lassen)' : ''}
+                  placeholder={p.is_configured ? '•••  (leave unchanged)' : ''}
                   disabled={disabled}
                   className="flex-1 rounded bg-white/5 border border-white/10 px-3 py-1.5 text-[13px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25 disabled:opacity-50"
                 />
@@ -210,7 +210,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                   disabled={disabled || row.draft.length === 0}
                   className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {row.busy === 'testing' ? 'Teste…' : 'Test'}
+                  {row.busy === 'testing' ? 'Testing…' : 'Test'}
                 </button>
                 <button
                   type="button"
@@ -218,7 +218,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                   disabled={disabled || row.draft.length === 0}
                   className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {row.busy === 'saving' ? 'Speichere…' : 'Speichern'}
+                  {row.busy === 'saving' ? 'Saving…' : 'Save'}
                 </button>
                 {p.is_configured && (
                   <button
@@ -227,7 +227,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                     disabled={disabled}
                     className="rounded border border-red-500/30 px-3 py-1 text-[12px] text-red-300 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {row.busy === 'removing' ? 'Entferne…' : 'Entfernen'}
+                    {row.busy === 'removing' ? 'Removing…' : 'Remove'}
                   </button>
                 )}
               </div>
@@ -237,8 +237,8 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                   className={`text-[12px] ${row.lastTestFeedback.valid ? 'text-green-300' : 'text-red-300'}`}
                 >
                   {row.lastTestFeedback.valid
-                    ? 'Schlüssel ist gültig.'
-                    : row.lastTestFeedback.error ?? 'Test fehlgeschlagen.'}
+                    ? 'Key is valid.'
+                    : row.lastTestFeedback.error ?? 'Test failed.'}
                 </div>
               )}
               {row.error && (
@@ -246,7 +246,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
               )}
               {p.last_test_status === 'failed' && p.last_test_error && !row.lastTestFeedback && (
                 <div className="text-[12px] text-red-300/80">
-                  Letzter Test fehlgeschlagen: {p.last_test_error}
+                  Last test failed: {p.last_test_error}
                 </div>
               )}
             </div>

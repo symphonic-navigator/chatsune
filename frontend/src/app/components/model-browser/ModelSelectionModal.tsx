@@ -45,16 +45,16 @@ export function ModelSelectionModal({
       isOpen
       onClose={onClose}
       size="xl"
-      ariaLabel="Modell auswählen"
+      ariaLabel="Select model"
       className="bg-surface flex flex-col h-full"
     >
       <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
-        <h3 className="text-[15px] font-semibold text-white/85">Modell wählen</h3>
+        <h3 className="text-[15px] font-semibold text-white/85">Choose a model</h3>
         <button
           type="button"
           onClick={onClose}
           className="rounded px-2 text-white/50 hover:bg-white/5 hover:text-white/80"
-          aria-label="Schließen"
+          aria-label="Close"
         >
           ✕
         </button>

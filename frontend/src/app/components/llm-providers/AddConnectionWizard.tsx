@@ -45,7 +45,7 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
         setExistingSlugs(new Set(connections.map((c: Connection) => c.slug)))
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Konnte Adapter nicht laden.')
+          setError(err instanceof Error ? err.message : 'Could not load adapters.')
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -69,6 +69,7 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
       display_name: template.display_name,
       slug,
       config: { ...template.config_defaults },
+      required_config_fields: [...template.required_config_fields],
     })
   }
 
@@ -88,18 +89,18 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
       isOpen={true}
       onClose={onClose}
       size="lg"
-      ariaLabel="Verbindung hinzufügen"
+      ariaLabel="Add connection"
       className="border border-white/8 bg-elevated"
     >
       <div className="flex max-h-full flex-col">
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <h2 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
-            {chosenAdapter ? `Vorlage wählen — ${chosenAdapter.display_name}` : 'Adapter wählen'}
+            {chosenAdapter ? `Choose template — ${chosenAdapter.display_name}` : 'Choose adapter'}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Schließen"
+            aria-label="Close"
             className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70"
           >
             ✕
@@ -107,7 +108,7 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {loading && <p className="text-sm text-white/60">Lade…</p>}
+          {loading && <p className="text-sm text-white/60">Loading…</p>}
           {error && (
             <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
               {error}
@@ -133,7 +134,7 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
               ))}
               {adapters.length === 0 && (
                 <p className="col-span-full text-sm text-white/50">
-                  Keine Adapter verfügbar.
+                  No adapters available.
                 </p>
               )}
             </div>
@@ -163,7 +164,7 @@ export function AddConnectionWizard({ onClose, onCreated }: AddConnectionWizardP
                 onClick={() => setChosenAdapter(null)}
                 className="text-[11px] text-white/50 hover:text-white/80 underline"
               >
-                ← zurück
+                ← back
               </button>
             </div>
           )}

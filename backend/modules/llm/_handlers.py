@@ -66,6 +66,7 @@ async def list_adapters(
                 display_name=t.display_name,
                 slug_prefix=t.slug_prefix,
                 config_defaults=t.config_defaults,
+                required_config_fields=list(t.required_config_fields),
             )
             for t in cls.templates()
         ]

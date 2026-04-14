@@ -47,7 +47,7 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   }, [groups, effectiveFilters])
 
   if (loading) {
-    return <div className="p-6 text-sm text-white/60">Lade Modelle…</div>
+    return <div className="p-6 text-sm text-white/60">Loading models…</div>
   }
 
   if (error) {
@@ -59,7 +59,7 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           onClick={() => { void refresh() }}
           className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5"
         >
-          Erneut versuchen
+          Try again
         </button>
       </div>
     )
@@ -68,7 +68,7 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   if (groups.length === 0) {
     return (
       <div className="p-6 text-sm text-white/60">
-        Keine LLM-Verbindung konfiguriert. Füge im Tab „LLM Providers“ eine hinzu.
+        No LLM connection configured. Add one in the "LLM Providers" tab.
       </div>
     )
   }
@@ -81,14 +81,14 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Modellname suchen…"
+          placeholder="Search model name…"
           className="flex-1 min-w-[180px] rounded bg-white/5 border border-white/10 px-3 py-1 text-[12px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25"
         />
         <Chip
           active={!!filters.favouritesOnly}
           onClick={() => setFilters((f) => ({ ...f, favouritesOnly: !f.favouritesOnly }))}
         >
-          ★ Favoriten
+          ★ Favourites
         </Chip>
         <Chip
           active={!!filters.capReason}
@@ -115,14 +115,14 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           active={!!filters.showHidden}
           onClick={() => setFilters((f) => ({ ...f, showHidden: !f.showHidden }))}
         >
-          Versteckte zeigen
+          Show hidden
         </Chip>
       </div>
 
       {/* Grouped list */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {filteredGroups.length === 0 && (
-          <div className="p-6 text-[13px] text-white/50">Keine Modelle entsprechen den Filtern.</div>
+          <div className="p-6 text-[13px] text-white/50">No models match the current filters.</div>
         )}
         {filteredGroups.map((group) => (
           <section key={group.connection.id} className="mb-4">
@@ -224,10 +224,10 @@ function ModelRow({ model, isCurrent, onSelect, onEdit }: ModelRowProps) {
         type="button"
         onClick={(e) => { e.stopPropagation(); onEdit() }}
         className="rounded border border-white/10 px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/5"
-        aria-label="Modell konfigurieren"
-        title="Modell konfigurieren"
+        aria-label="Configure model"
+        title="Configure model"
       >
-        Bearbeiten
+        Edit
       </button>
     </li>
   )

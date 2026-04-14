@@ -652,14 +652,14 @@ export function ChatView({ persona }: ChatViewProps) {
       <div className="flex-1 flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
           <p className="text-white/80">
-            Du hast noch keine LLM-Verbindung konfiguriert.
+            You haven't configured an LLM connection yet.
           </p>
           <button
             type="button"
             onClick={() => openModal?.('llm')}
             className="inline-flex items-center px-4 py-2 rounded bg-purple/70 text-white"
           >
-            Jetzt einrichten
+            Set up now
           </button>
         </div>
       </div>
