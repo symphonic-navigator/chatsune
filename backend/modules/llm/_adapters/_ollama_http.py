@@ -8,7 +8,6 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
-from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -38,6 +37,7 @@ from shared.dtos.llm import ModelMetaDto
 _log = logging.getLogger(__name__)
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 GUTTER_SLOW_SECONDS: float = 30.0
@@ -310,9 +310,17 @@ class OllamaHttpAdapter(BaseAdapter):
                         )
                         if budget <= 0:
                             if not slow_fired:
+                                _log.info(
+                                    "ollama_base.gutter_slow model=%s idle=%.1fs",
+                                    payload.get("model"), elapsed,
+                                )
                                 yield StreamSlow()
                                 slow_fired = True
                                 continue
+                            _log.warning(
+                                "ollama_base.gutter_abort model=%s idle=%.1fs",
+                                payload.get("model"), elapsed,
+                            )
                             if pending_next is not None:
                                 pending_next.cancel()
                             yield StreamAborted(reason="gutter_timeout")
@@ -338,13 +346,41 @@ class OllamaHttpAdapter(BaseAdapter):
                         except json.JSONDecodeError:
                             _log.warning("Skipping malformed NDJSON: %s", line)
                             continue
+                        if settings.inference_logging:
+                            msg = chunk.get("message") or {}
+                            tcs = msg.get("tool_calls") or []
+                            _log.info(
+                                "ollama_base.chunk model=%s done=%s done_reason=%s "
+                                "content_chars=%d thinking_chars=%d tool_calls=%d",
+                                payload.get("model"),
+                                bool(chunk.get("done")),
+                                chunk.get("done_reason"),
+                                len(msg.get("content") or ""),
+                                len(msg.get("thinking") or ""),
+                                len(tcs),
+                            )
+                            if tcs:
+                                for _tc in tcs:
+                                    _fn = _tc.get("function") or {}
+                                    _log.info(
+                                        "ollama_base.chunk.tool_call model=%s name=%s "
+                                        "args_chars=%d",
+                                        payload.get("model"),
+                                        _fn.get("name"),
+                                        len(json.dumps(_fn.get("arguments") or {})),
+                                    )
                         if chunk.get("done"):
                             seen_done = True
-                            reason = chunk.get("done_reason")
-                            if _is_refusal_reason(reason):
+                            done_reason = chunk.get("done_reason")
+                            if done_reason and done_reason not in ("stop", "length"):
+                                _log.info(
+                                    "ollama_base.done_reason model=%s reason=%s",
+                                    payload.get("model"), done_reason,
+                                )
+                            if _is_refusal_reason(done_reason):
                                 msg = chunk.get("message", {})
                                 yield StreamRefused(
-                                    reason=reason,
+                                    reason=done_reason,
                                     refusal_text=msg.get("refusal") or None,
                                 )
                                 return
@@ -393,7 +429,7 @@ def _build_adapter_router() -> APIRouter:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+            async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
                 resp = await client.get(f"{url}/api/tags",
                                         headers=_auth_headers(api_key))
                 if resp.status_code in (401, 403):
@@ -409,7 +445,7 @@ def _build_adapter_router() -> APIRouter:
     ) -> dict:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
             try:
                 ps_resp, tags_resp = await asyncio.gather(
                     client.get(f"{url}/api/ps", headers=_auth_headers(api_key)),
@@ -418,12 +454,12 @@ def _build_adapter_router() -> APIRouter:
                 ps_resp.raise_for_status()
                 tags_resp.raise_for_status()
                 return {"ps": ps_resp.json(), "tags": tags_resp.json()}
-            except httpx.ConnectError:
-                raise HTTPException(status_code=503, detail="Cannot connect")
+            except httpx.ConnectError as exc:
+                raise HTTPException(status_code=503, detail="Cannot connect") from exc
             except httpx.HTTPStatusError as exc:
                 raise HTTPException(
                     status_code=502,
                     detail=f"Upstream returned {exc.response.status_code}",
-                )
+                ) from exc
 
     return router
