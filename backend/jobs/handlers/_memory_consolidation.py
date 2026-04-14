@@ -14,8 +14,13 @@ from backend.jobs.handlers._budget_helpers import (
     check_and_reserve_budget,
     record_handler_tokens,
 )
-from backend.modules.llm import ContentDelta, StreamDone, StreamError
-from backend.modules.llm._token_estimate import context_window_for, estimate_tokens
+from backend.modules.llm import (
+    ContentDelta,
+    DEFAULT_CONTEXT_WINDOW,
+    StreamDone,
+    StreamError,
+)
+from backend.modules.llm._token_estimate import estimate_tokens
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.memory import (
     MemoryDreamCompletedEvent,
@@ -37,7 +42,10 @@ async def handle_memory_consolidation(
     # Deferred imports to avoid circular dependency.
     from backend.database import get_db
     from backend.modules.llm import stream_completion as llm_stream_completion
-    from backend.modules.llm import get_model_supports_reasoning
+    from backend.modules.llm import (
+        get_effective_context_window,
+        get_model_supports_reasoning,
+    )
     from backend.modules.memory._consolidation import (
         build_consolidation_prompt,
         validate_memory_body,
@@ -54,7 +62,7 @@ async def handle_memory_consolidation(
         return
 
     persona_id = job.payload["persona_id"]
-    provider_id, model_slug = job.model_unique_id.split(":", 1)
+    _, model_slug = job.model_unique_id.split(":", 1)
     dream_id = str(uuid4())
 
     _log.info(
@@ -102,7 +110,10 @@ async def handle_memory_consolidation(
         # first (keep the tail — the most recently consolidated content is
         # usually most relevant) and, if the full prompt still blows past 70%
         # of the context window, abort the job unrecoverably.
-        window = context_window_for(provider_id, model_slug)
+        window = (
+            await get_effective_context_window(job.user_id, job.model_unique_id)
+            or DEFAULT_CONTEXT_WINDOW
+        )
         if existing_body and estimate_tokens(existing_body) > window * 0.5:
             keep_chars = int(window * 0.4 * 3)
             existing_body = (
@@ -132,7 +143,9 @@ async def handle_memory_consolidation(
                 f"wasted retries."
             )
 
-        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+        supports_reasoning = await get_model_supports_reasoning(
+            job.user_id, job.model_unique_id,
+        )
 
         request = CompletionRequest(
             model=model_slug,
@@ -155,7 +168,10 @@ async def handle_memory_consolidation(
         stream_input_tokens: int | None = None
         stream_output_tokens: int | None = None
         async for event in llm_stream_completion(
-            job.user_id, provider_id, request, source="job:memory_consolidation",
+            job.user_id,
+            job.model_unique_id,
+            request,
+            source="job:memory_consolidation",
         ):
             match event:
                 case ContentDelta(delta=delta):

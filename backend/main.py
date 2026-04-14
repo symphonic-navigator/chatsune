@@ -55,76 +55,6 @@ from backend.ws.router import ws_router, get_background_tasks
 from backend.jobs import consumer_loop, jobs_http_router
 
 
-def _warn_if_ollama_local_under_multiworker() -> None:
-    """Warn loudly if ollama_local is registered in a multi-worker setup.
-
-    The ollama_local adapter serialises concurrent requests via a
-    process-local asyncio lock (see backend/modules/llm/__init__.py,
-    ``get_inference_lock``). That lock is only effective within a single
-    worker process. When the backend runs under multiple worker processes
-    (uvicorn --workers N, gunicorn --workers N, WEB_CONCURRENCY>1, etc.),
-    each worker holds its own lock and the global serialisation guarantee
-    that ollama_local relies on is silently broken — concurrent inference
-    requests hit the local Ollama engine in parallel and one of them gets
-    dropped.
-
-    We cannot reliably detect uvicorn's --workers flag from inside a
-    worker process, so we only inspect environment variables that are
-    commonly used for multi-worker deployment. This is a best-effort
-    heuristic, not a hard guarantee. Hard-failing here would be too
-    fragile (dev reload, test harnesses, etc.) — so we only log a very
-    loud warning.
-    """
-    from backend.modules.llm import ADAPTER_REGISTRY
-
-    if "ollama_local" not in ADAPTER_REGISTRY:
-        return
-
-    suspected_workers: list[str] = []
-
-    web_concurrency = os.environ.get("WEB_CONCURRENCY")
-    if web_concurrency:
-        try:
-            if int(web_concurrency) > 1:
-                suspected_workers.append(f"WEB_CONCURRENCY={web_concurrency}")
-        except ValueError:
-            pass
-
-    gunicorn_args = os.environ.get("GUNICORN_CMD_ARGS", "")
-    if "--workers" in gunicorn_args:
-        # Attempt to extract the number that follows --workers.
-        import re
-
-        match = re.search(r"--workers[= ](\d+)", gunicorn_args)
-        if match and int(match.group(1)) > 1:
-            suspected_workers.append(f"GUNICORN_CMD_ARGS contains {match.group(0)}")
-
-    if not suspected_workers:
-        return
-
-    log = logging.getLogger("chatsune.lifecycle")
-    signals = ", ".join(suspected_workers)
-    log.warning(
-        "\n"
-        "================================================================\n"
-        "  MULTI-WORKER DEPLOYMENT DETECTED WITH ollama_local ADAPTER\n"
-        "----------------------------------------------------------------\n"
-        "  Signals: %s\n"
-        "\n"
-        "  The ollama_local adapter serialises concurrent inference via\n"
-        "  a process-local asyncio lock. Under multiple worker processes\n"
-        "  each worker holds its own lock, so the global serialisation\n"
-        "  guarantee is silently broken and concurrent requests will hit\n"
-        "  the local Ollama engine in parallel — one of them WILL be\n"
-        "  dropped.\n"
-        "\n"
-        "  Run the backend with a single worker when using ollama_local,\n"
-        "  or switch to ollama_cloud. See CLAUDE.md for details.\n"
-        "================================================================",
-        signals,
-    )
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
@@ -146,8 +76,6 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
-
-    _warn_if_ollama_local_under_multiworker()
 
     # Load embedding model and start worker (blocking on first download)
     embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")

@@ -33,6 +33,7 @@ from backend.modules.llm._metadata import (
 from backend.modules.llm._registry import ADAPTER_REGISTRY
 from backend.modules.llm._resolver import resolve_owned_connection
 from backend.modules.llm._semaphores import get_semaphore_registry
+from backend.modules.llm._token_estimate import DEFAULT_CONTEXT_WINDOW
 from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.modules.metrics import inference_duration_seconds, inference_total
 from shared.dtos.debug import ActiveInferenceDto
@@ -341,4 +342,5 @@ __all__ = [
     "resolve_owned_connection",
     "refresh_connection_models",
     "ADAPTER_REGISTRY",
+    "DEFAULT_CONTEXT_WINDOW",
 ]
