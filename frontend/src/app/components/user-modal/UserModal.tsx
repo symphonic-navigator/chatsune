@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
@@ -13,7 +13,11 @@ import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
-import type { ProviderCredentialDto } from '../../../core/types/llm'
+import { LlmProvidersTab } from './LlmProvidersTab'
+import { llmApi } from '../../../core/api/llm'
+import { webSearchApi } from '../../../core/api/websearch'
+import { eventBus } from '../../../core/websocket/eventBus'
+import { Topics } from '../../../core/types/events'
 
 export type UserModalTab =
   | 'about-me'
@@ -22,6 +26,7 @@ export type UserModalTab =
   | 'history'
   | 'knowledge'
   | 'bookmarks'
+  | 'llm'
   | 'uploads'
   | 'artefacts'
   | 'models'
@@ -43,6 +48,7 @@ const TABS: Tab[] = [
   { id: 'history', label: 'History' },
   { id: 'knowledge', label: 'Knowledge' },
   { id: 'bookmarks', label: 'Bookmarks' },
+  { id: 'llm', label: 'LLM Providers' },
   { id: 'uploads', label: 'Uploads' },
   { id: 'artefacts', label: 'Artefacts' },
   { id: 'models', label: 'Models' },
@@ -58,15 +64,71 @@ interface UserModalProps {
   onClose: () => void
   onTabChange: (tab: UserModalTab) => void
   displayName: string
-  hasApiKeyProblem: boolean
-  onProvidersChanged: (providers: ProviderCredentialDto[]) => void
+  /**
+   * Kept on the prop-surface for callers that still pass it. The badge
+   * source of truth now lives inside this modal (web-search credentials).
+   */
+  hasApiKeyProblem?: boolean
+  /**
+   * Retained as a stub for AppLayout compatibility. Downstream consumers
+   * have their own event subscriptions now.
+   */
+  onProvidersChanged?: () => void
   onOpenPersonaOverlay: (personaId: string) => void
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApiKeyProblem, onProvidersChanged, onOpenPersonaOverlay }: UserModalProps) {
+export function UserModal({ activeTab, onClose, onTabChange, displayName, onProvidersChanged, onOpenPersonaOverlay }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
+
+  // LLM-connection badge: an exclamation flag appears on the LLM Providers
+  // tab when the user has zero connections configured. We fetch once on
+  // mount and re-fetch whenever the connection list mutates server-side.
+  const [hasNoLlmConnection, setHasNoLlmConnection] = useState(false)
+
+  // API-key badge: flips to true when any web-search provider is missing
+  // its credential. Same "has gaps" semantic as the pre-refactor version.
+  const [hasApiKeyProblem, setHasApiKeyProblem] = useState(false)
+
+  const refreshConnectionCount = useCallback(async () => {
+    try {
+      const conns = await llmApi.listConnections()
+      setHasNoLlmConnection(conns.length === 0)
+    } catch {
+      // Best-effort — silently ignore. The badge defaults to "no problem".
+    }
+  }, [])
+
+  const refreshWebSearchGaps = useCallback(async () => {
+    try {
+      const providers = await webSearchApi.listWebSearchProviders()
+      setHasApiKeyProblem(providers.some((p) => !p.is_configured))
+    } catch {
+      // Best-effort — silently ignore.
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshConnectionCount()
+    const topics = [
+      Topics.LLM_CONNECTION_CREATED,
+      Topics.LLM_CONNECTION_REMOVED,
+    ] as const
+    const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshConnectionCount() }))
+    return () => unsubs.forEach((u) => u())
+  }, [refreshConnectionCount])
+
+  useEffect(() => {
+    void refreshWebSearchGaps()
+    const topics = [
+      Topics.WEBSEARCH_CREDENTIAL_SET,
+      Topics.WEBSEARCH_CREDENTIAL_REMOVED,
+      Topics.WEBSEARCH_CREDENTIAL_TESTED,
+    ] as const
+    const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshWebSearchGaps() }))
+    return () => unsubs.forEach((u) => u())
+  }, [refreshWebSearchGaps])
 
   // Focus trap + Escape key
   useEffect(() => {
@@ -166,6 +228,9 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
                 {tab.id === 'api-keys' && hasApiKeyProblem && (
                   <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected" aria-label="API key issue detected">!</span>
                 )}
+                {tab.id === 'llm' && hasNoLlmConnection && (
+                  <span className="ml-1.5 text-[10px] text-red-400" title="Keine LLM-Verbindung konfiguriert" aria-label="Keine LLM-Verbindung konfiguriert">!</span>
+                )}
               </button>
             )
           })}
@@ -183,12 +248,14 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
           {activeTab === 'bookmarks' && <BookmarksTab onClose={onClose} />}
+          {activeTab === 'llm' && <LlmProvidersTab />}
           {activeTab === 'uploads' && <UploadsTab />}
           {activeTab === 'artefacts' && <ArtefactsTab onClose={onClose} />}
           {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'job-log' && <JobLogTab />}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
+          {/* onProvidersChanged is kept on the prop-surface but currently unused downstream (Phase 8). */}
           {activeTab === 'mcp' && <McpTab />}
           {activeTab === 'integrations' && <IntegrationsTab />}
         </div>

@@ -1,19 +1,17 @@
-"""LLM module — inference provider adapters, user credentials, model metadata.
+"""LLM module — connection-scoped inference facade.
 
 Public API: import only from this file.
 """
 
-import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.database import get_db, get_redis
 from backend.modules.llm import _tracker
-from backend.modules.metrics import inference_total, inference_duration_seconds
-from backend.modules.llm._concurrency import get_lock_registry
-from backend.modules.llm._registry import ADAPTER_REGISTRY as _ADAPTER_REGISTRY_REF
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
@@ -25,142 +23,117 @@ from backend.modules.llm._adapters._events import (
     ThinkingDelta,
     ToolCallEvent,
 )
-from backend.modules.llm._credentials import CredentialRepository
-from backend.modules.llm._curation import CurationRepository
+from backend.modules.llm._adapters._types import ResolvedConnection
+from backend.modules.llm._connections import ConnectionRepository
 from backend.modules.llm._handlers import router
-from backend.modules.llm._registry import ADAPTER_REGISTRY, PROVIDER_BASE_URLS, PROVIDER_DISPLAY_NAMES
+from backend.modules.llm._metadata import (
+    get_models_for_connection,
+    refresh_connection_models,
+)
+from backend.modules.llm._registry import ADAPTER_REGISTRY
+from backend.modules.llm._resolver import resolve_owned_connection
+from backend.modules.llm._semaphores import get_semaphore_registry
+from backend.modules.llm._token_estimate import DEFAULT_CONTEXT_WINDOW
 from backend.modules.llm._user_config import UserModelConfigRepository
-from backend.modules.llm._metadata import get_models, refresh_all_providers
-from backend.database import get_db, get_redis
+from backend.modules.metrics import inference_duration_seconds, inference_total
 from shared.dtos.debug import ActiveInferenceDto
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 
-class LlmCredentialNotFoundError(Exception):
-    """User has no API key configured for the requested provider."""
+_log = logging.getLogger(__name__)
 
 
-class LlmProviderNotFoundError(Exception):
-    """Provider ID is not registered in the adapter registry."""
+class LlmConnectionNotFoundError(Exception):
+    """Connection not found or not owned by the caller."""
+
+    def __init__(self, connection_id: str) -> None:
+        super().__init__(f"Connection not found: {connection_id}")
+        self.connection_id = connection_id
 
 
-class LlmInferenceLockTimeoutError(Exception):
-    """Timed out waiting for the provider's concurrency lock (5 minutes)."""
-
-    def __init__(self, provider_id: str) -> None:
-        super().__init__(
-            f"Timed out waiting for inference lock on provider '{provider_id}'"
-        )
-        self.provider_id = provider_id
+class LlmInvalidModelUniqueIdError(Exception):
+    """model_unique_id is not in ``<connection_id>:<model_slug>`` format."""
 
 
 async def init_indexes(db) -> None:
     """Create MongoDB indexes for the LLM module collections."""
-    await CredentialRepository(db).create_indexes()
-    await CurationRepository(db).create_indexes()
+    await ConnectionRepository(db).create_indexes()
     await UserModelConfigRepository(db).create_indexes()
 
 
-def is_valid_provider(provider_id: str) -> bool:
-    """Return True if provider_id is registered in the adapter registry."""
-    return provider_id in ADAPTER_REGISTRY
+def parse_model_unique_id(model_unique_id: str) -> tuple[str, str]:
+    """Split ``<connection_id>:<model_slug>`` into ``(connection_id, model_slug)``."""
+    if ":" not in model_unique_id:
+        raise LlmInvalidModelUniqueIdError(model_unique_id)
+    connection_id, model_slug = model_unique_id.split(":", 1)
+    if not connection_id or not model_slug:
+        raise LlmInvalidModelUniqueIdError(model_unique_id)
+    return connection_id, model_slug
 
 
 async def stream_completion(
     user_id: str,
-    provider_id: str,
+    model_unique_id: str,
     request: CompletionRequest,
     source: str = "chat",
 ) -> AsyncIterator[ProviderStreamEvent]:
-    """Resolve user's API key, instantiate adapter, stream completion.
-
-    Wraps the adapter call in an adapter-declared concurrency lock
-    (see :mod:`backend.modules.llm._concurrency`). For ``ollama_local``
-    this serialises all inferences across the process — a new chat
-    request waits until any in-flight generation finishes.
+    """Resolve the user's connection, enforce its per-connection semaphore,
+    and stream adapter events.
 
     Raises:
-        LlmProviderNotFoundError: provider_id not in registry.
-        LlmCredentialNotFoundError: user has no key for this provider.
-        LlmInferenceLockTimeoutError: waited >5 minutes for the lock.
+        LlmInvalidModelUniqueIdError: ``model_unique_id`` is malformed.
+        LlmConnectionNotFoundError: connection does not exist or is not owned
+            by ``user_id``.
     """
-    if provider_id not in ADAPTER_REGISTRY:
-        raise LlmProviderNotFoundError(f"Unknown provider: {provider_id}")
+    connection_id, _ = parse_model_unique_id(model_unique_id)
+    c = await resolve_owned_connection(user_id, connection_id)
+    if c is None:
+        raise LlmConnectionNotFoundError(connection_id)
 
-    adapter_cls = ADAPTER_REGISTRY[provider_id]
-    api_key: str | None = None
-    if not adapter_cls.is_global:
-        repo = CredentialRepository(get_db())
-        cred = await repo.find(user_id, provider_id)
-        if not cred:
-            raise LlmCredentialNotFoundError(
-                f"No API key configured for provider '{provider_id}'"
-            )
-        api_key = repo.get_raw_key(cred)
-
-    adapter = adapter_cls(base_url=PROVIDER_BASE_URLS[provider_id])
-    lock = get_lock_registry().lock_for(adapter_cls, user_id)
+    adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
+    adapter = adapter_cls()
+    max_parallel = int(c.config.get("max_parallel") or 1)
+    sem = get_semaphore_registry().get(c.id, max_parallel)
 
     inference_id = _tracker.register(
         user_id=user_id,
-        provider_id=provider_id,
+        connection_id=c.id,
+        connection_slug=c.slug,
+        adapter_type=c.adapter_type,
         model_slug=request.model,
         source=source,
     )
-    # Publish "started" so the admin debug overlay can update without polling.
-    # Done lazily to avoid pulling event-bus into the tracker module itself.
     await _publish_inference_started(
         inference_id=inference_id,
         user_id=user_id,
-        provider_id=provider_id,
+        connection_id=c.id,
+        connection_slug=c.slug,
+        adapter_type=c.adapter_type,
         model_slug=request.model,
         source=source,
     )
-    started_at_perf = _now_perf()
-    inference_total.labels(model=request.model, provider=provider_id, source=source).inc()
+    started_perf = time.monotonic()
+    inference_total.labels(
+        model=request.model, provider=c.adapter_type, source=source,
+    ).inc()
     try:
-        if lock is not None:
-            try:
-                await asyncio.wait_for(lock.acquire(), timeout=300)
-            except asyncio.TimeoutError as exc:
-                raise LlmInferenceLockTimeoutError(
-                    provider_id=provider_id,
-                ) from exc
-            try:
-                async for event in adapter.stream_completion(api_key, request):
-                    yield event
-            finally:
-                lock.release()
-        else:
-            async for event in adapter.stream_completion(api_key, request):
+        async with sem:
+            async for event in adapter.stream_completion(c, request):
                 yield event
     finally:
         _tracker.unregister(inference_id)
         inference_duration_seconds.labels(
-            model=request.model, provider=provider_id,
-        ).observe(_now_perf() - started_at_perf)
+            model=request.model, provider=c.adapter_type,
+        ).observe(time.monotonic() - started_perf)
         await _publish_inference_finished(
             inference_id=inference_id,
             user_id=user_id,
-            duration_seconds=_now_perf() - started_at_perf,
+            duration_seconds=time.monotonic() - started_perf,
         )
 
 
-_debug_log = logging.getLogger("chatsune.debug.inference_tracker")
-
-
-def _now_perf() -> float:
-    return time.monotonic()
-
-
-async def _publish_inference_started(
-    inference_id: str,
-    user_id: str,
-    provider_id: str,
-    model_slug: str,
-    source: str,
-) -> None:
+async def _publish_inference_started(**fields) -> None:
     """Best-effort fan-out: never raise out of the inference path."""
     try:
         from backend.ws.event_bus import get_event_bus
@@ -168,30 +141,30 @@ async def _publish_inference_started(
         from shared.topics import Topics
 
         bus = get_event_bus()
-        username = await _resolve_username(user_id)
+        username = await _resolve_username(fields["user_id"])
         await bus.publish(
             Topics.DEBUG_INFERENCE_STARTED,
             DebugInferenceStartedEvent(
-                inference_id=inference_id,
-                user_id=user_id,
+                inference_id=fields["inference_id"],
+                user_id=fields["user_id"],
                 username=username,
-                provider_id=provider_id,
-                model_slug=model_slug,
-                model_unique_id=f"{provider_id}:{model_slug}",
-                source=source,
+                connection_id=fields["connection_id"],
+                connection_slug=fields["connection_slug"],
+                adapter_type=fields["adapter_type"],
+                model_slug=fields["model_slug"],
+                model_unique_id=f"{fields['connection_id']}:{fields['model_slug']}",
+                source=fields["source"],
                 started_at=datetime.now(timezone.utc),
                 correlation_id=str(uuid4()),
                 timestamp=datetime.now(timezone.utc),
             ),
         )
     except Exception:
-        _debug_log.warning("Failed to publish DEBUG_INFERENCE_STARTED", exc_info=True)
+        _log.warning("Failed to publish DEBUG_INFERENCE_STARTED", exc_info=True)
 
 
 async def _publish_inference_finished(
-    inference_id: str,
-    user_id: str,
-    duration_seconds: float,
+    inference_id: str, user_id: str, duration_seconds: float,
 ) -> None:
     try:
         from backend.ws.event_bus import get_event_bus
@@ -210,7 +183,7 @@ async def _publish_inference_finished(
             ),
         )
     except Exception:
-        _debug_log.warning("Failed to publish DEBUG_INFERENCE_FINISHED", exc_info=True)
+        _log.warning("Failed to publish DEBUG_INFERENCE_FINISHED", exc_info=True)
 
 
 async def _resolve_username(user_id: str) -> str | None:
@@ -234,31 +207,34 @@ def get_active_inferences(
     return _tracker.snapshot(usernames)
 
 
-from contextlib import asynccontextmanager
-
-
 @asynccontextmanager
 async def track_inference(
     user_id: str,
-    provider_id: str,
+    connection_id: str,
+    connection_slug: str,
+    adapter_type: str,
     model_slug: str,
     source: str,
 ):
-    """Context manager that registers/unregisters an inference + emits debug
-    events. Use this from call sites that talk to an adapter directly
+    """Context manager that registers/unregisters an inference and emits
+    debug events. Use this from call sites that talk to an adapter directly
     instead of via :func:`stream_completion` (e.g. vision fallback).
     """
     inference_id = _tracker.register(
         user_id=user_id,
-        provider_id=provider_id,
+        connection_id=connection_id,
+        connection_slug=connection_slug,
+        adapter_type=adapter_type,
         model_slug=model_slug,
         source=source,
     )
-    started_at_perf = _now_perf()
+    started_perf = time.monotonic()
     await _publish_inference_started(
         inference_id=inference_id,
         user_id=user_id,
-        provider_id=provider_id,
+        connection_id=connection_id,
+        connection_slug=connection_slug,
+        adapter_type=adapter_type,
         model_slug=model_slug,
         source=source,
     )
@@ -269,7 +245,7 @@ async def track_inference(
         await _publish_inference_finished(
             inference_id=inference_id,
             user_id=user_id,
-            duration_seconds=_now_perf() - started_at_perf,
+            duration_seconds=time.monotonic() - started_perf,
         )
 
 
@@ -278,119 +254,69 @@ def active_inference_count() -> int:
     return _tracker.active_count()
 
 
-def get_adapter_class(provider_id: str):
-    """Return the adapter class for a provider_id, or None if not registered."""
-    return _ADAPTER_REGISTRY_REF.get(provider_id)
-
-
-def get_inference_lock(provider_id: str, user_id: str):
-    """Return the asyncio.Lock for the provider's concurrency policy, or None.
-
-    Public wrapper over the internal lock registry so callers that bypass
-    :func:`stream_completion` (e.g. the vision fallback) can still honour
-    the adapter's concurrency policy without reaching into module internals.
-    """
-    adapter_cls = _ADAPTER_REGISTRY_REF.get(provider_id)
-    if adapter_cls is None:
-        return None
-    return get_lock_registry().lock_for(adapter_cls, user_id)
-
-
-def is_inference_lock_held(provider_id: str, user_id: str) -> tuple[bool, str | None]:
-    """Return (is_held, holder_source) for the provider's concurrency lock.
-
-    ``holder_source`` is derived from the in-flight tracker on a best-effort
-    basis (e.g. ``"chat"``, ``"job:memory_consolidation"``) and may be ``None``
-    if no matching tracker record is found.
-    """
-    adapter_cls = _ADAPTER_REGISTRY_REF.get(provider_id)
-    if adapter_cls is None:
-        return (False, None)
-    lock = get_lock_registry().lock_for(adapter_cls, user_id)
-    if lock is None or not lock.locked():
-        return (False, None)
-    for record in _tracker.snapshot():
-        if record.provider_id == provider_id:
-            return (True, record.source)
-    return (True, None)
-
-
 async def get_model_metadata(
-    provider_id: str, model_slug: str,
+    user_id: str, model_unique_id: str,
 ) -> ModelMetaDto | None:
-    """Return full metadata for a single model, or None if not found."""
-    if provider_id not in ADAPTER_REGISTRY:
+    """Return full metadata for a single model, or ``None`` if not found."""
+    connection_id, model_slug = parse_model_unique_id(model_unique_id)
+    c = await resolve_owned_connection(user_id, connection_id)
+    if c is None:
         return None
-    redis = get_redis()
-    adapter = ADAPTER_REGISTRY[provider_id](base_url=PROVIDER_BASE_URLS[provider_id])
-    models = await get_models(provider_id, redis, adapter)
-    for model in models:
-        if model.model_id == model_slug:
-            return model
+    adapter_cls = ADAPTER_REGISTRY.get(c.adapter_type)
+    if adapter_cls is None:
+        return None
+    models = await get_models_for_connection(c, adapter_cls, get_redis())
+    for m in models:
+        if m.model_id == model_slug:
+            return m
     return None
 
 
-async def get_model_context_window(provider_id: str, model_slug: str) -> int | None:
-    """Return the context window size for a model, or None if not found."""
-    meta = await get_model_metadata(provider_id, model_slug)
+async def get_model_context_window(
+    user_id: str, model_unique_id: str,
+) -> int | None:
+    """Return the context-window size of a model, or ``None`` if unknown."""
+    meta = await get_model_metadata(user_id, model_unique_id)
     return meta.context_window if meta else None
 
 
-async def get_api_key(user_id: str, provider_id: str) -> str:
-    """Return the decrypted API key for a user/provider pair.
-
-    Intended for cross-module credential sharing (e.g. websearch reusing
-    an LLM provider key).
-
-    Raises:
-        LlmProviderNotFoundError: provider_id not in registry.
-        LlmCredentialNotFoundError: user has no key for this provider.
-    """
-    if provider_id not in ADAPTER_REGISTRY:
-        raise LlmProviderNotFoundError(f"Unknown provider: {provider_id}")
-
-    repo = CredentialRepository(get_db())
-    cred = await repo.find(user_id, provider_id)
-    if not cred:
-        raise LlmCredentialNotFoundError(
-            f"No API key configured for provider '{provider_id}'"
-        )
-    return repo.get_raw_key(cred)
-
-
-async def get_model_supports_vision(provider_id: str, model_slug: str) -> bool:
-    """Return True if the model supports vision/image input."""
-    meta = await get_model_metadata(provider_id, model_slug)
+async def get_model_supports_vision(
+    user_id: str, model_unique_id: str,
+) -> bool:
+    """Return ``True`` if the model supports vision/image input."""
+    meta = await get_model_metadata(user_id, model_unique_id)
     return meta.supports_vision if meta else False
 
 
-async def get_model_supports_reasoning(provider_id: str, model_slug: str) -> bool:
-    """Return True if the model supports reasoning/thinking."""
-    meta = await get_model_metadata(provider_id, model_slug)
+async def get_model_supports_reasoning(
+    user_id: str, model_unique_id: str,
+) -> bool:
+    """Return ``True`` if the model supports reasoning/thinking."""
+    meta = await get_model_metadata(user_id, model_unique_id)
     return meta.supports_reasoning if meta else False
 
 
 async def get_effective_context_window(
-    user_id: str, provider_id: str, model_slug: str,
+    user_id: str, model_unique_id: str,
 ) -> int | None:
-    """Return the effective context window: min(model_max, user_custom) if set."""
-    model_max = await get_model_context_window(provider_id, model_slug)
+    """Return the effective context window:
+    ``min(model_max, user_custom)`` if the user has a custom override.
+    """
+    model_max = await get_model_context_window(user_id, model_unique_id)
     if model_max is None:
         return None
-    db = get_db()
-    repo = UserModelConfigRepository(db)
-    unique_id = f"{provider_id}:{model_slug}"
-    config = await repo.find(user_id, unique_id)
-    if config and config.get("custom_context_window"):
-        return min(model_max, config["custom_context_window"])
+    repo = UserModelConfigRepository(get_db())
+    doc = await repo.find(user_id, model_unique_id)
+    if doc and doc.get("custom_context_window"):
+        return min(model_max, doc["custom_context_window"])
     return model_max
 
 
 __all__ = [
     "router",
     "init_indexes",
-    "is_valid_provider",
     "stream_completion",
+    "parse_model_unique_id",
     "ContentDelta",
     "ThinkingDelta",
     "StreamAborted",
@@ -400,12 +326,10 @@ __all__ = [
     "StreamSlow",
     "ProviderStreamEvent",
     "ToolCallEvent",
-    "LlmCredentialNotFoundError",
-    "LlmProviderNotFoundError",
-    "LlmInferenceLockTimeoutError",
+    "LlmConnectionNotFoundError",
+    "LlmInvalidModelUniqueIdError",
     "UserModelConfigRepository",
     "get_model_context_window",
-    "get_api_key",
     "get_effective_context_window",
     "get_model_supports_vision",
     "get_model_supports_reasoning",
@@ -414,8 +338,9 @@ __all__ = [
     "active_inference_count",
     "track_inference",
     "ModelMetaDto",
-    "refresh_all_providers",
-    "get_adapter_class",
-    "is_inference_lock_held",
-    "get_inference_lock",
+    "ResolvedConnection",
+    "resolve_owned_connection",
+    "refresh_connection_models",
+    "ADAPTER_REGISTRY",
+    "DEFAULT_CONTEXT_WINDOW",
 ]

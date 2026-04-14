@@ -5,6 +5,7 @@ import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
+import type { Connection } from '../../../core/types/llm'
 import type { PersonaDto } from '../../../core/types/persona'
 import { ModelSelectionModal } from '../model-browser/ModelSelectionModal'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
@@ -33,12 +34,14 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [modelDisplayName, setModelDisplayName] = useState(
     persona.model_unique_id ? persona.model_unique_id.split(':').slice(1).join(':') : ''
   )
-  const [modelProvider, setModelProvider] = useState(
+  const [modelConnectionId, setModelConnectionId] = useState(
     persona.model_unique_id ? persona.model_unique_id.split(':')[0] : ''
   )
   const [canReason, setCanReason] = useState(false)
   const [canUseTools, setCanUseTools] = useState(true)
   const [canSeeImages, setCanSeeImages] = useState(true)
+  const [connections, setConnections] = useState<Connection[]>([])
+  const [modelResolved, setModelResolved] = useState<boolean>(true)
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [visionPickerOpen, setVisionPickerOpen] = useState(false)
@@ -54,15 +57,28 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const systemPromptId = useId()
   const temperatureId = useId()
 
+  // Load all user connections once — used to resolve the display name
+  // of the persona's current connection and to surface the "missing"
+  // banner when the referenced connection has been removed.
+  useEffect(() => {
+    llmApi.listConnections()
+      .then(setConnections)
+      .catch(() => setConnections([]))
+  }, [])
+
   // Load actual model capabilities when editing an existing persona
   useEffect(() => {
     const uid = persona.model_unique_id
-    if (!uid || !uid.includes(':')) return
-    const providerId = uid.split(':')[0]
+    if (!uid || !uid.includes(':')) {
+      setModelResolved(!uid) // empty uid is "nothing selected yet" — not broken
+      return
+    }
+    const connectionId = uid.split(':')[0]
     const modelSlug = uid.split(':').slice(1).join(':')
-    llmApi.listModels(providerId)
+    llmApi.listConnectionModels(connectionId)
       .then((models) => {
         const model = models.find((m) => m.model_id === modelSlug)
+        setModelResolved(!!model)
         setCanReason(model?.supports_reasoning ?? false)
         setCanUseTools(model?.supports_tool_calls ?? false)
         setCanSeeImages(model?.supports_vision ?? false)
@@ -71,6 +87,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         }
       })
       .catch(() => {
+        setModelResolved(false)
         setCanReason(false)
         setCanUseTools(true)
         setCanSeeImages(false)
@@ -84,9 +101,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       setVisionFallbackDisplayName(null)
       return
     }
-    const providerId = uid.split(":")[0]
+    const connectionId = uid.split(":")[0]
     const modelSlug = uid.split(":").slice(1).join(":")
-    llmApi.listModels(providerId)
+    llmApi.listConnectionModels(connectionId)
       .then((models) => {
         const model = models.find((m) => m.model_id === modelSlug)
         setVisionFallbackDisplayName(model?.display_name ?? modelSlug)
@@ -146,7 +163,10 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   }) {
     setModelUniqueId(model.unique_id)
     setModelDisplayName(model.display_name)
-    setModelProvider(model.provider_id)
+    // The ModelSelectionModal passes connection_id in provider_id for
+    // backward compatibility with this component's historic API shape.
+    setModelConnectionId(model.provider_id)
+    setModelResolved(true)
     setCanReason(model.supports_reasoning)
     setCanUseTools(model.supports_tool_calls)
     setCanSeeImages(model.supports_vision ?? false)
@@ -155,6 +175,11 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     }
     setModelModalOpen(false)
   }
+
+  const connectionDisplayName = modelConnectionId
+    ? connections.find((c) => c.id === modelConnectionId)?.display_name ?? null
+    : null
+  const connectionMissing = !!modelUniqueId && !modelResolved
 
   const inputStyle: React.CSSProperties = {
     background: 'rgba(255,255,255,0.03)',
@@ -248,6 +273,12 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         {/* Model */}
         <div className="flex flex-col gap-1.5">
           <label htmlFor={modelId} className="text-[11px] text-white/40 uppercase tracking-wider">Model</label>
+          {connectionMissing && (
+            <div className="p-3 bg-yellow-700/20 border border-yellow-600/40 rounded text-sm text-yellow-200">
+              Diese Persona verweist auf eine Verbindung, die nicht mehr existiert.
+              Bitte ein Modell neu wählen.
+            </div>
+          )}
           <button
             id={modelId}
             type="button"
@@ -264,7 +295,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           >
             {modelUniqueId ? (
               <>
-                <span className="text-[10px] font-mono text-white/35 uppercase tracking-wider">{modelProvider}</span>
+                <span className="text-[10px] font-mono text-white/35 uppercase tracking-wider">
+                  {connectionDisplayName ?? modelConnectionId}
+                </span>
                 <span className="text-[13px] text-white/80">{modelDisplayName || modelUniqueId}</span>
               </>
             ) : (

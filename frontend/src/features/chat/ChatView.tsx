@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { llmApi } from '../../core/api/llm'
+import type { UserModalTab } from '../../app/components/user-modal/UserModal'
+import { eventBus } from '../../core/websocket/eventBus'
+import { Topics } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
 import { useChatStream } from './useChatStream'
@@ -28,7 +31,6 @@ import { useMcpStore } from '../mcp/mcpStore'
 import { useIntegrationsStore } from '../integrations/store'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
 import { useMemoryStore } from '../../core/store/memoryStore'
-import { InferenceWaitBanner } from './InferenceWaitBanner'
 import { ArtefactRail } from '../artefact/ArtefactRail'
 import { ArtefactSidebar } from '../artefact/ArtefactSidebar'
 import { ArtefactOverlay } from '../artefact/ArtefactOverlay'
@@ -58,6 +60,28 @@ export function ChatView({ persona }: ChatViewProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const location = useLocation() as { state?: { pendingArtefactId?: string } | null }
+
+  // Empty-state detection: if the user has no LLM connections yet, render
+  // a CTA instead of the chat UI. We fetch on mount and live-refresh on
+  // connection create/remove events.
+  const [connectionCount, setConnectionCount] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => {
+      llmApi.listConnections()
+        .then((conns) => { if (!cancelled) setConnectionCount(conns.length) })
+        .catch(() => { if (!cancelled) setConnectionCount(null) })
+    }
+    refresh()
+    const unsubs = [
+      eventBus.on(Topics.LLM_CONNECTION_CREATED, refresh),
+      eventBus.on(Topics.LLM_CONNECTION_REMOVED, refresh),
+    ]
+    return () => {
+      cancelled = true
+      unsubs.forEach((u) => u())
+    }
+  }, [])
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
@@ -178,7 +202,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
   const reasoningOverride = useChatStore((s) => s.reasoningOverride)
-  const waitingForLock = useChatStore((s) => s.waitingForLock)
 
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
 
@@ -244,23 +267,24 @@ export function ChatView({ persona }: ChatViewProps) {
   // Returns a cancel-aware function so callers can ignore stale results on session switch.
   const applyModelCapabilities = useCallback((uid: string | null | undefined, isCancelled: () => boolean) => {
     if (!uid || !uid.includes(':')) return
-    const providerId = uid.split(':')[0]
+    // unique_id format: "<connection_id>:<model_slug>" (see INSIGHTS.md INS-004).
+    const connectionId = uid.split(':')[0]
     const modelSlug = uid.split(':').slice(1).join(':')
     llmApi
-      .listModels(providerId)
+      .listConnectionModels(connectionId)
       .then((models) => {
         if (isCancelled()) return
         const model = models.find((m) => m.model_id === modelSlug)
         setModelSupportsTools(model?.supports_tool_calls ?? false)
         setModelSupportsReasoning(model?.supports_reasoning ?? false)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (isCancelled()) return
         console.error('Failed to load model capabilities', err)
         setModelSupportsTools(true)
       })
   }, [])
-  // TODO: capabilities should ideally come from PersonaDto / SessionDto so we can drop the llmApi.listModels call entirely.
+  // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
   useChatStream(effectiveSessionId ?? null)
   useMemoryEvents(persona?.id ?? null)
@@ -284,8 +308,9 @@ export function ChatView({ persona }: ChatViewProps) {
   const intConfigs = useIntegrationsStore((s) => s.configs)
   const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.enabled && d.has_tools).length * 2 // get_toys + control per integration
   const totalToolCount = mcpToolCount + integrationToolCount
-  const { openPersonaOverlay } = useOutletContext<{
+  const { openPersonaOverlay, openModal } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
+    openModal?: (tab: UserModalTab) => void
   }>()
 
   useEffect(() => {
@@ -622,6 +647,25 @@ export function ChatView({ persona }: ChatViewProps) {
     onTap: handleToggleContinuous,
   })
 
+  if (connectionCount === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 text-center">
+        <div className="space-y-3">
+          <p className="text-white/80">
+            Du hast noch keine LLM-Verbindung konfiguriert.
+          </p>
+          <button
+            type="button"
+            onClick={() => openModal?.('llm')}
+            className="inline-flex items-center px-4 py-2 rounded bg-purple/70 text-white"
+          >
+            Jetzt einrichten
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (!effectiveSessionId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3">
@@ -901,10 +945,6 @@ export function ChatView({ persona }: ChatViewProps) {
               onSelect={(file) => attachments.addExistingFile(file)}
               onClose={() => setShowUploadBrowser(false)}
             />
-          )}
-
-          {waitingForLock && (
-            <InferenceWaitBanner holderSource={waitingForLock.holderSource} />
           )}
 
           {transcription && <TranscriptionOverlay text={transcription} mode={voiceInputMode} />}

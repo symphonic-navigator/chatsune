@@ -32,13 +32,9 @@ from backend.modules.llm import (
     get_effective_context_window,
     get_model_supports_vision,
     get_model_supports_reasoning,
-    is_inference_lock_held,
-    LlmCredentialNotFoundError,
-    LlmInferenceLockTimeoutError,
-)
-from shared.events.llm import (
-    InferenceLockWaitStartedEvent,
-    InferenceLockWaitEndedEvent,
+    resolve_owned_connection,
+    LlmConnectionNotFoundError,
+    LlmInvalidModelUniqueIdError,
 )
 from backend.modules.persona import get_persona
 from backend.modules.storage import (
@@ -325,15 +321,20 @@ async def run_inference(
         await repo.update_session_state(session_id, "idle")
         return
 
-    provider_id, model_slug = model_unique_id.split(":", 1)
-    from backend.modules.llm import PROVIDER_DISPLAY_NAMES
-    provider_display_name = PROVIDER_DISPLAY_NAMES.get(provider_id, provider_id)
+    llm_connection_id, model_slug = model_unique_id.split(":", 1)
+    resolved_connection = await resolve_owned_connection(user_id, llm_connection_id)
+    connection_display_name = (
+        resolved_connection.display_name if resolved_connection is not None else llm_connection_id
+    )
+    adapter_type = (
+        resolved_connection.adapter_type if resolved_connection is not None else "unknown"
+    )
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:
         reasoning_enabled = reasoning_override
     else:
         reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
-    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+    supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
 
     # Assemble system prompt
     system_prompt = await assemble(
@@ -346,7 +347,7 @@ async def run_inference(
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
     # Get context window size (respects user override)
-    max_context = await get_effective_context_window(user_id, provider_id, model_slug)
+    max_context = await get_effective_context_window(user_id, model_unique_id)
     if max_context is None or max_context == 0:
         max_context = _DEFAULT_CONTEXT_WINDOW
 
@@ -451,7 +452,7 @@ async def run_inference(
         new_msg_vision_snapshots: list[dict] = []
         attachment_ids = last_msg.get("attachment_ids")
         if attachment_ids:
-            supports_vision = await get_model_supports_vision(provider_id, model_slug)
+            supports_vision = await get_model_supports_vision(user_id, model_unique_id)
             files = await get_files_by_ids(attachment_ids, user_id)
             vision_fallback_model = persona.get("vision_fallback_model") if persona else None
             extra_parts, new_msg_vision_snapshots, _ = await _resolve_image_attachments_for_inference(
@@ -551,31 +552,11 @@ async def run_inference(
             extended = list(request.messages) + extra_messages
             req = request.model_copy(update={"messages": extended})
 
-        # Emit a lock-wait event if the provider's concurrency lock is already
-        # held by another inference (e.g. a background memory consolidation job).
-        held, holder_source = is_inference_lock_held(provider_id, user_id)
-        if held:
-            await emit_fn(InferenceLockWaitStartedEvent(
-                correlation_id=correlation_id,
-                provider_id=provider_id,
-                holder_source=holder_source or "unknown",
-                timestamp=datetime.now(timezone.utc),
-            ))
-
-        upstream = llm_stream_completion(user_id, provider_id, req)
+        upstream = llm_stream_completion(user_id, model_unique_id, req)
         if soft_cot_on:
             upstream = wrap_with_soft_cot_parser(upstream)
 
-        first_chunk_seen = False
         async for event in upstream:
-            if not first_chunk_seen:
-                first_chunk_seen = True
-                if held:
-                    await emit_fn(InferenceLockWaitEndedEvent(
-                        correlation_id=correlation_id,
-                        provider_id=provider_id,
-                        timestamp=datetime.now(timezone.utc),
-                    ))
             yield event
 
     async def save_fn(
@@ -645,9 +626,9 @@ async def run_inference(
             context_status=context_status,
             context_fill_percentage=fill_ratio,
             tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
-            provider_name=provider_display_name,
+            connection_display_name=connection_display_name,
             model_name=model_slug,
-            provider_id=provider_id,
+            adapter_type=adapter_type,
             model_slug=model_slug,
         )
         # Persist the latest context-window utilisation on the session so
@@ -661,13 +642,13 @@ async def run_inference(
             _log.exception(
                 "Failed to persist context metrics for session %s", session_id,
             )
-    except LlmCredentialNotFoundError:
+    except LlmConnectionNotFoundError:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamErrorEvent(
             correlation_id=correlation_id,
-            error_code="credential_not_found",
+            error_code="connection_not_found",
             recoverable=False,
-            user_message="No API key configured for this model's provider. Please add one in settings.",
+            user_message="Modell nicht mit einer Verbindung verknüpft — bitte in der Persona neu auswählen.",
             timestamp=now,
         ))
         await emit_fn(ChatStreamEndedEvent(
@@ -679,13 +660,13 @@ async def run_inference(
             context_fill_percentage=0.0,
             timestamp=now,
         ))
-    except LlmInferenceLockTimeoutError:
+    except LlmInvalidModelUniqueIdError:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamErrorEvent(
             correlation_id=correlation_id,
-            error_code="inference_lock_timeout",
-            recoverable=True,
-            user_message="The local model is still busy. Please try again shortly.",
+            error_code="invalid_model_unique_id",
+            recoverable=False,
+            user_message="Modell-ID ungültig — bitte in der Persona neu auswählen.",
             timestamp=now,
         ))
         await emit_fn(ChatStreamEndedEvent(

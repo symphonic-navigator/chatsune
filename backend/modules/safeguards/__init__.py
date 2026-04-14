@@ -33,7 +33,7 @@ async def check_job_preconditions(
     config: SafeguardConfig,
     *,
     user_id: str,
-    provider_id: str,
+    connection_id: str,
     model_slug: str,
     estimated_input_tokens: int,
 ) -> None:
@@ -44,15 +44,15 @@ async def check_job_preconditions(
 
     Raises:
         EmergencyStoppedError: global kill-switch is engaged.
-        CircuitOpenError: per user/provider/model breaker is open.
-        RateLimitExceededError: per user/provider rate-limit hit.
+        CircuitOpenError: per user/connection/model breaker is open.
+        RateLimitExceededError: per user/connection rate-limit hit.
         BudgetExceededError: reserving ``estimated_input_tokens`` would exceed
             the daily token budget.
     """
     if is_emergency_stopped(config):
         raise EmergencyStoppedError()
-    await check_circuit(redis, config, user_id, provider_id, model_slug)
-    await check_rate_limit(redis, config, user_id, provider_id)
+    await check_circuit(redis, config, user_id, connection_id, model_slug)
+    await check_rate_limit(redis, config, user_id, connection_id)
     await check_budget(
         redis, config, user_id, tokens_to_reserve=estimated_input_tokens,
     )
@@ -63,15 +63,15 @@ async def record_job_success(
     config: SafeguardConfig,
     *,
     user_id: str,
-    provider_id: str,
+    connection_id: str,
     model_slug: str,
     tokens_spent: int,
 ) -> None:
     """Mark a background-job LLM call as successful.
 
-    Clears the circuit-breaker failure count for this user/provider/model and
+    Clears the circuit-breaker failure count for this user/connection/model and
     records the actual token spend against the daily budget."""
-    await record_success(redis, config, user_id, provider_id, model_slug)
+    await record_success(redis, config, user_id, connection_id, model_slug)
     if tokens_spent > 0:
         await record_tokens(redis, config, user_id, tokens_spent)
 
@@ -81,13 +81,13 @@ async def record_job_failure(
     config: SafeguardConfig,
     *,
     user_id: str,
-    provider_id: str,
+    connection_id: str,
     model_slug: str,
 ) -> None:
     """Mark a background-job LLM call as failed.
 
     Increments the circuit-breaker failure counter, which may open the breaker."""
-    await record_failure(redis, config, user_id, provider_id, model_slug)
+    await record_failure(redis, config, user_id, connection_id, model_slug)
 
 
 __all__ = [

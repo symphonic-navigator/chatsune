@@ -1,172 +1,56 @@
+"""Per-connection model listing: Redis cache (30min TTL) + adapter fallback."""
+
 import json
 import logging
-import uuid
-from datetime import datetime, timezone
 
 from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
-from backend.modules.metrics import models_available
-from backend.modules.llm._provider_status import set_status
-from shared.dtos.llm import FaultyProviderDto, ModelMetaDto
-from shared.events.llm import (
-    LlmModelsFetchCompletedEvent,
-    LlmModelsFetchStartedEvent,
-    LlmModelsRefreshedEvent,
-    LlmProviderStatusChangedEvent,
-)
-from shared.topics import Topics
+from backend.modules.llm._adapters._types import ResolvedConnection
+from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+_TTL_SECONDS = 30 * 60
 
 
-async def get_models(
-    provider_id: str,
-    redis: Redis,
-    adapter: BaseAdapter,
-    event_bus=None,
+def _cache_key(connection_id: str) -> str:
+    return f"llm:models:{connection_id}"
+
+
+async def _fetch_and_cache(
+    c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
-    """Return cached model list or fetch from adapter on cache miss (TTL 30 min).
+    """Fetch from upstream and write to Redis. Raises adapter exceptions."""
+    adapter = adapter_cls()
+    models = await adapter.fetch_models(c)
+    await redis.set(
+        _cache_key(c.id),
+        json.dumps([m.model_dump(mode="json") for m in models]),
+        ex=_TTL_SECONDS,
+    )
+    return models
 
-    Returns [] if the adapter is not yet implemented (NotImplementedError).
-    See INSIGHTS.md INS-001 for the design reasoning.
 
-    If event_bus is provided, publishes LLM_MODELS_REFRESHED on cache refresh.
-    """
-    cache_key = f"llm:models:{provider_id}"
-    cached = await redis.get(cache_key)
+async def get_models_for_connection(
+    c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
+) -> list[ModelMetaDto]:
+    """Return cached or freshly-fetched models; swallow errors for UI calm."""
+    cached = await redis.get(_cache_key(c.id))
     if cached:
         return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
-
     try:
-        models = await adapter.fetch_models()
+        return await _fetch_and_cache(c, adapter_cls, redis)
     except NotImplementedError:
         return []
     except Exception as exc:
-        _log.warning("Failed to fetch models for %s: %s", provider_id, exc)
+        _log.warning("fetch_models failed for connection=%s: %s", c.id, exc)
         return []
 
-    await redis.set(
-        cache_key,
-        json.dumps([m.model_dump() for m in models]),
-        ex=1800,  # 30 minutes TTL
-    )
 
-    if event_bus is not None:
-        try:
-            await event_bus.publish(
-                Topics.LLM_MODELS_REFRESHED,
-                LlmModelsRefreshedEvent(
-                    provider_id=provider_id,
-                    timestamp=datetime.now(timezone.utc),
-                ),
-            )
-        except Exception:
-            _log.warning("Failed to publish models_refreshed event for %s", provider_id)
-
-    return models
-
-
-async def _fetch_and_cache_provider(
-    provider_id: str,
-    redis: Redis,
-    adapter: BaseAdapter,
+async def refresh_connection_models(
+    c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
-    """Fetch models from upstream (bypassing cache) and store in Redis."""
-    models = await adapter.fetch_models()
-    cache_key = f"llm:models:{provider_id}"
-    await redis.set(
-        cache_key,
-        json.dumps([m.model_dump() for m in models]),
-        ex=1800,
-    )
-    return models
-
-
-async def refresh_all_providers(
-    redis: Redis,
-    registry: dict[str, type[BaseAdapter]],
-    base_urls: dict[str, str],
-    display_names: dict[str, str],
-    event_bus,
-    target_user_ids: list[str] | None = None,
-) -> list[ModelMetaDto]:
-    """Fetch models from all registered upstream providers, bypassing cache.
-
-    Publishes LLM_MODELS_FETCH_STARTED before fetching and
-    LLM_MODELS_FETCH_COMPLETED when done (with per-provider error details).
-    """
-    provider_ids = list(registry.keys())
-    correlation_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
-
-    await event_bus.publish(
-        Topics.LLM_MODELS_FETCH_STARTED,
-        LlmModelsFetchStartedEvent(
-            provider_ids=provider_ids,
-            correlation_id=correlation_id,
-            timestamp=now,
-        ),
-        target_user_ids=target_user_ids,
-    )
-
-    all_models: list[ModelMetaDto] = []
-    faulty: list[FaultyProviderDto] = []
-
-    for provider_id in provider_ids:
-        adapter = registry[provider_id](base_url=base_urls[provider_id])
-        models: list[ModelMetaDto] = []
-        provider_failed = False
-        try:
-            models = await _fetch_and_cache_provider(provider_id, redis, adapter)
-            all_models.extend(models)
-            models_available.labels(provider=provider_id).set(len(models))
-        except NotImplementedError:
-            _log.debug("Provider %s has not implemented fetch_models", provider_id)
-            models_available.labels(provider=provider_id).set(0)
-            provider_failed = True
-        except Exception as exc:
-            _log.warning("Failed to fetch models from %s: %s", provider_id, exc)
-            faulty.append(FaultyProviderDto(
-                provider_id=provider_id,
-                display_name=display_names.get(provider_id, provider_id),
-                error_message=str(exc),
-            ))
-            models_available.labels(provider=provider_id).set(0)
-            provider_failed = True
-
-        available = (not provider_failed) and len(models) > 0
-        flipped = await set_status(
-            redis, provider_id, available=available, model_count=len(models),
-        )
-        if flipped:
-            await event_bus.publish(
-                Topics.LLM_PROVIDER_STATUS_CHANGED,
-                LlmProviderStatusChangedEvent(
-                    provider_id=provider_id,
-                    available=available,
-                    model_count=len(models),
-                    timestamp=datetime.now(timezone.utc),
-                ),
-            )
-
-    if not faulty:
-        status = "success"
-    elif len(faulty) < len(provider_ids):
-        status = "partial"
-    else:
-        status = "failed"
-
-    await event_bus.publish(
-        Topics.LLM_MODELS_FETCH_COMPLETED,
-        LlmModelsFetchCompletedEvent(
-            status=status,
-            total_models=len(all_models),
-            faulty_providers=faulty,
-            correlation_id=correlation_id,
-            timestamp=datetime.now(timezone.utc),
-        ),
-        target_user_ids=target_user_ids,
-    )
-
-    return all_models
+    """Drop cache and re-fetch. Raises on upstream failure so the caller
+    can surface the error (rather than silently reporting success)."""
+    await redis.delete(_cache_key(c.id))
+    return await _fetch_and_cache(c, adapter_cls, redis)

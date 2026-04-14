@@ -31,10 +31,18 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.PERSONA_UPDATED: ([], True),
     Topics.PERSONA_DELETED: ([], True),
     Topics.PERSONA_REORDERED: ([], True),
-    Topics.LLM_CREDENTIAL_SET: ([], True),
-    Topics.LLM_CREDENTIAL_REMOVED: ([], True),
-    Topics.LLM_CREDENTIAL_TESTED: ([], True),
+    # LLM Connections — target user only
+    Topics.LLM_CONNECTION_CREATED: ([], True),
+    Topics.LLM_CONNECTION_UPDATED: ([], True),
+    Topics.LLM_CONNECTION_REMOVED: ([], True),
+    Topics.LLM_CONNECTION_TESTED: ([], True),
+    Topics.LLM_CONNECTION_STATUS_CHANGED: ([], True),
+    Topics.LLM_CONNECTION_MODELS_REFRESHED: ([], True),
     Topics.LLM_USER_MODEL_CONFIG_UPDATED: ([], True),
+    # Web Search — target user only
+    Topics.WEBSEARCH_CREDENTIAL_SET: ([], True),
+    Topics.WEBSEARCH_CREDENTIAL_REMOVED: ([], True),
+    Topics.WEBSEARCH_CREDENTIAL_TESTED: ([], True),
     Topics.SETTING_UPDATED: (["admin", "master_admin"], False),
     Topics.SETTING_DELETED: (["admin", "master_admin"], False),
     Topics.SETTING_SYSTEM_PROMPT_UPDATED: (["admin", "master_admin"], False),
@@ -75,9 +83,6 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.JOB_FAILED: ([], True),
     Topics.JOB_RETRY: ([], True),
     Topics.JOB_EXPIRED: ([], True),
-    # LLM model fetch progress — target user only
-    Topics.LLM_MODELS_FETCH_STARTED: ([], True),
-    Topics.LLM_MODELS_FETCH_COMPLETED: ([], True),
     # Memory — target user only
     Topics.MEMORY_EXTRACTION_STARTED: ([], True),
     Topics.MEMORY_EXTRACTION_COMPLETED: ([], True),
@@ -118,9 +123,6 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # Chat message creation — target user only (echoes optimistic ID for
     # frontend swap; see docs/superpowers/specs/2026-04-08-ollama-local-…)
     Topics.CHAT_MESSAGE_CREATED: ([], True),
-    # Inference lock wait — target user only, drives the wait banner
-    Topics.INFERENCE_LOCK_WAIT_STARTED: ([], True),
-    Topics.INFERENCE_LOCK_WAIT_ENDED: ([], True),
     # MCP gateways — target user only
     Topics.MCP_TOOLS_REGISTERED: ([], True),
     Topics.MCP_GATEWAY_ERROR: ([], True),
@@ -130,10 +132,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.DEBUG_SNAPSHOT: (["admin", "master_admin"], False),
 }
 
-_BROADCAST_ALL: set[str] = {
-    Topics.LLM_MODEL_CURATED,
-    Topics.LLM_MODELS_REFRESHED,
-}
+# Intentionally empty after the connections refactor — repopulate when
+# a future feature needs truly cross-user broadcasts.
+_BROADCAST_ALL: set[str] = set()
 
 # Chat events that skip Redis Streams persistence (high-frequency, ephemeral).
 # They are delivered directly to the target user's WebSocket but not stored.

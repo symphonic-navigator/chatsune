@@ -1,72 +1,116 @@
-import { useCallback, useEffect, useState } from "react"
-import { llmApi } from "../api/llm"
-import { eventBus } from "../websocket/eventBus"
-import { Topics } from "../types/events"
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { llmApi } from '../api/llm'
 import type {
+  Connection,
   EnrichedModelDto,
+  ModelMetaDto,
   UserModelConfigDto,
-} from "../types/llm"
+} from '../types/llm'
+import { eventBus } from '../websocket/eventBus'
+import { Topics } from '../types/events'
+
+export interface ConnectionModelGroup {
+  connection: Connection
+  models: EnrichedModelDto[]
+}
+
+export interface UseEnrichedModels {
+  groups: ConnectionModelGroup[]
+  loading: boolean
+  error: string | null
+  refresh: () => Promise<void>
+  findByUniqueId: (uid: string) => EnrichedModelDto | null
+}
 
 /**
- * Fetches models from all configured providers, merges with user configs,
- * and returns an enriched list. Filters out admin-hidden models.
+ * Loads all user connections, each connection's models, and the user's
+ * per-model configuration. Merges them into grouped, sorted output and
+ * keeps itself live via the LLM + user-model-config topics.
+ *
+ * Groups are sorted by connection.created_at (stable); models within a
+ * group are sorted by display_name.
  */
-export function useEnrichedModels() {
-  const [models, setModels] = useState<EnrichedModelDto[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+export function useEnrichedModels(): UseEnrichedModels {
+  const [groups, setGroups] = useState<ConnectionModelGroup[]>([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetch = useCallback(async () => {
-    setIsLoading(true)
+  const refresh = useCallback(async () => {
     setError(null)
     try {
-      const [providers, userConfigs] = await Promise.all([
-        llmApi.listProviders(),
-        llmApi.listUserConfigs(),
+      const [connections, userConfigs] = await Promise.all([
+        llmApi.listConnections(),
+        llmApi.listUserModelConfigs(),
       ])
 
-      const configured = providers.filter((p) => p.is_configured)
-      const results = await Promise.allSettled(
-        configured.map((p) => llmApi.listModels(p.provider_id)),
+      const configByUid = new Map<string, UserModelConfigDto>()
+      for (const cfg of userConfigs) {
+        configByUid.set(cfg.model_unique_id, cfg)
+      }
+
+      const sortedConns = [...connections].sort(
+        (a, b) => a.created_at.localeCompare(b.created_at),
       )
-      const modelLists = results
-        .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof llmApi.listModels>>> => r.status === "fulfilled")
-        .map((r) => r.value)
 
-      const configMap = new Map<string, UserModelConfigDto>()
-      for (const c of userConfigs) configMap.set(c.model_unique_id, c)
+      const modelsByConnection = await Promise.all(
+        sortedConns.map((c) =>
+          llmApi.listConnectionModels(c.id).catch((err) => {
+            // Tolerate per-connection failures — surface an empty group
+            // and log for observability. A single broken connection
+            // should not blank the entire hub.
+            console.warn('listConnectionModels failed', c.id, err)
+            return [] as ModelMetaDto[]
+          }),
+        ),
+      )
 
-      const enriched: EnrichedModelDto[] = modelLists
-        .flat()
-        .filter((m) => !m.curation?.hidden)
-        .map((m) => ({
-          ...m,
-          user_config: configMap.get(m.unique_id) ?? null,
-        }))
+      const nextGroups: ConnectionModelGroup[] = sortedConns.map((connection, idx) => {
+        const models = modelsByConnection[idx]
+          .map<EnrichedModelDto>((m) => ({
+            ...m,
+            user_config: configByUid.get(m.unique_id) ?? null,
+          }))
+          .sort((a, b) => a.display_name.localeCompare(b.display_name))
+        return { connection, models }
+      })
 
-      setModels(enriched)
+      setGroups(nextGroups)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load models")
+      setError(err instanceof Error ? err.message : 'Konnte Modelle nicht laden.')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    fetch()
+    void refresh()
+  }, [refresh])
 
-    const unsubs = [
-      eventBus.on(Topics.LLM_MODEL_CURATED, () => fetch()),
-      eventBus.on(Topics.LLM_MODELS_REFRESHED, () => fetch()),
-      eventBus.on(Topics.LLM_USER_MODEL_CONFIG_UPDATED, () => fetch()),
-    ]
+  useEffect(() => {
+    const topics = [
+      Topics.LLM_CONNECTION_CREATED,
+      Topics.LLM_CONNECTION_UPDATED,
+      Topics.LLM_CONNECTION_REMOVED,
+      Topics.LLM_CONNECTION_MODELS_REFRESHED,
+      Topics.LLM_USER_MODEL_CONFIG_UPDATED,
+    ] as const
+    const unsubs = topics.map((t) => eventBus.on(t, () => { void refresh() }))
     return () => unsubs.forEach((u) => u())
-  }, [fetch])
+  }, [refresh])
 
-  /** Update a single model in the local list. */
-  const updateModel = useCallback((uniqueId: string, updater: (m: EnrichedModelDto) => EnrichedModelDto) => {
-    setModels((prev) => prev.map((m) => (m.unique_id === uniqueId ? updater(m) : m)))
-  }, [])
+  const findByUniqueId = useCallback(
+    (uid: string): EnrichedModelDto | null => {
+      for (const group of groups) {
+        const match = group.models.find((m) => m.unique_id === uid)
+        if (match) return match
+      }
+      return null
+    },
+    [groups],
+  )
 
-  return { models, setModels, isLoading, error, refetch: fetch, updateModel }
+  return useMemo(
+    () => ({ groups, loading, error, refresh, findByUniqueId }),
+    [groups, loading, error, refresh, findByUniqueId],
+  )
 }

@@ -63,11 +63,11 @@ async def handle_memory_extraction(
     session_id = job.payload["session_id"]
     messages_raw: list[str] = job.payload.get("messages", [])
     message_ids: list[str] = job.payload.get("message_ids", [])
-    provider_id, model_slug = job.model_unique_id.split(":", 1)
+    _, model_slug = job.model_unique_id.split(":", 1)
 
     _log.info(
-        "Starting memory extraction: persona=%s session=%s msg_count=%d msg_ids=%s model=%s:%s",
-        persona_id, session_id, len(messages_raw), message_ids, provider_id, model_slug,
+        "Starting memory extraction: persona=%s session=%s msg_count=%d msg_ids=%s model_unique_id=%s",
+        persona_id, session_id, len(messages_raw), message_ids, job.model_unique_id,
     )
 
     # Compute the in-flight key up front so the finally block can release
@@ -143,7 +143,9 @@ async def handle_memory_extraction(
             messages=filtered,
         )
 
-        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+        supports_reasoning = await get_model_supports_reasoning(
+            job.user_id, job.model_unique_id,
+        )
 
         request = CompletionRequest(
             model=model_slug,
@@ -166,7 +168,10 @@ async def handle_memory_extraction(
         stream_input_tokens: int | None = None
         stream_output_tokens: int | None = None
         async for event in llm_stream_completion(
-            job.user_id, provider_id, request, source="job:memory_extraction",
+            job.user_id,
+            job.model_unique_id,
+            request,
+            source="job:memory_extraction",
         ):
             match event:
                 case ContentDelta(delta=delta):
@@ -403,7 +408,7 @@ async def handle_memory_extraction(
 # definitively down. Kept deliberately short — the provider usually
 # recovers within minutes, and a longer window would strand the user's
 # memory extraction for no reason.
-_PROVIDER_COOLDOWN_SECONDS = 900  # 15 minutes
+_UPSTREAM_COOLDOWN_SECONDS = 900  # 15 minutes
 
 
 async def _on_extraction_failure(
@@ -443,13 +448,13 @@ async def _on_extraction_failure(
     """
     if isinstance(exc, ProviderUnavailableError):
         try:
-            await redis.expire(inflight_key, _PROVIDER_COOLDOWN_SECONDS)
+            await redis.expire(inflight_key, _UPSTREAM_COOLDOWN_SECONDS)
         except Exception:
             _log.exception("job.extraction.cooldown_refresh_failed", key=inflight_key)
         _log.info(
             "job.extraction.provider_cooldown",
             persona_id=persona_id,
-            cooldown_seconds=_PROVIDER_COOLDOWN_SECONDS,
+            cooldown_seconds=_UPSTREAM_COOLDOWN_SECONDS,
         )
         return
 

@@ -6,7 +6,7 @@ import logging
 _log = logging.getLogger(__name__)
 
 # Default search provider — will become configurable later.
-_DEFAULT_SEARCH_PROVIDER = "ollama_cloud"
+_DEFAULT_SEARCH_PROVIDER = "ollama_cloud_search"
 
 
 class WebSearchExecutor:

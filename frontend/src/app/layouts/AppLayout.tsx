@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { lockBodyScroll, unlockBodyScroll } from "../../core/utils/bodyScrollLock"
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useDrawerStore } from "../../core/store/drawerStore"
@@ -21,9 +21,7 @@ import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-ov
 import { ToastContainer } from "../components/toast/ToastContainer"
 import { InstallHint } from "../components/pwa/InstallHint"
 import { Topics } from "../../core/types/events"
-import { llmApi } from "../../core/api/llm"
 import { personasApi } from "../../core/api/personas"
-import type { ProviderCredentialDto } from "../../core/types/llm"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 
 export default function AppLayout() {
@@ -162,37 +160,10 @@ export default function AppLayout() {
     ? allPersonas.find((p) => p.id === personaOverlay.personaId) ?? null
     : null
 
-  // Provider / API-key problem detection
-  const [providers, setProviders] = useState<ProviderCredentialDto[]>([])
-  const autoOpenFired = useRef(false)
-
-  const hasApiKeyProblem = useMemo(() => {
-    const configured = providers.filter((p) => p.is_configured)
-    if (configured.length === 0) return true
-    return configured.some((p) => p.test_status === 'failed')
-  }, [providers])
-
-  const fetchProviders = useCallback(async () => {
-    try {
-      const result = await llmApi.listProviders()
-      setProviders(result)
-    } catch {
-      // Silently fail
-    }
-  }, [])
-
-  // Fetch providers on mount
-  useEffect(() => {
-    if (user) fetchProviders()
-  }, [user, fetchProviders])
-
-  // Auto-open API-Keys tab once per session if there's a problem
-  useEffect(() => {
-    if (hasApiKeyProblem && !autoOpenFired.current && user && providers.length > 0) {
-      autoOpenFired.current = true
-      openModal('api-keys')
-    }
-  }, [hasApiKeyProblem, user, providers])
+  // TODO Phase 8: reinstate the API-key problem detection against the new
+  // connections endpoint. For now we assume no problem so the UI stays clean.
+  const hasApiKeyProblem = false
+  const notifyProvidersChanged = useCallback(() => {}, [])
 
   // Live-update display name when user changes it in another tab or device
   const { latest: profileUpdate } = useEventBus(Topics.USER_PROFILE_UPDATED)
@@ -255,7 +226,7 @@ export default function AppLayout() {
           hasApiKeyProblem={hasApiKeyProblem}
         />
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto bg-surface">
-          <Outlet context={{ openPersonaOverlay }} />
+          <Outlet context={{ openPersonaOverlay, openModal }} />
           {modalTab !== null && (
             <UserModal
               activeTab={modalTab}
@@ -263,7 +234,7 @@ export default function AppLayout() {
               onTabChange={setModalTab}
               displayName={displayName}
               hasApiKeyProblem={hasApiKeyProblem}
-              onProvidersChanged={setProviders}
+              onProvidersChanged={notifyProvidersChanged}
               onOpenPersonaOverlay={(id) => {
                 closeModal()
                 openPersonaOverlay(id, "overview")

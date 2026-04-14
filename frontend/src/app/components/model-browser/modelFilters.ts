@@ -1,144 +1,80 @@
-import type { EnrichedModelDto, ModelRating } from "../../../core/types/llm"
+import type { EnrichedModelDto } from '../../../core/types/llm'
 
 export interface ModelFilters {
   search?: string
-  provider?: string
+  favouritesOnly?: boolean
   capTools?: boolean
   capVision?: boolean
   capReason?: boolean
-  curation?: "recommended" | "available" | "not_recommended"
-  favouritesOnly?: boolean
-  hasCustomisation?: boolean
   showHidden?: boolean
 }
 
-export type SortField = "name" | "provider" | "context" | "params" | "rating"
+export type SortField = 'name' | 'context' | 'params'
 
 export interface ModelSortConfig {
   field: SortField
-  direction: "asc" | "desc"
+  direction: 'asc' | 'desc'
 }
 
-/** Extract the model slug from a unique_id (everything after the first colon). */
-export function slugWithoutProvider(uniqueId: string): string {
-  const idx = uniqueId.indexOf(":")
+export function slugWithoutConnection(uniqueId: string): string {
+  const idx = uniqueId.indexOf(':')
   return idx >= 0 ? uniqueId.slice(idx + 1) : uniqueId
 }
 
-/** Check whether a model matches a free-text search query. */
 export function matchesSearch(model: EnrichedModelDto, query: string): boolean {
-  const q = query.toLowerCase().trim()
+  const q = query.trim().toLowerCase()
   if (!q) return true
+  const display = (model.user_config?.custom_display_name ?? model.display_name).toLowerCase()
   return (
-    model.display_name.toLowerCase().includes(q) ||
+    display.includes(q) ||
     model.model_id.toLowerCase().includes(q) ||
-    (model.user_config?.custom_display_name?.toLowerCase().includes(q) ?? false)
+    model.unique_id.toLowerCase().includes(q)
   )
 }
 
-/** Apply all active filters to a model list. */
-export function filterModels(
+export function applyModelFilters(
   models: EnrichedModelDto[],
   filters: ModelFilters,
 ): EnrichedModelDto[] {
   return models.filter((m) => {
-    // Hidden filter: by default exclude user-hidden models; when active show ONLY hidden
-    if (filters.showHidden) {
-      if (!m.user_config?.is_hidden) return false
-    } else {
-      if (m.user_config?.is_hidden) return false
-    }
-
-    if (filters.search && !matchesSearch(m, filters.search)) return false
-
-    if (filters.provider && m.provider_id !== filters.provider) return false
-
+    if (filters.favouritesOnly && !m.user_config?.is_favourite) return false
+    if (!filters.showHidden && m.user_config?.is_hidden) return false
     if (filters.capTools && !m.supports_tool_calls) return false
     if (filters.capVision && !m.supports_vision) return false
     if (filters.capReason && !m.supports_reasoning) return false
-
-    if (filters.curation) {
-      const rating = m.curation?.overall_rating ?? null
-      switch (filters.curation) {
-        case "recommended":
-          if (rating !== "recommended") return false
-          break
-        case "not_recommended":
-          if (rating !== "not_recommended") return false
-          break
-        case "available":
-          // "available" includes recommended, available, and uncurated
-          if (rating === "not_recommended") return false
-          break
-      }
-    }
-
-    if (filters.favouritesOnly && !m.user_config?.is_favourite) return false
-
-    if (filters.hasCustomisation) {
-      const cfg = m.user_config
-      if (!cfg) return false
-      const hasCustom =
-        cfg.is_favourite ||
-        cfg.is_hidden ||
-        cfg.custom_display_name != null ||
-        cfg.custom_context_window != null ||
-        (cfg.notes != null && cfg.notes.length > 0) ||
-        (cfg.system_prompt_addition != null && cfg.system_prompt_addition.length > 0)
-      if (!hasCustom) return false
-    }
-
+    if (filters.search && !matchesSearch(m, filters.search)) return false
     return true
   })
 }
 
-
-const RATING_ORDER: Record<ModelRating, number> = {
-  recommended: 0,
-  available: 1,
-  not_recommended: 2,
-}
-
-/** Sort models by the given configuration. Null config returns the list unchanged. */
 export function sortModels(
   models: EnrichedModelDto[],
   config: ModelSortConfig | null,
 ): EnrichedModelDto[] {
   if (!config) return models
-
-  const sorted = [...models]
-  const dir = config.direction === "asc" ? 1 : -1
-
-  sorted.sort((a, b) => {
-    let cmp = 0
+  const dir = config.direction === 'asc' ? 1 : -1
+  return [...models].sort((a, b) => {
     switch (config.field) {
-      case "name":
-        cmp = a.display_name.localeCompare(b.display_name)
-        break
-      case "provider":
-        cmp = a.provider_id.localeCompare(b.provider_id)
-        break
-      case "context":
-        cmp = a.context_window - b.context_window
-        break
-      case "params": {
-        const pa = a.raw_parameter_count ?? null
-        const pb = b.raw_parameter_count ?? null
-        if (pa === null && pb === null) cmp = 0
-        else if (pa === null) cmp = 1 // null sorts last regardless of direction
-        else if (pb === null) cmp = -1
-        else cmp = pa - pb
-        break
+      case 'name': {
+        const an = a.user_config?.custom_display_name ?? a.display_name
+        const bn = b.user_config?.custom_display_name ?? b.display_name
+        return an.localeCompare(bn) * dir
       }
-      case "rating": {
-        const ra = a.curation ? RATING_ORDER[a.curation.overall_rating] : 3
-        const rb = b.curation ? RATING_ORDER[b.curation.overall_rating] : 3
-        cmp = ra - rb
-        break
+      case 'context': {
+        const ac = a.user_config?.custom_context_window ?? a.context_window
+        const bc = b.user_config?.custom_context_window ?? b.context_window
+        return (ac - bc) * dir
       }
+      case 'params': {
+        const ap = a.raw_parameter_count ?? 0
+        const bp = b.raw_parameter_count ?? 0
+        return (ap - bp) * dir
+      }
+      default:
+        return 0
     }
-    return cmp * dir
   })
-
-  return sorted
 }
+
+// Kept for backward compatibility; identical to applyModelFilters.
+export const filterModels = applyModelFilters

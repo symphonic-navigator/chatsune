@@ -17,7 +17,9 @@ class DebugInferenceStartedEvent(BaseModel):
     inference_id: str
     user_id: str
     username: str | None
-    provider_id: str
+    connection_id: str
+    connection_slug: str
+    adapter_type: str
     model_slug: str
     model_unique_id: str
     source: str

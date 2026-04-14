@@ -1,13 +1,9 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
-import { llmApi } from "../../../core/api/llm"
-import type { ProviderCredentialDto } from "../../../core/types/llm"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
-import { useProviderStatusBootstrap } from "../../../core/hooks/useProviderStatusBootstrap"
-import { ProviderPill } from "./ProviderPill"
 import { JobsPill } from "./JobsPill"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 
@@ -80,16 +76,12 @@ function BurgerButton({ hasProblem }: { hasProblem: boolean }) {
 }
 
 export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = false }: TopbarProps) {
-  useProviderStatusBootstrap()
+  // TODO Phase 8: surface the active connection's display name alongside
+  // the model slug (replaces the old provider-credential lookup).
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
   const location = useLocation()
   const [showAvatar, setShowAvatar] = useState(false)
-  const [providers, setProviders] = useState<ProviderCredentialDto[]>([])
-
-  useEffect(() => {
-    llmApi.listProviders().then(setProviders).catch(() => {})
-  }, [])
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
 
@@ -157,20 +149,17 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
           </div>
         )}
         {persona && (() => {
-          const [providerId, ...slugParts] = persona.model_unique_id.split(":")
+          const [, ...slugParts] = persona.model_unique_id.split(":")
           const slug = slugParts.join(":") || persona.model_unique_id
-          const providerName = providers.find((p) => p.provider_id === providerId)?.display_name
-          const pillText = providerName ? `${providerName}: ${slug}` : slug
           return (
             <span className="hidden rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold lg:inline">
-              {pillText}
+              {slug}
             </span>
           )
         })()}
         <div className="ml-auto hidden flex-shrink-0 items-center gap-1.5 lg:flex">
           <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
-          <ProviderPill provider="ollama_local" label="Local Ollama" />
         </div>
       </header>
     )
@@ -186,7 +175,6 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
       <div className="ml-auto hidden items-center gap-2 lg:flex">
         <JobsPill personas={personas} />
         <LivePill isLive={isLive} wsStatus={wsStatus} />
-        <ProviderPill provider="ollama_local" label="Local Ollama" />
       </div>
     </header>
   )

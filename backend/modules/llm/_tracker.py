@@ -27,7 +27,9 @@ class _InferenceRecord:
     __slots__ = (
         "inference_id",
         "user_id",
-        "provider_id",
+        "connection_id",
+        "connection_slug",
+        "adapter_type",
         "model_slug",
         "source",
         "started_at",
@@ -37,14 +39,18 @@ class _InferenceRecord:
         self,
         inference_id: str,
         user_id: str,
-        provider_id: str,
+        connection_id: str,
+        connection_slug: str,
+        adapter_type: str,
         model_slug: str,
         source: str,
         started_at: datetime,
     ) -> None:
         self.inference_id = inference_id
         self.user_id = user_id
-        self.provider_id = provider_id
+        self.connection_id = connection_id
+        self.connection_slug = connection_slug
+        self.adapter_type = adapter_type
         self.model_slug = model_slug
         self.source = source
         self.started_at = started_at
@@ -56,7 +62,9 @@ _active: dict[str, _InferenceRecord] = {}
 
 def register(
     user_id: str,
-    provider_id: str,
+    connection_id: str,
+    connection_slug: str,
+    adapter_type: str,
     model_slug: str,
     source: str,
 ) -> str:
@@ -65,15 +73,17 @@ def register(
     record = _InferenceRecord(
         inference_id=inference_id,
         user_id=user_id,
-        provider_id=provider_id,
+        connection_id=connection_id,
+        connection_slug=connection_slug,
+        adapter_type=adapter_type,
         model_slug=model_slug,
         source=source,
         started_at=datetime.now(timezone.utc),
     )
     _active[inference_id] = record
     _log.debug(
-        "inference register id=%s user=%s model=%s:%s source=%s active=%d",
-        inference_id, user_id, provider_id, model_slug, source, len(_active),
+        "inference register id=%s user=%s connection=%s model=%s source=%s active=%d",
+        inference_id, user_id, connection_slug, model_slug, source, len(_active),
     )
     return inference_id
 
@@ -103,9 +113,11 @@ def snapshot(usernames: dict[str, str] | None = None) -> list[ActiveInferenceDto
                 inference_id=record.inference_id,
                 user_id=record.user_id,
                 username=usernames.get(record.user_id),
-                provider_id=record.provider_id,
+                connection_id=record.connection_id,
+                connection_slug=record.connection_slug,
+                adapter_type=record.adapter_type,
                 model_slug=record.model_slug,
-                model_unique_id=f"{record.provider_id}:{record.model_slug}",
+                model_unique_id=f"{record.connection_id}:{record.model_slug}",
                 source=record.source,
                 started_at=record.started_at,
                 duration_seconds=(now - record.started_at).total_seconds(),

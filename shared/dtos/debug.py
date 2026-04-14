@@ -20,7 +20,9 @@ class ActiveInferenceDto(BaseModel):
     inference_id: str
     user_id: str
     username: str | None
-    provider_id: str
+    connection_id: str
+    connection_slug: str
+    adapter_type: str
     model_slug: str
     model_unique_id: str
     source: str  # "chat" | "job:<job_type>" | "vision_fallback" | other
@@ -89,7 +91,9 @@ class DebugInferenceStartedPayload(BaseModel):
     inference_id: str
     user_id: str
     username: str | None
-    provider_id: str
+    connection_id: str
+    connection_slug: str
+    adapter_type: str
     model_slug: str
     model_unique_id: str
     source: str

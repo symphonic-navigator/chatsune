@@ -97,7 +97,6 @@ export function handleChatEvent(
         if (remainder) getStore().appendStreamingContent(remainder)
         activeTagBuffer = null
       }
-      getStore().clearWaitingForLock()
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
       const rawStatus = (p.status as string | undefined) ?? 'completed'
@@ -169,7 +168,6 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_STREAM_ERROR: {
-      getStore().clearWaitingForLock()
       const errorCode = p.error_code as string
       // Session-level errors arrive outside a streaming context —
       // they carry their own correlation id that the frontend never
@@ -290,27 +288,14 @@ export function useChatStream(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return
 
-    const getStore = useChatStore.getState
-
-    const handleInferenceLockEvent = (event: BaseEvent) => {
-      const p = event.payload as Record<string, unknown>
-      if (event.type === Topics.INFERENCE_LOCK_WAIT_STARTED) {
-        getStore().setWaitingForLock({
-          providerId: p.provider_id as string,
-          holderSource: p.holder_source as string,
-        })
-      } else if (event.type === Topics.INFERENCE_LOCK_WAIT_ENDED) {
-        getStore().clearWaitingForLock()
-      }
-    }
-
+    // TODO Phase 8: the old inference.lock.* events have been removed.
+    // Re-add an equivalent hook once the new event shape (tied to a
+    // connection_id) lands.
     const handleEvent = (event: BaseEvent) => handleChatEvent(event, sendMessage, sessionId)
 
     const unsub = eventBus.on('chat.*', handleEvent)
-    const unsubLock = eventBus.on('inference.*', handleInferenceLockEvent)
     return () => {
       unsub()
-      unsubLock()
     }
   }, [sessionId])
 }

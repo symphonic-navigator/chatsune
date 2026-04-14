@@ -1,13 +1,8 @@
-import { useState, useEffect, useMemo } from "react"
-import type { EnrichedModelDto } from "../../../core/types/llm"
-import { useEnrichedModels } from "../../../core/hooks/useEnrichedModels"
-import {
-  filterModels,
-  sortModels,
-  type ModelFilters,
-  type ModelSortConfig,
-  type SortField,
-} from "./modelFilters"
+import { useMemo, useState } from 'react'
+import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
+import type { EnrichedModelDto } from '../../../core/types/llm'
+import { applyModelFilters, sortModels, type ModelFilters } from './modelFilters'
+import { ModelConfigModal } from './ModelConfigModal'
 
 export interface LockedFilters {
   capTools?: true
@@ -16,504 +11,266 @@ export interface LockedFilters {
 }
 
 interface ModelBrowserProps {
-  onEditConfig?: (model: EnrichedModelDto) => void
-  onToggleFavourite?: (model: EnrichedModelDto) => void
+  /** When set, rows become clickable and invoke onSelect instead of opening the config modal. */
   onSelect?: (model: EnrichedModelDto) => void
   currentModelId?: string | null
-  models?: EnrichedModelDto[]
   lockedFilters?: LockedFilters
 }
 
-const SORT_FIELDS: { field: SortField; label: string }[] = [
-  { field: "name", label: "Name" },
-  { field: "provider", label: "Provider" },
-  { field: "params", label: "Params" },
-  { field: "context", label: "Context" },
-]
-
-function ratingBadge(model: EnrichedModelDto) {
-  const rating = model.curation?.overall_rating ?? "available"
-  switch (rating) {
-    case "recommended":
-      return <span className="text-[10px] text-[#a6e3a1]">Recommended</span>
-    case "available":
-      return <span className="text-[10px] text-[#89b4fa]">Available</span>
-    case "not_recommended":
-      return <span className="text-[10px] text-[#f38ba8]">Not Recommended</span>
-  }
-}
-
-function capabilityIcons(model: EnrichedModelDto) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {model.supports_tool_calls && (
-        <span className="text-[10px] font-semibold text-[#a6e3a1]" title="Tool Calls">T</span>
-      )}
-      {model.supports_vision && (
-        <span className="text-[10px] font-semibold text-[#89b4fa]" title="Vision">V</span>
-      )}
-      {model.supports_reasoning && (
-        <span className="text-[10px] font-semibold text-[#f9e2af]" title="Reasoning">R</span>
-      )}
-    </div>
-  )
-}
-
-function formatContext(ctx: number): string {
-  if (ctx >= 1_000_000) return `${(ctx / 1_000_000).toFixed(1)}M`
-  if (ctx >= 1_000) return `${Math.round(ctx / 1_000)}k`
-  return String(ctx)
-}
-
-export function ModelBrowser({
-  onEditConfig,
-  onToggleFavourite,
-  onSelect,
-  currentModelId,
-  models: externalModels,
-  lockedFilters,
-}: ModelBrowserProps) {
-  const { models: fetchedModels, isLoading: hookLoading, error: hookError } = useEnrichedModels()
-
+/**
+ * Grouped model browser — one section per Connection, with filter chips
+ * for capabilities and favourites. Admin curation is gone; the only
+ * per-model state is the user's own config (favourite / hidden / custom
+ * display name / custom context window / notes / system prompt addition).
+ */
+export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelBrowserProps) {
+  const { groups, loading, error, refresh } = useEnrichedModels()
   const [filters, setFilters] = useState<ModelFilters>({})
-  const [sort, setSort] = useState<ModelSortConfig | null>(null)
+  const [search, setSearch] = useState('')
+  const [configModel, setConfigModel] = useState<EnrichedModelDto | null>(null)
 
-  useEffect(() => {
-    if (!lockedFilters) return
-    setFilters((f) => ({
-      ...f,
-      ...(lockedFilters.capTools ? { capTools: true } : {}),
-      ...(lockedFilters.capVision ? { capVision: true } : {}),
-      ...(lockedFilters.capReason ? { capReason: true } : {}),
-    }))
-  }, [lockedFilters])
+  const effectiveFilters = useMemo<ModelFilters>(() => ({
+    ...filters,
+    search,
+    capTools: filters.capTools || !!lockedFilters?.capTools,
+    capVision: filters.capVision || !!lockedFilters?.capVision,
+    capReason: filters.capReason || !!lockedFilters?.capReason,
+  }), [filters, search, lockedFilters])
 
-  const allModels = externalModels ?? fetchedModels
-  const loading = !externalModels && hookLoading
-  const error = !externalModels ? hookError : null
-  const providerMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const m of allModels) map.set(m.provider_id, m.provider_display_name)
-    return map
-  }, [allModels])
-  const providers = useMemo(
-    () => [...providerMap.keys()].sort(),
-    [providerMap],
-  )
+  const filteredGroups = useMemo(() => {
+    return groups
+      .map((g) => ({
+        connection: g.connection,
+        models: sortModels(applyModelFilters(g.models, effectiveFilters), { field: 'name', direction: 'asc' }),
+      }))
+      .filter((g) => g.models.length > 0)
+  }, [groups, effectiveFilters])
 
-  const selectionMode = onSelect != null
-
-  // If the favourites filter is on but no favourites remain (e.g. user just
-  // unfavourited the last one), turn the filter off so the user is not left
-  // staring at an empty list.
-  const hasFavourites = useMemo(
-    () => allModels.some((m) => m.user_config?.is_favourite),
-    [allModels],
-  )
-  useEffect(() => {
-    if (filters.favouritesOnly && !hasFavourites) {
-      setFilters((f) => ({ ...f, favouritesOnly: false }))
-    }
-  }, [filters.favouritesOnly, hasFavourites])
-
-  // allModels are already filtered (hidden removed) by the hook or parent
-  const visibleModels = allModels
-
-  const filtered = useMemo(
-    () => filterModels(visibleModels, filters),
-    [visibleModels, filters],
-  )
-  const sorted = useMemo(() => sortModels(filtered, sort), [filtered, sort])
-
-  function handleSort(field: SortField) {
-    setSort((prev) => {
-      if (prev?.field === field) {
-        return prev.direction === "asc"
-          ? { field, direction: "desc" }
-          : null
-      }
-      return { field, direction: "asc" }
-    })
+  if (loading) {
+    return <div className="p-6 text-sm text-white/60">Lade Modelle…</div>
   }
 
-  function sortIndicator(field: SortField) {
-    if (sort?.field !== field) return null
-    return sort.direction === "asc" ? " ^" : " v"
+  if (error) {
+    return (
+      <div className="p-6 space-y-3">
+        <p className="text-sm text-red-300">{error}</p>
+        <button
+          type="button"
+          onClick={() => { void refresh() }}
+          className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5"
+        >
+          Erneut versuchen
+        </button>
+      </div>
+    )
   }
 
-  function updateFilter<K extends keyof ModelFilters>(key: K, value: ModelFilters[K]) {
-    setFilters((f) => ({ ...f, [key]: value }))
+  if (groups.length === 0) {
+    return (
+      <div className="p-6 text-sm text-white/60">
+        Keine LLM-Verbindung konfiguriert. Füge im Tab „LLM Providers“ eine hinzu.
+      </div>
+    )
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/6 px-4 py-2.5">
-        <div className="text-[12px] text-white/40">
-          {visibleModels.length} model{visibleModels.length !== 1 ? "s" : ""}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => updateFilter("favouritesOnly", !filters.favouritesOnly)}
-            className={[
-              "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-              filters.favouritesOnly
-                ? "bg-gold/15 border border-gold/30 text-gold"
-                : "border border-white/8 text-white/40 hover:text-white/60 hover:border-white/15",
-            ].join(" ")}
-          >
-            Favourites
-          </button>
-          <button
-            type="button"
-            onClick={() => updateFilter("hasCustomisation", !filters.hasCustomisation)}
-            className={[
-              "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-              filters.hasCustomisation
-                ? "bg-[#cba6f7]/15 border border-[#cba6f7]/30 text-[#cba6f7]"
-                : "border border-white/8 text-white/40 hover:text-white/60 hover:border-white/15",
-            ].join(" ")}
-          >
-            Customised
-          </button>
-          <button
-            type="button"
-            onClick={() => updateFilter("showHidden", !filters.showHidden)}
-            className={[
-              "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer",
-              filters.showHidden
-                ? "bg-[#f38ba8]/15 border border-[#f38ba8]/30 text-[#f38ba8]"
-                : "border border-white/8 text-white/40 hover:text-white/60 hover:border-white/15",
-            ].join(" ")}
-          >
-            Hidden
-          </button>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div className="border-b border-white/6 px-4 py-2">
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/6 px-4 py-3">
         <input
-          type="text"
-          placeholder="Search models..."
-          value={filters.search ?? ""}
-          onChange={(e) => updateFilter("search", e.target.value || undefined)}
-          className="w-full rounded-lg border border-white/8 bg-elevated px-3 py-1.5 text-[12px] text-white/80 placeholder-white/20 outline-none focus:border-gold/40 transition-colors"
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Modellname suchen…"
+          className="flex-1 min-w-[180px] rounded bg-white/5 border border-white/10 px-3 py-1 text-[12px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25"
         />
+        <Chip
+          active={!!filters.favouritesOnly}
+          onClick={() => setFilters((f) => ({ ...f, favouritesOnly: !f.favouritesOnly }))}
+        >
+          ★ Favoriten
+        </Chip>
+        <Chip
+          active={!!filters.capReason}
+          locked={!!lockedFilters?.capReason}
+          onClick={() => setFilters((f) => ({ ...f, capReason: !f.capReason }))}
+        >
+          Reasoning
+        </Chip>
+        <Chip
+          active={!!filters.capVision}
+          locked={!!lockedFilters?.capVision}
+          onClick={() => setFilters((f) => ({ ...f, capVision: !f.capVision }))}
+        >
+          Vision
+        </Chip>
+        <Chip
+          active={!!filters.capTools}
+          locked={!!lockedFilters?.capTools}
+          onClick={() => setFilters((f) => ({ ...f, capTools: !f.capTools }))}
+        >
+          Tools
+        </Chip>
+        <Chip
+          active={!!filters.showHidden}
+          onClick={() => setFilters((f) => ({ ...f, showHidden: !f.showHidden }))}
+        >
+          Versteckte zeigen
+        </Chip>
       </div>
 
-      {/* Filter row */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/6 px-4 py-2">
-        {/* Provider dropdown */}
-        <select
-          value={filters.provider ?? ""}
-          onChange={(e) => updateFilter("provider", e.target.value || undefined)}
-          className="rounded-md border border-white/8 bg-elevated px-2 py-1 text-[11px] text-white/60 outline-none focus:border-gold/40 transition-colors cursor-pointer"
-        >
-          <option value="">All Providers</option>
-          {providers.map((p) => (
-            <option key={p} value={p}>{providerMap.get(p)}</option>
-          ))}
-        </select>
-
-        {/* Capability toggles */}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => updateFilter("capTools", !filters.capTools)}
-            disabled={lockedFilters?.capTools === true}
-            className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
-              lockedFilters?.capTools ? "cursor-not-allowed" : "cursor-pointer",
-              filters.capTools
-                ? "bg-[#a6e3a1]/15 text-[#a6e3a1]"
-                : "text-white/30 hover:text-white/50",
-            ].join(" ")}
-            title={lockedFilters?.capTools ? "Tool Calls (required)" : "Tool Calls"}
-          >
-            T
-          </button>
-          <button
-            type="button"
-            onClick={() => updateFilter("capVision", !filters.capVision)}
-            disabled={lockedFilters?.capVision === true}
-            className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
-              lockedFilters?.capVision ? "cursor-not-allowed" : "cursor-pointer",
-              filters.capVision
-                ? "bg-[#89b4fa]/15 text-[#89b4fa]"
-                : "text-white/30 hover:text-white/50",
-            ].join(" ")}
-            title={lockedFilters?.capVision ? "Vision (required)" : "Vision"}
-          >
-            V
-          </button>
-          <button
-            type="button"
-            onClick={() => updateFilter("capReason", !filters.capReason)}
-            disabled={lockedFilters?.capReason === true}
-            className={[
-              "rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors",
-              lockedFilters?.capReason ? "cursor-not-allowed" : "cursor-pointer",
-              filters.capReason
-                ? "bg-[#f9e2af]/15 text-[#f9e2af]"
-                : "text-white/30 hover:text-white/50",
-            ].join(" ")}
-            title={lockedFilters?.capReason ? "Reasoning (required)" : "Reasoning"}
-          >
-            R
-          </button>
-        </div>
-
-        {/* Curation dropdown */}
-        <select
-          value={filters.curation ?? ""}
-          onChange={(e) =>
-            updateFilter(
-              "curation",
-              (e.target.value as ModelFilters["curation"]) || undefined,
-            )
-          }
-          className="rounded-md border border-white/8 bg-elevated px-2 py-1 text-[11px] text-white/60 outline-none focus:border-gold/40 transition-colors cursor-pointer"
-        >
-          <option value="">All Ratings</option>
-          <option value="recommended">Recommended</option>
-          <option value="available">Available</option>
-          <option value="not_recommended">Not Recommended</option>
-        </select>
-      </div>
-
-      {/* Column headers — hidden on mobile (card layout used instead) */}
-      <div className={[
-        "hidden md:grid items-center gap-1 border-b border-white/6 px-4 py-1.5 text-[10px] font-medium uppercase tracking-wider text-white/30",
-        selectionMode
-          ? "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
-          : "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
-      ].join(" ")}>
-        <span title="Favourite">Fav</span>
-        {SORT_FIELDS.map((sf) => (
-          <button
-            key={sf.field}
-            type="button"
-            onClick={() => handleSort(sf.field)}
-            className="cursor-pointer text-left hover:text-white/50 transition-colors"
-          >
-            {sf.label}{sortIndicator(sf.field)}
-          </button>
+      {/* Grouped list */}
+      <div className="flex-1 overflow-y-auto px-2 py-2">
+        {filteredGroups.length === 0 && (
+          <div className="p-6 text-[13px] text-white/50">Keine Modelle entsprechen den Filtern.</div>
+        )}
+        {filteredGroups.map((group) => (
+          <section key={group.connection.id} className="mb-4">
+            <header className="flex items-baseline gap-2 border-b border-white/6 px-3 py-2">
+              <h4 className="text-[13px] font-semibold text-white/85">
+                {group.connection.display_name}
+              </h4>
+              <span className="text-[11px] font-mono text-white/35">
+                {group.connection.slug}
+              </span>
+            </header>
+            <ul className="divide-y divide-white/5">
+              {group.models.map((model) => (
+                <ModelRow
+                  key={model.unique_id}
+                  model={model}
+                  isCurrent={model.unique_id === currentModelId}
+                  onSelect={onSelect}
+                  onEdit={() => setConfigModel(model)}
+                />
+              ))}
+            </ul>
+          </section>
         ))}
-        <span>Caps</span>
-        <span>Rating</span>
-        {selectionMode && <span />}
       </div>
 
-      {/* Model list */}
-      <div className="flex-1 overflow-y-auto">
-        {loading && (
-          <div className="flex items-center justify-center py-12 text-[12px] text-white/30">
-            Loading models...
-          </div>
-        )}
-
-        {error && (
-          <div className="mx-4 mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && sorted.length === 0 && (
-          <div className="flex items-center justify-center py-12 text-[12px] text-white/30">
-            No models match the current filters
-          </div>
-        )}
-
-        {sorted.map((model) => {
-          const isFav = model.user_config?.is_favourite ?? false
-          const hasConfig = model.user_config != null && (
-            model.user_config.is_favourite ||
-            model.user_config.is_hidden ||
-            model.user_config.custom_display_name != null ||
-            model.user_config.custom_context_window != null ||
-            (model.user_config.notes != null && model.user_config.notes.length > 0) ||
-            (model.user_config.system_prompt_addition != null && model.user_config.system_prompt_addition.length > 0)
-          )
-
-          const isSelected = model.unique_id === currentModelId
-          const isHidden = model.user_config?.is_hidden
-
-          return (
-            <div key={model.unique_id}>
-              {/* Desktop row — grid layout */}
-              <div
-                onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
-                className={[
-                  `hidden md:grid items-center gap-1 border-b border-white/6 px-4 py-2 text-[12px] transition-colors`,
-                  selectionMode
-                    ? "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem_2rem]"
-                    : "md:grid-cols-[2rem_1fr_5.5rem_5rem_4rem_3.5rem_6.5rem]",
-                  "cursor-pointer hover:bg-white/4",
-                  isSelected ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
-                  isHidden ? "opacity-45" : "",
-                ].join(" ")}
-              >
-                {/* Favourite star */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onToggleFavourite?.(model)
-                  }}
-                  className={[
-                    "text-[13px] transition-colors cursor-pointer",
-                    isFav ? "text-gold" : "text-white/15 hover:text-white/30",
-                  ].join(" ")}
-                  title={isFav ? "Remove from favourites" : "Add to favourites"}
-                >
-                  {isFav ? "\u2605" : "\u2606"}
-                </button>
-
-                {/* Name + customisation indicator */}
-                <div className="min-w-0 flex items-center gap-1.5">
-                  <span className="truncate text-[12px] text-white/80">
-                    {model.user_config?.custom_display_name ?? model.display_name}
-                  </span>
-                  {hasConfig && (
-                    <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
-                  )}
-                  {model.user_config?.custom_display_name && (
-                    <span className="truncate text-[9px] text-white/25 italic flex-shrink-0">
-                      {model.display_name}
-                    </span>
-                  )}
-                  {isHidden && (
-                    <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
-                  )}
-                </div>
-
-                {/* Provider */}
-                <span className="truncate text-[11px] text-white/40">{model.provider_display_name}</span>
-
-                {/* Params */}
-                <span className="text-[11px] text-white/55">
-                  {model.parameter_count ? (
-                    <>
-                      {model.parameter_count}
-                      {model.quantisation_level && (
-                        <span className="ml-1 text-[9px] text-white/25">{model.quantisation_level}</span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-white/20">--</span>
-                  )}
-                </span>
-
-                {/* Context */}
-                <span className="text-[11px] text-white/40">{formatContext(model.context_window)}</span>
-
-                {/* Capabilities */}
-                {capabilityIcons(model)}
-
-                {/* Rating */}
-                {ratingBadge(model)}
-
-                {/* Edit config button (selection mode only) */}
-                {selectionMode && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onEditConfig?.(model)
-                    }}
-                    className="text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer text-center"
-                    title="Configure model"
-                  >
-                    &#x2026;
-                  </button>
-                )}
-              </div>
-
-              {/* Mobile row — two-line card layout */}
-              <div
-                onClick={() => { if (selectionMode) onSelect!(model); else onEditConfig?.(model) }}
-                className={[
-                  "md:hidden flex flex-col gap-1 border-b border-white/6 px-4 py-2.5 transition-colors",
-                  "cursor-pointer hover:bg-white/4",
-                  isSelected ? "bg-[#C9A96E]/8 border-l-2 border-l-[#C9A96E]" : "",
-                  isHidden ? "opacity-45" : "",
-                ].join(" ")}
-              >
-                {/* Line 1: Star + Name + Edit */}
-                <div className="flex items-center gap-2 min-w-0">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onToggleFavourite?.(model)
-                    }}
-                    className={[
-                      "text-[13px] transition-colors cursor-pointer flex-shrink-0",
-                      isFav ? "text-gold" : "text-white/15 hover:text-white/30",
-                    ].join(" ")}
-                    title={isFav ? "Remove from favourites" : "Add to favourites"}
-                  >
-                    {isFav ? "\u2605" : "\u2606"}
-                  </button>
-                  <span className="truncate text-[12px] text-white/80 min-w-0">
-                    {model.user_config?.custom_display_name ?? model.display_name}
-                  </span>
-                  {hasConfig && (
-                    <span className="text-[10px] text-[#cba6f7] flex-shrink-0" title="Customised">&#9670;</span>
-                  )}
-                  {isHidden && (
-                    <span className="text-[9px] text-white/30 flex-shrink-0">HIDDEN</span>
-                  )}
-                  {selectionMode && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onEditConfig?.(model)
-                      }}
-                      className="ml-auto text-[14px] text-white/25 hover:text-white/50 transition-colors cursor-pointer flex-shrink-0"
-                      title="Configure model"
-                    >
-                      &#x2026;
-                    </button>
-                  )}
-                </div>
-
-                {/* Line 2: Provider | Params | Context | Caps | Rating */}
-                <div className="flex items-center gap-2.5 pl-[21px] text-[11px]">
-                  <span className="truncate text-white/40">{model.provider_display_name}</span>
-                  <span className="text-white/10">|</span>
-                  <span className="text-white/55 flex-shrink-0">
-                    {model.parameter_count ? (
-                      <>
-                        {model.parameter_count}
-                        {model.quantisation_level && (
-                          <span className="ml-0.5 text-[9px] text-white/25">{model.quantisation_level}</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-white/20">--</span>
-                    )}
-                  </span>
-                  <span className="text-white/10">|</span>
-                  <span className="text-white/40 flex-shrink-0">{formatContext(model.context_window)}</span>
-                  <span className="text-white/10">|</span>
-                  {capabilityIcons(model)}
-                  <span className="ml-auto flex-shrink-0">{ratingBadge(model)}</span>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Footer */}
-      <div className="border-t border-white/6 px-4 py-2 text-[11px] text-white/30">
-        {sorted.length} of {visibleModels.length} shown
-      </div>
+      {configModel && (
+        <ModelConfigModal
+          model={configModel}
+          onClose={() => setConfigModel(null)}
+          onSaved={() => {
+            setConfigModel(null)
+            void refresh()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+interface ModelRowProps {
+  model: EnrichedModelDto
+  isCurrent: boolean
+  onSelect?: (model: EnrichedModelDto) => void
+  onEdit: () => void
+}
+
+function ModelRow({ model, isCurrent, onSelect, onEdit }: ModelRowProps) {
+  const displayName = model.user_config?.custom_display_name ?? model.display_name
+  const contextWindow = model.user_config?.custom_context_window ?? model.context_window
+  const isFavourite = !!model.user_config?.is_favourite
+  const isHidden = !!model.user_config?.is_hidden
+
+  const handleRowClick = () => {
+    if (onSelect) {
+      onSelect(model)
+    } else {
+      onEdit()
+    }
+  }
+
+  return (
+    <li
+      className={[
+        'flex items-center gap-3 px-3 py-2 hover:bg-white/5 cursor-pointer transition-colors',
+        isCurrent ? 'bg-white/5' : '',
+        isHidden ? 'opacity-60' : '',
+      ].join(' ')}
+      onClick={handleRowClick}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          {isFavourite && <span className="text-gold text-[12px]">★</span>}
+          <span className="text-[13px] text-white/85 truncate">{displayName}</span>
+          {isCurrent && (
+            <span className="rounded bg-purple/30 px-1.5 py-0.5 text-[10px] text-white/85">
+              aktuell
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-white/45 font-mono">
+          <span>{model.model_id}</span>
+          <span>·</span>
+          <span>ctx {Number.isFinite(contextWindow) ? contextWindow.toLocaleString() : '?'}</span>
+          {model.parameter_count && (
+            <>
+              <span>·</span>
+              <span>{model.parameter_count}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        {model.supports_reasoning && <CapBadge label="R" title="Reasoning" />}
+        {model.supports_vision && <CapBadge label="V" title="Vision" />}
+        {model.supports_tool_calls && <CapBadge label="T" title="Tools" />}
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onEdit() }}
+        className="rounded border border-white/10 px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/5"
+        aria-label="Modell konfigurieren"
+        title="Modell konfigurieren"
+      >
+        Bearbeiten
+      </button>
+    </li>
+  )
+}
+
+function Chip({
+  active,
+  locked,
+  onClick,
+  children,
+}: {
+  active: boolean
+  locked?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={locked}
+      className={[
+        'rounded-full px-3 py-1 text-[11px] transition-colors',
+        active
+          ? 'bg-purple/70 text-white'
+          : 'bg-white/5 text-white/65 hover:bg-white/10',
+        locked ? 'opacity-70 cursor-not-allowed' : '',
+      ].join(' ')}
+      title={locked ? 'Durch Kontext vorgegeben' : undefined}
+    >
+      {children}
+    </button>
+  )
+}
+
+function CapBadge({ label, title }: { label: string; title: string }) {
+  return (
+    <span
+      className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/15 text-[9px] text-white/60"
+      title={title}
+      aria-label={title}
+    >
+      {label}
+    </span>
   )
 }

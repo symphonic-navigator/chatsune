@@ -57,15 +57,14 @@ async def handle_title_generation(
         )
         return
 
-    provider_id, model_slug = job.model_unique_id.split(":", 1)
+    _, model_slug = job.model_unique_id.split(":", 1)
     messages_data = job.payload.get("messages", [])
     session_id = job.payload.get("session_id", "unknown")
 
     _log.info(
-        "Starting title generation for session %s (provider=%s, model=%s, messages=%d)",
+        "Starting title generation for session %s (model_unique_id=%s, messages=%d)",
         session_id,
-        provider_id,
-        model_slug,
+        job.model_unique_id,
         len(messages_data),
     )
 
@@ -86,7 +85,9 @@ async def handle_title_generation(
         )
     )
 
-    supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+    supports_reasoning = await get_model_supports_reasoning(
+        job.user_id, job.model_unique_id,
+    )
 
     request = CompletionRequest(
         model=model_slug,
@@ -102,13 +103,13 @@ async def handle_title_generation(
     )
     await check_and_reserve_budget(redis, job.user_id, prompt_text)
 
-    _log.debug("Sending title generation request to %s:%s", provider_id, model_slug)
+    _log.debug("Sending title generation request to %s", job.model_unique_id)
     full_content = ""
     stream_input_tokens: int | None = None
     stream_output_tokens: int | None = None
     async for event in llm_stream_completion(
         job.user_id,
-        provider_id,
+        job.model_unique_id,
         request,
         source="job:title_generation",
     ):

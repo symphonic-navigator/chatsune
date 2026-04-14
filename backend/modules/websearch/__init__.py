@@ -1,16 +1,17 @@
-"""Websearch module — pluggable web-search adapters with credential sharing.
+"""Websearch module — pluggable web-search adapters with own credential store.
 
 Public API: import only from this file.
 """
 
 import logging
 
-import httpx
-
+from backend.database import get_db
+from backend.modules.websearch._credentials import WebSearchCredentialRepository
+from backend.modules.websearch._handlers import router
 from backend.modules.websearch._registry import (
-    KEY_SOURCES,
     SEARCH_ADAPTER_REGISTRY,
     SEARCH_PROVIDER_BASE_URLS,
+    SEARCH_PROVIDER_DISPLAY_NAMES,
 )
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.websearch import WebFetchResultDto, WebSearchResultDto
@@ -72,30 +73,26 @@ def get_tool_definitions() -> list[ToolDefinition]:
 
 
 # ---------------------------------------------------------------------------
-# Key resolution
+# Index initialisation
+# ---------------------------------------------------------------------------
+
+async def init_indexes(db) -> None:
+    """Create indexes for the websearch credentials collection."""
+    await WebSearchCredentialRepository(db).create_indexes()
+
+
+# ---------------------------------------------------------------------------
+# Key resolution — reads from this module's own credential store
 # ---------------------------------------------------------------------------
 
 async def _resolve_api_key(user_id: str, provider_id: str) -> str:
-    """Resolve the API key for a search provider, following KEY_SOURCES."""
-    source = KEY_SOURCES.get(provider_id)
-
-    if source is not None and source.startswith("llm:"):
-        llm_provider_id = source.removeprefix("llm:")
-        # Import locally to avoid circular imports at module load time.
-        from backend.modules.llm import (
-            LlmCredentialNotFoundError,
-            LlmProviderNotFoundError,
-            get_api_key,
+    repo = WebSearchCredentialRepository(get_db())
+    doc = await repo.find(user_id, provider_id)
+    if doc is None:
+        raise WebSearchCredentialNotFoundError(
+            f"No credential configured for search provider '{provider_id}'"
         )
-        try:
-            return await get_api_key(user_id, llm_provider_id)
-        except (LlmProviderNotFoundError, LlmCredentialNotFoundError) as exc:
-            raise WebSearchCredentialNotFoundError(str(exc)) from exc
-
-    # source is None → provider uses its own credential store (not yet implemented)
-    raise WebSearchCredentialNotFoundError(
-        f"No credential source configured for search provider '{provider_id}'"
-    )
+    return repo.get_raw_key(doc)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +149,8 @@ async def fetch(
 
 
 __all__ = [
+    "router",
+    "init_indexes",
     "get_tool_definitions",
     "search",
     "fetch",

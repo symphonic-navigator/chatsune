@@ -54,9 +54,9 @@ class InferenceRunner:
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
         tool_executor_fn: Callable | None = None,
-        provider_name: str | None = None,
+        connection_display_name: str | None = None,
         model_name: str | None = None,
-        provider_id: str = "",
+        adapter_type: str = "",
         model_slug: str = "",
     ) -> None:
         lock = get_user_lock(user_id)
@@ -64,7 +64,7 @@ class InferenceRunner:
             await self._run_locked(
                 user_id, session_id, correlation_id, stream_fn, emit_fn, save_fn,
                 cancel_event, context_status, context_fill_percentage,
-                tool_executor_fn, provider_name, model_name, provider_id, model_slug,
+                tool_executor_fn, connection_display_name, model_name, adapter_type, model_slug,
             )
 
     async def _run_locked(
@@ -79,9 +79,9 @@ class InferenceRunner:
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
         tool_executor_fn: Callable | None = None,
-        provider_name: str | None = None,
+        connection_display_name: str | None = None,
         model_name: str | None = None,
-        provider_id: str = "",
+        adapter_type: str = "",
         model_slug: str = "",
     ) -> None:
         now = datetime.now(timezone.utc)
@@ -189,9 +189,12 @@ class InferenceRunner:
                             )
                             status = "aborted"
                             stream_end_reason = f"aborted:{ab.reason}"
+                            # Prometheus label name stays ``provider`` for
+                            # dashboard backwards-compatibility; the value is
+                            # now the adapter type (low-cardinality).
                             inferences_aborted_total.labels(
                                 model=model_slug or "unknown",
-                                provider=provider_id or "unknown",
+                                provider=adapter_type or "unknown",
                             ).inc()
                             await emit_fn(ChatStreamErrorEvent(
                                 correlation_id=correlation_id,
@@ -456,7 +459,7 @@ class InferenceRunner:
             time_to_first_token_ms=ttft_ms,
             tokens_per_second=tps,
             generation_duration_ms=gen_duration_ms,
-            provider_name=provider_name,
+            provider_name=connection_display_name,
             model_name=model_name,
             timestamp=datetime.now(timezone.utc),
         ))

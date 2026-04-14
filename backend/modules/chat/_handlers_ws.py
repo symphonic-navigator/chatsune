@@ -26,7 +26,7 @@ from backend.modules.bookmark import delete_bookmarks_for_message
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
     get_model_supports_reasoning,
-    LlmCredentialNotFoundError,
+    LlmConnectionNotFoundError,
 )
 from backend.modules.persona import get_persona
 from backend.modules.tools import get_active_definitions
@@ -389,9 +389,9 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             _log.error("Invalid model_unique_id format: %s", model_unique_id)
             return
 
-        provider_id, model_slug = model_unique_id.split(":", 1)
+        _, model_slug = model_unique_id.split(":", 1)
 
-        supports_reasoning = await get_model_supports_reasoning(provider_id, model_slug)
+        supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
         reasoning_enabled_for_call = persona.get("reasoning_enabled", False)
 
         # Assemble system prompt
@@ -467,7 +467,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             if extra_messages:
                 extended = list(request.messages) + extra_messages
                 req = request.model_copy(update={"messages": extended})
-            upstream = llm_stream_completion(user_id, provider_id, req)
+            upstream = llm_stream_completion(user_id, model_unique_id, req)
             if soft_cot_on:
                 return wrap_with_soft_cot_parser(upstream)
             return upstream
@@ -494,13 +494,13 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 context_fill_percentage=0.0,
                 tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id) if active_tools else None,
             )
-        except LlmCredentialNotFoundError:
+        except LlmConnectionNotFoundError:
             now = datetime.now(timezone.utc)
             await emit_fn(ChatStreamErrorEvent(
                 correlation_id=correlation_id,
-                error_code="credential_not_found",
+                error_code="connection_not_found",
                 recoverable=False,
-                user_message="No API key configured for this model's provider. Please add one in settings.",
+                user_message="Connection not found — bitte in der Persona ein Modell neu auswählen.",
                 timestamp=now,
             ))
             await emit_fn(ChatStreamEndedEvent(

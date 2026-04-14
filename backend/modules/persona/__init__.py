@@ -21,4 +21,35 @@ async def get_persona(persona_id: str, user_id: str) -> dict | None:
     return await repo.find_by_id(persona_id, user_id)
 
 
-__all__ = ["router", "init_indexes", "get_persona", "sign_avatar_url"]
+async def unwire_personas_for_connection(user_id: str, connection_id: str) -> list[str]:
+    """Null ``model_unique_id`` on every persona of this user that references
+    the given Connection. Returns the list of affected persona IDs.
+
+    Used by the LLM module when a Connection is deleted, so orphaned personas
+    surface a "model not available" banner in the UI.
+    """
+    db = get_db()
+    prefix = f"{connection_id}:"
+    cursor = db["personas"].find(
+        {
+            "user_id": user_id,
+            "model_unique_id": {"$regex": f"^{prefix}"},
+        },
+        {"_id": 1},
+    )
+    ids = [d["_id"] async for d in cursor]
+    if ids:
+        await db["personas"].update_many(
+            {"_id": {"$in": ids}},
+            {"$set": {"model_unique_id": None}},
+        )
+    return ids
+
+
+__all__ = [
+    "router",
+    "init_indexes",
+    "get_persona",
+    "sign_avatar_url",
+    "unwire_personas_for_connection",
+]

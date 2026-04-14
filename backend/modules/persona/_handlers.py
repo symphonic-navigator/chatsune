@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.dependencies import get_optional_user, require_active_session
-from backend.modules.llm import is_valid_provider
 from backend.modules.persona._avatar_store import AvatarStore
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
@@ -46,18 +45,22 @@ def _persona_repo() -> PersonaRepository:
     return PersonaRepository(get_db())
 
 
-def _validate_model_unique_id(model_unique_id: str) -> None:
-    """Validate format and that the provider is registered."""
+async def _validate_model_unique_id(user_id: str, model_unique_id: str) -> None:
+    """Validate format and that the connection exists and belongs to the user."""
+    # Deferred import to avoid circular dependency (llm._handlers -> persona -> llm).
+    from backend.modules.llm import resolve_owned_connection
+
     if ":" not in model_unique_id:
         raise HTTPException(
             status_code=400,
-            detail="model_unique_id must be in format 'provider_id:model_slug'",
+            detail="model_unique_id must be in format 'connection_id:model_slug'",
         )
-    provider_id = model_unique_id.split(":", 1)[0]
-    if not is_valid_provider(provider_id):
+    connection_id = model_unique_id.split(":", 1)[0]
+    c = await resolve_owned_connection(user_id, connection_id)
+    if c is None:
         raise HTTPException(
-            status_code=400,
-            detail=f"Unknown provider '{provider_id}' in model_unique_id",
+            status_code=422,
+            detail=f"Unknown or unowned connection '{connection_id}' in model_unique_id",
         )
 
 
@@ -74,7 +77,7 @@ async def create_persona(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    _validate_model_unique_id(body.model_unique_id)
+    await _validate_model_unique_id(user["sub"], body.model_unique_id)
 
     repo = _persona_repo()
     doc = await repo.create(
@@ -201,7 +204,7 @@ async def replace_persona(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    _validate_model_unique_id(body.model_unique_id)
+    await _validate_model_unique_id(user["sub"], body.model_unique_id)
 
     repo = _persona_repo()
     updated = await repo.update(
@@ -251,7 +254,7 @@ async def update_persona(
         raise HTTPException(status_code=400, detail="No fields to update")
 
     if "model_unique_id" in fields:
-        _validate_model_unique_id(fields["model_unique_id"])
+        await _validate_model_unique_id(user["sub"], fields["model_unique_id"])
 
     repo = _persona_repo()
     updated = await repo.update(persona_id, user["sub"], fields)
