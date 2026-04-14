@@ -86,9 +86,11 @@ export default defineConfig({
     port: 5173,
     host: true,
     headers: {
-      // Required for SharedArrayBuffer (multi-threaded WASM in voice mode)
+      // Required for SharedArrayBuffer (multi-threaded WASM in voice mode).
+      // COEP=credentialless is more lenient than require-corp — it lets us
+      // fetch HuggingFace model files without forcing CORP on every CDN.
       "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Embedder-Policy": "credentialless",
     },
     proxy: {
       "/api": backendUrl,

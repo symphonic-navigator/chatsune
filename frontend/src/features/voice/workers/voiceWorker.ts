@@ -27,6 +27,45 @@ import { walkLadder, type WalkResult } from './voiceLadderRunner'
 
 const log = (msg: string, ...args: unknown[]) => console.log(`[VoiceWorker] ${msg}`, ...args)
 
+// ── WASM threading configuration ──
+//
+// ORT's WASM backend uses a thread pool only when SharedArrayBuffer is
+// available, which itself requires the page+worker to be cross-origin
+// isolated (COOP/COEP headers). Without that, even on a 16-core machine
+// every WASM op runs on a single thread. We log the relevant flags once
+// at startup so it's obvious from the console why threading isn't
+// engaging when expected, and we set numThreads explicitly because the
+// auto-detect ("set 0 → system decides") is sometimes too conservative.
+function configureWasmThreads(): void {
+  const sabAvailable = typeof SharedArrayBuffer !== 'undefined'
+  const isolated = typeof crossOriginIsolated === 'boolean' ? crossOriginIsolated : false
+  const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 1
+
+  log('wasm threading: crossOriginIsolated=%s SharedArrayBuffer=%s hardwareConcurrency=%d',
+      isolated, sabAvailable, cores)
+
+  if (!sabAvailable || !isolated) {
+    log('wasm threading: SharedArrayBuffer or COOP/COEP missing — single-threaded WASM only')
+    return
+  }
+
+  // Leave one core for the main thread + UI; clamp at 8 because diminishing
+  // returns past that for transformer inference.
+  const desired = Math.min(8, Math.max(1, cores - 1))
+  try {
+    const ortEnv = env as unknown as { backends?: { onnx?: { wasm?: { numThreads?: number } } } }
+    ortEnv.backends ??= {}
+    ortEnv.backends.onnx ??= {}
+    ortEnv.backends.onnx.wasm ??= {}
+    ortEnv.backends.onnx.wasm.numThreads = desired
+    log('wasm threading: numThreads set to %d', desired)
+  } catch (err) {
+    log('wasm threading: failed to set numThreads:', err)
+  }
+}
+
+configureWasmThreads()
+
 // ── State ──
 
 let sttPipe: AutomaticSpeechRecognitionPipeline | null = null
