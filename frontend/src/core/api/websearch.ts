@@ -14,12 +14,12 @@ export const webSearchApi = {
 
   setWebSearchKey: (providerId: string, apiKey: string) =>
     api.put<WebSearchCredential>(
-      `/api/websearch/providers/${providerId}/key`,
+      `/api/websearch/providers/${providerId}/credential`,
       { api_key: apiKey },
     ),
 
   deleteWebSearchKey: (providerId: string) =>
-    api.delete<void>(`/api/websearch/providers/${providerId}/key`),
+    api.delete<void>(`/api/websearch/providers/${providerId}/credential`),
 
   testWebSearchKey: (providerId: string, apiKey: string) =>
     api.post<TestWebSearchResponse>(
