@@ -25,6 +25,9 @@ export default defineConfig({
         // App shell only — no runtime caching of API or WebSocket traffic,
         // as that would break Chatsune's event-first architecture.
         globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"],
+        // Voice worker is 2.7 MB and only needed when user activates voice —
+        // exclude from precache so it loads on demand rather than bloating the SW cache.
+        globIgnores: ["**/voiceWorker-*.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
         cleanupOutdatedCaches: true,

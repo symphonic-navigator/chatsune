@@ -42,6 +42,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/unist": "^3.0.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@webgpu/types": "^0.1.69",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",

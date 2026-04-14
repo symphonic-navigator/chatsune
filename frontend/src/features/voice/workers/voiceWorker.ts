@@ -108,7 +108,7 @@ self.onmessage = async (e: MessageEvent) => {
       }
       try {
         const t0 = performance.now()
-        const result = await tts.generate(msg.text, { voice: msg.voiceId as Parameters<typeof tts.generate>[1]['voice'] })
+        const result = await tts.generate(msg.text, { voice: msg.voiceId as NonNullable<Parameters<typeof tts.generate>[1]>['voice'] })
         const audio = result.audio as unknown as Float32Array
         const elapsed = Math.round(performance.now() - t0)
         log('synthesise done, id=%s, %dms, audioLen=%d', msg.id, elapsed, audio.length)

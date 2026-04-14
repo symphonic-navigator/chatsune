@@ -109,7 +109,6 @@ class AudioCaptureImpl {
     this.pttContext = null
     this.analyser = null
     this.callbacks = null
-    this.pttReady = false
 
     // Always deliver — pipeline handles empty audio gracefully
     cb?.onSpeechEnd(audio)
