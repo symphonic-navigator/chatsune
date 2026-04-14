@@ -1,105 +1,52 @@
 from datetime import datetime
-from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from shared.dtos.llm import FaultyProviderDto, ModelMetaDto, UserModelConfigDto
+from shared.dtos.llm import ConnectionDto, UserModelConfigDto
 
 
-class LlmCredentialSetEvent(BaseModel):
-    type: str = "llm.credential.set"
-    provider_id: str
-    user_id: str
+class LlmConnectionCreatedEvent(BaseModel):
+    type: str = "llm.connection.created"
+    connection: ConnectionDto
     timestamp: datetime
 
 
-class LlmCredentialRemovedEvent(BaseModel):
-    type: str = "llm.credential.removed"
-    provider_id: str
-    user_id: str
+class LlmConnectionUpdatedEvent(BaseModel):
+    type: str = "llm.connection.updated"
+    connection: ConnectionDto
     timestamp: datetime
 
 
-class LlmCredentialTestedEvent(BaseModel):
-    type: str = "llm.credential.tested"
-    provider_id: str
-    user_id: str
+class LlmConnectionRemovedEvent(BaseModel):
+    type: str = "llm.connection.removed"
+    connection_id: str
+    affected_persona_ids: list[str] = Field(default_factory=list)
+    timestamp: datetime
+
+
+class LlmConnectionTestedEvent(BaseModel):
+    type: str = "llm.connection.tested"
+    connection_id: str
     valid: bool
+    error: str | None = None
     timestamp: datetime
 
 
-class LlmModelCuratedEvent(BaseModel):
-    """Carries the full updated model DTO so clients can update in place."""
-    type: str = "llm.model.curated"
-    provider_id: str
-    model_slug: str
-    model: ModelMetaDto
-    curated_by: str
+class LlmConnectionStatusChangedEvent(BaseModel):
+    type: str = "llm.connection.status_changed"
+    connection_id: str
+    status: str
     timestamp: datetime
 
 
-class LlmModelsRefreshedEvent(BaseModel):
-    """Trigger-only: tells clients to re-fetch the model list."""
-    type: str = "llm.models.refreshed"
-    provider_id: str
-    timestamp: datetime
-
-
-class LlmModelsFetchStartedEvent(BaseModel):
-    """Published when the backend begins fetching models from upstream providers."""
-    type: str = "llm.models.fetch_started"
-    provider_ids: list[str]
-    correlation_id: str
-    timestamp: datetime
-
-
-class LlmModelsFetchCompletedEvent(BaseModel):
-    """Published when model fetching from upstream providers finishes.
-
-    faulty_providers lists providers that returned errors.
-    """
-    type: str = "llm.models.fetch_completed"
-    status: Literal["success", "partial", "failed"]
-    total_models: int
-    faulty_providers: list[FaultyProviderDto]
-    correlation_id: str
+class LlmConnectionModelsRefreshedEvent(BaseModel):
+    type: str = "llm.connection.models_refreshed"
+    connection_id: str
     timestamp: datetime
 
 
 class LlmUserModelConfigUpdatedEvent(BaseModel):
-    """Emitted when a user updates OR deletes their model config. Delete sends defaults."""
     type: str = "llm.user_model_config.updated"
     model_unique_id: str
     config: UserModelConfigDto
-    timestamp: datetime
-
-
-class LlmProviderStatusChangedEvent(BaseModel):
-    type: str = "llm.provider_status.changed"
-    provider_id: str
-    available: bool
-    model_count: int
-    timestamp: datetime
-
-
-class LlmProviderStatusSnapshotEvent(BaseModel):
-    type: str = "llm.provider_status.snapshot"
-    statuses: dict[str, bool]
-    timestamp: datetime
-
-
-class InferenceLockWaitStartedEvent(BaseModel):
-    """Emitted when a chat inference begins waiting on a provider lock."""
-    type: str = "inference.lock.wait_started"
-    correlation_id: str
-    provider_id: str
-    holder_source: str  # e.g. "job:memory_consolidation" or "chat"
-    timestamp: datetime
-
-
-class InferenceLockWaitEndedEvent(BaseModel):
-    """Emitted when the waiting chat inference finally acquires the lock."""
-    type: str = "inference.lock.wait_ended"
-    correlation_id: str
-    provider_id: str
     timestamp: datetime

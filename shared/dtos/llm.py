@@ -1,47 +1,9 @@
-from datetime import datetime
-from enum import Enum
-
-from pydantic import BaseModel, computed_field, field_validator, model_validator
-
-
-class ProviderCredentialDto(BaseModel):
-    provider_id: str
-    display_name: str
-    is_configured: bool
-    requires_key_for_listing: bool = True
-    requires_setup: bool = True
-    test_status: str | None = None        # "untested" | "valid" | "failed" | None (not configured)
-    last_test_error: str | None = None
-    created_at: datetime | None = None
-
-
-class SetProviderKeyDto(BaseModel):
-    api_key: str
-
-
-class ModelRating(str, Enum):
-    AVAILABLE = "available"
-    RECOMMENDED = "recommended"
-    NOT_RECOMMENDED = "not_recommended"
-
-
-class ModelCurationDto(BaseModel):
-    overall_rating: ModelRating = ModelRating.AVAILABLE
-    hidden: bool = False
-    admin_description: str | None = None
-    last_curated_at: datetime | None = None
-    last_curated_by: str | None = None
-
-
-class SetModelCurationDto(BaseModel):
-    overall_rating: ModelRating = ModelRating.AVAILABLE
-    hidden: bool = False
-    admin_description: str | None = None
+from pydantic import BaseModel, computed_field, field_validator
 
 
 class ModelMetaDto(BaseModel):
-    provider_id: str
-    provider_display_name: str = ""
+    connection_id: str
+    connection_display_name: str = ""
     model_id: str
     display_name: str
     context_window: int
@@ -51,24 +13,11 @@ class ModelMetaDto(BaseModel):
     parameter_count: str | None = None
     raw_parameter_count: int | None = None
     quantisation_level: str | None = None
-    curation: ModelCurationDto | None = None
-
-    @model_validator(mode="after")
-    def _fill_provider_display_name(self) -> "ModelMetaDto":
-        if not self.provider_display_name:
-            self.provider_display_name = self.provider_id
-        return self
 
     @computed_field
     @property
     def unique_id(self) -> str:
-        return f"{self.provider_id}:{self.model_id}"
-
-
-class FaultyProviderDto(BaseModel):
-    provider_id: str
-    display_name: str
-    error_message: str
+        return f"{self.connection_id}:{self.model_id}"
 
 
 class UserModelConfigDto(BaseModel):
@@ -109,3 +58,46 @@ class SetUserModelConfigDto(BaseModel):
         if v < 96_000:
             raise ValueError("custom_context_window must be at least 96000")
         return v
+
+
+class AdapterTemplateDto(BaseModel):
+    id: str
+    display_name: str
+    slug_prefix: str
+    config_defaults: dict
+
+
+class AdapterDto(BaseModel):
+    adapter_type: str
+    display_name: str
+    view_id: str
+    templates: list[AdapterTemplateDto]
+    config_schema: list[dict]
+    secret_fields: list[str]
+
+
+class ConnectionDto(BaseModel):
+    id: str
+    user_id: str
+    adapter_type: str
+    display_name: str
+    slug: str
+    config: dict
+    last_test_status: str | None = None
+    last_test_error: str | None = None
+    last_test_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class CreateConnectionDto(BaseModel):
+    adapter_type: str
+    display_name: str
+    slug: str
+    config: dict
+
+
+class UpdateConnectionDto(BaseModel):
+    display_name: str | None = None
+    slug: str | None = None
+    config: dict | None = None
