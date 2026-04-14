@@ -58,9 +58,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   useEffect(() => {
     const uid = persona.model_unique_id
     if (!uid || !uid.includes(':')) return
-    const providerId = uid.split(':')[0]
+    const connectionId = uid.split(':')[0]
     const modelSlug = uid.split(':').slice(1).join(':')
-    llmApi.listModels(providerId)
+    llmApi.listConnectionModels(connectionId)
       .then((models) => {
         const model = models.find((m) => m.model_id === modelSlug)
         setCanReason(model?.supports_reasoning ?? false)
@@ -84,9 +84,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       setVisionFallbackDisplayName(null)
       return
     }
-    const providerId = uid.split(":")[0]
+    const connectionId = uid.split(":")[0]
     const modelSlug = uid.split(":").slice(1).join(":")
-    llmApi.listModels(providerId)
+    llmApi.listConnectionModels(connectionId)
       .then((models) => {
         const model = models.find((m) => m.model_id === modelSlug)
         setVisionFallbackDisplayName(model?.display_name ?? modelSlug)

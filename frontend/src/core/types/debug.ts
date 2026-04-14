@@ -8,7 +8,9 @@ export interface ActiveInferenceDto {
   inference_id: string
   user_id: string
   username: string | null
-  provider_id: string
+  connection_id: string
+  connection_slug: string
+  adapter_type: string
   model_slug: string
   model_unique_id: string
   source: string

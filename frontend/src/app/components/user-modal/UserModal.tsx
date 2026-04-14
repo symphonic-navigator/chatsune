@@ -13,7 +13,6 @@ import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
-import type { ProviderCredentialDto } from '../../../core/types/llm'
 
 export type UserModalTab =
   | 'about-me'
@@ -59,7 +58,11 @@ interface UserModalProps {
   onTabChange: (tab: UserModalTab) => void
   displayName: string
   hasApiKeyProblem: boolean
-  onProvidersChanged: (providers: ProviderCredentialDto[]) => void
+  /**
+   * TODO Phase 8: wire up to the new connections/provider status source.
+   * Currently a no-op callback — the previous provider-credential list is gone.
+   */
+  onProvidersChanged: () => void
   onOpenPersonaOverlay: (personaId: string) => void
 }
 
@@ -189,6 +192,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'job-log' && <JobLogTab />}
           {activeTab === 'settings' && <SettingsTab />}
           {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
+          {/* onProvidersChanged is kept on the prop-surface but currently unused downstream (Phase 8). */}
           {activeTab === 'mcp' && <McpTab />}
           {activeTab === 'integrations' && <IntegrationsTab />}
         </div>

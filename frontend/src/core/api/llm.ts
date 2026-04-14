@@ -1,60 +1,68 @@
 import { api } from "./client"
 import type {
-  ProviderCredentialDto,
-  SetProviderKeyRequest,
+  Adapter,
+  Connection,
+  CreateConnectionRequest,
+  UpdateConnectionRequest,
   ModelMetaDto,
-  ModelCurationDto,
-  SetModelCurationRequest,
   UserModelConfigDto,
   SetUserModelConfigRequest,
-  TestKeyResponse,
+  TestResultResponse,
 } from "../types/llm"
 
 export const llmApi = {
-  listProviders: () =>
-    api.get<ProviderCredentialDto[]>("/api/llm/providers"),
+  listAdapters: () =>
+    api.get<Adapter[]>("/api/llm/adapters"),
 
-  setKey: (providerId: string, data: SetProviderKeyRequest) =>
-    api.put<ProviderCredentialDto>(`/api/llm/providers/${providerId}/key`, data),
+  listConnections: () =>
+    api.get<Connection[]>("/api/llm/connections"),
 
-  removeKey: (providerId: string) =>
-    api.delete<{ status: string }>(`/api/llm/providers/${providerId}/key`),
+  createConnection: (body: CreateConnectionRequest) =>
+    api.post<Connection>("/api/llm/connections", body),
 
-  testKey: (providerId: string, data: SetProviderKeyRequest) =>
-    api.post<TestKeyResponse>(`/api/llm/providers/${providerId}/test`, data),
+  getConnection: (id: string) =>
+    api.get<Connection>(`/api/llm/connections/${id}`),
 
-  testStoredKey: (providerId: string) =>
-    api.post<TestKeyResponse>(`/api/llm/providers/${providerId}/test-stored`),
+  updateConnection: (id: string, body: UpdateConnectionRequest) =>
+    api.put<Connection>(`/api/llm/connections/${id}`, body),
 
-  listModels: (providerId: string) =>
-    api.get<ModelMetaDto[]>(`/api/llm/providers/${providerId}/models`),
+  deleteConnection: (id: string) =>
+    api.delete<void>(`/api/llm/connections/${id}`),
 
-  setCuration: (providerId: string, modelSlug: string, data: SetModelCurationRequest) =>
-    api.put<ModelCurationDto>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/curation`, data),
+  listConnectionModels: (id: string) =>
+    api.get<ModelMetaDto[]>(`/api/llm/connections/${id}/models`),
 
-  removeCuration: (providerId: string, modelSlug: string) =>
-    api.delete<{ status: string }>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/curation`),
+  /** Returns 202 — the refresh is asynchronous; completion flows through events. */
+  refreshConnectionModels: (id: string) =>
+    api.post<void>(`/api/llm/connections/${id}/models/refresh`),
 
-  listUserConfigs: () =>
-    api.get<UserModelConfigDto[]>("/api/llm/user-model-configs"),
+  /** Adapter sub-router — live test against the remote end. */
+  testConnection: (id: string) =>
+    api.post<TestResultResponse>(`/api/llm/connections/${id}/test`),
 
-  getUserConfig: (providerId: string, modelSlug: string) =>
-    api.get<UserModelConfigDto>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/user-config`),
+  getConnectionDiagnostics: (id: string) =>
+    api.get<{ ps: unknown; tags: unknown }>(`/api/llm/connections/${id}/diagnostics`),
 
-  setUserConfig: (providerId: string, modelSlug: string, data: SetUserModelConfigRequest) =>
-    api.put<UserModelConfigDto>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/user-config`, data),
-
-  deleteUserConfig: (providerId: string, modelSlug: string) =>
-    api.delete<UserModelConfigDto>(`/api/llm/providers/${providerId}/models/${encodeURIComponent(modelSlug)}/user-config`),
-
-  refreshProviders: () =>
-    api.post<{ status: string; total_models: number }>("/api/llm/admin/refresh-providers"),
-
-  getProviderStatuses: () =>
-    api.get<{ statuses: Record<string, boolean> }>("/api/llm/provider-status"),
-
-  adminCredentialStatus: () =>
-    api.get<{ user_id: string; providers: { provider_id: string; is_configured: boolean }[] }[]>(
-      "/api/llm/admin/credential-status",
+  getUserModelConfig: (connectionId: string, modelSlug: string) =>
+    api.get<UserModelConfigDto>(
+      `/api/llm/connections/${connectionId}/models/${encodeURIComponent(modelSlug)}/user-config`,
     ),
+
+  setUserModelConfig: (
+    connectionId: string,
+    modelSlug: string,
+    body: SetUserModelConfigRequest,
+  ) =>
+    api.put<UserModelConfigDto>(
+      `/api/llm/connections/${connectionId}/models/${encodeURIComponent(modelSlug)}/user-config`,
+      body,
+    ),
+
+  deleteUserModelConfig: (connectionId: string, modelSlug: string) =>
+    api.delete<UserModelConfigDto>(
+      `/api/llm/connections/${connectionId}/models/${encodeURIComponent(modelSlug)}/user-config`,
+    ),
+
+  listUserModelConfigs: () =>
+    api.get<UserModelConfigDto[]>("/api/llm/user-model-configs"),
 }

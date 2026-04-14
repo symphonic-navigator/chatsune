@@ -244,23 +244,24 @@ export function ChatView({ persona }: ChatViewProps) {
   // Returns a cancel-aware function so callers can ignore stale results on session switch.
   const applyModelCapabilities = useCallback((uid: string | null | undefined, isCancelled: () => boolean) => {
     if (!uid || !uid.includes(':')) return
-    const providerId = uid.split(':')[0]
+    // unique_id format: "<connection_id>:<model_slug>" (see INSIGHTS.md INS-004).
+    const connectionId = uid.split(':')[0]
     const modelSlug = uid.split(':').slice(1).join(':')
     llmApi
-      .listModels(providerId)
+      .listConnectionModels(connectionId)
       .then((models) => {
         if (isCancelled()) return
         const model = models.find((m) => m.model_id === modelSlug)
         setModelSupportsTools(model?.supports_tool_calls ?? false)
         setModelSupportsReasoning(model?.supports_reasoning ?? false)
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (isCancelled()) return
         console.error('Failed to load model capabilities', err)
         setModelSupportsTools(true)
       })
   }, [])
-  // TODO: capabilities should ideally come from PersonaDto / SessionDto so we can drop the llmApi.listModels call entirely.
+  // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
   useChatStream(effectiveSessionId ?? null)
   useMemoryEvents(persona?.id ?? null)

@@ -1,37 +1,67 @@
-export interface ProviderCredentialDto {
-  provider_id: string
+export type AdapterConfigFieldType = 'string' | 'url' | 'secret' | 'integer'
+
+export interface AdapterConfigFieldHint {
+  name: string
+  type: AdapterConfigFieldType
+  label: string
+  required: boolean
+  min: number | null
+  max: number | null
+  placeholder: string | null
+}
+
+export interface AdapterTemplate {
+  id: string
   display_name: string
-  is_configured: boolean
-  requires_key_for_listing: boolean
-  requires_setup: boolean
-  test_status: "untested" | "valid" | "failed" | null
+  slug_prefix: string
+  config_defaults: Record<string, unknown>
+}
+
+export interface Adapter {
+  adapter_type: string
+  display_name: string
+  view_id: string
+  templates: AdapterTemplate[]
+  config_schema: AdapterConfigFieldHint[]
+  secret_fields: string[]
+}
+
+/**
+ * Secret fields are redacted in the server payload:
+ * `config[secret_field] = { is_set: boolean }`. Plain fields pass through.
+ */
+export type SecretFieldView = { is_set: boolean }
+
+export interface Connection {
+  id: string
+  user_id: string
+  adapter_type: string
+  display_name: string
+  slug: string
+  config: Record<string, unknown>
+  last_test_status: 'untested' | 'valid' | 'failed' | null
   last_test_error: string | null
-  created_at: string | null
+  last_test_at: string | null   // ISO string on the wire
+  created_at: string
+  updated_at: string
 }
 
-export interface SetProviderKeyRequest {
-  api_key: string
+export interface CreateConnectionRequest {
+  adapter_type: string
+  display_name: string
+  slug: string
+  config: Record<string, unknown>
 }
 
-export type ModelRating = "available" | "recommended" | "not_recommended"
-
-export interface ModelCurationDto {
-  overall_rating: ModelRating
-  hidden: boolean
-  admin_description: string | null
-  last_curated_at: string | null
-  last_curated_by: string | null
-}
-
-export interface SetModelCurationRequest {
-  overall_rating: ModelRating
-  hidden: boolean
-  admin_description?: string | null
+export interface UpdateConnectionRequest {
+  display_name?: string
+  slug?: string
+  config?: Record<string, unknown>
 }
 
 export interface ModelMetaDto {
-  provider_id: string
-  provider_display_name: string
+  connection_id: string
+  connection_display_name: string
   model_id: string
   display_name: string
   context_window: number
@@ -41,14 +71,7 @@ export interface ModelMetaDto {
   parameter_count: string | null
   raw_parameter_count: number | null
   quantisation_level: string | null
-  curation: ModelCurationDto | null
   unique_id: string
-}
-
-export interface FaultyProviderDto {
-  provider_id: string
-  display_name: string
-  error_message: string
 }
 
 /** Model enriched with the user's per-model configuration (merged client-side). */
@@ -75,7 +98,7 @@ export interface SetUserModelConfigRequest {
   system_prompt_addition?: string | null
 }
 
-export interface TestKeyResponse {
+export interface TestResultResponse {
   valid: boolean
   error: string | null
 }

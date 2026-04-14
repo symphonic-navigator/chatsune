@@ -290,27 +290,14 @@ export function useChatStream(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId) return
 
-    const getStore = useChatStore.getState
-
-    const handleInferenceLockEvent = (event: BaseEvent) => {
-      const p = event.payload as Record<string, unknown>
-      if (event.type === Topics.INFERENCE_LOCK_WAIT_STARTED) {
-        getStore().setWaitingForLock({
-          providerId: p.provider_id as string,
-          holderSource: p.holder_source as string,
-        })
-      } else if (event.type === Topics.INFERENCE_LOCK_WAIT_ENDED) {
-        getStore().clearWaitingForLock()
-      }
-    }
-
+    // TODO Phase 8: the old inference.lock.* events have been removed.
+    // Re-add an equivalent hook once the new event shape (tied to a
+    // connection_id) lands.
     const handleEvent = (event: BaseEvent) => handleChatEvent(event, sendMessage, sessionId)
 
     const unsub = eventBus.on('chat.*', handleEvent)
-    const unsubLock = eventBus.on('inference.*', handleInferenceLockEvent)
     return () => {
       unsub()
-      unsubLock()
     }
   }, [sessionId])
 }
