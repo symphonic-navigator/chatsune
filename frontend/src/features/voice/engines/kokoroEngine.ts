@@ -14,9 +14,10 @@ class KokoroEngineImpl implements TTSEngine {
 
   private ready = false
 
-  async init(device: 'webgpu' | 'wasm'): Promise<void> {
-    const voices = await voiceWorker.initTTS(device)
-    this.voices = voices as VoicePreset[]
+  async init(): Promise<void> {
+    const { voices, resolved } = await voiceWorker.initTTS()
+    console.log('[voice] tts ready: %s/%s (fromCache=%s)', resolved.device, resolved.dtype, resolved.fromCache)
+    this.voices = voices
     await modelManager.markDownloaded('kokoro-tts')
     this.ready = true
   }

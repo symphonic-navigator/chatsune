@@ -14,8 +14,9 @@ class WhisperEngineImpl implements STTEngine {
 
   private ready = false
 
-  async init(device: 'webgpu' | 'wasm'): Promise<void> {
-    await voiceWorker.initSTT(device)
+  async init(): Promise<void> {
+    const { resolved } = await voiceWorker.initSTT()
+    console.log('[voice] stt ready: %s/%s (fromCache=%s)', resolved.device, resolved.dtype, resolved.fromCache)
     await modelManager.markDownloaded('whisper-tiny')
     this.ready = true
   }
