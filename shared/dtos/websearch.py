@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -28,7 +29,7 @@ class WebSearchCredentialDto(BaseModel):
     is_configured: bool
     last_test_status: Literal["untested", "valid", "failed"] | None = None
     last_test_error: str | None = None
-    last_test_at: str | None = None
+    last_test_at: datetime | None = None
 
 
 class SetWebSearchKeyDto(BaseModel):
