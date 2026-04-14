@@ -326,6 +326,9 @@ async def run_inference(
     connection_display_name = (
         resolved_connection.display_name if resolved_connection is not None else llm_connection_id
     )
+    adapter_type = (
+        resolved_connection.adapter_type if resolved_connection is not None else "unknown"
+    )
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:
         reasoning_enabled = reasoning_override
@@ -623,9 +626,9 @@ async def run_inference(
             context_status=context_status,
             context_fill_percentage=fill_ratio,
             tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
-            provider_name=connection_display_name,
+            connection_display_name=connection_display_name,
             model_name=model_slug,
-            provider_id=llm_connection_id,
+            adapter_type=adapter_type,
             model_slug=model_slug,
         )
         # Persist the latest context-window utilisation on the session so
