@@ -35,6 +35,15 @@ export async function probeCapabilities(
       return cached
     }
 
+    // SwiftShader is Chromium's CPU-based software Vulkan implementation.
+    // It satisfies the WebGPU API but every "GPU" op runs on the CPU, slower
+    // than the multi-threaded WASM path. Treat it as unavailable so the
+    // ladder falls through to wasm.
+    if (adapter.info?.vendor === 'google' && adapter.info?.architecture === 'swiftshader') {
+      cached = { webgpu: false, shaderF16: false, adapterInfo: null }
+      return cached
+    }
+
     cached = {
       webgpu: true,
       shaderF16: adapter.features.has('shader-f16'),

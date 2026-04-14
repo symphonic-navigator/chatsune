@@ -67,6 +67,21 @@ describe('probeCapabilities', () => {
     const second = await probeCapabilities()
     expect(second).toBe(first) // same reference
   })
+
+  it('treats SwiftShader as no-WebGPU (vendor=google + architecture=swiftshader)', async () => {
+    installGpu([], { vendor: 'google', architecture: 'swiftshader' })
+    const caps = await probeCapabilities({ forceFresh: true })
+    expect(caps.webgpu).toBe(false)
+    expect(caps.shaderF16).toBe(false)
+    expect(caps.adapterInfo).toBeNull()
+  })
+
+  it('keeps real WebGPU adapters even if vendor=google but architecture differs', async () => {
+    installGpu(['shader-f16'], { vendor: 'google', architecture: 'angle' })
+    const caps = await probeCapabilities({ forceFresh: true })
+    expect(caps.webgpu).toBe(true)
+    expect(caps.adapterInfo).toEqual({ vendor: 'google', architecture: 'angle' })
+  })
 })
 
 describe('computeFingerprint', () => {
