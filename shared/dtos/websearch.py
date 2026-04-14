@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -17,14 +19,14 @@ class WebSearchProviderDto(BaseModel):
     provider_id: str
     display_name: str
     is_configured: bool
-    last_test_status: str | None = None
+    last_test_status: Literal["untested", "valid", "failed"] | None = None
     last_test_error: str | None = None
 
 
 class WebSearchCredentialDto(BaseModel):
     provider_id: str
     is_configured: bool
-    last_test_status: str | None = None
+    last_test_status: Literal["untested", "valid", "failed"] | None = None
     last_test_error: str | None = None
     last_test_at: str | None = None
 

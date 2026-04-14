@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any, Literal
+
 from pydantic import BaseModel, computed_field, field_validator
 
 
@@ -64,7 +67,7 @@ class AdapterTemplateDto(BaseModel):
     id: str
     display_name: str
     slug_prefix: str
-    config_defaults: dict
+    config_defaults: dict[str, Any]
 
 
 class AdapterDto(BaseModel):
@@ -72,7 +75,7 @@ class AdapterDto(BaseModel):
     display_name: str
     view_id: str
     templates: list[AdapterTemplateDto]
-    config_schema: list[dict]
+    config_schema: list[dict[str, Any]]
     secret_fields: list[str]
 
 
@@ -82,22 +85,22 @@ class ConnectionDto(BaseModel):
     adapter_type: str
     display_name: str
     slug: str
-    config: dict
-    last_test_status: str | None = None
+    config: dict[str, Any]
+    last_test_status: Literal["untested", "valid", "failed"] | None = None
     last_test_error: str | None = None
-    last_test_at: str | None = None
-    created_at: str
-    updated_at: str
+    last_test_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class CreateConnectionDto(BaseModel):
     adapter_type: str
     display_name: str
     slug: str
-    config: dict
+    config: dict[str, Any]
 
 
 class UpdateConnectionDto(BaseModel):
     display_name: str | None = None
     slug: str | None = None
-    config: dict | None = None
+    config: dict[str, Any] | None = None

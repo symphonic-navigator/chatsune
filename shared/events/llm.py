@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -35,7 +36,7 @@ class LlmConnectionTestedEvent(BaseModel):
 class LlmConnectionStatusChangedEvent(BaseModel):
     type: str = "llm.connection.status_changed"
     connection_id: str
-    status: str
+    status: Literal["reachable", "unreachable", "unauthorised", "disconnected"]
     timestamp: datetime
 
 
@@ -46,6 +47,7 @@ class LlmConnectionModelsRefreshedEvent(BaseModel):
 
 
 class LlmUserModelConfigUpdatedEvent(BaseModel):
+    """Emitted when a user updates OR deletes their model config. Delete sends defaults."""
     type: str = "llm.user_model_config.updated"
     model_unique_id: str
     config: UserModelConfigDto
