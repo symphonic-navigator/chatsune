@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { llmApi } from '../../core/api/llm'
+import type { UserModalTab } from '../../app/components/user-modal/UserModal'
+import { eventBus } from '../../core/websocket/eventBus'
+import { Topics } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
 import { useChatStream } from './useChatStream'
@@ -57,6 +60,28 @@ export function ChatView({ persona }: ChatViewProps) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const location = useLocation() as { state?: { pendingArtefactId?: string } | null }
+
+  // Empty-state detection: if the user has no LLM connections yet, render
+  // a CTA instead of the chat UI. We fetch on mount and live-refresh on
+  // connection create/remove events.
+  const [connectionCount, setConnectionCount] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => {
+      llmApi.listConnections()
+        .then((conns) => { if (!cancelled) setConnectionCount(conns.length) })
+        .catch(() => { if (!cancelled) setConnectionCount(null) })
+    }
+    refresh()
+    const unsubs = [
+      eventBus.on(Topics.LLM_CONNECTION_CREATED, refresh),
+      eventBus.on(Topics.LLM_CONNECTION_REMOVED, refresh),
+    ]
+    return () => {
+      cancelled = true
+      unsubs.forEach((u) => u())
+    }
+  }, [])
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
@@ -283,8 +308,9 @@ export function ChatView({ persona }: ChatViewProps) {
   const intConfigs = useIntegrationsStore((s) => s.configs)
   const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.enabled && d.has_tools).length * 2 // get_toys + control per integration
   const totalToolCount = mcpToolCount + integrationToolCount
-  const { openPersonaOverlay } = useOutletContext<{
+  const { openPersonaOverlay, openModal } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
+    openModal?: (tab: UserModalTab) => void
   }>()
 
   useEffect(() => {
@@ -620,6 +646,25 @@ export function ChatView({ persona }: ChatViewProps) {
     onHoldEnd: handleMicRelease,
     onTap: handleToggleContinuous,
   })
+
+  if (connectionCount === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6 text-center">
+        <div className="space-y-3">
+          <p className="text-white/80">
+            Du hast noch keine LLM-Verbindung konfiguriert.
+          </p>
+          <button
+            type="button"
+            onClick={() => openModal?.('llm')}
+            className="inline-flex items-center px-4 py-2 rounded bg-purple/70 text-white"
+          >
+            Jetzt einrichten
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!effectiveSessionId) {
     return (

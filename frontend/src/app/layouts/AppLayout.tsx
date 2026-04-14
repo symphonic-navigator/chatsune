@@ -226,7 +226,7 @@ export default function AppLayout() {
           hasApiKeyProblem={hasApiKeyProblem}
         />
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto bg-surface">
-          <Outlet context={{ openPersonaOverlay }} />
+          <Outlet context={{ openPersonaOverlay, openModal }} />
           {modalTab !== null && (
             <UserModal
               activeTab={modalTab}

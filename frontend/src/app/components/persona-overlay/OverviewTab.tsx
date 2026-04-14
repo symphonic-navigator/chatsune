@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
+import { llmApi } from '../../../core/api/llm'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
@@ -25,6 +26,31 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
   const [cropOpen, setCropOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // "true" while we don't yet know — prevents a premature banner flash.
+  const [modelResolved, setModelResolved] = useState<boolean>(true)
+
+  useEffect(() => {
+    const uid = persona.model_unique_id
+    if (!uid || !uid.includes(':')) {
+      setModelResolved(false)
+      return
+    }
+    let cancelled = false
+    const connectionId = uid.split(':')[0]
+    const modelSlug = uid.split(':').slice(1).join(':')
+    llmApi.listConnectionModels(connectionId)
+      .then((models) => {
+        if (cancelled) return
+        setModelResolved(models.some((m) => m.model_id === modelSlug))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setModelResolved(false)
+      })
+    return () => { cancelled = true }
+  }, [persona.model_unique_id])
+
+  const canStartChat = modelResolved
 
   const createdDate = new Date(persona.created_at).toLocaleDateString('en-GB', {
     day: 'numeric',
@@ -153,18 +179,27 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         </div>
       </div>
 
+      {/* Missing-connection banner */}
+      {!canStartChat && (
+        <div className="w-full max-w-sm p-3 bg-yellow-700/20 border border-yellow-600/40 rounded text-sm text-yellow-200">
+          Diese Persona verweist auf eine Verbindung, die nicht mehr existiert.
+          Bitte ein Modell neu wählen.
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex gap-2 w-full max-w-sm">
         <button
           type="button"
           onClick={onContinue}
-          disabled={!hasLastChat}
+          disabled={!hasLastChat || !canStartChat}
+          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all"
           style={{
-            background: hasLastChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${hasLastChat ? chakra.hex + '40' : 'rgba(255,255,255,0.06)'}`,
-            color: hasLastChat ? `${chakra.hex}cc` : 'rgba(255,255,255,0.2)',
-            cursor: hasLastChat ? 'pointer' : 'not-allowed',
+            background: hasLastChat && canStartChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${hasLastChat && canStartChat ? chakra.hex + '40' : 'rgba(255,255,255,0.06)'}`,
+            color: hasLastChat && canStartChat ? `${chakra.hex}cc` : 'rgba(255,255,255,0.2)',
+            cursor: hasLastChat && canStartChat ? 'pointer' : 'not-allowed',
           }}
         >
           Continue
@@ -172,12 +207,14 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         <button
           type="button"
           onClick={onNewChat}
+          disabled={!canStartChat}
+          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
           style={{
-            background: `${chakra.hex}18`,
-            border: `1px solid ${chakra.hex}40`,
-            color: `${chakra.hex}cc`,
-            cursor: 'pointer',
+            background: canStartChat ? `${chakra.hex}18` : 'rgba(255,255,255,0.03)',
+            border: `1px solid ${canStartChat ? chakra.hex + '40' : 'rgba(255,255,255,0.06)'}`,
+            color: canStartChat ? `${chakra.hex}cc` : 'rgba(255,255,255,0.2)',
+            cursor: canStartChat ? 'pointer' : 'not-allowed',
           }}
         >
           New Chat
@@ -185,12 +222,14 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         <button
           type="button"
           onClick={onNewIncognitoChat}
+          disabled={!canStartChat}
+          title={!canStartChat ? 'Modell nicht verfügbar — bitte ein Modell neu wählen.' : undefined}
           className="flex-1 rounded-lg py-2.5 text-[12px] font-medium transition-all hover:brightness-110"
           style={{
             background: 'rgba(255,255,255,0.04)',
             border: '1px solid rgba(255,255,255,0.08)',
-            color: 'rgba(255,255,255,0.45)',
-            cursor: 'pointer',
+            color: canStartChat ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.2)',
+            cursor: canStartChat ? 'pointer' : 'not-allowed',
           }}
         >
           Incognito

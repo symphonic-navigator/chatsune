@@ -1,46 +1,80 @@
-// TODO Phase 9: reinstate filter/sort/search helpers once the new
-// connections/models pipeline is in place. All helpers are identity /
-// pass-through placeholders for now.
-
-import type { EnrichedModelDto } from "../../../core/types/llm"
+import type { EnrichedModelDto } from '../../../core/types/llm'
 
 export interface ModelFilters {
   search?: string
-  provider?: string
+  favouritesOnly?: boolean
   capTools?: boolean
   capVision?: boolean
   capReason?: boolean
-  favouritesOnly?: boolean
-  hasCustomisation?: boolean
   showHidden?: boolean
 }
 
-export type SortField = "name" | "provider" | "context" | "params" | "rating"
+export type SortField = 'name' | 'context' | 'params'
 
 export interface ModelSortConfig {
   field: SortField
-  direction: "asc" | "desc"
+  direction: 'asc' | 'desc'
 }
 
-export function slugWithoutProvider(uniqueId: string): string {
-  const idx = uniqueId.indexOf(":")
+export function slugWithoutConnection(uniqueId: string): string {
+  const idx = uniqueId.indexOf(':')
   return idx >= 0 ? uniqueId.slice(idx + 1) : uniqueId
 }
 
-export function matchesSearch(_model: EnrichedModelDto, _query: string): boolean {
-  return true
+export function matchesSearch(model: EnrichedModelDto, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const display = (model.user_config?.custom_display_name ?? model.display_name).toLowerCase()
+  return (
+    display.includes(q) ||
+    model.model_id.toLowerCase().includes(q) ||
+    model.unique_id.toLowerCase().includes(q)
+  )
 }
 
-export function filterModels(
+export function applyModelFilters(
   models: EnrichedModelDto[],
-  _filters: ModelFilters,
+  filters: ModelFilters,
 ): EnrichedModelDto[] {
-  return models
+  return models.filter((m) => {
+    if (filters.favouritesOnly && !m.user_config?.is_favourite) return false
+    if (!filters.showHidden && m.user_config?.is_hidden) return false
+    if (filters.capTools && !m.supports_tool_calls) return false
+    if (filters.capVision && !m.supports_vision) return false
+    if (filters.capReason && !m.supports_reasoning) return false
+    if (filters.search && !matchesSearch(m, filters.search)) return false
+    return true
+  })
 }
 
 export function sortModels(
   models: EnrichedModelDto[],
-  _config: ModelSortConfig | null,
+  config: ModelSortConfig | null,
 ): EnrichedModelDto[] {
-  return models
+  if (!config) return models
+  const dir = config.direction === 'asc' ? 1 : -1
+  return [...models].sort((a, b) => {
+    switch (config.field) {
+      case 'name': {
+        const an = a.user_config?.custom_display_name ?? a.display_name
+        const bn = b.user_config?.custom_display_name ?? b.display_name
+        return an.localeCompare(bn) * dir
+      }
+      case 'context': {
+        const ac = a.user_config?.custom_context_window ?? a.context_window
+        const bc = b.user_config?.custom_context_window ?? b.context_window
+        return (ac - bc) * dir
+      }
+      case 'params': {
+        const ap = a.raw_parameter_count ?? 0
+        const bp = b.raw_parameter_count ?? 0
+        return (ap - bp) * dir
+      }
+      default:
+        return 0
+    }
+  })
 }
+
+// Kept for backward compatibility; identical to applyModelFilters.
+export const filterModels = applyModelFilters

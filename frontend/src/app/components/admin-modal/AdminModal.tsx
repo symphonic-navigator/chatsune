@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { UsersTab } from './UsersTab'
-import { ModelsTab } from './ModelsTab'
 import { SystemTab } from './SystemTab'
 import { DebugTab } from './DebugTab'
 import { OllamaTab } from './OllamaTab'
 import { AdminMcpTab } from './AdminMcpTab'
 
-export type AdminModalTab = 'users' | 'models' | 'system' | 'debug' | 'ollama' | 'mcp'
+export type AdminModalTab = 'users' | 'system' | 'debug' | 'ollama' | 'mcp'
 
 interface Tab {
   id: AdminModalTab
@@ -15,7 +14,6 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'users', label: 'Users' },
-  { id: 'models', label: 'Models' },
   { id: 'system', label: 'System' },
   { id: 'debug', label: 'Debug' },
   { id: 'ollama', label: 'Ollama Local' },
@@ -134,7 +132,6 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           className="flex-1 overflow-hidden flex flex-col"
         >
           {activeTab === 'users' && <UsersTab />}
-          {activeTab === 'models' && <ModelsTab />}
           {activeTab === 'system' && <SystemTab />}
           {activeTab === 'debug' && <DebugTab />}
           {activeTab === 'ollama' && <OllamaTab />}
