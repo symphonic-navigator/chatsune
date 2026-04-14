@@ -1,50 +1,50 @@
+"""Abstract base for upstream inference adapters (connections refactor)."""
+
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
+from fastapi import APIRouter
+
 from backend.modules.llm._adapters._events import ProviderStreamEvent
+from backend.modules.llm._adapters._types import (
+    AdapterTemplate,
+    ConfigFieldHint,
+    ResolvedConnection,
+)
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 
 class BaseAdapter(ABC):
-    """Abstract base for all upstream inference provider adapters."""
+    """Stateless adapter — one class per backend-type, one instance per request."""
 
-    requires_key_for_listing: bool = True
+    # Subclasses MUST override
+    adapter_type: str = ""
+    display_name: str = ""
+    view_id: str = ""
+    secret_fields: frozenset[str] = frozenset()
 
-    # If True, this provider needs user-facing setup (API key configuration).
-    # Providers that work transparently (e.g. local daemons) set this to False
-    # and are hidden from the API-Keys UI.
-    requires_setup: bool = True
+    @classmethod
+    def templates(cls) -> list[AdapterTemplate]:
+        return []
 
-    # If True, the provider has no per-user credential and is shared across
-    # all users (e.g. a self-hosted local daemon). When set, neither listing
-    # nor inference performs a credential lookup.
-    is_global: bool = False
+    @classmethod
+    def config_schema(cls) -> list[ConfigFieldHint]:
+        return []
 
-    # Concurrency: adapters opt into serialisation by setting this.
-    # Default NONE — adapter handles as many parallel inferences as the
-    # caller throws at it (cloud providers, for example).
-    from backend.modules.llm._concurrency import ConcurrencyPolicy
-    concurrency_policy: ConcurrencyPolicy = ConcurrencyPolicy.NONE
-
-    def __init__(self, base_url: str) -> None:
-        self.base_url = base_url.rstrip("/")
+    @classmethod
+    def router(cls) -> APIRouter | None:
+        """Optional adapter-specific sub-router (test, diagnostics, pair, ...)."""
+        return None
 
     @abstractmethod
-    async def validate_key(self, api_key: str) -> bool:
-        """Return True if the key is valid for this provider."""
-        ...
-
-    @abstractmethod
-    async def fetch_models(self) -> list[ModelMetaDto]:
-        """Fetch all available models with their capabilities."""
+    async def fetch_models(
+        self, connection: ResolvedConnection,
+    ) -> list[ModelMetaDto]:
         ...
 
     @abstractmethod
     def stream_completion(
-        self,
-        api_key: str,
-        request: CompletionRequest,
+        self, connection: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        """Stream inference events from the upstream provider."""
         ...
