@@ -288,10 +288,22 @@ persona = await db["personas"].find_one({"_id": persona_id})
 
 ### LLM Inference
 
-- **Ollama Cloud** as first upstream provider — cloud inference, per-user API key (BYOK)
-- Abstracted behind `backend/modules/llm/` — never call any upstream provider directly from other modules
-- Adapters registered at startup via `ADAPTER_REGISTRY` in `backend/modules/llm/_registry.py`
-- Model unique ID format: `<provider_id>:<model_slug>` (e.g. `ollama_cloud:llama3.2`) — see INSIGHTS.md INS-004
+- Each user manages their own **Connections** — named instances of an adapter
+  type, carrying URL, API key, `max_parallel`, and any other adapter-specific
+  config. BYOK remains a first-class principle: each Connection carries its
+  own encrypted credential; no admin-managed shared keys.
+- Adapters live in `backend/modules/llm/_adapters/` and are registered in
+  `ADAPTER_REGISTRY` in `backend/modules/llm/_registry.py`. In Phase 1 only
+  `ollama_http` is implemented; it bundles Ollama Local, Ollama Cloud, and
+  custom Ollama-compatible backends via adapter Templates.
+- Adapters may expose an adapter-specific FastAPI sub-router, mounted under
+  `/api/llm/connections/{id}/adapter/...`, for test / diagnostics / pairing
+  endpoints. Ownership and resolution are handled by the LLM module's generic
+  resolver dependency.
+- Model unique ID format: `<connection_id>:<model_slug>` — see INSIGHTS.md
+  INS-004 / INS-016.
+- Abstracted behind `backend/modules/llm/` — never call any upstream provider
+  directly from other modules.
 
 ---
 
@@ -422,3 +434,9 @@ These are lessons from Prototype 2:
 - **Never** poll for state — if you think you need polling, you need an event instead
 - **Never** expand scope mid-session — finish the current feature, commit, then discuss next
 - **Never** bypass module boundaries "just this once" — it is always permanent
+- **Never** reach into another module's adapter sub-router. The sub-router is
+  mounted under `/api/llm/connections/{id}/adapter/` and resolution/auth is
+  handled by the LLM module's generic resolver dependency. If your code needs
+  something the LLM module doesn't currently expose, add it to the LLM
+  module's public API — do not import adapter internals from outside
+  `backend/modules/llm/`.

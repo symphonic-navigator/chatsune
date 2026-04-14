@@ -92,23 +92,38 @@ lives in its own file (e.g. `_ollama_cloud.py`).
 
 ## INS-004 — Model Unique ID Format
 
-**Decision:** Models are identified by a compound string: `<provider_id>:<model_slug>`
+**Decision (UPDATED 2026-04-14, Connections Refactor):** Models are identified
+by `model_unique_id = "<connection_id>:<model_slug>"`. The `connection_id` is
+the UUID of a user-owned Connection (see INS-016). The backend validates the
+Connection exists and is owned by the calling user; model slug validation is
+left to the adapter.
 
-Examples: `ollama_cloud:llama3.2`, `ollama_cloud:qwen2.5-coder:32b`
+Examples: `7a1b2c3d-4e5f-6789-abcd-ef0123456789:llama3.2`,
+`7a1b2c3d-4e5f-6789-abcd-ef0123456789:qwen2.5-coder:32b`
 
-**Why:**
-The provider prefix makes it unambiguous which adapter handles a given model,
-without requiring a separate lookup. Parsing is trivial: split on the first `:`.
-The remainder is passed as-is to the adapter — adapters own their slug format.
+**Parsing:** split on the first `:`. Left segment = Connection UUID (resolved
+to a `ResolvedConnection` via the LLM module's generic resolver dependency).
+Right segment = model slug, passed as-is to the Connection's adapter.
 
-**Validation:**
-When a Persona is created or updated with a `model_unique_id`, the backend
-validates that the provider segment matches a registered adapter. It does not
-validate that the specific model slug exists (that would require an upstream call).
+**Consequence — DTO field rename:** `ModelMetaDto` field `provider_id` is now
+`connection_id`, and `provider_display_name` is now `connection_display_name`.
+Callers that previously matched on adapter/provider identity must now resolve
+via the Connection instead.
+
+**Validation:** When a Persona is created or updated with a `model_unique_id`,
+the backend verifies the Connection exists, belongs to the calling user, and is
+currently enabled. Specific model-slug existence is not validated here (that
+would require an upstream call).
 
 ---
 
 ## INS-005: Two-Layer Model Data (Ephemeral + Persistent)
+
+> **SUPERSEDED 2026-04-14 (Connections Refactor).** Model metadata is now two
+> layers: provider metadata cached in Redis **per Connection** (30-min TTL)
+> plus user configuration in MongoDB (`llm_user_model_configs`). Admin
+> curation is removed; the `llm_model_curations` collection no longer exists.
+> See INS-016 for the Adapter vs. Connection distinction that replaced it.
 
 **Decision:** Provider model metadata (Redis, 30min TTL) is stored separately from admin curation (MongoDB, persistent). They are merged at read time.
 
@@ -119,6 +134,12 @@ validate that the specific model slug exists (that would require an upstream cal
 ---
 
 ## INS-006 — Three-Layer Model Data (Extension of INS-005)
+
+> **SUPERSEDED 2026-04-14 (Connections Refactor).** Model data is now two
+> layers: provider metadata cached in Redis **per Connection** (30-min TTL)
+> plus user configuration in MongoDB (`llm_user_model_configs`). The admin
+> curation layer (and its `llm_model_curations` collection) has been removed
+> — curation is no longer a platform-wide concern. See INS-016.
 
 **Decision:** Model data is now served from three layers, merged at read time:
 
@@ -208,6 +229,15 @@ reviewing whether demand still exists.
 ---
 
 ## INS-009 — Web Search Adapter Registry with KEY_SOURCES
+
+> **SUPERSEDED 2026-04-14 (Connections Refactor).** Web search now owns its
+> own credentials in `websearch_user_credentials` — the `KEY_SOURCES`
+> key-sharing mechanism and the cross-module `llm.get_api_key()` call have
+> been removed. The search provider id was renamed from `ollama_cloud` to
+> `ollama_cloud_search` to avoid a namespace collision with the former LLM
+> provider id (LLM identifiers are now Connection UUIDs — see INS-016). The
+> historical rationale below is preserved for context; do not reintroduce
+> the cross-module key borrowing.
 
 **Decision:** Web search is implemented as a separate module (`backend/modules/websearch/`)
 with its own adapter registry, mirroring the LLM adapter pattern (INS-003). A `KEY_SOURCES`
@@ -488,3 +518,88 @@ signals (`visibilitychange`, `focus`) trigger the check.
 If Chatsune later adds background-sync-style features (deferred message
 queueing while offline), this logic needs to coordinate with whatever state
 the queue holds before forcing a fresh connection.
+
+---
+
+## INS-016 — Adapter vs. Connection (Connections Refactor, 2026-04-14)
+
+**Decision:** Separate "how to talk to a backend" (Adapter) from "which
+instance of a backend a user has configured" (Connection).
+
+- **Adapter** — code. One class per backend type, living in
+  `backend/modules/llm/_adapters/`. Declares:
+  - `adapter_type: str` (e.g. `"ollama_http"`) — registry key
+  - `display_name: str`
+  - `view_id: str` — frontend key into `AdapterViewRegistry`
+  - `secret_fields: set[str]` — which config keys are encrypted at rest
+  - `templates() -> list[ConnectionTemplate]` — pre-filled wizard options
+    (e.g. Ollama Local, Ollama Cloud, Custom Ollama-compatible)
+  - optional `router() -> APIRouter` — adapter-specific FastAPI sub-router
+
+- **Connection** — data. User-owned MongoDB document carrying the
+  adapter-specific config (URL, API key, `max_parallel`, etc.).
+
+Adapters are stateless; a `ResolvedConnection` is constructed per request
+and handed to the adapter. Adapter-specific HTTP routes mount under
+`/api/llm/connections/{id}/adapter/...` — the LLM module's generic
+resolver dependency validates ownership and injects the
+`ResolvedConnection` before delegating to the adapter's sub-router.
+
+**Frontend:** `AdapterViewRegistry` is keyed by `view_id` and resolves to
+a bespoke React component per adapter, so each backend type can render
+its own wizard, settings panel, and diagnostics without a generic
+config-form engine.
+
+---
+
+## INS-017 — Per-Connection Concurrency
+
+**Decision:** Inference concurrency is bounded per Connection by an
+`asyncio.Semaphore(max_parallel)` keyed by `connection_id`, held in a
+process-local `ConnectionSemaphoreRegistry` inside
+`backend/modules/llm/`. The legacy `ConcurrencyPolicy` enum is removed —
+`max_parallel` is a plain integer on the Connection document.
+
+**Lock granularity — per id, not per URL:** If two Connections point at
+the same Ollama URL, they get independent semaphores. The wizard warns
+on URL collision so the operator knows both budgets will be charged to
+the same backend, but it does not block creation (an operator may
+deliberately run two Connections against the same URL with different
+credentials).
+
+**Rebuild on change:** When a Connection's `max_parallel` is edited, the
+semaphore for that `connection_id` is re-created. Inferences already
+holding a slot continue under the old budget — they finish naturally. New
+acquires use the new semaphore immediately.
+
+**Eviction:** On Connection delete, the semaphore entry is removed from
+the registry. If inferences are still in flight they complete normally;
+the registry slot is just garbage.
+
+---
+
+## INS-018 — Hard-Cut Migration Policy for Prototype Refactors
+
+**Decision:** Pre-production refactors that change data shape wholesale
+drop the affected collections on startup, gated by a marker document in
+the `_migrations` collection. No data-preservation code, no online
+migration, no dual-read. The operator is expected to re-configure
+Connections and re-wire personas out-of-band.
+
+**Pattern:** each such refactor ships a one-shot cleanup module at
+`backend/modules/<owning_module>/_migration_<name>.py` exposing
+`async def run_if_needed(db, redis)`. The function:
+1. Checks `_migrations` for the marker (e.g.
+   `connections_refactor_v1`); exits immediately if present.
+2. Drops the obsolete collections / Redis keys.
+3. Inserts the marker with a timestamp.
+
+`main.py` calls each registered migration once during startup, after DB
+and Redis are connected but before any request handlers bind. The
+function must be idempotent after the first successful run.
+
+**Why hard-cut:** Prototype 3 has no production users. The cost of
+writing, testing, and maintaining online migration code for throwaway
+schemas exceeds the cost of re-configuration. This policy is explicitly
+revoked at GA; once real users exist, every schema change needs a proper
+migration.
