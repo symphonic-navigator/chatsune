@@ -43,6 +43,8 @@ class LlmConnectionStatusChangedEvent(BaseModel):
 class LlmConnectionModelsRefreshedEvent(BaseModel):
     type: str = "llm.connection.models_refreshed"
     connection_id: str
+    success: bool = True
+    error: str | None = None
     timestamp: datetime
 
 

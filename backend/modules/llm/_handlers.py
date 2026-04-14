@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,6 +40,8 @@ from shared.events.llm import (
     LlmUserModelConfigUpdatedEvent,
 )
 from shared.topics import Topics
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/llm")
 
@@ -226,15 +229,25 @@ async def refresh_models(
 ):
     adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
     redis = get_redis()
-    await refresh_connection_models(c, adapter_cls, redis)
+    error_msg: str | None = None
+    try:
+        await refresh_connection_models(c, adapter_cls, redis)
+    except Exception as exc:
+        error_msg = str(exc)
+        _log.warning("refresh failed for connection=%s: %s", c.id, exc)
+
     await event_bus.publish(
         Topics.LLM_CONNECTION_MODELS_REFRESHED,
         LlmConnectionModelsRefreshedEvent(
             connection_id=c.id,
+            success=error_msg is None,
+            error=error_msg,
             timestamp=datetime.now(timezone.utc),
         ),
         target_user_ids=[c.user_id],
     )
+    if error_msg is not None:
+        raise HTTPException(status_code=502, detail=error_msg)
     return {"status": "ok"}
 
 
@@ -311,12 +324,16 @@ async def delete_user_model_config(
 # ----- Adapter-specific sub-routers (Task 13) -----
 
 
-from backend.modules.llm._registry import ADAPTER_REGISTRY as _AR
-
-
 def _mount_adapter_routers() -> None:
-    for adapter_type, cls in _AR.items():
-        sub = cls.router()
+    for adapter_type, cls in ADAPTER_REGISTRY.items():
+        try:
+            sub = cls.router()
+        except Exception as exc:
+            _log.warning(
+                "adapter=%s router() raised during mount: %s — skipping",
+                adapter_type, exc,
+            )
+            continue
         if sub is None:
             continue
         router.include_router(
