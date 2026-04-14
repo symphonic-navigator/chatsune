@@ -1,11 +1,16 @@
 """Core runner for the LLM test harness.
 
-Builds CompletionRequests and calls the OllamaCloudAdapter directly —
+Builds CompletionRequests and calls the OllamaHttpAdapter directly —
 no database, no authentication layer, no event bus.
+
+The adapter now expects a ResolvedConnection rather than a bare API key,
+so the harness synthesises an in-memory ResolvedConnection from the
+local API-key file and the chosen base URL.
 """
 
 import json
 from collections.abc import AsyncIterator, Callable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.modules.llm import (
@@ -17,7 +22,8 @@ from backend.modules.llm import (
 )
 # Adapter import is intentionally direct: harness is a standalone tool that
 # targets a specific provider implementation, not the registry-based public API.
-from backend.modules.llm._adapters._ollama_cloud import OllamaCloudAdapter
+from backend.modules.llm._adapters._ollama_http import OllamaHttpAdapter
+from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -33,6 +39,28 @@ class HarnessRunner:
     def __init__(self, api_key: str, base_url: str = "https://ollama.com") -> None:
         self._api_key = api_key
         self._base_url = base_url
+
+    def _resolved_connection(self) -> ResolvedConnection:
+        """Build a synthetic ResolvedConnection for the harness.
+
+        The harness has no real Connection document — it fabricates one in
+        memory so the adapter can be invoked without touching the database.
+        """
+        now = datetime.now(timezone.utc)
+        return ResolvedConnection(
+            id="harness",
+            user_id="harness",
+            adapter_type="ollama_http",
+            display_name="Ollama (harness)",
+            slug="harness",
+            config={
+                "url": self._base_url,
+                "api_key": self._api_key,
+                "max_parallel": 3,
+            },
+            created_at=now,
+            updated_at=now,
+        )
 
     def build_messages(
         self,
@@ -94,8 +122,9 @@ class HarnessRunner:
         request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
         """Stream completion events from the adapter without any processing."""
-        adapter = OllamaCloudAdapter(base_url=self._base_url)
-        async for event in adapter.stream_completion(self._api_key, request):
+        adapter = OllamaHttpAdapter()
+        resolved = self._resolved_connection()
+        async for event in adapter.stream_completion(resolved, request):
             yield event
 
     async def run_with_tools(
@@ -113,14 +142,15 @@ class HarnessRunner:
 
         All events from every iteration are yielded.
         """
-        adapter = OllamaCloudAdapter(base_url=self._base_url)
+        adapter = OllamaHttpAdapter()
+        resolved = self._resolved_connection()
         current_request = request
 
         for _ in range(max_iterations):
             tool_calls: list[ToolCallEvent] = []
             content_parts: list[str] = []
 
-            async for event in adapter.stream_completion(self._api_key, current_request):
+            async for event in adapter.stream_completion(resolved, current_request):
                 yield event
 
                 match event:
@@ -177,7 +207,8 @@ def load_api_key(path: str = ".llm-test-key") -> str:
     if not key_path.exists():
         msg = (
             f"API key file not found at '{key_path.resolve()}'. "
-            f"Create '{path}' containing your Ollama Cloud API key."
+            f"Create '{path}' containing your Ollama-compatible API key "
+            f"(leave empty for a keyless local instance)."
         )
         raise FileNotFoundError(msg)
     return key_path.read_text().strip()
