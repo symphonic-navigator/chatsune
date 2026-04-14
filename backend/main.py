@@ -57,6 +57,9 @@ from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
 from backend.jobs import consumer_loop, jobs_http_router
+from backend.modules.llm._migration_connections_refactor import (
+    run_if_needed as run_connections_refactor_cleanup,
+)
 
 
 @asynccontextmanager
@@ -64,6 +67,10 @@ async def lifespan(app: FastAPI):
     await connect_db()
     db = get_db()
     redis = get_redis()
+    # Hard-cut migration: must run before any module init so that index
+    # creation and module bootstrapping see a consistent post-refactor state.
+    # Intentionally not wrapped in try/except — if this fails, startup fails.
+    await run_connections_refactor_cleanup(db, redis)
     await user_init_indexes(db)
     await llm_init_indexes(db)
     await websearch_init_indexes(db)
