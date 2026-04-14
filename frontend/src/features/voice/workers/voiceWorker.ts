@@ -11,7 +11,7 @@ import {
   env,
   type AutomaticSpeechRecognitionPipeline,
 } from '@huggingface/transformers'
-import { KokoroTTS } from 'kokoro-js'
+import { KokoroTTS, env as kokoroEnv } from 'kokoro-js'
 import {
   WHISPER_LADDER,
   KOKORO_LADDER,
@@ -52,15 +52,26 @@ function configureWasmThreads(): void {
   // Leave one core for the main thread + UI; clamp at 8 because diminishing
   // returns past that for transformer inference.
   const desired = Math.min(8, Math.max(1, cores - 1))
-  try {
-    const ortEnv = env as unknown as { backends?: { onnx?: { wasm?: { numThreads?: number } } } }
-    ortEnv.backends ??= {}
-    ortEnv.backends.onnx ??= {}
-    ortEnv.backends.onnx.wasm ??= {}
-    ortEnv.backends.onnx.wasm.numThreads = desired
-    log('wasm threading: numThreads set to %d', desired)
-  } catch (err) {
-    log('wasm threading: failed to set numThreads:', err)
+
+  // kokoro-js bundles its own copy of @huggingface/transformers (3.8.1
+  // at the time of writing) which carries its own ORT env instance.
+  // Setting numThreads only on the app's env reaches Whisper but leaves
+  // Kokoro's ORT on default single-threaded. Configure both.
+  type OrtEnvShape = { backends?: { onnx?: { wasm?: { numThreads?: number } } } }
+  const targets: Array<{ name: string; env: OrtEnvShape }> = [
+    { name: 'transformers (app)', env: env as unknown as OrtEnvShape },
+    { name: 'transformers (kokoro)', env: kokoroEnv as unknown as OrtEnvShape },
+  ]
+  for (const target of targets) {
+    try {
+      target.env.backends ??= {}
+      target.env.backends.onnx ??= {}
+      target.env.backends.onnx.wasm ??= {}
+      target.env.backends.onnx.wasm.numThreads = desired
+      log('wasm threading: numThreads=%d set on %s', desired, target.name)
+    } catch (err) {
+      log('wasm threading: failed to set numThreads on %s:', target.name, err)
+    }
   }
 }
 
