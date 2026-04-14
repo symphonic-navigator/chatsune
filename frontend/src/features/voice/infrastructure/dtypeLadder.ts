@@ -17,12 +17,13 @@ export const WHISPER_LADDER: DtypeEntry[] = [
   { device: 'wasm',   dtype: 'fp32' },
 ]
 
-// Kokoro: synthesis tolerates quantisation well, so prefer the smallest
-// GPU-native option first.
+// Kokoro: try the small fp16 quants first, then fp32 directly. q4 is
+// excluded on WebGPU because browser WebGPU dequantisation produces
+// audibly distorted noise for Kokoro's specific output layer (observed
+// on AMD RDNA-3 in Chromium 2026-04). Whisper has no such issue.
 export const KOKORO_LADDER: DtypeEntry[] = [
   { device: 'webgpu', dtype: 'q4f16', requires: 'shader-f16' },
   { device: 'webgpu', dtype: 'fp16',  requires: 'shader-f16' },
-  { device: 'webgpu', dtype: 'q4' },
   { device: 'webgpu', dtype: 'fp32' },
   { device: 'wasm',   dtype: 'q8' },
   { device: 'wasm',   dtype: 'fp32' },

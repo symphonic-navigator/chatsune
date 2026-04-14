@@ -43,4 +43,8 @@ describe('filterLadder', () => {
     const q4f16 = KOKORO_LADDER.findIndex((e) => e.device === 'webgpu' && e.dtype === 'q4f16')
     expect(q4f16).toBeLessThan(fp16)
   })
+
+  it('kokoro ladder excludes webgpu/q4 (browser dequant produces noise)', () => {
+    expect(KOKORO_LADDER.some((e) => e.device === 'webgpu' && e.dtype === 'q4')).toBe(false)
+  })
 })
