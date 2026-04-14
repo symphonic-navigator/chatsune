@@ -211,7 +211,35 @@ frontend/src/features/voice/hooks/useVoiceCapabilities.ts
   - remove device field from return value (keep supported flags)
 ```
 
-### 7. Error Surface
+### 7. Browser Logging
+
+Every ladder decision is visible in the browser console so the developer
+can verify which path the worker actually took.
+
+Worker-side (`[VoiceWorker]` prefix):
+
+```
+[VoiceWorker] whisper: capabilities {webgpu: true, shaderF16: false, ...}
+[VoiceWorker] whisper: fingerprint=wasm/v1
+[VoiceWorker] whisper: cache MISS, walking ladder
+[VoiceWorker] whisper: try webgpu/fp16 — SKIPPED (requires shader-f16)
+[VoiceWorker] whisper: try webgpu/fp32 — FAILED (GPUValidationError: ...)
+[VoiceWorker] whisper: try webgpu/q4 — OK, warmup 820 ms
+[VoiceWorker] whisper: LOADED device=webgpu dtype=q4 (fromCache=false)
+```
+
+On cache hits the ladder walk is compressed to a single line:
+
+```
+[VoiceWorker] kokoro: cache HIT → webgpu/q4f16, loading...
+[VoiceWorker] kokoro: LOADED device=webgpu dtype=q4f16 (fromCache=true)
+```
+
+Client-side receives the resolved tuple in `init-*-done` and logs it once
+at INFO level with the same shape (`[voice] stt ready: webgpu/q4`), so
+the decision is visible without opening the worker console.
+
+### 8. Error Surface
 
 If every ladder entry fails (including both WASM fallbacks), the worker
 emits an ErrorEvent on its init channel with:
@@ -221,7 +249,7 @@ emits an ErrorEvent on its init channel with:
 - `detail`: list of attempted `(device, dtype, reason)` triples for the
   dev console / logs
 
-### 8. Testing
+### 9. Testing
 
 Vitest unit coverage:
 
