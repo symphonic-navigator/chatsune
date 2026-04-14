@@ -24,7 +24,7 @@ export const llmApi = {
     api.get<Connection>(`/api/llm/connections/${id}`),
 
   updateConnection: (id: string, body: UpdateConnectionRequest) =>
-    api.put<Connection>(`/api/llm/connections/${id}`, body),
+    api.patch<Connection>(`/api/llm/connections/${id}`, body),
 
   deleteConnection: (id: string) =>
     api.delete<void>(`/api/llm/connections/${id}`),

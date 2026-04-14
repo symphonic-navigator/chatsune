@@ -74,9 +74,6 @@ interface ChatState {
   setContextStatus: (status: ContextStatus) => void
   setContextFillPercentage: (percentage: number) => void
   setReasoningOverride: (override: boolean | null) => void
-  waitingForLock: { providerId: string; holderSource: string } | null
-  setWaitingForLock: (info: { providerId: string; holderSource: string }) => void
-  clearWaitingForLock: () => void
   activeSessionId: string | null
   reset: (sessionId?: string) => void
 }
@@ -101,7 +98,6 @@ const INITIAL_STATE = {
   sessionTitle: null as string | null,
   disabledToolGroups: [] as string[],
   reasoningOverride: null as boolean | null,
-  waitingForLock: null as { providerId: string; holderSource: string } | null,
   activeSessionId: null as string | null,
 }
 
@@ -193,7 +189,5 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setContextStatus: (status) => set({ contextStatus: status }),
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
-  setWaitingForLock: (info) => set({ waitingForLock: info }),
-  clearWaitingForLock: () => set({ waitingForLock: null }),
   reset: (sessionId) => set({ ...INITIAL_STATE, activeSessionId: sessionId ?? null }),
 }))

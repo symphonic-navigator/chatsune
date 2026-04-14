@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
@@ -13,6 +13,10 @@ import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
+import { LlmProvidersTab } from './LlmProvidersTab'
+import { llmApi } from '../../../core/api/llm'
+import { eventBus } from '../../../core/websocket/eventBus'
+import { Topics } from '../../../core/types/events'
 
 export type UserModalTab =
   | 'about-me'
@@ -21,6 +25,7 @@ export type UserModalTab =
   | 'history'
   | 'knowledge'
   | 'bookmarks'
+  | 'llm'
   | 'uploads'
   | 'artefacts'
   | 'models'
@@ -42,6 +47,7 @@ const TABS: Tab[] = [
   { id: 'history', label: 'History' },
   { id: 'knowledge', label: 'Knowledge' },
   { id: 'bookmarks', label: 'Bookmarks' },
+  { id: 'llm', label: 'LLM Providers' },
   { id: 'uploads', label: 'Uploads' },
   { id: 'artefacts', label: 'Artefacts' },
   { id: 'models', label: 'Models' },
@@ -70,6 +76,30 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 
 export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApiKeyProblem, onProvidersChanged, onOpenPersonaOverlay }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
+
+  // LLM-connection badge: an exclamation flag appears on the LLM Providers
+  // tab when the user has zero connections configured. We fetch once on
+  // mount and re-fetch whenever the connection list mutates server-side.
+  const [hasNoLlmConnection, setHasNoLlmConnection] = useState(false)
+
+  const refreshConnectionCount = useCallback(async () => {
+    try {
+      const conns = await llmApi.listConnections()
+      setHasNoLlmConnection(conns.length === 0)
+    } catch {
+      // Best-effort — silently ignore. The badge defaults to "no problem".
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshConnectionCount()
+    const topics = [
+      Topics.LLM_CONNECTION_CREATED,
+      Topics.LLM_CONNECTION_REMOVED,
+    ] as const
+    const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshConnectionCount() }))
+    return () => unsubs.forEach((u) => u())
+  }, [refreshConnectionCount])
 
   // Focus trap + Escape key
   useEffect(() => {
@@ -169,6 +199,9 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
                 {tab.id === 'api-keys' && hasApiKeyProblem && (
                   <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected" aria-label="API key issue detected">!</span>
                 )}
+                {tab.id === 'llm' && hasNoLlmConnection && (
+                  <span className="ml-1.5 text-[10px] text-red-400" title="Keine LLM-Verbindung konfiguriert" aria-label="Keine LLM-Verbindung konfiguriert">!</span>
+                )}
               </button>
             )
           })}
@@ -186,6 +219,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, hasApi
           {activeTab === 'history' && <HistoryTab onClose={onClose} />}
           {activeTab === 'knowledge' && <KnowledgeTab />}
           {activeTab === 'bookmarks' && <BookmarksTab onClose={onClose} />}
+          {activeTab === 'llm' && <LlmProvidersTab />}
           {activeTab === 'uploads' && <UploadsTab />}
           {activeTab === 'artefacts' && <ArtefactsTab onClose={onClose} />}
           {activeTab === 'models' && <ModelsTab />}

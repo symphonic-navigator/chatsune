@@ -97,7 +97,6 @@ export function handleChatEvent(
         if (remainder) getStore().appendStreamingContent(remainder)
         activeTagBuffer = null
       }
-      getStore().clearWaitingForLock()
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
       const rawStatus = (p.status as string | undefined) ?? 'completed'
@@ -169,7 +168,6 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_STREAM_ERROR: {
-      getStore().clearWaitingForLock()
       const errorCode = p.error_code as string
       // Session-level errors arrive outside a streaming context —
       // they carry their own correlation id that the frontend never

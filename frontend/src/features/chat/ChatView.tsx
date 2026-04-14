@@ -28,7 +28,6 @@ import { useMcpStore } from '../mcp/mcpStore'
 import { useIntegrationsStore } from '../integrations/store'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
 import { useMemoryStore } from '../../core/store/memoryStore'
-import { InferenceWaitBanner } from './InferenceWaitBanner'
 import { ArtefactRail } from '../artefact/ArtefactRail'
 import { ArtefactSidebar } from '../artefact/ArtefactSidebar'
 import { ArtefactOverlay } from '../artefact/ArtefactOverlay'
@@ -178,7 +177,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
   const reasoningOverride = useChatStore((s) => s.reasoningOverride)
-  const waitingForLock = useChatStore((s) => s.waitingForLock)
 
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
 
@@ -902,10 +900,6 @@ export function ChatView({ persona }: ChatViewProps) {
               onSelect={(file) => attachments.addExistingFile(file)}
               onClose={() => setShowUploadBrowser(false)}
             />
-          )}
-
-          {waitingForLock && (
-            <InferenceWaitBanner holderSource={waitingForLock.holderSource} />
           )}
 
           {transcription && <TranscriptionOverlay text={transcription} mode={voiceInputMode} />}
