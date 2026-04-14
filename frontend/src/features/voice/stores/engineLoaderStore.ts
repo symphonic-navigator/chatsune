@@ -49,13 +49,11 @@ export const useEngineLoader = create<EngineLoaderState>((set, get) => ({
     }
 
     async function run() {
-      const device = await modelManager.detectDevice()
-      console.log(`[Voice Setup] Using device: ${device}`)
 
       // Step 1: Whisper
       updateStep('whisper-tiny', { status: 'loading' })
       try {
-        await whisperEngine.init(device)
+        await whisperEngine.init()
         sttRegistry.register(whisperEngine)
         await sttRegistry.setActive(whisperEngine.id)
         updateStep('whisper-tiny', { status: 'done' })
@@ -83,7 +81,7 @@ export const useEngineLoader = create<EngineLoaderState>((set, get) => ({
       // Step 3: Kokoro
       updateStep('kokoro-tts', { status: 'loading' })
       try {
-        await kokoroEngine.init(device)
+        await kokoroEngine.init()
         ttsRegistry.register(kokoroEngine)
         await ttsRegistry.setActive(kokoroEngine.id)
         updateStep('kokoro-tts', { status: 'done' })
