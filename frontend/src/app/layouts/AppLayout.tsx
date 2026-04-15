@@ -8,6 +8,7 @@ import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useKnowledgeEvents } from "../../features/knowledge/useKnowledgeEvents"
 import { useJobEvents } from "../../features/jobs/useJobEvents"
+import { usePullProgressEvents } from "../../features/ollama/usePullProgressEvents"
 import { useMcpEvents } from "../../features/mcp/useMcpEvents"
 import { chatApi } from "../../core/api/chat"
 import { useAuthStore } from "../../core/store/authStore"
@@ -30,6 +31,7 @@ export default function AppLayout() {
   useWebSocket()
   useKnowledgeEvents()
   useJobEvents()
+  usePullProgressEvents()
   useMcpEvents()
   const navigate = useNavigate()
   const location = useLocation()
