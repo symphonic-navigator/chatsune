@@ -4,13 +4,16 @@ from datetime import datetime, timezone
 
 _log = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.dependencies import get_optional_user, require_active_session
 from backend.modules.persona._avatar_store import AvatarStore
+from backend.modules.persona._cascade import cascade_delete_persona
+from backend.modules.persona._export import export_persona_archive
+from backend.modules.persona._import import import_persona_archive
 from backend.modules.persona._monogram import generate_monogram
 from backend.modules.persona._repository import PersonaRepository
 from backend.ws.event_bus import EventBus, get_event_bus
@@ -308,6 +311,60 @@ async def update_persona_mcp(
     return repo.to_dto(updated)
 
 
+# --- Persona export / import ---------------------------------------------
+#
+# Archive format is documented in ``_export.py``. The routes live here so the
+# module's full HTTP surface is in one place. Orchestration logic is in the
+# `_export` / `_import` / `_cascade` helper modules.
+
+# 200 MB hard cap on uploads — mirrors the uncompressed cap inside _import.
+_MAX_IMPORT_ARCHIVE_BYTES = 200 * 1024 * 1024
+
+
+@router.get("/{persona_id}/export")
+async def export_persona(
+    persona_id: str,
+    include_content: bool = Query(
+        default=False,
+        description=(
+            "When true include journal/memory, artefacts and storage files "
+            "in the archive. When false only personality + chat history ship."
+        ),
+    ),
+    user: dict = Depends(require_active_session),
+):
+    """Stream a ``.chatsune-persona.tar.gz`` download for the given persona."""
+    archive_bytes, filename = await export_persona_archive(
+        user_id=user["sub"],
+        persona_id=persona_id,
+        include_content=include_content,
+    )
+    return StreamingResponse(
+        iter([archive_bytes]),
+        media_type="application/gzip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(archive_bytes)),
+        },
+    )
+
+
+@router.post("/import", status_code=201)
+async def import_persona(
+    file: UploadFile,
+    user: dict = Depends(require_active_session),
+) -> PersonaDto:
+    """Accept a ``.chatsune-persona.tar.gz`` upload and create a new persona."""
+    data = await file.read()
+    if len(data) > _MAX_IMPORT_ARCHIVE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Archive exceeds 200 MB upload limit",
+        )
+
+    return await import_persona_archive(user_id=user["sub"], archive_bytes=data)
+
+
 @router.delete("/{persona_id}")
 async def delete_persona(
     persona_id: str,
@@ -322,37 +379,9 @@ async def delete_persona(
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
 
-    # Cascade: find session IDs for artefact cleanup
-    db = get_db()
-    cursor = db["chat_sessions"].find(
-        {"user_id": user_id, "persona_id": persona_id},
-        projection={"_id": 1},
-    )
-    session_ids = [doc["_id"] async for doc in cursor]
-
-    # Cascade: artefacts (must happen before sessions are deleted)
-    from backend.modules.artefact import delete_by_session_ids as delete_artefacts
-    await delete_artefacts(session_ids)
-
-    # Cascade: chat sessions + messages
-    from backend.modules.chat import delete_by_persona as delete_chats
-    await delete_chats(user_id, persona_id)
-
-    # Cascade: memory
-    from backend.modules.memory import delete_by_persona as delete_memories
-    await delete_memories(user_id, persona_id)
-
-    # Cascade: storage files
-    from backend.modules.storage import delete_by_persona as delete_storage
-    await delete_storage(user_id, persona_id)
-
-    # Cascade: avatar file
-    if persona.get("profile_image"):
-        avatar_store = AvatarStore()
-        avatar_store.delete(persona["profile_image"])
-
-    # Delete the persona itself
-    await repo.delete(persona_id, user_id)
+    # Delegate cascade to the shared helper so the DELETE handler and the
+    # import rollback path run the exact same cleanup sequence.
+    await cascade_delete_persona(user_id, persona_id)
 
     await event_bus.publish(
         Topics.PERSONA_DELETED,
