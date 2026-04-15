@@ -10,7 +10,7 @@ class PersonaDocument(BaseModel):
     user_id: str
     name: str
     tagline: str
-    model_unique_id: str
+    model_unique_id: str | None = None
     system_prompt: str
     temperature: float
     reasoning_enabled: bool

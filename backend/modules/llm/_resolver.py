@@ -28,8 +28,16 @@ async def resolve_connection_for_user(
     connection_id: str = Path(...),
     user: dict = Depends(require_active_session),
 ) -> ResolvedConnection:
+    # The path parameter may be either the Connection ``_id`` (UUID used by
+    # internal callers such as the Model Browser / favourites flow) or the
+    # ``slug`` (used when the Frontend splits a ``model_unique_id`` of the
+    # form ``<connection_slug>:<model_slug>`` — see INS-019). Try id first,
+    # then fall back to slug; both lookups are strictly scoped to the
+    # calling user.
     repo = ConnectionRepository(get_db())
     doc = await repo.find(user["sub"], connection_id)
+    if doc is None:
+        doc = await repo.find_by_slug(user["sub"], connection_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return _to_resolved(doc)

@@ -160,7 +160,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           className="font-mono text-[11px]"
           style={{ color: chakra.hex + '4d', letterSpacing: '0.5px' }}
         >
-          {persona.model_unique_id.split(':').slice(1).join(':')}
+          {persona.model_unique_id ? persona.model_unique_id.split(':').slice(1).join(':') : 'no model'}
         </p>
       </div>
 

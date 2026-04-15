@@ -13,7 +13,9 @@ export interface PersonaDto {
   user_id: string;
   name: string;
   tagline: string;
-  model_unique_id: string;
+  // null after the connections-refactor migration nulled stale IDs, or
+  // after the persona's connection was deleted (see INS-019).
+  model_unique_id: string | null;
   system_prompt: string;
   temperature: number;
   reasoning_enabled: boolean;

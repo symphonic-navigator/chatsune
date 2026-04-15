@@ -148,7 +148,7 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
             </div>
           </div>
         )}
-        {persona && (() => {
+        {persona && persona.model_unique_id && (() => {
           const [, ...slugParts] = persona.model_unique_id.split(":")
           const slug = slugParts.join(":") || persona.model_unique_id
           return (

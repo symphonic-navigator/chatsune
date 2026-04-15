@@ -229,7 +229,7 @@ export default function PersonaCard({
             letterSpacing: "0.5px",
           }}
         >
-          {persona.model_unique_id.split(":").slice(1).join(":")}
+          {persona.model_unique_id ? persona.model_unique_id.split(":").slice(1).join(":") : "no model"}
         </p>
 
         {/* Continue hint — visible on hover, hidden in landscape */}

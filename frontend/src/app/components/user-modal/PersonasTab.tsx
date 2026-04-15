@@ -99,7 +99,7 @@ function SortablePersonaRow(props: PersonaRowProps) {
 
 function PersonaRow({ persona, onOpen, onTogglePin, dragAttributes, dragListeners }: PersonaRowProps) {
   const chakra = CHAKRA_PALETTE[persona.colour_scheme]
-  const modelLabel = persona.model_unique_id.split(':').slice(1).join(':')
+  const modelLabel = persona.model_unique_id ? persona.model_unique_id.split(':').slice(1).join(':') : 'no model'
 
   return (
     <div

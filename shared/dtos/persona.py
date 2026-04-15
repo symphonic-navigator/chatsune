@@ -30,7 +30,10 @@ class PersonaDto(BaseModel):
     user_id: str
     name: str
     tagline: str
-    model_unique_id: str
+    # ``None`` after the connections-refactor migration nulled stale IDs, or
+    # after a connection delete unwired this persona. The Persona stays
+    # listable so the user can pick a fresh model — see INS-019.
+    model_unique_id: str | None = None
     system_prompt: str
     temperature: float = Field(ge=0.0, le=2.0)
     reasoning_enabled: bool
