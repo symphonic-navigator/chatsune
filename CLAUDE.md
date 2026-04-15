@@ -294,8 +294,10 @@ persona = await db["personas"].find_one({"_id": persona_id})
   own encrypted credential; no admin-managed shared keys.
 - Adapters live in `backend/modules/llm/_adapters/` and are registered in
   `ADAPTER_REGISTRY` in `backend/modules/llm/_registry.py`. In Phase 1 only
-  `ollama_http` is implemented; it bundles Ollama Local, Ollama Cloud, and
-  custom Ollama-compatible backends via adapter Templates.
+  `ollama_http` is implemented; it covers self-hosted Ollama, Ollama Cloud,
+  and custom Ollama-compatible backends via adapter Templates. All three
+  are ordinary per-user connections — there is no special "Ollama Local"
+  admin path.
 - Adapters may expose an adapter-specific FastAPI sub-router, mounted under
   `/api/llm/connections/{id}/adapter/...`, for test / diagnostics / pairing
   endpoints. Ownership and resolution are handled by the LLM module's generic

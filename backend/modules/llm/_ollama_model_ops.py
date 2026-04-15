@@ -1,8 +1,8 @@
 """Helper for Ollama model management operations (pull, cancel, delete).
 
 Encapsulates the streaming /api/pull loop, progress-event throttling,
-error mapping, and delete. Used by both the per-connection adapter
-sub-router and the admin ollama-local handlers.
+error mapping, and delete. Used by the per-connection ollama_http
+adapter sub-router for connection-scoped model management.
 """
 
 from __future__ import annotations

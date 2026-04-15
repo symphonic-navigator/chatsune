@@ -1,5 +1,10 @@
 # Ollama Local Admin Tab
 
+> **Superseded (2026-04-15):** Ollama Local is now a regular per-user
+> connection of the `ollama_http` adapter. The dedicated admin tab and
+> the `/api/llm/admin/ollama-local/*` endpoints have been removed; model
+> management now lives on the connection editor view.
+
 **Date:** 2026-04-12
 **Scope:** Small — new read-only admin tab for Ollama Local diagnostics
 

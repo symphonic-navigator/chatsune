@@ -1,4 +1,8 @@
-import { api } from "./client"
+// Shared Ollama HTTP response types. Used by OllamaModelsPanel and the
+// connection-scoped llmApi diagnostics/pull/delete endpoints. The original
+// admin-scoped ollamaLocalApi has been removed alongside the dedicated
+// "Ollama Local" admin tab — Ollama Local is now a regular per-user
+// connection of the ollama_http adapter.
 
 export interface OllamaPsModel {
   name: string
@@ -43,17 +47,4 @@ export interface PullHandleDto {
 
 export interface ListPullsResponse {
   pulls: PullHandleDto[]
-}
-
-export const ollamaLocalApi = {
-  ps: () => api.get<OllamaPsResponse>("/api/llm/admin/ollama-local/ps"),
-  tags: () => api.get<OllamaTagsResponse>("/api/llm/admin/ollama-local/tags"),
-  pull: (slug: string) =>
-    api.post<StartPullResponse>("/api/llm/admin/ollama-local/pull", { slug }),
-  cancelPull: (pullId: string) =>
-    api.post<void>(`/api/llm/admin/ollama-local/pull/${pullId}/cancel`),
-  deleteModel: (name: string) =>
-    api.delete<void>(`/api/llm/admin/ollama-local/models/${encodeURIComponent(name)}`),
-  listPulls: () =>
-    api.get<ListPullsResponse>("/api/llm/admin/ollama-local/pulls"),
 }

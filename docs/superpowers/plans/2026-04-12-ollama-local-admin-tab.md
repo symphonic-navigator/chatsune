@@ -1,5 +1,10 @@
 # Ollama Local Admin Tab — Implementation Plan
 
+> **Superseded (2026-04-15):** Ollama Local is now a regular per-user
+> connection of the `ollama_http` adapter. The dedicated admin tab and
+> the `/api/llm/admin/ollama-local/*` endpoints have been removed; model
+> management now lives on the connection editor view.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a read-only "Ollama Local" admin tab that displays running models (ps) and available models (tags) from a local Ollama instance, with 5-second auto-refresh.

@@ -47,9 +47,11 @@ fresh episodic entries for recent context, consolidated prose for long-term reca
 
 ### Multi-Model LLM Support
 
-- **Ollama Local**: discovers models from a running Ollama instance on your network,
-  serialises concurrent requests via a per-adapter async lock
-- **Ollama Cloud**: BYOK per-user API keys, encrypted at rest with Fernet
+- **Ollama (self-hosted or cloud)**: each user adds their own connections to one or
+  more Ollama-compatible backends; concurrent requests are serialised per
+  connection via a configurable `max_parallel` async semaphore
+- **BYOK**: every connection carries its own credential, encrypted at rest with Fernet;
+  no admin-managed shared keys
 - Three-layer model metadata: provider-sourced (Redis, ephemeral) → admin curation
   (MongoDB, persistent) → user config (MongoDB, per-user personalisation)
 - Model capabilities tracked: vision support, native reasoning (CoT), tool calls

@@ -535,7 +535,7 @@ instance of a backend a user has configured" (Connection).
   - `view_id: str` — frontend key into `AdapterViewRegistry`
   - `secret_fields: set[str]` — which config keys are encrypted at rest
   - `templates() -> list[ConnectionTemplate]` — pre-filled wizard options
-    (e.g. Ollama Local, Ollama Cloud, Custom Ollama-compatible)
+    (e.g. self-hosted Ollama, Ollama Cloud, Custom Ollama-compatible)
   - optional `router() -> APIRouter` — adapter-specific FastAPI sub-router
 
 - **Connection** — data. User-owned MongoDB document carrying the
