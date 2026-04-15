@@ -163,9 +163,11 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   }) {
     setModelUniqueId(model.unique_id)
     setModelDisplayName(model.display_name)
-    // The ModelSelectionModal passes connection_id in provider_id for
-    // backward compatibility with this component's historic API shape.
-    setModelConnectionId(model.provider_id)
+    // Keep modelConnectionId as the Connection slug — the canonical left
+    // segment of model_unique_id (INS-019). That lets the Connection
+    // lookup below match by ``c.slug`` on both load and select, so the
+    // display-name pill stays accurate.
+    setModelConnectionId(model.unique_id.split(':')[0])
     setModelResolved(true)
     setCanReason(model.supports_reasoning)
     setCanUseTools(model.supports_tool_calls)
@@ -177,7 +179,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   }
 
   const connectionDisplayName = modelConnectionId
-    ? connections.find((c) => c.id === modelConnectionId)?.display_name ?? null
+    ? connections.find((c) => c.slug === modelConnectionId)?.display_name ?? null
     : null
   const connectionMissing = !!modelUniqueId && !modelResolved
 

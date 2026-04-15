@@ -3,9 +3,11 @@ import type { EnrichedModelDto } from '../../../core/types/llm'
 import { ModelBrowser, type LockedFilters } from './ModelBrowser'
 
 /**
- * Shape that callers (EditTab) still expect. `provider_id` is the
- * connection_id in the new world — the split is the same since the
- * model_unique_id format is `{connection_id}:{model_slug}`.
+ * Shape that callers (EditTab) still expect. `provider_id` is a legacy
+ * field name kept for API compatibility — it currently carries the
+ * Connection UUID (see ``handleSelect`` below). The canonical
+ * ``<connection_slug>:<model_slug>`` format lives on ``unique_id``
+ * (INS-019); consumers that need the slug should derive it from there.
  */
 interface SelectPayload {
   unique_id: string
