@@ -30,6 +30,16 @@ _TIMEOUT = httpx.Timeout(60.0, read=None)  # no read timeout for long streams
 _DEFAULT_THROTTLE_S = 0.2  # 5 Hz
 
 
+class OllamaStreamError(Exception):
+    """Raised when Ollama reports an error inside the stream body.
+
+    Ollama responds with HTTP 200 OK even for errors like a missing
+    manifest, surfacing the failure only as ``{"error": "..."}`` on the
+    stream. We raise this so the pull loop can translate it into a
+    proper FAILED event.
+    """
+
+
 def map_ollama_error(exc: BaseException) -> tuple[str, str]:
     """Map an exception from an Ollama call to (error_code, user_message)."""
     if isinstance(exc, httpx.ConnectError):
@@ -41,6 +51,16 @@ def map_ollama_error(exc: BaseException) -> tuple[str, str]:
         if status == 404:
             return "model_not_found", "Ollama does not know this model."
         return "pull_stream_error", f"Ollama returned HTTP {status}."
+    if isinstance(exc, OllamaStreamError):
+        message = str(exc)
+        lower = message.lower()
+        if (
+            "not found" in lower
+            or "does not exist" in lower
+            or "manifest" in lower
+        ):
+            return "model_not_found", message
+        return "pull_stream_error", message
     if isinstance(exc, (httpx.ReadError, httpx.RemoteProtocolError)):
         return "pull_stream_error", "Ollama stream ended unexpectedly."
     if isinstance(exc, json.JSONDecodeError):
@@ -116,6 +136,10 @@ class OllamaModelOps:
                         if not line:
                             continue
                         obj = json.loads(line)
+                        if "error" in obj:
+                            # Ollama surfaces pull failures in-stream with
+                            # HTTP 200 OK; raise so the FAILED branch fires.
+                            raise OllamaStreamError(str(obj["error"]))
                         status = obj.get("status", "")
                         self._registry.update_status(pull_id, status)
                         last_state = obj

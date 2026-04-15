@@ -106,6 +106,45 @@ async def test_pull_cancel_emits_cancelled_event():
 
 
 @pytest.mark.asyncio
+async def test_pull_in_stream_error_emits_failed_with_model_not_found():
+    """Regression: Ollama surfaces a missing manifest as HTTP 200 + {"error": ...}."""
+    bus = FakeBus()
+    reg = PullTaskRegistry()
+
+    body = (
+        b'{"status":"pulling manifest"}\n'
+        b'{"error":"pull model manifest: file does not exist"}\n'
+    )
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    transport = httpx.MockTransport(handler)
+
+    ops = OllamaModelOps(
+        base_url="http://fake:11434",
+        api_key=None,
+        scope="admin-local",
+        event_bus=bus,
+        registry=reg,
+        target_user_ids=["u1"],
+        http_transport=transport,
+        progress_throttle_seconds=0,
+    )
+
+    pull_id = await ops.start_pull(slug="xyz:123")
+    h = reg.get(pull_id)
+    await h.task
+
+    topics = [ev[0] for ev in bus.events]
+    assert Topics.LLM_MODEL_PULL_COMPLETED not in topics
+    failed = [ev for ev in bus.events if ev[0] == Topics.LLM_MODEL_PULL_FAILED]
+    assert len(failed) == 1
+    assert failed[0][1]["error_code"] == "model_not_found"
+    assert "does not exist" in failed[0][1]["user_message"]
+
+
+@pytest.mark.asyncio
 async def test_pull_cancel_after_stream_finished_does_not_emit_cancelled():
     """Regression: cancel after stream finished must not flip COMPLETED to CANCELLED."""
     bus = FakeBus()
