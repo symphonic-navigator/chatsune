@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { lockBodyScroll, unlockBodyScroll } from "../../core/utils/bodyScrollLock"
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useDrawerStore } from "../../core/store/drawerStore"
@@ -195,6 +195,42 @@ export default function AppLayout() {
     if (!current) return
     setUser({ ...current, display_name: rawName })
   }, [profileUpdate, setUser])
+
+  // Global Alt+S hotkey: toggles sanitised mode irrespective of which modal
+  // or overlay is currently open. We only bow out if the user is actively
+  // editing text (input/textarea/contenteditable) so we never hijack typing.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.altKey || event.key.toLowerCase() !== 's') return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
+          return
+        }
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      useSanitisedMode.getState().toggle()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // When sanitised mode flips OFF -> ON while the user is currently viewing a
+  // chat with an NSFW persona, push them out to that persona's overview so
+  // they are no longer staring at NSFW content. ON -> OFF never navigates.
+  const prevSanitisedRef = useRef(isSanitised)
+  useEffect(() => {
+    const prev = prevSanitisedRef.current
+    prevSanitisedRef.current = isSanitised
+    if (prev || !isSanitised) return
+    if (!activePersonaId) return
+    const persona = allPersonas.find((p) => p.id === activePersonaId)
+    if (persona?.nsfw) {
+      openPersonaOverlay(activePersonaId, 'overview')
+    }
+  }, [isSanitised, activePersonaId, allPersonas, openPersonaOverlay])
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
