@@ -44,12 +44,20 @@ class BlobStore:
             return None
         return target.read_bytes()
 
-    def delete(self, user_id: str, file_id: str) -> None:
-        """Delete a file from disk. No-op if missing."""
+    def delete(self, user_id: str, file_id: str) -> str | None:
+        """Delete a file from disk. No-op if missing.
+
+        Returns ``None`` on success (a missing file counts as success because
+        the post-condition — file does not exist — is already met). Returns
+        a short human-readable error string on a real I/O failure so the
+        cascade-delete report can surface it as a warning.
+        """
         _validate_uuid(user_id, "user_id")
         _validate_uuid(file_id, "file_id")
         target = self._root / user_id / f"{file_id}.bin"
         try:
             target.unlink(missing_ok=True)
-        except OSError:
-            _log.warning("Failed to delete blob %s/%s", user_id, file_id)
+            return None
+        except OSError as exc:
+            _log.warning("Failed to delete blob %s/%s (%s)", user_id, file_id, exc)
+            return f"blob '{file_id}': {exc}"

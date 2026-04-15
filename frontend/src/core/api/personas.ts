@@ -1,6 +1,7 @@
 import { api, currentAccessToken } from "./client"
 import { ApiError } from "./client"
 import { parseContentDispositionFilename } from "../utils/download"
+import type { DeletionReportDto } from "../types/deletion"
 import type {
   PersonaDto,
   CreatePersonaRequest,
@@ -30,7 +31,7 @@ export const personasApi = {
     api.patch<PersonaDto>(`/api/personas/${personaId}`, data),
 
   remove: (personaId: string) =>
-    api.delete<{ status: string }>(`/api/personas/${personaId}`),
+    api.delete<DeletionReportDto>(`/api/personas/${personaId}`),
 
   reorder: async (orderedIds: string[]): Promise<void> => {
     await api.patch("/api/personas/reorder", { ordered_ids: orderedIds });

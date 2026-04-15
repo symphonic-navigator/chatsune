@@ -381,7 +381,7 @@ async def delete_persona(
 
     # Delegate cascade to the shared helper so the DELETE handler and the
     # import rollback path run the exact same cleanup sequence.
-    await cascade_delete_persona(user_id, persona_id)
+    _deleted, report = await cascade_delete_persona(user_id, persona_id)
 
     await event_bus.publish(
         Topics.PERSONA_DELETED,
@@ -394,7 +394,7 @@ async def delete_persona(
         target_user_ids=[user_id],
     )
 
-    return {"status": "ok"}
+    return report
 
 
 def _avatar_store() -> AvatarStore:

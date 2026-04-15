@@ -176,6 +176,30 @@ async def list_session_ids_for_persona(
     return await repo.list_session_ids_for_persona(user_id, persona_id)
 
 
+async def count_messages_for_persona(user_id: str, persona_id: str) -> int:
+    """Total chat messages across every session of a (user, persona).
+
+    Used by the persona cascade-delete report to surface a meaningful
+    "N messages purged" line — the bare session count would understate
+    how much data is actually being removed.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.count_messages_for_persona(user_id, persona_id)
+
+
+async def remove_library_from_all_sessions(
+    user_id: str, library_id: str,
+) -> int:
+    """Pull a deleted knowledge-library id from every session that wired it.
+
+    Returns the number of session documents that were updated. Called by
+    the knowledge-library cascade so that orphan library references never
+    survive a delete.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.remove_library_from_all_sessions(user_id, library_id)
+
+
 async def bulk_export_for_persona(
     user_id: str, persona_id: str,
 ) -> SessionsBundleDto:
@@ -277,5 +301,6 @@ __all__ = [
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
     "get_session_summaries", "delete_by_persona",
     "delete_all_for_persona", "list_session_ids_for_persona",
+    "count_messages_for_persona", "remove_library_from_all_sessions",
     "bulk_export_for_persona", "bulk_import_for_persona",
 ]

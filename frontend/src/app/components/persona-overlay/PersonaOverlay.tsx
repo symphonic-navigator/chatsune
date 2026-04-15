@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
+import type { DeletionReportDto } from '../../../core/types/deletion'
+import { DeletionReportSheet } from '../../../core/components/DeletionReportSheet'
 import { suggestColour } from '../../../core/utils/suggestColour'
 import { personasApi } from '../../../core/api/personas'
 import { useNotificationStore } from '../../../core/store/notificationStore'
@@ -115,16 +117,28 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   const addNotification = useNotificationStore((s) => s.addNotification)
   const voiceEnabled = useVoiceSettings((s) => s.settings.enabled)
 
+  // While a deletion report is showing, the modal stays mounted so the
+  // user can read the report; navigation away happens only after they
+  // dismiss it. See ``handleDismissDeletionReport`` below.
+  const [deletionReport, setDeletionReport] = useState<DeletionReportDto | null>(null)
+
   const handleDeletePersona = async () => {
     if (!resolved?.id) return
-    await personasApi.remove(resolved.id)
+    const report = await personasApi.remove(resolved.id)
+    setDeletionReport(report)
+    addNotification({
+      level: report.success ? 'success' : 'warning',
+      title: report.success ? 'Persona deleted' : 'Persona deletion partially failed',
+      message: report.success
+        ? `${resolved.name} has been permanently deleted.`
+        : `${resolved.name} could not be fully removed — see the report for details.`,
+    })
+  }
+
+  const handleDismissDeletionReport = () => {
+    setDeletionReport(null)
     onClose()
     onNavigate?.('/personas')
-    addNotification({
-      level: 'success',
-      title: 'Persona deleted',
-      message: `${resolved.name} has been permanently deleted.`,
-    })
   }
 
   if (!resolved) return null
@@ -275,6 +289,10 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           )}
         </div>
       </div>
+      <DeletionReportSheet
+        report={deletionReport}
+        onClose={handleDismissDeletionReport}
+      />
     </>
   )
 }

@@ -56,13 +56,33 @@ async def store_vision_description(
 
 async def delete_by_persona(user_id: str, persona_id: str) -> int:
     """Delete all storage files (DB + physical) for a persona."""
+    count, _ = await delete_by_persona_with_warnings(user_id, persona_id)
+    return count
+
+
+async def delete_by_persona_with_warnings(
+    user_id: str, persona_id: str,
+) -> tuple[int, list[str]]:
+    """Delete all storage files (DB + physical) for a persona.
+
+    Returns ``(deleted_count, warnings)`` where ``warnings`` lists any blobs
+    that the BlobStore could not unlink due to a real I/O failure. A missing
+    file is NOT a warning — the post-condition (file does not exist) is
+    already met.
+
+    Used by the persona cascade-delete report so users see exactly which
+    physical files, if any, the system could not purge.
+    """
     db = get_db()
     repo = StorageRepository(db)
     file_ids = await repo.delete_by_persona(user_id, persona_id)
     blob_store = BlobStore()
+    warnings: list[str] = []
     for file_id in file_ids:
-        blob_store.delete(user_id, file_id)
-    return len(file_ids)
+        warning = blob_store.delete(user_id, file_id)
+        if warning:
+            warnings.append(warning)
+    return len(file_ids), warnings
 
 
 async def delete_all_for_persona(user_id: str, persona_id: str) -> int:
@@ -166,6 +186,7 @@ __all__ = [
     "get_cached_vision_description",
     "store_vision_description",
     "delete_by_persona",
+    "delete_by_persona_with_warnings",
     "delete_all_for_persona",
     "bulk_export_for_persona",
     "bulk_import_for_persona",

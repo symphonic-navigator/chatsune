@@ -48,6 +48,26 @@ async def delete_by_persona(user_id: str, persona_id: str) -> int:
     return await repo.delete_by_persona(user_id, persona_id)
 
 
+async def count_for_persona(user_id: str, persona_id: str) -> dict:
+    """Return per-category counts for a persona's memory data.
+
+    Used by the persona cascade-delete report so the user sees the split
+    between committed and uncommitted journal entries plus any historical
+    memory body versions.
+    """
+    from backend.database import get_db
+
+    repo = MemoryRepository(get_db())
+    committed = await repo.count_entries(user_id, persona_id, state="committed")
+    uncommitted = await repo.count_entries(user_id, persona_id, state="uncommitted")
+    bodies = await repo.count_memory_bodies(user_id, persona_id)
+    return {
+        "committed": committed,
+        "uncommitted": uncommitted,
+        "memory_bodies": bodies,
+    }
+
+
 async def bulk_export_for_persona(
     user_id: str, persona_id: str,
 ) -> MemoryBundleDto:
@@ -165,6 +185,7 @@ __all__ = [
     "get_memory_context",
     "MemoryRepository",
     "delete_by_persona",
+    "count_for_persona",
     "write_persona_authored_entry",
     "bulk_export_for_persona",
     "bulk_import_for_persona",

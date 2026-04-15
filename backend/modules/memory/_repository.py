@@ -72,6 +72,12 @@ class MemoryRepository:
             {"user_id": user_id, "persona_id": persona_id, "state": state},
         )
 
+    async def count_memory_bodies(self, user_id: str, persona_id: str) -> int:
+        """Count memory body documents for a persona (one per version)."""
+        return await self._bodies.count_documents(
+            {"user_id": user_id, "persona_id": persona_id},
+        )
+
     async def commit_entry(self, entry_id: str, user_id: str) -> bool:
         now = datetime.now(UTC)
         result = await self._entries.update_one(

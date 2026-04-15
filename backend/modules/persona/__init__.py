@@ -21,6 +21,20 @@ async def get_persona(persona_id: str, user_id: str) -> dict | None:
     return await repo.find_by_id(persona_id, user_id)
 
 
+async def remove_library_from_all_personas(
+    user_id: str, library_id: str,
+) -> int:
+    """Pull a deleted knowledge-library id from every persona of this user.
+
+    Returns the number of persona documents that were updated. Called by
+    the knowledge-library cascade so that orphan library references never
+    survive a delete.
+    """
+    db = get_db()
+    repo = PersonaRepository(db)
+    return await repo.remove_library_from_all_personas(user_id, library_id)
+
+
 async def unwire_personas_for_connection(user_id: str, connection_id: str) -> list[str]:
     """Null ``model_unique_id`` on every persona of this user that references
     the given Connection. Returns the list of affected persona IDs.
@@ -52,4 +66,5 @@ __all__ = [
     "get_persona",
     "sign_avatar_url",
     "unwire_personas_for_connection",
+    "remove_library_from_all_personas",
 ]
