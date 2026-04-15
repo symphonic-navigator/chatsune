@@ -513,6 +513,7 @@ def _build_adapter_router() -> APIRouter:
             scope=f"connection:{c.id}",
             event_bus=event_bus,
             registry=get_pull_registry(),
+            target_user_ids=[c.user_id],
         )
 
     @router.post("/pull")

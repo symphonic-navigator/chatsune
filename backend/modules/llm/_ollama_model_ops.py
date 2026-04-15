@@ -61,6 +61,7 @@ class OllamaModelOps:
         scope: str,
         event_bus: Any,
         registry: PullTaskRegistry,
+        target_user_ids: list[str],
         http_transport: httpx.AsyncBaseTransport | None = None,
         progress_throttle_seconds: float = _DEFAULT_THROTTLE_S,
     ) -> None:
@@ -69,6 +70,7 @@ class OllamaModelOps:
         self._scope = scope
         self._bus = event_bus
         self._registry = registry
+        self._target_user_ids = target_user_ids
         self._transport = http_transport
         self._throttle = progress_throttle_seconds
 
@@ -90,6 +92,7 @@ class OllamaModelOps:
                 timestamp=datetime.now(UTC),
             ),
             correlation_id=pull_id,
+            target_user_ids=self._target_user_ids,
         )
 
         completed_published = False
@@ -150,6 +153,7 @@ class OllamaModelOps:
                                 timestamp=datetime.now(UTC),
                             ),
                             correlation_id=pull_id,
+                            target_user_ids=self._target_user_ids,
                         )
                     )
                 except asyncio.CancelledError:
@@ -173,6 +177,7 @@ class OllamaModelOps:
                     timestamp=datetime.now(UTC),
                 ),
                 correlation_id=pull_id,
+                target_user_ids=self._target_user_ids,
             )
 
     async def _finalise_success(
@@ -197,6 +202,7 @@ class OllamaModelOps:
                 timestamp=datetime.now(UTC),
             ),
             correlation_id=pull_id,
+            target_user_ids=self._target_user_ids,
         )
 
     async def _emit_progress(self, pull_id: str, obj: dict[str, Any]) -> None:
@@ -212,6 +218,7 @@ class OllamaModelOps:
                 timestamp=datetime.now(UTC),
             ),
             correlation_id=pull_id,
+            target_user_ids=self._target_user_ids,
         )
 
     async def delete(self, name: str) -> None:
@@ -232,4 +239,5 @@ class OllamaModelOps:
                 name=name,
                 timestamp=datetime.now(UTC),
             ),
+            target_user_ids=self._target_user_ids,
         )

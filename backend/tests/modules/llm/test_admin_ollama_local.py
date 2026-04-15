@@ -25,7 +25,7 @@ def app_with_admin(monkeypatch):
 
     app = FastAPI()
     app.dependency_overrides[dependencies.require_admin] = lambda: {
-        "id": "u1", "role": "admin",
+        "sub": "u1", "id": "u1", "role": "admin",
     }
     transport = FakeOllamaTransport(
         ps_json={"models": [{"name": "a"}]},
@@ -67,7 +67,7 @@ async def test_ps_returns_503_when_env_missing(monkeypatch):
 
     app = FastAPI()
     app.dependency_overrides[dependencies.require_admin] = lambda: {
-        "id": "u1", "role": "admin",
+        "sub": "u1", "id": "u1", "role": "admin",
     }
     app.include_router(build_admin_router(), prefix="/api/llm/admin")
 
@@ -90,7 +90,7 @@ async def test_ps_returns_503_when_ollama_unreachable(monkeypatch):
     transport = httpx.MockTransport(handler)
     app = FastAPI()
     app.dependency_overrides[dependencies.require_admin] = lambda: {
-        "id": "u1", "role": "admin",
+        "sub": "u1", "id": "u1", "role": "admin",
     }
     app.include_router(
         build_admin_router(http_transport=transport),
@@ -126,7 +126,7 @@ async def test_admin_pull_returns_pull_id(monkeypatch):
 
     fake_bus = _FakeBus()
     app = FastAPI()
-    app.dependency_overrides[dependencies.require_admin] = lambda: {"id": "u1"}
+    app.dependency_overrides[dependencies.require_admin] = lambda: {"sub": "u1", "id": "u1"}
     app.include_router(
         build_admin_router(
             http_transport=transport,
@@ -162,7 +162,7 @@ async def test_admin_pull_rejects_empty_slug(monkeypatch):
     from backend import dependencies
 
     app = FastAPI()
-    app.dependency_overrides[dependencies.require_admin] = lambda: {"id": "u1"}
+    app.dependency_overrides[dependencies.require_admin] = lambda: {"sub": "u1", "id": "u1"}
     app.include_router(build_admin_router(), prefix="/api/llm/admin")
 
     async with AsyncClient(
@@ -189,7 +189,7 @@ async def test_admin_delete_forwards_to_ollama(monkeypatch):
 
     fake_bus = _FakeBus()
     app = FastAPI()
-    app.dependency_overrides[dependencies.require_admin] = lambda: {"id": "u1"}
+    app.dependency_overrides[dependencies.require_admin] = lambda: {"sub": "u1", "id": "u1"}
     app.include_router(
         build_admin_router(
             http_transport=transport,
@@ -216,7 +216,7 @@ async def test_admin_cancel_unknown_pull_returns_404(monkeypatch):
     from backend import dependencies
 
     app = FastAPI()
-    app.dependency_overrides[dependencies.require_admin] = lambda: {"id": "u1"}
+    app.dependency_overrides[dependencies.require_admin] = lambda: {"sub": "u1", "id": "u1"}
     app.include_router(build_admin_router(), prefix="/api/llm/admin")
 
     async with AsyncClient(
@@ -235,7 +235,7 @@ async def test_admin_list_pulls_returns_empty_when_none(monkeypatch):
     from backend import dependencies
 
     app = FastAPI()
-    app.dependency_overrides[dependencies.require_admin] = lambda: {"id": "u1"}
+    app.dependency_overrides[dependencies.require_admin] = lambda: {"sub": "u1", "id": "u1"}
     app.include_router(build_admin_router(), prefix="/api/llm/admin")
 
     async with AsyncClient(

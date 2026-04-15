@@ -53,13 +53,14 @@ def build_admin_router(
         from backend.ws.event_bus import get_event_bus
         return get_event_bus()
 
-    def _ops() -> OllamaModelOps:
+    def _ops(target_user_id: str) -> OllamaModelOps:
         return OllamaModelOps(
             base_url=_local_base_url(),
             api_key=None,
             scope=_ADMIN_SCOPE,
             event_bus=_resolve_bus(),
             registry=get_pull_registry(),
+            target_user_ids=[target_user_id],
             http_transport=http_transport,
         )
 
@@ -90,12 +91,12 @@ def build_admin_router(
 
     @router.post("/ollama-local/pull")
     async def pull(
-        body: dict, _user: dict = Depends(require_admin),
+        body: dict, user: dict = Depends(require_admin),
     ) -> dict:
         slug = (body.get("slug") or "").strip()
         if not slug:
             raise HTTPException(400, "slug is required")
-        pull_id = await _ops().start_pull(slug=slug)
+        pull_id = await _ops(user["sub"]).start_pull(slug=slug)
         return {"pull_id": pull_id}
 
     @router.post("/ollama-local/pull/{pull_id}/cancel", status_code=204)
@@ -108,10 +109,10 @@ def build_admin_router(
 
     @router.delete("/ollama-local/models/{name:path}", status_code=204)
     async def delete_model(
-        name: str, _user: dict = Depends(require_admin),
+        name: str, user: dict = Depends(require_admin),
     ) -> None:
         try:
-            await _ops().delete(name)
+            await _ops(user["sub"]).delete(name)
         except httpx.HTTPStatusError as exc:
             raise HTTPException(
                 502, f"Ollama returned {exc.response.status_code}",

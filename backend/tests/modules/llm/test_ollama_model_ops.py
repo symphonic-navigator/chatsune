@@ -51,6 +51,7 @@ async def test_pull_emits_started_progress_completed_in_order():
         scope="admin-local",
         event_bus=bus,
         registry=reg,
+        target_user_ids=["u1"],
         http_transport=transport,
         progress_throttle_seconds=0,
     )
@@ -82,6 +83,7 @@ async def test_pull_cancel_emits_cancelled_event():
         scope="admin-local",
         event_bus=bus,
         registry=reg,
+        target_user_ids=["u1"],
         http_transport=transport,
         progress_throttle_seconds=0,
     )
@@ -121,6 +123,7 @@ async def test_pull_cancel_after_stream_finished_does_not_emit_cancelled():
         scope="admin-local",
         event_bus=bus,
         registry=reg,
+        target_user_ids=["u1"],
         http_transport=transport,
         progress_throttle_seconds=0,
     )
@@ -157,6 +160,7 @@ async def test_pull_network_error_emits_failed_with_unreachable_code():
         scope="admin-local",
         event_bus=bus,
         registry=reg,
+        target_user_ids=["u1"],
         http_transport=transport,
         progress_throttle_seconds=0,
     )
@@ -188,6 +192,7 @@ async def test_delete_emits_model_deleted_event():
         scope="admin-local",
         event_bus=bus,
         registry=reg,
+        target_user_ids=["u1"],
         http_transport=transport,
     )
 
