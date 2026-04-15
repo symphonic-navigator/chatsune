@@ -431,13 +431,15 @@ class OllamaHttpAdapter(BaseAdapter):
 # ----- adapter sub-router (test + diagnostics) -----
 
 def _build_adapter_router() -> APIRouter:
-    from backend.database import get_db
+    from backend.database import get_db, get_redis
     from backend.modules.llm._connections import ConnectionRepository
+    from backend.modules.llm._metadata import refresh_connection_models
     from backend.modules.llm._ollama_model_ops import OllamaModelOps
     from backend.modules.llm._pull_registry import get_pull_registry
+    from backend.modules.llm._registry import ADAPTER_REGISTRY
     from backend.modules.llm._resolver import resolve_connection_for_user
     from backend.ws.event_bus import EventBus, get_event_bus
-    from shared.events.llm import LlmConnectionUpdatedEvent
+    from shared.events.llm import LlmConnectionModelsRefreshedEvent, LlmConnectionUpdatedEvent
     from shared.topics import Topics
 
     router = APIRouter()
@@ -506,6 +508,29 @@ def _build_adapter_router() -> APIRouter:
                     detail=f"Upstream returned {exc.response.status_code}",
                 ) from exc
 
+    def _make_on_models_changed(c: ResolvedConnection, event_bus: EventBus):
+        """Build a callback that refreshes LLM metadata cache for ``c`` and
+        emits ``LLM_CONNECTION_MODELS_REFRESHED`` on success. Used as the
+        ``on_models_changed`` hook for post-pull and post-delete operations.
+        """
+        adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
+        redis = get_redis()
+
+        async def _cb() -> None:
+            await refresh_connection_models(c, adapter_cls, redis)
+            await event_bus.publish(
+                Topics.LLM_CONNECTION_MODELS_REFRESHED,
+                LlmConnectionModelsRefreshedEvent(
+                    connection_id=c.id,
+                    success=True,
+                    error=None,
+                    timestamp=datetime.now(UTC),
+                ),
+                target_user_ids=[c.user_id],
+            )
+
+        return _cb
+
     def _ops_for(c: ResolvedConnection, event_bus: EventBus) -> OllamaModelOps:
         return OllamaModelOps(
             base_url=c.config["url"].rstrip("/"),
@@ -514,6 +539,7 @@ def _build_adapter_router() -> APIRouter:
             event_bus=event_bus,
             registry=get_pull_registry(),
             target_user_ids=[c.user_id],
+            on_models_changed=_make_on_models_changed(c, event_bus),
         )
 
     @router.post("/pull")
