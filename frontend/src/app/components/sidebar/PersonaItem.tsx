@@ -4,6 +4,11 @@ import type { PersonaDto } from "../../../core/types/persona"
 import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 import { useMemoryStore } from "../../../core/store/memoryStore"
 import type { JournalEntryDto } from "../../../core/api/memory"
+import { useViewport } from "../../../core/hooks/useViewport"
+
+type MenuEntry =
+  | { divider: true }
+  | { label: string; action: () => void }
 
 const EMPTY_ENTRIES: JournalEntryDto[] = []
 
@@ -47,6 +52,7 @@ export function PersonaItem({
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const { isMobile } = useViewport()
 
   const uncommitted = useMemoryStore((s) => s.uncommittedEntries[persona.id] ?? EMPTY_ENTRIES)
   const uncommittedCount = uncommitted.length
@@ -64,13 +70,18 @@ export function PersonaItem({
     return () => document.removeEventListener("mousedown", handler)
   }, [menuOpen])
 
-  const menuItems = [
+  // Menu order: New Chat, New Incognito, [divider], Overview, Edit, [divider], Pin/Unpin.
+  // Dividers are dropped on mobile to keep the menu compact.
+  const divider: MenuEntry = { divider: true }
+  const menuItems: MenuEntry[] = [
     { label: "New Chat", action: () => { onNewChat(persona); setMenuOpen(false) } },
     { label: "New Incognito Chat", action: () => { onNewIncognitoChat(persona); setMenuOpen(false) } },
+    ...(!isMobile ? [divider] : []),
+    ...(onOpenOverlay ? [{ label: "Overview", action: () => { onOpenOverlay(); setMenuOpen(false) } }] : []),
     { label: "Edit", action: () => { onEdit(persona); setMenuOpen(false) } },
-    ...(onOpenOverlay ? [{ label: "⟡ Persona", action: () => { onOpenOverlay(); setMenuOpen(false) } }] : []),
-    ...(onPin ? [{ label: "Pin", action: () => { onPin(persona); setMenuOpen(false) }, muted: true }] : []),
-    ...(onUnpin ? [{ label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) }, muted: true }] : []),
+    ...(!isMobile && (onPin || onUnpin) ? [divider] : []),
+    ...(onPin ? [{ label: "Pin", action: () => { onPin(persona); setMenuOpen(false) } }] : []),
+    ...(onUnpin ? [{ label: "Unpin", action: () => { onUnpin(persona); setMenuOpen(false) } }] : []),
   ]
 
   return (
@@ -115,17 +126,35 @@ export function PersonaItem({
         />
       )}
 
-      <button
-        type="button"
-        aria-label="More options"
-        title="More options"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-sm text-white/60 opacity-0 transition-all hover:bg-white/10 hover:text-white/85 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
-        onClick={(e) => { e.stopPropagation(); setMenuOpen(true) }}
-      >
-        ···
-      </button>
+      {/*
+        Right-side affordance. For NSFW personas the resting state shows a
+        kissmark (visual NSFW flag, matches NewChatRow precedent); on hover
+        it swaps to the "···" context-menu trigger. Non-NSFW personas keep
+        the original behaviour: nothing at rest, dots on hover. Both states
+        sit in the same fixed-size slot so layout never shifts.
+      */}
+      <div className="relative flex h-5 w-5 flex-shrink-0 items-center justify-center">
+        {persona.nsfw && (
+          <span
+            aria-label="NSFW"
+            title="NSFW"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-[12px] opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 [@media(hover:none)]:group-hover:opacity-100"
+          >
+            💋
+          </span>
+        )}
+        <button
+          type="button"
+          aria-label="More options"
+          title="More options"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="flex h-5 w-5 items-center justify-center rounded text-sm text-white/60 opacity-0 transition-all hover:bg-white/10 hover:text-white/85 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+          onClick={(e) => { e.stopPropagation(); setMenuOpen(true) }}
+        >
+          ···
+        </button>
+      </div>
 
       {menuOpen && (
         <div
@@ -133,17 +162,21 @@ export function PersonaItem({
           className="absolute right-2 top-8 z-50 w-48 rounded-lg border border-white/10 bg-elevated py-1 shadow-xl"
           onClick={(e) => e.stopPropagation()}
         >
-          {menuItems.map(({ label, action, muted }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={action}
-              className={`w-full px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-white/6
-                ${muted ? "text-white/40" : "text-white/70"}`}
-            >
-              {label}
-            </button>
-          ))}
+          {menuItems.map((item, idx) => {
+            if ("divider" in item) {
+              return <div key={`div-${idx}`} className="h-px bg-white/10 my-1 mx-2" aria-hidden />
+            }
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.action}
+                className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
+              >
+                {item.label}
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
