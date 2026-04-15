@@ -99,6 +99,8 @@ export function handleChatEvent(
       }
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
+      const usedTokens = (p.context_used_tokens as number | undefined) ?? 0
+      const maxTokens = (p.context_max_tokens as number | undefined) ?? 0
       const rawStatus = (p.status as string | undefined) ?? 'completed'
       const messageStatus: 'completed' | 'aborted' | 'refused' =
         rawStatus === 'refused'
@@ -159,12 +161,15 @@ export function handleChatEvent(
           },
           contextStatus,
           fillPercentage,
+          usedTokens,
+          maxTokens,
         )
       } else {
         getStore().cancelStreaming()
       }
       getStore().setContextStatus(contextStatus)
       getStore().setContextFillPercentage(fillPercentage)
+      getStore().setContextTokens(usedTokens, maxTokens)
       break
     }
     case Topics.CHAT_STREAM_ERROR: {

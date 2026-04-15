@@ -115,6 +115,8 @@ export const chatApi = {
       messages: ChatMessageDto[]
       context_status: 'green' | 'yellow' | 'orange' | 'red'
       context_fill_percentage: number
+      context_used_tokens?: number
+      context_max_tokens?: number
     }>(`/api/chat/sessions/${sessionId}/messages`),
 
   deleteSession: (sessionId: string) =>

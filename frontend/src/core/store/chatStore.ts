@@ -41,6 +41,8 @@ interface ChatState {
   visionDescriptions: Record<string, LiveVisionDescription>
   contextStatus: ContextStatus
   contextFillPercentage: number
+  contextUsedTokens: number
+  contextMaxTokens: number
   error: ChatError | null
   streamingSlow: boolean
   sessionTitle: string | null
@@ -60,7 +62,7 @@ interface ChatState {
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
   upsertVisionDescription: (correlationId: string, payload: LiveVisionDescription) => void
-  finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number) => void
+  finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number, usedTokens?: number, maxTokens?: number) => void
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
   updateMessage: (messageId: string, content: string, tokenCount: number) => void
@@ -73,6 +75,7 @@ interface ChatState {
   setDisabledToolGroups: (groups: string[]) => void
   setContextStatus: (status: ContextStatus) => void
   setContextFillPercentage: (percentage: number) => void
+  setContextTokens: (used: number, max: number) => void
   setReasoningOverride: (override: boolean | null) => void
   activeSessionId: string | null
   reset: (sessionId?: string) => void
@@ -93,6 +96,8 @@ const INITIAL_STATE = {
   visionDescriptions: {} as Record<string, LiveVisionDescription>,
   contextStatus: 'green' as ContextStatus,
   contextFillPercentage: 0,
+  contextUsedTokens: 0,
+  contextMaxTokens: 0,
   error: null as ChatError | null,
   streamingSlow: false,
   sessionTitle: null as string | null,
@@ -146,7 +151,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
         [`${correlationId}:${payload.file_id}`]: payload,
       },
     })),
-  finishStreaming: (finalMessage, contextStatus, fillPercentage) =>
+  finishStreaming: (finalMessage, contextStatus, fillPercentage, usedTokens = 0, maxTokens = 0) =>
     set((s) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
@@ -154,6 +159,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       streamingArtefactRefs: [], streamingRefusalText: null,
       streamingSlow: false,
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
+      contextUsedTokens: usedTokens, contextMaxTokens: maxTokens,
     })),
   cancelStreaming: () =>
     set({
@@ -188,6 +194,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
   setContextStatus: (status) => set({ contextStatus: status }),
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
+  setContextTokens: (used, max) => set({ contextUsedTokens: used, contextMaxTokens: max }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
   reset: (sessionId) => set({ ...INITIAL_STATE, activeSessionId: sessionId ?? null }),
 }))

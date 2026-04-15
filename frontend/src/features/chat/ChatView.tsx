@@ -38,6 +38,8 @@ import { useArtefactEvents } from '../artefact/useArtefactEvents'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
+import { ModelInfoPill } from './ModelInfoPill'
+import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettings } from '../voice/stores/voiceSettingsStore'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
@@ -82,8 +84,13 @@ export function ChatView({ persona }: ChatViewProps) {
       unsubs.forEach((u) => u())
     }
   }, [])
+  const { isMobile } = useViewport()
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
+  // True for one render when arriving from the new-chat redirect — instructs
+  // the post-load focus effect to fire even though the navigate causes a
+  // remount that drops the imperative focus call's effect.
+  const [pendingFocus, setPendingFocus] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
   const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
@@ -152,6 +159,9 @@ export function ChatView({ persona }: ChatViewProps) {
         .createSession(personaId)
         .then((session) => {
           if (cancelled) return
+          // Flag the post-load effect so the prompt input gets focused once
+          // the new session has loaded — focusing here would race the navigate.
+          setPendingFocus(true)
           navigate(`/chat/${personaId}/${session.id}`, { replace: true })
         })
         .catch(fail)
@@ -198,6 +208,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const activeToolCalls = useChatStore((s) => s.activeToolCalls)
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
+  const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
+  const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
@@ -340,6 +352,10 @@ export function ChatView({ persona }: ChatViewProps) {
         // revisited without running a new inference.
         useChatStore.getState().setContextStatus(bundle.context_status)
         useChatStore.getState().setContextFillPercentage(bundle.context_fill_percentage)
+        useChatStore.getState().setContextTokens(
+          bundle.context_used_tokens ?? 0,
+          bundle.context_max_tokens ?? 0,
+        )
       })
       .catch((err) => {
         if (cancelled) return
@@ -456,6 +472,16 @@ export function ChatView({ persona }: ChatViewProps) {
     }
     prevIsLoadingRef.current = isLoading
   }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams, highlighter])
+
+  // Focus the prompt input when a brand-new chat is opened. New sessions
+  // start with zero messages so the load effect above does not fire — handle
+  // this case explicitly via `pendingFocus`.
+  useEffect(() => {
+    if (pendingFocus && sessionId && !isLoading) {
+      chatInputRef.current?.focus()
+      setPendingFocus(false)
+    }
+  }, [pendingFocus, sessionId, isLoading])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
@@ -697,11 +723,16 @@ export function ChatView({ persona }: ChatViewProps) {
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2">
         <div className="flex items-center gap-2">
           {isIncognito && (
-            <div ref={incognitoInfoRef} className="relative">
+            <div
+              ref={incognitoInfoRef}
+              className="relative"
+              onMouseEnter={isMobile ? undefined : () => setIncognitoInfoOpen(true)}
+              onMouseLeave={isMobile ? undefined : () => setIncognitoInfoOpen(false)}
+            >
               <button
                 type="button"
-                onClick={() => setIncognitoInfoOpen((v) => !v)}
-                title="Messages are not saved — click for details"
+                onClick={isMobile ? () => setIncognitoInfoOpen((v) => !v) : undefined}
+                title={isMobile ? 'Messages are not saved — tap for details' : 'Messages are not saved'}
                 aria-label="Incognito mode information"
                 aria-expanded={incognitoInfoOpen}
                 className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/40 hover:text-gold hover:bg-white/10 transition-colors cursor-pointer"
@@ -726,12 +757,24 @@ export function ChatView({ persona }: ChatViewProps) {
               )}
             </div>
           )}
-          <div className="relative">
+          <div
+            className="relative"
+            onMouseEnter={isMobile ? undefined : () => setShowKnowledge(true)}
+            onMouseLeave={isMobile ? undefined : () => setShowKnowledge(false)}
+          >
             <button
               type="button"
-              onClick={() => setShowKnowledge((v) => !v)}
+              onClick={isMobile ? () => setShowKnowledge((v) => !v) : undefined}
               className="flex items-center justify-center w-6 h-6 rounded text-[13px] transition-colors"
-              style={{ background: 'rgba(140,118,215,0.1)' }}
+              style={
+                showKnowledge
+                  ? {
+                      background: 'rgba(140,118,215,0.1)',
+                      border: '1px solid rgba(140,118,215,0.6)',
+                      boxShadow: '0 0 8px rgba(140,118,215,0.4)',
+                    }
+                  : { background: 'rgba(140,118,215,0.1)' }
+              }
               title="Ad-hoc Knowledge"
             >
               🎓
@@ -743,6 +786,7 @@ export function ChatView({ persona }: ChatViewProps) {
                 sessionId={effectiveSessionId}
                 isOpen={showKnowledge}
                 onClose={() => setShowKnowledge(false)}
+                readonly={!isMobile}
               />
             )}
           </div>
@@ -774,6 +818,11 @@ export function ChatView({ persona }: ChatViewProps) {
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
+          {/* Model pill — desktop only; tooltip on hover. Mobile keeps the bar
+              compact and skips this entirely. */}
+          <div className="hidden lg:inline-flex">
+            <ModelInfoPill persona={persona} />
+          </div>
         </div>
         {/* Desktop topbar indicators */}
         <div className="hidden lg:flex items-center gap-2">
@@ -802,7 +851,12 @@ export function ChatView({ persona }: ChatViewProps) {
             </div>
           )}
           {persona && <JournalBadge personaId={persona.id} />}
-          <ContextStatusPill status={contextStatus} fillPercentage={contextFillPercentage} />
+          <ContextStatusPill
+            status={contextStatus}
+            fillPercentage={contextFillPercentage}
+            usedTokens={contextUsedTokens}
+            maxTokens={contextMaxTokens}
+          />
         </div>
 
         {/* Mobile topbar indicators — compact icon-only pills */}
