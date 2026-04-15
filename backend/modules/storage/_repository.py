@@ -68,6 +68,20 @@ class StorageRepository:
         await self._col.delete_many({"_id": {"$in": file_ids}})
         return file_ids
 
+    async def list_for_persona(self, user_id: str, persona_id: str) -> list[dict]:
+        """Return raw file docs for a persona, oldest first."""
+        cursor = self._col.find(
+            {"user_id": user_id, "persona_id": persona_id},
+        ).sort("created_at", 1)
+        return await cursor.to_list(length=100000)
+
+    async def bulk_insert_files(self, docs: list[dict]) -> int:
+        """Insert raw file docs (``_id`` already assigned)."""
+        if not docs:
+            return 0
+        result = await self._col.insert_many(docs)
+        return len(result.inserted_ids)
+
     async def get_quota_used(self, user_id: str) -> int:
         pipeline = [
             {"$match": {"user_id": user_id}},

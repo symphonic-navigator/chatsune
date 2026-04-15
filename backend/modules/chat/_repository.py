@@ -299,6 +299,39 @@ class ChatRepository:
         result = await self._sessions.delete_many({"_id": {"$in": session_ids}})
         return result.deleted_count
 
+    async def list_session_ids_for_persona(
+        self, user_id: str, persona_id: str,
+    ) -> list[str]:
+        """Return all session ``_id``s (including soft-deleted) for a persona."""
+        cursor = self._sessions.find(
+            {"user_id": user_id, "persona_id": persona_id},
+            projection={"_id": 1},
+        )
+        return [doc["_id"] async for doc in cursor]
+
+    async def list_sessions_for_export(
+        self, user_id: str, persona_id: str,
+    ) -> list[dict]:
+        """Return raw session docs for a persona, including soft-deleted."""
+        cursor = self._sessions.find(
+            {"user_id": user_id, "persona_id": persona_id},
+        ).sort("created_at", 1)
+        return await cursor.to_list(length=10000)
+
+    async def bulk_insert_sessions(self, docs: list[dict]) -> int:
+        """Insert raw session docs (``_id`` already assigned)."""
+        if not docs:
+            return 0
+        result = await self._sessions.insert_many(docs)
+        return len(result.inserted_ids)
+
+    async def bulk_insert_messages(self, docs: list[dict]) -> int:
+        """Insert raw message docs (``_id`` + ``session_id`` already assigned)."""
+        if not docs:
+            return 0
+        result = await self._messages.insert_many(docs)
+        return len(result.inserted_ids)
+
     async def save_message(
         self,
         session_id: str,

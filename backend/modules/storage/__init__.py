@@ -3,10 +3,13 @@
 Public API: import only from this file.
 """
 
+from uuid import uuid4
+
 from backend.modules.storage._handlers import router
 from backend.modules.storage._repository import StorageRepository
 from backend.modules.storage._blob_store import BlobStore
 from backend.database import get_db
+from shared.dtos.export import StorageBundleDto, StorageFileRecordDto
 
 
 async def init_indexes(db) -> None:
@@ -62,6 +65,99 @@ async def delete_by_persona(user_id: str, persona_id: str) -> int:
     return len(file_ids)
 
 
+async def delete_all_for_persona(user_id: str, persona_id: str) -> int:
+    """Alias for ``delete_by_persona`` — named for symmetry with other modules
+    so the Phase 2 import orchestrator can uniformly call
+    ``delete_all_for_persona`` on failure.
+    """
+    return await delete_by_persona(user_id, persona_id)
+
+
+async def bulk_export_for_persona(
+    user_id: str, persona_id: str,
+) -> tuple[StorageBundleDto, dict[str, bytes]]:
+    """Return storage metadata + blob bytes for every file attached to a persona.
+
+    The returned ``dict`` maps the newly-assigned ``export_id`` (a fresh UUID)
+    to the file's raw bytes; the Phase 2 packager streams these into the
+    archive using the ``export_id`` as the archive entry name. Files whose
+    blob has vanished from disk are skipped with no error — metadata without
+    a blob would not round-trip.
+    """
+    repo = StorageRepository(get_db())
+    blob_store = BlobStore()
+    docs = await repo.list_for_persona(user_id, persona_id)
+
+    records: list[StorageFileRecordDto] = []
+    blobs: dict[str, bytes] = {}
+
+    for doc in docs:
+        data = blob_store.load(doc["user_id"], doc["_id"])
+        if data is None:
+            # Orphaned DB row; skip to avoid an unresolvable import later.
+            continue
+        export_id = str(uuid4())
+        records.append(StorageFileRecordDto(
+            export_id=export_id,
+            original_name=doc["original_name"],
+            display_name=doc["display_name"],
+            media_type=doc["media_type"],
+            size_bytes=doc["size_bytes"],
+            thumbnail_b64=doc.get("thumbnail_b64"),
+            text_preview=doc.get("text_preview"),
+            vision_descriptions=doc.get("vision_descriptions"),
+            created_at=doc["created_at"],
+            updated_at=doc["updated_at"],
+        ))
+        blobs[export_id] = data
+
+    return StorageBundleDto(files=records), blobs
+
+
+async def bulk_import_for_persona(
+    user_id: str,
+    persona_id: str,
+    bundle: StorageBundleDto,
+    blobs: dict[str, bytes],
+) -> None:
+    """Insert storage file records + blobs for a persona.
+
+    Each file record receives a freshly-generated UUID for ``_id`` and its
+    bytes are written to disk via ``BlobStore``. The ``export_id`` from the
+    bundle is used only to look up bytes in ``blobs`` — it does not survive
+    into the database.
+
+    Files whose blob is missing from ``blobs`` are skipped.
+    """
+    repo = StorageRepository(get_db())
+    blob_store = BlobStore()
+
+    doc_inserts: list[dict] = []
+    for rec in bundle.files:
+        data = blobs.get(rec.export_id)
+        if data is None:
+            continue
+        new_file_id = str(uuid4())
+        rel_path = blob_store.save(user_id, new_file_id, data)
+        doc_inserts.append({
+            "_id": new_file_id,
+            "user_id": user_id,
+            "persona_id": persona_id,
+            "original_name": rec.original_name,
+            "display_name": rec.display_name,
+            "media_type": rec.media_type,
+            "size_bytes": rec.size_bytes,
+            "file_path": rel_path,
+            "thumbnail_b64": rec.thumbnail_b64,
+            "text_preview": rec.text_preview,
+            "vision_descriptions": rec.vision_descriptions,
+            "created_at": rec.created_at,
+            "updated_at": rec.updated_at,
+        })
+
+    await repo.bulk_insert_files(doc_inserts)
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -70,4 +166,7 @@ __all__ = [
     "get_cached_vision_description",
     "store_vision_description",
     "delete_by_persona",
+    "delete_all_for_persona",
+    "bulk_export_for_persona",
+    "bulk_import_for_persona",
 ]

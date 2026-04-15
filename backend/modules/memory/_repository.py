@@ -101,6 +101,43 @@ class MemoryRepository:
         )
         return entries_result.deleted_count
 
+    # -------------------------------------------------------------------------
+    # Bulk export / import
+    # -------------------------------------------------------------------------
+
+    async def bulk_list_for_export(
+        self, user_id: str, persona_id: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """Return raw journal entries and memory bodies for a persona.
+
+        Used by the persona export pipeline. Returns lists of raw MongoDB
+        docs (still carrying ``_id`` / ``user_id`` / ``persona_id``); the
+        public API strips owner identifiers before handing to the orchestrator.
+        """
+        entries_cursor = self._entries.find(
+            {"user_id": user_id, "persona_id": persona_id},
+        )
+        entries = await entries_cursor.to_list(length=100000)
+        bodies_cursor = self._bodies.find(
+            {"user_id": user_id, "persona_id": persona_id},
+        )
+        bodies = await bodies_cursor.to_list(length=10000)
+        return entries, bodies
+
+    async def bulk_insert_entries(self, docs: list[dict]) -> int:
+        """Insert raw journal-entry docs (with fresh ``_id`` already set)."""
+        if not docs:
+            return 0
+        result = await self._entries.insert_many(docs)
+        return len(result.inserted_ids)
+
+    async def bulk_insert_bodies(self, docs: list[dict]) -> int:
+        """Insert raw memory-body docs (with fresh ``_id`` already set)."""
+        if not docs:
+            return 0
+        result = await self._bodies.insert_many(docs)
+        return len(result.inserted_ids)
+
     async def auto_commit_old_entries(self, *, max_age_hours: int = 48) -> list[dict]:
         """Find uncommitted entries older than cutoff and commit them automatically."""
         cutoff = datetime.now(UTC) - timedelta(hours=max_age_hours)

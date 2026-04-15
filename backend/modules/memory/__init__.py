@@ -1,13 +1,18 @@
 # Memory module public API
 import os
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from backend.modules.memory._handlers import router
 from backend.modules.memory._repository import MemoryRepository
 from backend.modules.memory._assembly import assemble_memory_context
+from shared.dtos.export import MemoryBundleDto
 from shared.dtos.memory import JournalEntryDto
 from shared.events.memory import MemoryEntryAuthoredByPersonaEvent
 from shared.topics import Topics
+
+# Owner-identifier fields stripped when exporting memory docs.
+_MEMORY_OWNER_FIELDS = ("_id", "user_id", "persona_id")
 
 
 async def init_indexes(db) -> None:
@@ -41,6 +46,58 @@ async def delete_by_persona(user_id: str, persona_id: str) -> int:
 
     repo = MemoryRepository(get_db())
     return await repo.delete_by_persona(user_id, persona_id)
+
+
+async def bulk_export_for_persona(
+    user_id: str, persona_id: str,
+) -> MemoryBundleDto:
+    """Return all journal entries + memory bodies for a persona as a bundle.
+
+    Owner identifiers (``_id``, ``user_id``, ``persona_id``) are stripped.
+    All other fields including timestamps, state, version and content are
+    preserved verbatim. The returned dicts are safe to serialise and later
+    feed back into ``bulk_import_for_persona``.
+    """
+    from backend.database import get_db
+
+    repo = MemoryRepository(get_db())
+    entries, bodies = await repo.bulk_list_for_export(user_id, persona_id)
+
+    def _strip(doc: dict) -> dict:
+        return {k: v for k, v in doc.items() if k not in _MEMORY_OWNER_FIELDS}
+
+    return MemoryBundleDto(
+        journal_entries=[_strip(e) for e in entries],
+        memory_bodies=[_strip(b) for b in bodies],
+    )
+
+
+async def bulk_import_for_persona(
+    user_id: str, persona_id: str, bundle: MemoryBundleDto,
+) -> None:
+    """Insert all memory docs from ``bundle`` under the given user/persona.
+
+    Every inserted document receives a fresh UUID. Timestamps and all other
+    fields from the bundle are preserved as-is.
+    """
+    from backend.database import get_db
+
+    repo = MemoryRepository(get_db())
+
+    def _prepare(raw: dict) -> dict:
+        doc = dict(raw)
+        # Defensive: in case owner fields slipped through the bundle.
+        for k in _MEMORY_OWNER_FIELDS:
+            doc.pop(k, None)
+        doc["_id"] = str(uuid4())
+        doc["user_id"] = user_id
+        doc["persona_id"] = persona_id
+        return doc
+
+    entries = [_prepare(e) for e in bundle.journal_entries]
+    bodies = [_prepare(b) for b in bundle.memory_bodies]
+    await repo.bulk_insert_entries(entries)
+    await repo.bulk_insert_bodies(bodies)
 
 
 async def write_persona_authored_entry(
@@ -109,4 +166,6 @@ __all__ = [
     "MemoryRepository",
     "delete_by_persona",
     "write_persona_authored_entry",
+    "bulk_export_for_persona",
+    "bulk_import_for_persona",
 ]

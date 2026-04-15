@@ -104,6 +104,44 @@ class ArtefactRepository:
         )
         return result.deleted_count
 
+    async def list_for_sessions(self, session_ids: list[str]) -> list[dict]:
+        """Return all artefact docs whose ``session_id`` is in the list."""
+        if not session_ids:
+            return []
+        cursor = self._artefacts.find(
+            {"session_id": {"$in": session_ids}},
+        ).sort("created_at", 1)
+        return await cursor.to_list(length=10000)
+
+    async def list_versions_for_artefacts(
+        self, artefact_ids: list[str],
+    ) -> dict[str, list[dict]]:
+        """Return ``{artefact_id: [version_doc, ...]}`` for the given ids."""
+        if not artefact_ids:
+            return {}
+        cursor = self._versions.find(
+            {"artefact_id": {"$in": artefact_ids}},
+        ).sort("version", 1)
+        docs = await cursor.to_list(length=100000)
+        grouped: dict[str, list[dict]] = {}
+        for doc in docs:
+            grouped.setdefault(doc["artefact_id"], []).append(doc)
+        return grouped
+
+    async def bulk_insert_artefacts(self, docs: list[dict]) -> int:
+        """Insert raw artefact docs (``_id`` already assigned as ObjectId)."""
+        if not docs:
+            return 0
+        result = await self._artefacts.insert_many(docs)
+        return len(result.inserted_ids)
+
+    async def bulk_insert_versions(self, docs: list[dict]) -> int:
+        """Insert raw version docs (``artefact_id`` already assigned)."""
+        if not docs:
+            return 0
+        result = await self._versions.insert_many(docs)
+        return len(result.inserted_ids)
+
     async def save_version(self, artefact_id: str, version: int, content: str, title: str) -> None:
         await self._versions.insert_one({
             "artefact_id": artefact_id,

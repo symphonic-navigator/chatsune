@@ -6,6 +6,7 @@ chat module.
 """
 
 import logging
+from uuid import uuid4
 
 from backend.modules.bookmark import delete_bookmarks_for_session
 from backend.database import get_db
@@ -24,8 +25,38 @@ from backend.modules.chat._orchestrator import (
 )
 from backend.modules.chat._prompt_assembler import assemble_preview
 from backend.modules.chat._repository import ChatRepository
+from shared.dtos.export import (
+    SessionExportDto,
+    SessionsBundleDto,
+)
 
 _log = logging.getLogger(__name__)
+
+# Explicit allowlist of chat-session fields to export.
+#
+# This is INTENTIONALLY an allowlist rather than ``model_dump()`` of the full
+# document so that any future fields added to ``chat_sessions`` (notably
+# ``project_id`` for the upcoming project feature) are automatically excluded
+# from exports unless explicitly added here. When a new field is added that
+# SHOULD travel with the persona (project-independent), append it here.
+# When a new field that MUST NOT cross persona boundaries is added (like a
+# project reference), deliberately leave it off.
+_EXPORTED_SESSION_FIELDS: tuple[str, ...] = (
+    "title",
+    "pinned",
+    "state",
+    "reasoning_override",
+    "disabled_tool_groups",
+    "knowledge_library_ids",
+    "context_status",
+    "context_fill_percentage",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+)
+
+# Fields stripped from each message doc on export.
+_STRIPPED_MESSAGE_FIELDS: tuple[str, ...] = ("_id", "session_id")
 
 
 async def init_indexes(db) -> None:
@@ -123,6 +154,104 @@ async def delete_by_persona(user_id: str, persona_id: str) -> int:
     return await repo.delete_by_persona(user_id, persona_id)
 
 
+async def delete_all_for_persona(user_id: str, persona_id: str) -> int:
+    """Alias for ``delete_by_persona`` — named for symmetry with other modules.
+
+    Provides the same rollback hook the storage / artefact / memory modules
+    expose, so the Phase 2 import orchestrator can call
+    ``delete_all_for_persona`` uniformly on failure.
+    """
+    return await delete_by_persona(user_id, persona_id)
+
+
+async def list_session_ids_for_persona(
+    user_id: str, persona_id: str,
+) -> list[str]:
+    """Return all session ids for a (user, persona), including soft-deleted.
+
+    Public helper so the persona export orchestrator (Phase 2) can fetch
+    artefact data for these sessions without reaching into chat internals.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.list_session_ids_for_persona(user_id, persona_id)
+
+
+async def bulk_export_for_persona(
+    user_id: str, persona_id: str,
+) -> SessionsBundleDto:
+    """Return all chat sessions (plus their messages) for a persona.
+
+    See the module-level ``_EXPORTED_SESSION_FIELDS`` allowlist for the
+    rationale behind explicit field selection.
+    """
+    repo = ChatRepository(get_db())
+    session_docs = await repo.list_sessions_for_export(user_id, persona_id)
+
+    sessions: list[SessionExportDto] = []
+    for sdoc in session_docs:
+        session_id = sdoc["_id"]
+        fields = {
+            k: sdoc[k]
+            for k in _EXPORTED_SESSION_FIELDS
+            if k in sdoc
+        }
+        raw_msgs = await repo.list_messages(session_id)
+        msgs = [
+            {k: v for k, v in m.items() if k not in _STRIPPED_MESSAGE_FIELDS}
+            for m in raw_msgs
+        ]
+        sessions.append(SessionExportDto(
+            original_id=session_id,
+            session_fields=fields,
+            messages=msgs,
+        ))
+
+    return SessionsBundleDto(sessions=sessions)
+
+
+async def bulk_import_for_persona(
+    user_id: str, persona_id: str, bundle: SessionsBundleDto,
+) -> dict[str, str]:
+    """Insert sessions + messages for a persona from a bundle.
+
+    Returns a mapping ``old_session_id -> new_session_id`` that the
+    orchestrator uses to remap artefact references.
+
+    Every inserted session and message receives a fresh UUID. Timestamps and
+    other preserved fields are kept as-is.
+    """
+    repo = ChatRepository(get_db())
+    id_map: dict[str, str] = {}
+
+    session_inserts: list[dict] = []
+    message_inserts: list[dict] = []
+
+    for sess in bundle.sessions:
+        new_session_id = str(uuid4())
+        id_map[sess.original_id] = new_session_id
+
+        sdoc = dict(sess.session_fields)
+        # Defensive: ensure owner identifiers never leak in from the bundle.
+        for k in ("_id", "user_id", "persona_id"):
+            sdoc.pop(k, None)
+        sdoc["_id"] = new_session_id
+        sdoc["user_id"] = user_id
+        sdoc["persona_id"] = persona_id
+        session_inserts.append(sdoc)
+
+        for raw_msg in sess.messages:
+            mdoc = dict(raw_msg)
+            for k in ("_id", "session_id"):
+                mdoc.pop(k, None)
+            mdoc["_id"] = str(uuid4())
+            mdoc["session_id"] = new_session_id
+            message_inserts.append(mdoc)
+
+    await repo.bulk_insert_sessions(session_inserts)
+    await repo.bulk_insert_messages(message_inserts)
+    return id_map
+
+
 async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:
     """Return ``{session_id: {"title": str | None, "persona_id": str}}`` for the given ids.
 
@@ -147,4 +276,6 @@ __all__ = [
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
     "get_session_summaries", "delete_by_persona",
+    "delete_all_for_persona", "list_session_ids_for_persona",
+    "bulk_export_for_persona", "bulk_import_for_persona",
 ]
