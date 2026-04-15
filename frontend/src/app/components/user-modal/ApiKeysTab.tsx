@@ -73,10 +73,11 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
 
   async function handleTest(provider: WebSearchProvider) {
     const row = rowFor(provider.provider_id)
-    if (!row.draft || row.busy !== 'idle') return
+    if (row.busy !== 'idle') return
+    const apiKey = row.draft.length > 0 ? row.draft : undefined
     patchRow(provider.provider_id, { busy: 'testing', error: null, lastTestFeedback: null })
     try {
-      const res = await webSearchApi.testWebSearchKey(provider.provider_id, row.draft)
+      const res = await webSearchApi.testWebSearchKey(provider.provider_id, apiKey)
       patchRow(provider.provider_id, {
         busy: 'idle',
         lastTestFeedback: { valid: res.valid, error: res.error },
@@ -207,7 +208,7 @@ export function ApiKeysTab({ onProvidersLoaded }: ApiKeysTabProps) {
                 <button
                   type="button"
                   onClick={() => handleTest(p)}
-                  disabled={disabled || row.draft.length === 0}
+                  disabled={disabled || (row.draft.length === 0 && !p.is_configured)}
                   className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {row.busy === 'testing' ? 'Testing…' : 'Test'}

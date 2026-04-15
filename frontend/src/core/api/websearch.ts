@@ -21,9 +21,9 @@ export const webSearchApi = {
   deleteWebSearchKey: (providerId: string) =>
     api.delete<void>(`/api/websearch/providers/${providerId}/credential`),
 
-  testWebSearchKey: (providerId: string, apiKey: string) =>
+  testWebSearchKey: (providerId: string, apiKey: string | undefined) =>
     api.post<TestWebSearchResponse>(
       `/api/websearch/providers/${providerId}/test`,
-      { api_key: apiKey },
+      apiKey === undefined ? {} : { api_key: apiKey },
     ),
 }
