@@ -11,7 +11,7 @@ import asyncio
 import json
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import httpx
 
@@ -84,6 +84,7 @@ class OllamaModelOps:
         target_user_ids: list[str],
         http_transport: httpx.AsyncBaseTransport | None = None,
         progress_throttle_seconds: float = _DEFAULT_THROTTLE_S,
+        on_models_changed: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -93,6 +94,22 @@ class OllamaModelOps:
         self._target_user_ids = target_user_ids
         self._transport = http_transport
         self._throttle = progress_throttle_seconds
+        self._on_models_changed = on_models_changed
+
+    async def _notify_models_changed(self) -> None:
+        """Best-effort post-operation hook. Logs and swallows failures —
+        the underlying pull/delete already succeeded, so a refresh error
+        must not be reported as an operational failure to the user."""
+        if self._on_models_changed is None:
+            return
+        try:
+            await self._on_models_changed()
+        except Exception as exc:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).warning(
+                "on_models_changed hook failed for scope=%s: %s",
+                self._scope, exc,
+            )
 
     async def start_pull(self, *, slug: str) -> str:
         handle = self._registry.register(
@@ -228,6 +245,7 @@ class OllamaModelOps:
             correlation_id=pull_id,
             target_user_ids=self._target_user_ids,
         )
+        await self._notify_models_changed()
 
     async def _emit_progress(self, pull_id: str, obj: dict[str, Any]) -> None:
         await self._bus.publish(
@@ -265,3 +283,4 @@ class OllamaModelOps:
             ),
             target_user_ids=self._target_user_ids,
         )
+        await self._notify_models_changed()
