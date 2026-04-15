@@ -141,7 +141,19 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
     onNavigate?.('/personas')
   }
 
-  if (!resolved) return null
+  // When the persona has been deleted out from under us, the main modal must
+  // disappear, but the deletion report — which lives in this component's
+  // local state — still needs to render so the user actually sees it. If we
+  // returned ``null`` here the report would be swallowed along with the
+  // overlay; see the PERSONA_DELETED event in ``usePersonas``.
+  if (!resolved) {
+    return (
+      <DeletionReportSheet
+        report={deletionReport}
+        onClose={handleDismissDeletionReport}
+      />
+    )
+  }
 
   const chakra = CHAKRA_PALETTE[resolved.colour_scheme]
   const borderColour = `${chakra.hex}26`
