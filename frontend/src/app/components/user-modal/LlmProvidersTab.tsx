@@ -122,7 +122,7 @@ export function LlmProvidersTab() {
         <AddConnectionWizard
           onClose={() => setWizardOpen(false)}
           onCreated={async () => {
-            setWizardOpen(false)
+            // Refresh the connection list; the modal controls its own closing.
             await refresh()
           }}
         />
@@ -132,7 +132,7 @@ export function LlmProvidersTab() {
           connection={editing}
           onClose={() => setEditing(null)}
           onSaved={async () => {
-            setEditing(null)
+            // Refresh the connection list; the modal controls its own closing.
             await refresh()
           }}
           onDeleted={async () => {

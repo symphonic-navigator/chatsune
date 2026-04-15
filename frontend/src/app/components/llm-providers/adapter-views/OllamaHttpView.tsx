@@ -9,11 +9,6 @@ interface DiagnosticsState {
   error: string | null
 }
 
-interface TestState {
-  loading: boolean
-  result: { valid: boolean; error: string | null } | null
-}
-
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (
     typeof value === 'object' &&
@@ -47,7 +42,6 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
   const [maxParallel, setMaxParallel] = useState<number>(initialMaxParallel)
 
   const [collisionWarning, setCollisionWarning] = useState<string | null>(null)
-  const [test, setTest] = useState<TestState>({ loading: false, result: null })
   const [diagnostics, setDiagnostics] = useState<DiagnosticsState>({
     loading: false,
     data: null,
@@ -110,20 +104,6 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
       cancelled = true
     }
   }, [url, connection.id])
-
-  async function handleTest() {
-    if (!isSaved) return
-    setTest({ loading: true, result: null })
-    try {
-      const res = await llmApi.testConnection(connection.id)
-      setTest({ loading: false, result: res })
-    } catch (err) {
-      setTest({
-        loading: false,
-        result: { valid: false, error: err instanceof Error ? err.message : 'Test failed' },
-      })
-    }
-  }
 
   async function loadDiagnostics() {
     if (!isSaved) return
@@ -232,31 +212,6 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
           }}
           className="w-24 rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-purple/60"
         />
-      </div>
-
-      {/* Test button */}
-      <div className="space-y-2">
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={!isSaved || test.loading}
-          title={disabledTooltip}
-          className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {test.loading ? 'Testing…' : 'Test connection'}
-        </button>
-        {test.result && (
-          <div
-            className={[
-              'rounded border px-2 py-1.5 text-[12px]',
-              test.result.valid
-                ? 'border-green-500/30 bg-green-500/10 text-green-300'
-                : 'border-red-500/30 bg-red-500/10 text-red-300',
-            ].join(' ')}
-          >
-            {test.result.valid ? 'Connection OK.' : `Error: ${test.result.error ?? 'unknown'}`}
-          </div>
-        )}
       </div>
 
       {/* Diagnostics */}

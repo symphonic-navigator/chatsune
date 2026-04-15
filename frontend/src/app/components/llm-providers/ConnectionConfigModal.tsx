@@ -3,7 +3,7 @@ import { Sheet } from '../../../core/components/Sheet'
 import { llmApi } from '../../../core/api/llm'
 import { resolveAdapterView } from '../../../core/adapters/AdapterViewRegistry'
 import { ApiError } from '../../../core/api/client'
-import type { Adapter, Connection } from '../../../core/types/llm'
+import type { Adapter, Connection, TestResultResponse } from '../../../core/types/llm'
 
 export interface NewConnectionPreset {
   adapter_type: string
@@ -61,16 +61,17 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 export function ConnectionConfigModal({
-  connection,
+  connection: connectionProp,
   newConnectionPreset,
   onClose,
   onSaved,
   onDeleted,
 }: ConnectionConfigModalProps) {
-  const isNew = connection === undefined
+  const isNew = connectionProp === undefined
   const initial: Connection = useMemo(
-    () => connection ?? placeholderFromPreset(newConnectionPreset!),
-    [connection, newConnectionPreset],
+    () => connectionProp ?? placeholderFromPreset(newConnectionPreset!),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   )
 
   // Required-field list is only enforced in new mode. In edit mode the
@@ -85,19 +86,28 @@ export function ConnectionConfigModal({
   const [slug, setSlug] = useState(initial.slug)
   const [config, setConfig] = useState<Record<string, unknown>>(initial.config)
 
+  // Local copy of the persisted connection — refreshed after every save so
+  // adapter views (e.g. OllamaHttpView's apiKeyState) re-evaluate immediately.
+  const [connection, setConnection] = useState<Connection>(initial)
+
   const [adapter, setAdapter] = useState<Adapter | null>(null)
   const [saving, setSaving] = useState(false)
+  const [closeAfter, setCloseAfter] = useState(false)
+  const [testResult, setTestResult] = useState<TestResultResponse | null>(null)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [suggestedSlug, setSuggestedSlug] = useState<string | null>(null)
 
   // Working copy of the Connection passed to the adapter view. We rebuild it
   // whenever fields the view cares about change so it reflects the latest
   // state — important so the URL-collision warning re-evaluates live.
+  // After a save we also want the refreshed connection (with updated config /
+  // api_key SecretFieldView) to propagate, so we spread `connection` as the base.
   const workingConnection: Connection = useMemo(
-    () => ({ ...initial, display_name: displayName, slug, config }),
-    [initial, displayName, slug, config],
+    () => ({ ...connection, display_name: displayName, slug, config }),
+    [connection, displayName, slug, config],
   )
 
   useEffect(() => {
@@ -119,63 +129,84 @@ export function ConnectionConfigModal({
     [requiredConfigFields, config],
   )
 
-  async function handleSave() {
-    const trimmedName = displayName.trim()
-    const trimmedSlug = slug.trim()
-    if (!trimmedName || !trimmedSlug) {
-      setError('Please fill in the display name and slug.')
-      return
-    }
+  function validateLocally(): string[] {
+    const errors: string[] = []
+    if (!displayName.trim()) errors.push('Display name is required.')
+    if (!slug.trim()) errors.push('Slug is required.')
     if (missingRequired.length > 0) {
-      // We hand-craft the message for the api_key case since it is by far
-      // the most common, but fall back to a generic list otherwise.
-      const label = missingRequired[0] === 'api_key'
-        ? 'API key'
-        : missingRequired[0]
-      setError(`${label} is required for this template.`)
+      const label = missingRequired[0] === 'api_key' ? 'API key' : missingRequired[0]
+      errors.push(`${label} is required for this template.`)
+    }
+    return errors
+  }
+
+  async function handleSave({ closeAfter: shouldClose }: { closeAfter: boolean }) {
+    const errors = validateLocally()
+    if (errors.length > 0) {
+      setValidationErrors(errors)
       return
     }
+    setValidationErrors([])
     setSaving(true)
-    setError(null)
+    setCloseAfter(shouldClose)
+    setTestResult(null)
+    setErrorMessage(null)
     setSuggestedSlug(null)
+
     try {
-      if (isNew) {
-        await llmApi.createConnection({
-          adapter_type: initial.adapter_type,
-          display_name: trimmedName,
-          slug: trimmedSlug,
-          config,
-        })
-      } else {
-        await llmApi.updateConnection(connection!.id, {
-          display_name: trimmedName !== connection!.display_name ? trimmedName : undefined,
-          slug: trimmedSlug !== connection!.slug ? trimmedSlug : undefined,
-          config,
-        })
-      }
+      const trimmedName = displayName.trim()
+      const trimmedSlug = slug.trim()
+
+      const saved = isNew
+        ? await llmApi.createConnection({
+            adapter_type: initial.adapter_type,
+            display_name: trimmedName,
+            slug: trimmedSlug,
+            config,
+          })
+        : await llmApi.updateConnection(connection.id, {
+            display_name: trimmedName !== connection.display_name ? trimmedName : undefined,
+            slug: trimmedSlug !== connection.slug ? trimmedSlug : undefined,
+            config,
+          })
+
+      // Refresh local connection state — this is what flips apiKeyState.is_set
+      // from false to true so the placeholder updates to "leave empty to keep".
+      setConnection(saved)
+
+      const result = await llmApi.testConnection(saved.id)
+      setTestResult(result)
+
+      // Notify parent so it can refresh the connection list.
       await onSaved()
+
+      if (shouldClose) {
+        onClose()
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && isSlugErrorBody({ detail: err.body })) {
         const suggested = (err.body as { error: string; suggested_slug: string }).suggested_slug
         setSuggestedSlug(suggested)
-        setError(`Slug "${trimmedSlug}" is already in use.`)
+        setErrorMessage(`Slug "${slug.trim()}" is already in use.`)
       } else if (err instanceof ApiError && err.body && typeof err.body === 'object') {
         const body = err.body as { detail?: unknown }
         if (typeof body.detail === 'object' && body.detail !== null) {
           const d = body.detail as { error?: unknown; suggested_slug?: unknown }
           if (d.error === 'slug_exists' && typeof d.suggested_slug === 'string') {
-            setSuggestedSlug(d.suggested_slug)
-            setError(`Slug "${trimmedSlug}" is already in use.`)
+            setSuggestedSlug(d.suggested_slug as string)
+            setErrorMessage(`Slug "${slug.trim()}" is already in use.`)
           } else {
-            setError(err.message || 'Save failed.')
+            setErrorMessage(err.message || 'Save failed.')
           }
         } else {
-          setError(err.message || 'Save failed.')
+          setErrorMessage(err.message || 'Save failed.')
         }
       } else {
-        setError(err instanceof Error ? err.message : 'Save failed.')
+        setErrorMessage(err instanceof Error ? err.message : 'Save failed.')
       }
+    } finally {
       setSaving(false)
+      setCloseAfter(false)
     }
   }
 
@@ -188,17 +219,16 @@ export function ConnectionConfigModal({
     }
     setDeleting(true)
     try {
-      await llmApi.deleteConnection(connection!.id)
+      await llmApi.deleteConnection(connection.id)
       if (onDeleted) await onDeleted()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed.')
+      setErrorMessage(err instanceof Error ? err.message : 'Delete failed.')
       setDeleting(false)
       setConfirmDelete(false)
     }
   }
 
   const AdapterView = adapter ? resolveAdapterView(adapter.view_id) : null
-  const saveDisabled = saving || missingRequired.length > 0
 
   return (
     <Sheet
@@ -274,17 +304,45 @@ export function ConnectionConfigModal({
             </div>
           )}
 
-          {/* Errors */}
-          {error && (
+          {/* Test result pill */}
+          {testResult && (
+            <div
+              className={[
+                'rounded border px-3 py-2 text-[12px]',
+                testResult.valid
+                  ? 'border-green-500/30 bg-green-500/10 text-green-300'
+                  : 'border-red-500/30 bg-red-500/10 text-red-300',
+              ].join(' ')}
+            >
+              {testResult.valid ? 'Connection OK.' : `Error: ${testResult.error ?? 'unknown'}`}
+            </div>
+          )}
+
+          {/* Validation errors */}
+          {validationErrors.length > 0 && (
+            <div className="space-y-1">
+              {validationErrors.map((msg, i) => (
+                <div
+                  key={i}
+                  className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300"
+                >
+                  {msg}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* General error / slug collision */}
+          {errorMessage && (
             <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
-              <p>{error}</p>
+              <p>{errorMessage}</p>
               {suggestedSlug && (
                 <button
                   type="button"
                   onClick={() => {
                     setSlug(suggestedSlug)
                     setSuggestedSlug(null)
-                    setError(null)
+                    setErrorMessage(null)
                   }}
                   className="mt-1.5 rounded border border-red-400/40 px-2 py-0.5 text-[11px] text-red-200 hover:bg-red-500/15"
                 >
@@ -296,8 +354,15 @@ export function ConnectionConfigModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/6 px-5 py-3">
-          <div>
+        <div className="flex items-center justify-between border-t border-white/8 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-[12px] text-white/60 hover:text-white/80"
+            >
+              Cancel
+            </button>
             {!isNew && onDeleted && (
               <button
                 type="button"
@@ -322,23 +387,19 @@ export function ConnectionConfigModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/70 hover:bg-white/5"
+              onClick={() => void handleSave({ closeAfter: false })}
+              disabled={saving}
+              className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40"
             >
-              Cancel
+              {saving && !closeAfter ? 'Saving…' : 'Save'}
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              disabled={saveDisabled}
-              className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80 disabled:opacity-40 disabled:cursor-not-allowed"
-              title={missingRequired.length > 0
-                ? (missingRequired[0] === 'api_key'
-                    ? 'API key is required for this template'
-                    : `${missingRequired[0]} is required`)
-                : undefined}
+              onClick={() => void handleSave({ closeAfter: true })}
+              disabled={saving}
+              className="rounded bg-gold/90 px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-gold disabled:opacity-40"
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving && closeAfter ? 'Saving…' : 'Save and close'}
             </button>
           </div>
         </div>
