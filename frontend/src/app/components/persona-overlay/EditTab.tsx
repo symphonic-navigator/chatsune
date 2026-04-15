@@ -524,6 +524,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           currentModelId={modelUniqueId || null}
           onSelect={handleModelSelect}
           onClose={() => setModelModalOpen(false)}
+          mode="in-parent"
         />
       )}
     </>

@@ -230,9 +230,9 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
             })}
         </div>
 
-        {/* Tab content */}
+        {/* Tab content — `relative` anchors the in-parent ModelSelectionModal */}
         <div
-          className="flex-1 overflow-y-auto"
+          className="relative flex-1 overflow-y-auto"
           role="tabpanel"
           id={`persona-tabpanel-${activeTab}`}
           aria-labelledby={`persona-tab-${activeTab}`}
