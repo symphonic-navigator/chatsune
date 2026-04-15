@@ -92,6 +92,8 @@ lives in its own file (e.g. `_ollama_cloud.py`).
 
 ## INS-004 — Model Unique ID Format
 
+> **SUPERSEDED 2026-04-15 (UI restructure).** Model `unique_id` canonical form is now `<connection_slug>:<model_slug>`. See INS-019.
+
 **Decision (UPDATED 2026-04-14, Connections Refactor):** Models are identified
 by `model_unique_id = "<connection_id>:<model_slug>"`. The `connection_id` is
 the UUID of a user-owned Connection (see INS-016). The backend validates the
@@ -550,6 +552,8 @@ a bespoke React component per adapter, so each backend type can render
 its own wizard, settings panel, and diagnostics without a generic
 config-form engine.
 
+> The `unique_id` format referenced here is the slug-based form per INS-019 (previously UUID-based per INS-004).
+
 ---
 
 ## INS-017 — Per-Connection Concurrency
@@ -603,3 +607,17 @@ writing, testing, and maintaining online migration code for throwaway
 schemas exceeds the cost of re-configuration. This policy is explicitly
 revoked at GA; once real users exist, every schema change needs a proper
 migration.
+
+---
+
+## INS-019 — Model Unique ID Slug Format (2026-04-15)
+
+**Decision:** Models are identified by `model_unique_id = "<connection_slug>:<model_slug>"`. Supersedes INS-004's UUID-based format.
+
+**Parsing:** split on the first `:`. Left segment = Connection slug (user-defined, unique per user, validated by `_SLUG_RE`). Right segment = model slug (opaque, passed to the adapter).
+
+**Rename cascade:** Renaming a Connection slug is a legitimate user action. The `ConnectionRepository.update` method runs a MongoDB transaction (RS0) that updates the connection document and every `persona.model_unique_id` and `llm_user_model_configs.model_unique_id` of that user matching the old prefix. Publishes `Topics.LLM_CONNECTION_SLUG_RENAMED` so client stores can remap in place. Scope is strictly per-user; cross-user data is never touched.
+
+**Adapter-level filter for unusable models:** The `ollama_http` adapter drops any model without a `context_length` from `list_models()`. A model without a known max context window cannot be reasoned about and is not offered to the user.
+
+**DTO impact:** `ModelMetaDto` gains `connection_slug` (used in `unique_id` composition) and keeps `quantisation_level` (populated where the adapter reports it). `connection_id` is retained for internal bookkeeping (tracker enrichment, debug collector).
