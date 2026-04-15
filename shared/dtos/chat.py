@@ -30,6 +30,8 @@ class ChatSessionDto(BaseModel):
     # chat without having to wait for the next inference to complete.
     context_status: Literal["green", "yellow", "orange", "red"] = "green"
     context_fill_percentage: float = 0.0
+    context_used_tokens: int = 0
+    context_max_tokens: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -93,3 +95,5 @@ class ChatMessagesBundleDto(BaseModel):
     messages: list[ChatMessageDto]
     context_status: Literal["green", "yellow", "orange", "red"] = "green"
     context_fill_percentage: float = 0.0
+    context_used_tokens: int = 0
+    context_max_tokens: int = 0

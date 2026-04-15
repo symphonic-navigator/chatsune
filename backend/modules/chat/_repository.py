@@ -533,23 +533,34 @@ class ChatRepository:
             pinned=doc.get("pinned", False),
             context_status=doc.get("context_status", "green"),
             context_fill_percentage=float(doc.get("context_fill_percentage", 0.0)),
+            context_used_tokens=int(doc.get("context_used_tokens", 0)),
+            context_max_tokens=int(doc.get("context_max_tokens", 0)),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
 
     async def update_session_context_metrics(
-        self, session_id: str, status: str, fill_percentage: float,
+        self,
+        session_id: str,
+        status: str,
+        fill_percentage: float,
+        used_tokens: int = 0,
+        max_tokens: int = 0,
     ) -> None:
         """Persist the last-known context window utilisation on the session.
 
         Called at stream-end so that reopening the chat later can hydrate the
         context pill without waiting for the next inference to complete.
+        ``used_tokens`` and ``max_tokens`` carry the absolute counts so the UI
+        can render "X of Y tokens" alongside the fill percentage.
         """
         await self._sessions.update_one(
             {"_id": session_id},
             {"$set": {
                 "context_status": status,
                 "context_fill_percentage": float(fill_percentage),
+                "context_used_tokens": int(used_tokens),
+                "context_max_tokens": int(max_tokens),
             }},
         )
 

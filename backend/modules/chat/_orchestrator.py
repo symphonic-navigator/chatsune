@@ -625,6 +625,8 @@ async def run_inference(
             cancel_event=cancel_event,
             context_status=context_status,
             context_fill_percentage=fill_ratio,
+            context_used_tokens=total_tokens_used,
+            context_max_tokens=max_context,
             tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
             connection_display_name=connection_display_name,
             model_name=model_slug,
@@ -637,6 +639,8 @@ async def run_inference(
         try:
             await repo.update_session_context_metrics(
                 session_id, context_status, fill_ratio,
+                used_tokens=total_tokens_used,
+                max_tokens=max_context,
             )
         except Exception:
             _log.exception(

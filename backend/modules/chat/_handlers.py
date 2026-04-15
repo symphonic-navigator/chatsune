@@ -147,6 +147,8 @@ async def list_messages(
         messages=[ChatRepository.message_to_dto(m) for m in messages],
         context_status=session.get("context_status", "green"),
         context_fill_percentage=float(session.get("context_fill_percentage", 0.0)),
+        context_used_tokens=int(session.get("context_used_tokens", 0)),
+        context_max_tokens=int(session.get("context_max_tokens", 0)),
     )
 
 

@@ -50,6 +50,8 @@ _EXPORTED_SESSION_FIELDS: tuple[str, ...] = (
     "knowledge_library_ids",
     "context_status",
     "context_fill_percentage",
+    "context_used_tokens",
+    "context_max_tokens",
     "created_at",
     "updated_at",
     "deleted_at",

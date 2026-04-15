@@ -53,6 +53,8 @@ class InferenceRunner:
         cancel_event: asyncio.Event | None = None,
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
+        context_used_tokens: int = 0,
+        context_max_tokens: int = 0,
         tool_executor_fn: Callable | None = None,
         connection_display_name: str | None = None,
         model_name: str | None = None,
@@ -64,6 +66,7 @@ class InferenceRunner:
             await self._run_locked(
                 user_id, session_id, correlation_id, stream_fn, emit_fn, save_fn,
                 cancel_event, context_status, context_fill_percentage,
+                context_used_tokens, context_max_tokens,
                 tool_executor_fn, connection_display_name, model_name, adapter_type, model_slug,
             )
 
@@ -78,6 +81,8 @@ class InferenceRunner:
         cancel_event: asyncio.Event | None,
         context_status: str = "green",
         context_fill_percentage: float = 0.0,
+        context_used_tokens: int = 0,
+        context_max_tokens: int = 0,
         tool_executor_fn: Callable | None = None,
         connection_display_name: str | None = None,
         model_name: str | None = None,
@@ -456,6 +461,8 @@ class InferenceRunner:
             usage=usage,
             context_status=context_status,
             context_fill_percentage=context_fill_percentage,
+            context_used_tokens=context_used_tokens,
+            context_max_tokens=context_max_tokens,
             time_to_first_token_ms=ttft_ms,
             tokens_per_second=tps,
             generation_duration_ms=gen_duration_ms,
