@@ -179,6 +179,11 @@ def _map_to_dto(
     )
 
 
+def _filter_unusable(metas: list[ModelMetaDto]) -> list[ModelMetaDto]:
+    # Models without a context length are under-specified and cannot be used — drop them.
+    return [m for m in metas if m.context_window > 0]
+
+
 # ----- adapter -----
 
 class OllamaHttpAdapter(BaseAdapter):
@@ -269,10 +274,11 @@ class OllamaHttpAdapter(BaseAdapter):
             results = await asyncio.gather(
                 *(_fetch_one(e["name"]) for e in tag_entries),
             )
-        return [
+        metas = [
             _map_to_dto(c.id, c.display_name, name, detail)
             for name, detail in results if detail is not None
         ]
+        return _filter_unusable(metas)
 
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
