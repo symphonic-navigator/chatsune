@@ -33,6 +33,12 @@ export const personasApi = {
   remove: (personaId: string) =>
     api.delete<DeletionReportDto>(`/api/personas/${personaId}`),
 
+  clonePersona: (
+    personaId: string,
+    body: { name: string; clone_memory: boolean },
+  ) =>
+    api.post<PersonaDto>(`/api/personas/${personaId}/clone`, body),
+
   reorder: async (orderedIds: string[]): Promise<void> => {
     await api.patch("/api/personas/reorder", { ordered_ids: orderedIds });
   },
