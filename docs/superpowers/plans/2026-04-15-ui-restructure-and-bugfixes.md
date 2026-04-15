@@ -60,7 +60,8 @@ class ModelMetaDto(BaseModel):
     connection_id: str           # keep — internal UUID, used by trackers
     connection_slug: str         # NEW — used in unique_id composition
     connection_display_name: str
-    quantisation: str | None = None  # NEW — populated when the adapter reports it
+    # `quantisation_level: str | None = None` already exists — no new field needed;
+  # later tasks just READ this field. Do NOT add a new `quantisation` field.
     # ...
 
     @computed_field
@@ -153,8 +154,8 @@ Expected: both tests FAIL.
 
 In `_ollama_http.py`, in the model-conversion path:
 - Read `context_length` (or the upstream key the existing code uses). If `None`/`0`/missing, **skip** the entry (`continue`).
-- Read `details.quantization_level` (Ollama upstream key), assign to `quantisation` on the internal model object.
-- Ensure the `ModelMetaDto` built later includes both `connection_slug` and `quantisation`.
+- Read `details.quantization_level` (Ollama upstream key), assign to `quantisation_level` on the internal model object.
+- Ensure the `ModelMetaDto` built later includes both `connection_slug` and `quantisation_level`.
 
 If the adapter exposes model data via an intermediate dict/struct before the DTO is assembled, make sure that struct gains a `quantisation: str | None` field and that the filtering happens before the DTO is built.
 
@@ -956,7 +957,7 @@ git commit -m "LLM connection modal: Save and Save-and-close buttons; auto-test 
 - Modify: `frontend/src/app/components/model-browser/ModelBrowser.tsx`
 - Modify: `frontend/src/app/components/model-browser/modelFilters.ts`
 - Create: `frontend/src/app/components/model-browser/modelBrowserStore.ts` — collapsed-groups Zustand store (localStorage-backed)
-- Modify: `frontend/src/core/types/llm.ts` — add `connection_slug` and `quantisation` to `ModelMetaDto` / `EnrichedModelDto`
+- Modify: `frontend/src/core/types/llm.ts` — add `connection_slug` and `quantisation_level` to `ModelMetaDto` / `EnrichedModelDto`
 
 - [ ] **Step 1: Type additions**
 
@@ -1264,7 +1265,7 @@ Append before or after the last INS entry (keep existing numbering scheme):
 
 **Adapter-level filter for unusable models:** The `ollama_http` adapter drops any model without a `context_length` from `list_models()`. A model without a known max context window cannot be reasoned about and is not offered to the user.
 
-**DTO impact:** `ModelMetaDto` gains `connection_slug` (used in `unique_id` composition) and `quantisation` (populated when the adapter reports it). `connection_id` is retained for internal bookkeeping (tracker enrichment, debug collector).
+**DTO impact:** `ModelMetaDto` gains `connection_slug` (used in `unique_id` composition) and `quantisation_level` (populated when the adapter reports it). `connection_id` is retained for internal bookkeeping (tracker enrichment, debug collector).
 ```
 
 - [ ] **Step 3: Cross-link**
@@ -1350,6 +1351,6 @@ scripts/stop-server.sh /home/chris/workspace/chatsune/.superpowers/brainstorm/*/
 
 **Placeholder scan:** No "TBD"/"TODO"/"similar to". All code blocks concrete. Validation-error wiring in Task 9 Step 3 references existing `validateLocally` and `errorMessage` helpers — those exist in `ConnectionConfigModal.tsx` today; if not, they should be introduced as a tiny local utility in the same file (keep inline, no new file needed).
 
-**Type consistency:** `TopTabId` / `SubTabId` / `LeafId` / `TABS_TREE` used consistently in Task 7. `connection_slug` / `quantisation` introduced in Task 1 and referenced identically in Tasks 2, 3, 10. `testResult` / `saved` / `isSaved` vocabulary consistent across Task 9.
+**Type consistency:** `TopTabId` / `SubTabId` / `LeafId` / `TABS_TREE` used consistently in Task 7. `connection_slug` / `quantisation_level` introduced in Task 1 and referenced identically in Tasks 2, 3, 10. `testResult` / `saved` / `isSaved` vocabulary consistent across Task 9.
 
 ---

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 
 class ModelMetaDto(BaseModel):
     connection_id: str
-    connection_slug: str
+    connection_slug: str = ""  # populated by adapters once Task 2 lands
     connection_display_name: str = ""
     model_id: str
     display_name: str

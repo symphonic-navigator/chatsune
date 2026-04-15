@@ -49,9 +49,11 @@ class LlmConnectionModelsRefreshedEvent(BaseModel):
 
 
 class ConnectionSlugRenamedEvent(BaseModel):
+    type: str = "llm.connection.slug_renamed"
     connection_id: str
     old_slug: str
     new_slug: str
+    timestamp: datetime
 
 
 class LlmUserModelConfigUpdatedEvent(BaseModel):
