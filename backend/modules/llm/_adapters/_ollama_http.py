@@ -433,6 +433,8 @@ class OllamaHttpAdapter(BaseAdapter):
 def _build_adapter_router() -> APIRouter:
     from backend.database import get_db
     from backend.modules.llm._connections import ConnectionRepository
+    from backend.modules.llm._ollama_model_ops import OllamaModelOps
+    from backend.modules.llm._pull_registry import get_pull_registry
     from backend.modules.llm._resolver import resolve_connection_for_user
     from backend.ws.event_bus import EventBus, get_event_bus
     from shared.events.llm import LlmConnectionUpdatedEvent
@@ -503,5 +505,69 @@ def _build_adapter_router() -> APIRouter:
                     status_code=502,
                     detail=f"Upstream returned {exc.response.status_code}",
                 ) from exc
+
+    def _ops_for(c: ResolvedConnection, event_bus: EventBus) -> OllamaModelOps:
+        return OllamaModelOps(
+            base_url=c.config["url"].rstrip("/"),
+            api_key=c.config.get("api_key") or None,
+            scope=f"connection:{c.id}",
+            event_bus=event_bus,
+            registry=get_pull_registry(),
+        )
+
+    @router.post("/pull")
+    async def pull(
+        body: dict,
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+        event_bus: EventBus = Depends(get_event_bus),
+    ) -> dict:
+        slug = (body.get("slug") or "").strip()
+        if not slug:
+            raise HTTPException(400, "slug is required")
+        ops = _ops_for(c, event_bus)
+        pull_id = await ops.start_pull(slug=slug)
+        return {"pull_id": pull_id}
+
+    @router.post("/pull/{pull_id}/cancel", status_code=204)
+    async def cancel_pull(
+        pull_id: str,
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> None:
+        ok = get_pull_registry().cancel(f"connection:{c.id}", pull_id)
+        if not ok:
+            raise HTTPException(404, "pull not found")
+
+    @router.delete("/models/{name}", status_code=204)
+    async def delete_model(
+        name: str,
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+        event_bus: EventBus = Depends(get_event_bus),
+    ) -> None:
+        ops = _ops_for(c, event_bus)
+        try:
+            await ops.delete(name)
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(
+                502, f"Ollama returned {exc.response.status_code}",
+            ) from exc
+        except httpx.ConnectError as exc:
+            raise HTTPException(503, "Cannot reach Ollama") from exc
+
+    @router.get("/pulls")
+    async def list_pulls(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> dict:
+        handles = get_pull_registry().list(f"connection:{c.id}")
+        return {
+            "pulls": [
+                {
+                    "pull_id": h.pull_id,
+                    "slug": h.slug,
+                    "status": h.last_status,
+                    "started_at": h.started_at.isoformat(),
+                }
+                for h in handles
+            ]
+        }
 
     return router

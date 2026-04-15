@@ -1,13 +1,12 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { AdapterViewProps } from '../../../../core/adapters/AdapterViewRegistry'
 import { llmApi } from '../../../../core/api/llm'
 import type { Connection, SecretFieldView } from '../../../../core/types/llm'
-
-interface DiagnosticsState {
-  loading: boolean
-  data: { ps: unknown; tags: unknown } | null
-  error: string | null
-}
+import { OllamaModelsPanel, type OllamaEndpoints } from '../../ollama/OllamaModelsPanel'
+import type {
+  OllamaPsResponse,
+  OllamaTagsResponse,
+} from '../../../../core/api/ollamaLocal'
 
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (
@@ -42,18 +41,13 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
   const [maxParallel, setMaxParallel] = useState<number>(initialMaxParallel)
 
   const [collisionWarning, setCollisionWarning] = useState<string | null>(null)
-  const [diagnostics, setDiagnostics] = useState<DiagnosticsState>({
-    loading: false,
-    data: null,
-    error: null,
-  })
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState<boolean>(false)
 
   // Connection is "saved" once it has a real id assigned by the backend.
   // For the new-connection wizard, the modal still passes a placeholder
   // Connection object with id === '' so adapter-aware buttons can stay
   // mounted but disabled until the first save completes.
   const isSaved = connection.id !== ''
+  const connectionId = connection.id
 
   // Push config changes upward whenever any field mutates. We always send the
   // full known shape so the modal can ship it verbatim to create/update.
@@ -115,30 +109,24 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
     }
   }, [url, connection.id])
 
-  async function loadDiagnostics() {
-    if (!isSaved) return
-    setDiagnostics({ loading: true, data: null, error: null })
-    try {
-      const data = await llmApi.getConnectionDiagnostics(connection.id)
-      setDiagnostics({ loading: false, data, error: null })
-    } catch (err) {
-      setDiagnostics({
-        loading: false,
-        data: null,
-        error: err instanceof Error ? err.message : 'Diagnostics failed',
-      })
+  // Per-connection endpoint bag for the shared models panel. Memoised on the
+  // connection id so the panel's effects (which depend on `endpoints`) do not
+  // re-fire on every parent render. The backend's diagnostics endpoint bundles
+  // ps + tags in one call; we split the two halves so the panel's polling
+  // loops can fire them independently without double-fetching.
+  const endpoints: OllamaEndpoints | null = useMemo(() => {
+    if (!isSaved) return null
+    return {
+      ps: async () =>
+        (await llmApi.getConnectionDiagnostics(connectionId)).ps as OllamaPsResponse,
+      tags: async () =>
+        (await llmApi.getConnectionDiagnostics(connectionId)).tags as OllamaTagsResponse,
+      pull: (slug) => llmApi.pullModel(connectionId, slug),
+      cancelPull: (pullId) => llmApi.cancelModelPull(connectionId, pullId),
+      deleteModel: (name) => llmApi.deleteConnectionModel(connectionId, name),
+      listPulls: () => llmApi.listConnectionPulls(connectionId),
     }
-  }
-
-  function toggleDiagnostics() {
-    const next = !diagnosticsOpen
-    setDiagnosticsOpen(next)
-    if (next && diagnostics.data === null && !diagnostics.loading) {
-      void loadDiagnostics()
-    }
-  }
-
-  const disabledTooltip = isSaved ? undefined : 'Save the connection first'
+  }, [isSaved, connectionId])
 
   return (
     <div className="space-y-4 text-sm text-white/80">
@@ -224,48 +212,12 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
         />
       </div>
 
-      {/* Diagnostics */}
-      <div className="rounded border border-white/8">
-        <button
-          type="button"
-          onClick={toggleDiagnostics}
-          disabled={!isSaved}
-          title={disabledTooltip}
-          className="flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-mono uppercase tracking-wider text-white/50 hover:text-white/80 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span>Diagnostics</span>
-          <span>{diagnosticsOpen ? '−' : '+'}</span>
-        </button>
-        {diagnosticsOpen && (
-          <div className="border-t border-white/8 p-3 text-[11px]">
-            {diagnostics.loading && <p className="text-white/60">Loading…</p>}
-            {diagnostics.error && <p className="text-red-300">{diagnostics.error}</p>}
-            {diagnostics.data && (
-              <div className="space-y-3">
-                <div>
-                  <div className="mb-1 font-mono uppercase tracking-wider text-white/50">ps</div>
-                  <pre className="max-h-48 overflow-auto rounded bg-black/40 p-2 text-white/70">
-                    {JSON.stringify(diagnostics.data.ps, null, 2)}
-                  </pre>
-                </div>
-                <div>
-                  <div className="mb-1 font-mono uppercase tracking-wider text-white/50">tags</div>
-                  <pre className="max-h-48 overflow-auto rounded bg-black/40 p-2 text-white/70">
-                    {JSON.stringify(diagnostics.data.tags, null, 2)}
-                  </pre>
-                </div>
-                <button
-                  type="button"
-                  onClick={loadDiagnostics}
-                  className="rounded border border-white/15 px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/5"
-                >
-                  Refresh
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Models panel (replaces the old Diagnostics dropdown) */}
+      {isSaved && endpoints && (
+        <div className="rounded border border-white/8 overflow-hidden">
+          <OllamaModelsPanel scope={`connection:${connectionId}`} endpoints={endpoints} />
+        </div>
+      )}
     </div>
   )
 }

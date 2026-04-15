@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database import get_db, get_redis
 from backend.dependencies import require_active_session
+from backend.modules.llm._admin_handlers import build_admin_router
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import (
     ConnectionNotFoundError,
@@ -338,6 +339,11 @@ async def delete_user_model_config(
         target_user_ids=[c.user_id],
     )
     return default
+
+
+# ----- Admin router -----
+
+router.include_router(build_admin_router(), prefix="/admin")
 
 
 # ----- Adapter-specific sub-routers (Task 13) -----

@@ -41,6 +41,13 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_CONNECTION_STATUS_CHANGED: ([], True),
     Topics.LLM_CONNECTION_MODELS_REFRESHED: ([], True),
     Topics.LLM_USER_MODEL_CONFIG_UPDATED: ([], True),
+    # LLM Model pull — target user only
+    Topics.LLM_MODEL_PULL_STARTED: ([], True),
+    Topics.LLM_MODEL_PULL_PROGRESS: ([], True),
+    Topics.LLM_MODEL_PULL_COMPLETED: ([], True),
+    Topics.LLM_MODEL_PULL_FAILED: ([], True),
+    Topics.LLM_MODEL_PULL_CANCELLED: ([], True),
+    Topics.LLM_MODEL_DELETED: ([], True),
     # Web Search — target user only
     Topics.WEBSEARCH_CREDENTIAL_SET: ([], True),
     Topics.WEBSEARCH_CREDENTIAL_REMOVED: ([], True),

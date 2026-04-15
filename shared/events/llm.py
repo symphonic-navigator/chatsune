@@ -62,3 +62,55 @@ class LlmUserModelConfigUpdatedEvent(BaseModel):
     model_unique_id: str
     config: UserModelConfigDto
     timestamp: datetime
+
+
+class ModelPullStartedEvent(BaseModel):
+    type: str = "llm.model.pull.started"
+    pull_id: str
+    scope: str
+    slug: str
+    timestamp: datetime
+
+
+class ModelPullProgressEvent(BaseModel):
+    type: str = "llm.model.pull.progress"
+    pull_id: str
+    scope: str
+    status: str
+    digest: str | None = None
+    completed: int | None = None
+    total: int | None = None
+    timestamp: datetime
+
+
+class ModelPullCompletedEvent(BaseModel):
+    type: str = "llm.model.pull.completed"
+    pull_id: str
+    scope: str
+    slug: str
+    timestamp: datetime
+
+
+class ModelPullFailedEvent(BaseModel):
+    type: str = "llm.model.pull.failed"
+    pull_id: str
+    scope: str
+    slug: str
+    error_code: str
+    user_message: str
+    timestamp: datetime
+
+
+class ModelPullCancelledEvent(BaseModel):
+    type: str = "llm.model.pull.cancelled"
+    pull_id: str
+    scope: str
+    slug: str
+    timestamp: datetime
+
+
+class ModelDeletedEvent(BaseModel):
+    type: str = "llm.model.deleted"
+    scope: str
+    name: str
+    timestamp: datetime
