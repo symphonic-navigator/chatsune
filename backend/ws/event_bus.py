@@ -25,6 +25,8 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.USER_CREATED: (["admin", "master_admin"], False),
     Topics.USER_UPDATED: (["admin", "master_admin"], True),
     Topics.USER_DEACTIVATED: (["admin", "master_admin"], True),
+    # USER_DELETED — admins only; the target user is already logged out.
+    Topics.USER_DELETED: (["admin", "master_admin"], False),
     Topics.USER_PASSWORD_RESET: (["admin", "master_admin"], True),
     Topics.USER_PROFILE_UPDATED: ([], True),
     Topics.PERSONA_CREATED: ([], True),

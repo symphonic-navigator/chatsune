@@ -69,6 +69,14 @@ class ProjectRepository:
         )
         return result.deleted_count > 0
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every project owned by ``user_id``. Returns deleted count.
+
+        Used by the user self-delete cascade (right-to-be-forgotten).
+        """
+        result = await self._collection.delete_many({"user_id": user_id})
+        return result.deleted_count
+
     @staticmethod
     def to_dto(doc: dict) -> ProjectDto:
         return ProjectDto(

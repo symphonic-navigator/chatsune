@@ -672,3 +672,21 @@ migration.
 **Knowledge documents are MongoDB-only:** Confirmed during this work — there is no on-disk store for knowledge documents (chunks live in the `knowledge_chunks` collection with the embedding vector inline). The library cascade therefore needs no `BlobStore` step, unlike the persona cascade. If the document model ever gains an on-disk attachment, the library cascade must add an analogous blob-cleanup step and a corresponding "document files" report row.
 
 **Frontend rendering:** A single shared `DeletionReportSheet` component (`frontend/src/core/components/DeletionReportSheet.tsx`) takes a `DeletionReportDto | null` and renders it via `react-markdown` inside the existing `Sheet` overlay. Both the persona overlay and the knowledge tab wire the same component — one component, two consumers, zero duplicated UI.
+
+---
+
+## INS-022 — User Self-Delete (Right-To-Be-Forgotten) (2026-04-15)
+
+**Decision:** Authenticated users can purge their own account via `DELETE /api/users/me`. The cascade reuses the existing persona and knowledge-library cascades (INS-021) rather than re-implementing per-resource cleanup — one source of truth for what "remove this persona / library" means. The user cascade is orchestration only: enumerate → delegate → aggregate.
+
+**Report aggregation, not per-persona sub-reports:** A power user can have ten personas, each with their own chat-session / memory / artefact counts. Dumping ten `DeletionReportDto`s on the user is noise. Instead the orchestrator walks each sub-report and sums `deleted_count` into resource-type totals ("chat sessions" = sum across all personas), preserving first-seen step ordering. The receipt stays short and scannable while still honestly reflecting what was removed.
+
+**Public deletion-report fetch is unauthenticated on purpose.** By the time the user reads their receipt they are logged out; the access token is no longer valid and a login flow is meaningless for an account that no longer exists. The slug (24 bytes of `secrets.token_urlsafe` entropy + 15-minute Redis TTL) IS the capability. Whoever holds the URL can read the report once; after 15 minutes Redis drops the key. No cleanup job needed.
+
+**15-minute TTL:** Long enough to read, copy the report text, and share it with support if something went wrong. Short enough that a dangling Redis key is negligible. Longer TTLs would invite copies leaking from shared-device caches; shorter TTLs would disrupt the receipt-reading flow if the user gets interrupted.
+
+**Master admin cannot self-delete.** Cascading their deletion would orphan the installation — no one left to promote a replacement. The 403 response carries a clear "transfer the role first" message. This is a deliberate gap until role transfer exists; no silent downgrade.
+
+**Redis pseudonymisation:** Every per-user Redis key (`safeguard:queue:{user_id}`, `safeguard:budget:{user_id}:*`, circuit-breaker keys, refresh tokens) embeds only the `user_id` UUID — never username or email. After `users`-document deletion the UUID maps to nothing. SCAN+DEL of those patterns is therefore idempotent cleanup rather than privacy-critical; still performed because dangling keys waste memory.
+
+**Attestation audit row written AFTER the cascade.** The cascade step 8 wipes all audit rows tied to the user; writing a `user.self_deleted` row afterwards leaves exactly one surviving trace — the attestation. This matches GDPR's "legitimate interest" carve-out for records of the deletion itself.

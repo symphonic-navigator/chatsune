@@ -63,6 +63,19 @@ class AuditRepository:
         )
         return await cursor.to_list(length=limit)
 
+    async def delete_for_user(self, user_id: str) -> int:
+        """Delete every audit-log entry where the user was actor or resource.
+
+        Covers both self-authored actions and actions performed by admins
+        on the user's resource. Returns the deleted count.
+
+        Used by the user self-delete (right-to-be-forgotten) cascade.
+        """
+        result = await self._collection.delete_many(
+            {"$or": [{"actor_id": user_id}, {"resource_id": user_id}]},
+        )
+        return result.deleted_count
+
     @staticmethod
     def to_dto(doc: dict) -> AuditLogEntryDto:
         return AuditLogEntryDto(

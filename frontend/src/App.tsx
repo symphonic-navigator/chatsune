@@ -9,6 +9,7 @@ import './features/integrations/plugins/lovense'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"
+import DeletionCompletePage from "./app/pages/DeletionCompletePage"
 import PersonasPage from "./app/pages/PersonasPage"
 import ChatPage from "./app/pages/ChatPage"
 import ProjectsPage from "./app/pages/ProjectsPage"
@@ -100,6 +101,12 @@ function AppRoutes() {
               <ChangePasswordPage />
             </ChangePasswordGuard>
           }
+        />
+        {/* Public — user is logged out by the time they land here (self-delete).
+            Must render unconditionally, outside AuthGuard, with no LoginRedirect. */}
+        <Route
+          path="/deletion-complete/:slug"
+          element={<DeletionCompletePage />}
         />
         <Route
           element={

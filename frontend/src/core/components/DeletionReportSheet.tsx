@@ -10,6 +10,7 @@ interface DeletionReportSheetProps {
 const TARGET_LABEL: Record<DeletionReportDto['target_type'], string> = {
   persona: 'persona',
   knowledge_library: 'knowledge library',
+  user: 'account',
 }
 
 /**
@@ -26,7 +27,6 @@ export function DeletionReportSheet({
 }: DeletionReportSheetProps) {
   if (!report) return null
 
-  const markdown = buildMarkdown(report)
   const totalWarnings = report.steps.reduce(
     (sum, step) => sum + step.warnings.length,
     0,
@@ -72,42 +72,57 @@ export function DeletionReportSheet({
         className="overflow-y-auto px-6 py-5 text-[13px] leading-relaxed deletion-report-body"
         style={{ maxHeight: '70vh' }}
       >
-        <ReactMarkdown
-          components={{
-            h1: ({ children }) => (
-              <h1 className="text-[16px] font-semibold text-white/90 mt-0 mb-3">
-                {children}
-              </h1>
-            ),
-            h2: ({ children }) => (
-              <h2 className="text-[14px] font-semibold text-white/85 mt-5 mb-2">
-                {children}
-              </h2>
-            ),
-            ul: ({ children }) => (
-              <ul className="list-disc list-inside space-y-1 text-white/80 my-2">
-                {children}
-              </ul>
-            ),
-            p: ({ children }) => (
-              <p className="text-white/75 my-2">{children}</p>
-            ),
-            strong: ({ children }) => (
-              <strong className="text-white/95 font-semibold">
-                {children}
-              </strong>
-            ),
-            code: ({ children }) => (
-              <code className="font-mono text-[12px] text-amber-200/85 bg-white/5 px-1 py-0.5 rounded">
-                {children}
-              </code>
-            ),
-          }}
-        >
-          {markdown}
-        </ReactMarkdown>
+        <DeletionReportBody report={report} />
       </div>
     </Sheet>
+  )
+}
+
+/**
+ * Presentational markdown body for a deletion report.
+ *
+ * Split out of the Sheet so the public `/deletion-complete/:slug` page
+ * (which has no overlay — it's a full-screen confirmation) can render the
+ * same content inline without faking an onClose handler. The Sheet wraps
+ * this body with its own header, close button, and scroll container.
+ */
+export function DeletionReportBody({ report }: { report: DeletionReportDto }) {
+  const markdown = buildMarkdown(report)
+  return (
+    <ReactMarkdown
+      components={{
+        h1: ({ children }) => (
+          <h1 className="text-[16px] font-semibold text-white/90 mt-0 mb-3">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-[14px] font-semibold text-white/85 mt-5 mb-2">
+            {children}
+          </h2>
+        ),
+        ul: ({ children }) => (
+          <ul className="list-disc list-inside space-y-1 text-white/80 my-2">
+            {children}
+          </ul>
+        ),
+        p: ({ children }) => (
+          <p className="text-white/75 my-2">{children}</p>
+        ),
+        strong: ({ children }) => (
+          <strong className="text-white/95 font-semibold">
+            {children}
+          </strong>
+        ),
+        code: ({ children }) => (
+          <code className="font-mono text-[12px] text-amber-200/85 bg-white/5 px-1 py-0.5 rounded">
+            {children}
+          </code>
+        ),
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
   )
 }
 
@@ -125,21 +140,43 @@ function buildMarkdown(report: DeletionReportDto): string {
   )
 
   const lines: string[] = []
-  lines.push(`# ${capitalise(targetLabel)} '${report.target_name}'`)
 
-  if (report.success) {
-    lines.push('')
-    lines.push(
-      `${capitalise(targetLabel)} **'${report.target_name}'** successfully ` +
-        `deleted with ${warningTotal} warning${warningTotal === 1 ? '' : 's'}.`,
-    )
+  // User-delete heading reads more naturally with "Account 'alice'"
+  // (not "account 'alice'"), and the success sentence needs slightly
+  // different framing because the "user" IS the target — the existing
+  // persona/library wording doesn't quite fit.
+  if (report.target_type === 'user') {
+    lines.push(`# Account '${report.target_name}'`)
+    if (report.success) {
+      lines.push('')
+      lines.push(
+        `Account **'${report.target_name}'** has been permanently deleted ` +
+          `with ${warningTotal} warning${warningTotal === 1 ? '' : 's'}.`,
+      )
+    } else {
+      lines.push('')
+      lines.push(
+        `**Partial deletion.** The account document itself could not be ` +
+          `removed — see warnings below. Connected data may have been ` +
+          `cleaned up regardless.`,
+      )
+    }
   } else {
-    lines.push('')
-    lines.push(
-      `**Partial deletion.** The ${targetLabel} document itself could not be ` +
-        `removed — see warnings below. Connected data may have been ` +
-        `cleaned up regardless.`,
-    )
+    lines.push(`# ${capitalise(targetLabel)} '${report.target_name}'`)
+    if (report.success) {
+      lines.push('')
+      lines.push(
+        `${capitalise(targetLabel)} **'${report.target_name}'** successfully ` +
+          `deleted with ${warningTotal} warning${warningTotal === 1 ? '' : 's'}.`,
+      )
+    } else {
+      lines.push('')
+      lines.push(
+        `**Partial deletion.** The ${targetLabel} document itself could not be ` +
+          `removed — see warnings below. Connected data may have been ` +
+          `cleaned up regardless.`,
+      )
+    }
   }
 
   lines.push('')

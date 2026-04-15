@@ -148,12 +148,27 @@ async def fetch(
     return await adapter.fetch(api_key, url)
 
 
+async def delete_all_for_user(user_id: str) -> int:
+    """Delete all stored web-search credentials owned by ``user_id``.
+
+    Called by the user self-delete (right-to-be-forgotten) cascade.
+    """
+    repo = WebSearchCredentialRepository(get_db())
+    count = await repo.delete_all_for_user(user_id)
+    logger.info(
+        "websearch.delete_all_for_user user_id=%s deleted=%d",
+        user_id, count,
+    )
+    return count
+
+
 __all__ = [
     "router",
     "init_indexes",
     "get_tool_definitions",
     "search",
     "fetch",
+    "delete_all_for_user",
     "WebSearchProviderNotFoundError",
     "WebSearchCredentialNotFoundError",
 ]

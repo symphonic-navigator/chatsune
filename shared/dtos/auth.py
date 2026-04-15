@@ -108,3 +108,29 @@ class UpdateDisplayNameDto(BaseModel):
         if not stripped:
             raise ValueError("Display name cannot be blank")
         return stripped
+
+
+class DeleteAccountRequestDto(BaseModel):
+    """Body of ``DELETE /api/users/me``.
+
+    ``confirm_username`` must match the authenticated user's current
+    username character-for-character. This stops an accidental delete
+    triggered by a pre-focused button or an attacker with a stolen
+    short-lived access token who doesn't know the victim's username.
+    """
+
+    confirm_username: str
+
+
+class DeleteAccountResponseDto(BaseModel):
+    """Response of a successful self-delete request.
+
+    ``slug`` points to the Redis-backed deletion report; the frontend
+    redirects to a public confirmation page that fetches the report via
+    ``GET /api/auth/deletion-report/{slug}``. ``success`` reflects
+    whether the user document itself was removed (matches the report's
+    own ``success`` field).
+    """
+
+    slug: str
+    success: bool

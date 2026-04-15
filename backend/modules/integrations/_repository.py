@@ -30,6 +30,14 @@ class IntegrationRepository:
             {"_id": 0},
         )
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every integration config owned by ``user_id``.
+
+        Used by the user self-delete cascade (right-to-be-forgotten).
+        """
+        res = await self._col.delete_many({"user_id": user_id})
+        return res.deleted_count
+
     async def upsert_config(
         self,
         user_id: str,

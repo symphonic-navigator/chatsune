@@ -4,6 +4,7 @@ Public API: import only from this file.
 """
 
 from backend.modules.persona._avatar_url import sign_avatar_url
+from backend.modules.persona._cascade import cascade_delete_persona
 from backend.modules.persona._handlers import router
 from backend.modules.persona._repository import PersonaRepository
 from backend.database import get_db
@@ -60,6 +61,19 @@ async def unwire_personas_for_connection(user_id: str, connection_id: str) -> li
     return ids
 
 
+async def list_persona_ids_for_user(user_id: str) -> list[str]:
+    """Return every persona ``_id`` owned by ``user_id``.
+
+    Used by the user self-delete cascade so the orchestrator can iterate
+    through each persona via :func:`cascade_delete_persona` without ever
+    touching the ``personas`` collection directly.
+    """
+    db = get_db()
+    repo = PersonaRepository(db)
+    personas = await repo.list_for_user(user_id)
+    return [p["_id"] for p in personas]
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -67,4 +81,6 @@ __all__ = [
     "sign_avatar_url",
     "unwire_personas_for_connection",
     "remove_library_from_all_personas",
+    "cascade_delete_persona",
+    "list_persona_ids_for_user",
 ]

@@ -60,6 +60,14 @@ class WebSearchCredentialRepository:
         )
         return res.deleted_count > 0
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every stored web-search credential owned by ``user_id``.
+
+        Used by the user self-delete cascade (right-to-be-forgotten).
+        """
+        res = await self._collection.delete_many({"user_id": user_id})
+        return res.deleted_count
+
     async def update_test(
         self,
         user_id: str,
