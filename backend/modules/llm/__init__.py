@@ -316,6 +316,75 @@ async def get_effective_context_window(
     return model_max
 
 
+async def delete_all_for_user(user_id: str) -> dict:
+    """Delete every LLM connection and user_model_config owned by ``user_id``.
+
+    Also evicts their in-process concurrency semaphores and clears the
+    ``llm:models:{connection_id}`` Redis cache keys for each deleted
+    connection. The Redis cleanup is best-effort — an error here never
+    causes the MongoDB deletions to fail.
+
+    Called by the user self-delete (right-to-be-forgotten) cascade.
+
+    Returns:
+        A dict with keys ``connections_deleted``, ``user_model_configs_deleted``
+        and ``model_cache_keys_cleared`` (all ``int``).
+    """
+    conn_repo = ConnectionRepository(get_db())
+    cfg_repo = UserModelConfigRepository(get_db())
+
+    # Capture the connection IDs BEFORE we delete them — we need them to
+    # build the Redis cache keys afterwards.
+    connection_ids = await conn_repo.list_ids_for_user(user_id)
+
+    connections_deleted = await conn_repo.delete_all_for_user(user_id)
+    user_model_configs_deleted = await cfg_repo.delete_all_for_user(user_id)
+
+    # Evict in-process semaphores so lingering registry entries are freed.
+    # Best-effort — never raise out of the deletion path.
+    try:
+        registry = get_semaphore_registry()
+        for cid in connection_ids:
+            registry.evict(cid)
+    except Exception:
+        _log.warning(
+            "llm.delete_all_for_user.semaphore_evict_failed user_id=%s",
+            user_id, exc_info=True,
+        )
+
+    # Clear the llm:models:{connection_id} Redis cache keys.
+    # Best-effort: cache staleness is harmless, but a deletion failure must
+    # not abort the overall user cascade.
+    model_cache_keys_cleared = 0
+    try:
+        redis = get_redis()
+        for cid in connection_ids:
+            key = f"llm:models:{cid}"
+            deleted = await redis.delete(key)
+            # redis-py returns the number of keys actually deleted (0 or 1).
+            model_cache_keys_cleared += int(deleted or 0)
+    except Exception:
+        _log.warning(
+            "llm.delete_all_for_user.cache_clear_failed user_id=%s",
+            user_id, exc_info=True,
+        )
+
+    _log.info(
+        "llm.delete_all_for_user user_id=%s connections=%d "
+        "user_model_configs=%d model_cache_keys=%d",
+        user_id,
+        connections_deleted,
+        user_model_configs_deleted,
+        model_cache_keys_cleared,
+    )
+
+    return {
+        "connections_deleted": connections_deleted,
+        "user_model_configs_deleted": user_model_configs_deleted,
+        "model_cache_keys_cleared": model_cache_keys_cleared,
+    }
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -345,6 +414,7 @@ __all__ = [
     "ResolvedConnection",
     "resolve_owned_connection",
     "refresh_connection_models",
+    "delete_all_for_user",
     "ADAPTER_REGISTRY",
     "DEFAULT_CONTEXT_WINDOW",
 ]

@@ -10,6 +10,8 @@ from backend.modules.user._auth import (
     generate_refresh_token,
     generate_session_id,
 )
+from backend.modules.user._cascade import cascade_delete_user
+from backend.modules.user._deletion_report_store import DeletionReportStore
 from backend.modules.user._handlers import router
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
@@ -113,4 +115,6 @@ __all__ = [
     "get_usernames",
     "get_user_mcp_gateways",
     "get_admin_mcp_gateways",
+    "cascade_delete_user",
+    "DeletionReportStore",
 ]

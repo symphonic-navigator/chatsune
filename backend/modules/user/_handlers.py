@@ -25,6 +25,8 @@ from shared.dtos.auth import (
     ChangePasswordRequestDto,
     CreateUserRequestDto,
     CreateUserResponseDto,
+    DeleteAccountRequestDto,
+    DeleteAccountResponseDto,
     LoginRequestDto,
     ResetPasswordResponseDto,
     SetupRequestDto,
@@ -37,9 +39,11 @@ from shared.dtos.auth import (
     AuditLogEntryDto,
     Role,
 )
+from shared.dtos.deletion import DeletionReportDto
 from shared.events.auth import (
     UserCreatedEvent,
     UserDeactivatedEvent,
+    UserDeletedEvent,
     UserPasswordResetEvent,
     UserUpdatedEvent,
     UserProfileUpdatedEvent,
@@ -303,6 +307,147 @@ async def change_password(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
     )
+
+
+# --- Account self-deletion ---
+
+
+@router.delete("/users/me")
+async def delete_my_account(
+    body: DeleteAccountRequestDto,
+    response: Response,
+    user: dict = Depends(get_current_user),
+    event_bus: EventBus = Depends(get_event_bus),
+) -> DeleteAccountResponseDto:
+    """Authenticated self-delete (right-to-be-forgotten).
+
+    Purges every trace of the user across all modules, writes a final
+    audit-log entry as an external attestation, revokes all sessions,
+    and redirects the now-logged-out client to a public confirmation
+    page via a short-lived Redis slug.
+
+    Master admin accounts cannot self-delete — the role must be
+    transferred first.
+    """
+    import logging as _logging  # local to keep the existing imports undisturbed
+    _logger = _logging.getLogger(__name__)
+
+    repo = _user_repo()
+    user_id = user["sub"]
+    doc = await repo.find_by_id(user_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Master admin is the site owner. Cascading their deletion would
+    # orphan the installation. They must transfer the role first.
+    if doc.get("role") == Role.MASTER_ADMIN:
+        _logger.info(
+            "user.self_delete.master_admin_blocked user_id=%s", user_id,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Master admin accounts cannot self-delete. "
+                "Transfer the role first."
+            ),
+        )
+
+    # Case-sensitive confirmation. Small friction deliberate.
+    if body.confirm_username != doc["username"]:
+        _logger.info(
+            "user.self_delete.confirm_mismatch user_id=%s", user_id,
+        )
+        raise HTTPException(
+            status_code=400, detail="Confirmation username does not match.",
+        )
+
+    redis = get_redis()
+    # Import inside the handler to avoid a top-level import cycle: the
+    # cascade module imports from other modules that themselves import
+    # user-module primitives at module load time.
+    from backend.modules.user import DeletionReportStore, cascade_delete_user
+
+    _logger.info("user.self_delete.start user_id=%s", user_id)
+    success, report = await cascade_delete_user(user_id, redis)
+
+    # Audit attestation AFTER the cascade. The cascade itself deletes
+    # every audit row tied to this user, so writing the attestation now
+    # leaves exactly one surviving record — the account's self-delete
+    # receipt — which is the desired behaviour.
+    audit = _audit_repo()
+    try:
+        await audit.log(
+            actor_id=user_id,
+            action="user.self_deleted",
+            resource_type="user",
+            resource_id=user_id,
+            detail={
+                "warnings": report.total_warnings,
+                "success": success,
+            },
+        )
+    except Exception:
+        # Audit failure must not hide the cascade outcome from the user.
+        _logger.warning(
+            "user.self_delete.audit_failed user_id=%s", user_id,
+            exc_info=True,
+        )
+
+    # Store the report behind a random slug so the logged-out user can
+    # still view their receipt on the public confirmation page.
+    slug = await DeletionReportStore(redis).store(report)
+
+    # Broadcast USER_DELETED to admins. The fan-out rule in event_bus
+    # restricts delivery to admin/master_admin roles only — no
+    # target_user_ids, since the deleted user has no live sessions.
+    await event_bus.publish(
+        Topics.USER_DELETED,
+        UserDeletedEvent(
+            user_id=user_id,
+            username=report.target_name,
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+    # Invalidate the refresh cookie. Access tokens already-issued will
+    # stop being accepted because subsequent lookups against the users
+    # collection will find no row.
+    _clear_refresh_cookie(response)
+
+    _logger.info(
+        "user.self_delete.done user_id=%s success=%s warnings=%d slug_len=%d",
+        user_id, success, report.total_warnings, len(slug),
+    )
+    return DeleteAccountResponseDto(slug=slug, success=success)
+
+
+@router.get("/auth/deletion-report/{slug}")
+async def get_deletion_report(slug: str) -> DeletionReportDto:
+    """Public fetch for a short-lived deletion report.
+
+    Deliberately unauthenticated: by the time a user reads their
+    receipt they are already logged out. The slug itself is the
+    capability — 24 bytes of ``secrets.token_urlsafe`` entropy + a
+    15-minute Redis TTL.
+    """
+    # Defensive length check — a malformed slug can never match anyway,
+    # but rejecting obviously-bogus input early avoids pointless Redis
+    # round-trips and keeps logs clean.
+    if not slug or len(slug) > 128:
+        raise HTTPException(status_code=400, detail="Invalid slug.")
+
+    from backend.modules.user import DeletionReportStore
+
+    report = await DeletionReportStore(get_redis()).fetch(slug)
+    if report is None:
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Deletion report has expired or is unknown. "
+                "Reports are kept for 15 minutes."
+            ),
+        )
+    return report
 
 
 # --- User Profile ---

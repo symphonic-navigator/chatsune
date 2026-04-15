@@ -242,6 +242,24 @@ class ConnectionRepository:
         )
         return result.deleted_count > 0
 
+    async def list_ids_for_user(self, user_id: str) -> list[str]:
+        """Return every connection ``_id`` owned by ``user_id``.
+
+        Used by the user self-delete cascade to compute the set of
+        ``llm:models:{connection_id}`` cache keys that need clearing
+        BEFORE the connection rows themselves are removed.
+        """
+        cursor = self._col.find({"user_id": user_id}, {"_id": 1})
+        return [d["_id"] async for d in cursor]
+
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every connection owned by ``user_id``. Returns the deleted count.
+
+        Used by the user self-delete cascade (right-to-be-forgotten).
+        """
+        result = await self._col.delete_many({"user_id": user_id})
+        return result.deleted_count
+
     async def update_test_status(
         self,
         user_id: str,

@@ -121,6 +121,16 @@ class UserRepository:
         )
         return result.modified_count > 0
 
+    async def delete_user_document(self, user_id: str) -> bool:
+        """Delete the user document itself. Returns True if a row was removed.
+
+        Final step of the user self-delete cascade. Every dependent
+        resource must already be cleaned up by the caller — this is the
+        last physical trace of the account.
+        """
+        result = await self._collection.delete_one({"_id": user_id})
+        return result.deleted_count > 0
+
     @staticmethod
     def to_dto(doc: dict) -> UserDto:
         return UserDto(

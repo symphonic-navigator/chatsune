@@ -76,6 +76,40 @@ export function useAuth() {
     }
   }, [clear])
 
+  /**
+   * Self-delete the currently-signed-in account (right-to-be-forgotten).
+   *
+   * The DELETE handler revokes every session server-side and clears the
+   * refresh cookie — we must NOT also call /api/auth/logout afterwards,
+   * because that would require a valid access token we no longer have.
+   *
+   * On success the WebSocket is disconnected and the auth store is cleared
+   * so the caller can navigate to the public `/deletion-complete/:slug`
+   * page without the AuthGuard bouncing it back to /login.
+   *
+   * Errors are surfaced via the hook's `error` state AND re-thrown so the
+   * caller can `try/catch` and branch on the ApiError status code (400 =
+   * username mismatch, 403 = master admin cannot self-delete).
+   */
+  const deleteAccount = useCallback(
+    async (confirmUsername: string) => {
+      setIsLoading(true)
+      setError(null)
+      try {
+        const res = await authApi.deleteAccount(confirmUsername)
+        disconnect()
+        clear()
+        return res
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Account deletion failed")
+        throw err
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [clear],
+  )
+
   return {
     user,
     isAuthenticated,
@@ -86,5 +120,6 @@ export function useAuth() {
     setup,
     changePassword,
     logout,
+    deleteAccount,
   }
 }

@@ -3,6 +3,8 @@
 Public API: import only from this file.
 """
 
+import logging
+
 from backend.modules.integrations._handlers import router
 from backend.modules.integrations._registry import (
     get as get_integration,
@@ -10,6 +12,8 @@ from backend.modules.integrations._registry import (
 )
 from backend.modules.integrations._repository import IntegrationRepository
 from shared.dtos.inference import ToolDefinition
+
+_log = logging.getLogger(__name__)
 
 
 async def init_indexes(db) -> None:
@@ -67,6 +71,21 @@ async def get_integration_prompt_extensions(
     return "\n\n".join(parts) if parts else None
 
 
+async def delete_all_for_user(user_id: str) -> int:
+    """Delete every integration config owned by ``user_id``.
+
+    Called by the user self-delete (right-to-be-forgotten) cascade.
+    """
+    from backend.database import get_db
+    repo = IntegrationRepository(get_db())
+    count = await repo.delete_all_for_user(user_id)
+    _log.info(
+        "integrations.delete_all_for_user user_id=%s deleted=%d",
+        user_id, count,
+    )
+    return count
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -75,4 +94,5 @@ __all__ = [
     "get_enabled_integration_ids",
     "get_integration_tools",
     "get_integration_prompt_extensions",
+    "delete_all_for_user",
 ]

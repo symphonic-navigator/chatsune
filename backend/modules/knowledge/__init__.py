@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.modules.knowledge._cascade import cascade_delete_library
 from backend.modules.knowledge._handlers import router as knowledge_router, _trigger_embedding
 from backend.modules.knowledge._repository import KnowledgeRepository
 from backend.modules.knowledge._retrieval import search
@@ -150,10 +151,24 @@ async def handle_embedding_error(event: dict) -> None:
         )
 
 
+async def list_library_ids_for_user(user_id: str) -> list[str]:
+    """Return every knowledge-library ``_id`` owned by ``user_id``.
+
+    Used by the user self-delete cascade so the orchestrator can iterate
+    through each library via :func:`cascade_delete_library` without ever
+    touching the ``knowledge_libraries`` collection directly.
+    """
+    repo = KnowledgeRepository(get_db())
+    libs = await repo.list_libraries(user_id)
+    return [lib["_id"] for lib in libs]
+
+
 __all__ = [
     "knowledge_router",
     "init_indexes",
     "handle_embedding_completed",
     "handle_embedding_error",
     "search",
+    "cascade_delete_library",
+    "list_library_ids_for_user",
 ]

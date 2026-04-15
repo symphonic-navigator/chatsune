@@ -68,6 +68,14 @@ class UserModelConfigRepository:
         )
         return result.deleted_count > 0
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every user_model_config owned by ``user_id``.
+
+        Used by the user self-delete cascade (right-to-be-forgotten).
+        """
+        result = await self._collection.delete_many({"user_id": user_id})
+        return result.deleted_count
+
     async def list_for_user(self, user_id: str) -> list[dict]:
         cursor = self._collection.find({"user_id": user_id})
         return await cursor.to_list(length=1000)

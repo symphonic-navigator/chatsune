@@ -1,10 +1,15 @@
 """DTOs for cascading delete reports.
 
-When a persona or knowledge library is deleted, every owning module returns
-how many of its records (and physical files) were removed. The handler
-collects these into a ``DeletionReportDto`` and returns it to the caller so
-the user gets a transparent, line-by-line summary of what privacy data was
-actually purged.
+When a persona, knowledge library, or an entire user account is deleted,
+every owning module returns how many of its records (and physical files)
+were removed. The handler collects these into a ``DeletionReportDto`` and
+returns it to the caller so the user gets a transparent, line-by-line
+summary of what privacy data was actually purged.
+
+For user self-delete the report is additionally stored in Redis under a
+short-lived slug (``deletion_report:{slug}``, 15-minute TTL) so the
+logged-out user can be redirected to a public confirmation page and see
+exactly what was purged — their right-to-be-forgotten receipt.
 
 Tolerance contract:
 - Each module deletes best-effort. Failures are recorded as warnings but
@@ -45,7 +50,7 @@ class DeletionReportDto(BaseModel):
     anything — went wrong along the way.
     """
 
-    target_type: Literal["persona", "knowledge_library"]
+    target_type: Literal["persona", "knowledge_library", "user"]
     target_id: str
     target_name: str
     success: bool
