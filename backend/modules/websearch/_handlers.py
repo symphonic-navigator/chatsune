@@ -17,6 +17,7 @@ from shared.dtos.websearch import (
     SetWebSearchKeyDto,
     WebSearchCredentialDto,
     WebSearchProviderDto,
+    WebSearchTestRequestDto,
 )
 from shared.events.websearch import (
     WebSearchCredentialRemovedEvent,
@@ -109,20 +110,27 @@ async def delete_credential(
 @router.post("/providers/{provider_id}/test")
 async def test_credential(
     provider_id: str,
-    body: SetWebSearchKeyDto,
+    body: WebSearchTestRequestDto | None = None,
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> dict:
     if provider_id not in SEARCH_ADAPTER_REGISTRY:
         raise HTTPException(status_code=404, detail="Unknown provider")
+
+    body_key = body.api_key if body else None
+    api_key = body_key or await _repo().get_key(user["sub"], provider_id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400, detail="No API key provided and none stored"
+        )
+
     adapter = SEARCH_ADAPTER_REGISTRY[provider_id](
         base_url=SEARCH_PROVIDER_BASE_URLS[provider_id],
     )
     valid = False
     error: str | None = None
     try:
-        # Minimal validation: run a canary search query.
-        await adapter.search(body.api_key, "chatsune_test", 1)
+        await adapter.search(api_key, "capital of paris", 1)
         valid = True
     except Exception as exc:
         error = str(exc)

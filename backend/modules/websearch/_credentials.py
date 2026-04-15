@@ -82,6 +82,18 @@ class WebSearchCredentialRepository:
             return_document=True,
         )
 
+    async def get_key(self, user_id: str, provider_id: str) -> str | None:
+        """Return the decrypted API key for the given user + provider, or None."""
+        doc = await self._collection.find_one(
+            {"user_id": user_id, "provider_id": provider_id}
+        )
+        if doc is None:
+            return None
+        encrypted = doc.get("api_key_encrypted")
+        if encrypted is None:
+            return None
+        return _fernet().decrypt(encrypted.encode()).decode()
+
     def get_raw_key(self, doc: dict) -> str:
         return _fernet().decrypt(doc["api_key_encrypted"].encode()).decode()
 

@@ -34,3 +34,7 @@ class WebSearchCredentialDto(BaseModel):
 
 class SetWebSearchKeyDto(BaseModel):
     api_key: str
+
+
+class WebSearchTestRequestDto(BaseModel):
+    api_key: str | None = None
