@@ -162,15 +162,7 @@ export function Sidebar({
   const isInChat = !!activePersonaId
   const lastSession = sessions[0] ?? null
 
-  const [projectsOpen, setProjectsOpen] = useState(() => {
-    return safeLocalStorage.getItem("chatsune_projects_open") === "true"
-  })
-
-  function toggleProjects() {
-    const next = !projectsOpen
-    setProjectsOpen(next)
-    safeLocalStorage.setItem("chatsune_projects_open", String(next))
-  }
+  // Projects collapse-state removed alongside hidden Projects UI (see FOR_LATER.md).
 
   const [historyOpen, setHistoryOpen] = useState(() => {
     const stored = safeLocalStorage.getItem("chatsune_history_open")
@@ -208,9 +200,12 @@ export function Sidebar({
 
   const [historySearch, setHistorySearch] = useState("")
 
-  const [flyoutTab, setFlyoutTab] = useState<'projects' | 'history' | null>(null)
+  // Projects flyout is hidden (see FOR_LATER.md), so the flyout tab type is
+  // currently history-only. Keep the union shape so re-enabling Projects later
+  // is a one-line widening rather than reshaping every callsite.
+  const [flyoutTab, setFlyoutTab] = useState<'history' | null>(null)
 
-  function toggleFlyout(tab: 'projects' | 'history') {
+  function toggleFlyout(tab: 'history') {
     setFlyoutTab((prev) => {
       if (prev === tab) {
         setHistorySearch("")
@@ -220,7 +215,7 @@ export function Sidebar({
     })
   }
 
-  function openFullViewFromFlyout(tab: 'projects' | 'history') {
+  function openFullViewFromFlyout(tab: 'history') {
     setFlyoutTab(null)
     onOpenModal(tab)
   }
@@ -498,13 +493,7 @@ export function Sidebar({
 
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
 
-        {/* Projects */}
-        <IconBtn
-          icon="🔭"
-          onClick={() => toggleFlyout('projects')}
-          title="Projects"
-          isActive={isTabActive('projects') || flyoutTab === 'projects'}
-        />
+        {/* Projects entry point hidden — feature not yet ready (see FOR_LATER.md) */}
 
         {/* History */}
         <IconBtn
@@ -664,20 +653,7 @@ export function Sidebar({
           </SidebarFlyout>
         )}
 
-        {flyoutTab === 'projects' && (
-          <SidebarFlyout
-            title="Projects"
-            onClose={() => setFlyoutTab(null)}
-            onOpenFullView={() => openFullViewFromFlyout('projects')}
-          >
-            <div className="flex h-full flex-col items-center justify-center gap-3 py-8 text-white/60">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-              </svg>
-              <span className="text-[12px]">No projects yet</span>
-            </div>
-          </SidebarFlyout>
-        )}
+        {/* Projects flyout hidden — feature not yet ready (see FOR_LATER.md) */}
       </aside>
     )
   }
@@ -840,30 +816,7 @@ export function Sidebar({
 
       <div className="mx-2 my-1.5 h-px bg-white/4" />
 
-        {/* PROJECTS */}
-        <NavRow
-          icon="🔭"
-          label="Projects"
-          isActive={isTabActive('projects')}
-          onClick={() => openModalAndClose('projects')}
-          actions={
-            <>
-              <button
-                type="button"
-                className="flex h-[22px] w-[22px] items-center justify-center rounded text-[11px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
-                onClick={(e) => { e.stopPropagation(); toggleProjects() }}
-                aria-label={projectsOpen ? "Collapse projects" : "Expand projects"}
-                title={projectsOpen ? "Collapse projects" : "Expand projects"}
-              >
-                {projectsOpen ? "∨" : "›"}
-              </button>
-            </>
-          }
-        />
-
-        {projectsOpen && (
-          <p className="mx-3 py-1 text-[12px] text-white/50">No projects yet</p>
-        )}
+        {/* Projects desktop NavRow hidden — feature not yet ready (see FOR_LATER.md) */}
 
         <div className="mx-2 my-1 h-px bg-white/4" />
 

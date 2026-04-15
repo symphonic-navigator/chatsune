@@ -143,3 +143,21 @@ Chat message content is not searchable at all.
 
 **Note:** This may tie into the Memory System — search across memories and chat history
 could share infrastructure.
+
+---
+
+## Projects UI
+
+**What:** Projects feature for grouping personas / chats / etc. UI entry points
+(sidebar Projects icon and flyout, desktop "Projects" nav row, UserModal Projects
+tab) are currently hidden in the frontend; backend data layer is unaffected.
+The `ProjectsTab` component, `userModalTree` `'projects'` SubTabId, and any
+backend routes/collections remain in place — only the visible entry points were
+removed so users do not see a non-functional feature.
+
+**Why deferred:** The feature is not yet implemented end-to-end. Re-expose the
+entry points once Projects is functional.
+
+**Hidden on:** 2026-04-15. Search the codebase for `FOR_LATER.md` references in
+`Sidebar.tsx`, `UserModal.tsx`, and `userModalTree.ts` to find every spot that
+needs to be re-enabled.

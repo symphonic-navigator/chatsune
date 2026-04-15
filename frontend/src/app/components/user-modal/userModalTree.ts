@@ -14,6 +14,9 @@ export type TopTabId =
 
 export type SubTabId =
   // chats
+  // 'projects' is intentionally retained in the type union so legacy persisted
+  // sub-tab IDs (e.g. in localStorage) still type-check during resolution.
+  // The Projects entry is hidden from the tree below — see FOR_LATER.md.
   | 'projects'
   | 'history'
   | 'bookmarks'
@@ -41,7 +44,7 @@ export const TABS_TREE: TopTab[] = [
     id: 'chats',
     label: 'Chats',
     children: [
-      { id: 'projects',  label: 'Projects' },
+      // Projects sub-tab hidden — feature not yet ready (see FOR_LATER.md).
       { id: 'history',   label: 'History' },
       { id: 'bookmarks', label: 'Bookmarks' },
     ],

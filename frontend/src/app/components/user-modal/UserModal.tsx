@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
-import { ProjectsTab } from './ProjectsTab'
+// Projects UI hidden — feature not yet ready (see FOR_LATER.md).
 import { KnowledgeTab } from './KnowledgeTab'
 import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
@@ -279,7 +279,7 @@ export function UserModal({
         >
           {contentKey === 'about-me' && <AboutMeTab />}
           {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} />}
-          {contentKey === 'projects' && <ProjectsTab />}
+          {/* Projects tab hidden — feature not yet ready (see FOR_LATER.md). */}
           {contentKey === 'history' && <HistoryTab onClose={onClose} />}
           {contentKey === 'knowledge' && <KnowledgeTab />}
           {contentKey === 'bookmarks' && <BookmarksTab onClose={onClose} />}
