@@ -73,6 +73,16 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, apiKey, clearApiKey, maxParallel])
 
+  // After a successful save, the redacted config reports is_set=true. Clear
+  // any typed-in value so the input shows the masked placeholder + saved badge.
+  useEffect(() => {
+    if (apiKeyState?.is_set && apiKey !== '' && !clearApiKey) {
+      setApiKey('')
+    }
+    // Only react to the is_set transition, not every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKeyState?.is_set])
+
   // URL collision detection — non-blocking, purely informational.
   useEffect(() => {
     let cancelled = false

@@ -286,7 +286,7 @@ async def get_user_model_config(
     model_slug: str,
     c: ResolvedConnection = Depends(resolve_connection_for_user),
 ) -> UserModelConfigDto:
-    mid = f"{c.id}:{model_slug}"
+    mid = f"{c.slug}:{model_slug}"
     repo = _user_config_repo()
     doc = await repo.find(c.user_id, mid)
     if doc:
@@ -301,7 +301,7 @@ async def set_user_model_config(
     c: ResolvedConnection = Depends(resolve_connection_for_user),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> UserModelConfigDto:
-    mid = f"{c.id}:{model_slug}"
+    mid = f"{c.slug}:{model_slug}"
     repo = _user_config_repo()
     # Only pass fields explicitly sent, so nullable fields can be cleared.
     fields = {k: getattr(body, k) for k in body.model_fields_set}
@@ -325,7 +325,7 @@ async def delete_user_model_config(
     c: ResolvedConnection = Depends(resolve_connection_for_user),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> UserModelConfigDto:
-    mid = f"{c.id}:{model_slug}"
+    mid = f"{c.slug}:{model_slug}"
     await _user_config_repo().delete(c.user_id, mid)
     default = UserModelConfigRepository.default_dto(mid)
     await event_bus.publish(

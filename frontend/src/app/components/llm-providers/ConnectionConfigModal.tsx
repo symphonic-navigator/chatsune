@@ -106,7 +106,15 @@ export function ConnectionConfigModal({
   // After a save we also want the refreshed connection (with updated config /
   // api_key SecretFieldView) to propagate, so we spread `connection` as the base.
   const workingConnection: Connection = useMemo(
-    () => ({ ...connection, display_name: displayName, slug, config }),
+    () => ({
+      ...connection,
+      display_name: displayName,
+      slug,
+      // Merge: start from the saved (redacted) config so secret-field `is_set` info
+      // survives when the user has not explicitly typed a replacement. Form state
+      // overrides on top for keys the user has changed.
+      config: { ...connection.config, ...config },
+    }),
     [connection, displayName, slug, config],
   )
 
