@@ -35,6 +35,8 @@ const SUBTABS: { id: OllamaSubtab; label: string }[] = [
 
 const POLL_INTERVAL_MS = 5000
 
+const EMPTY_SCOPE_MAP: Record<string, PullEntry> = {}
+
 export function OllamaModelsPanel({ scope, endpoints }: Props) {
   const [activeSubtab, setActiveSubtab] = useState<OllamaSubtab>("tags")
   const [psData, setPsData] = useState<OllamaPsResponse | null>(null)
@@ -47,7 +49,7 @@ export function OllamaModelsPanel({ scope, endpoints }: Props) {
 
   const inFlightRef = useRef<Promise<void> | null>(null)
 
-  const activePullsMap = usePullProgressStore((s) => s.byScope[scope] ?? {})
+  const activePullsMap = usePullProgressStore((s) => s.byScope[scope] ?? EMPTY_SCOPE_MAP)
   const activePulls: PullEntry[] = Object.values(activePullsMap)
 
   const fetchData = useCallback(
