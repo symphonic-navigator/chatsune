@@ -15,7 +15,9 @@ import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import { useEventBus } from "../../core/hooks/useEventBus"
 import { Sidebar } from "../components/sidebar/Sidebar"
 import { Topbar } from "../components/topbar/Topbar"
-import { UserModal, type UserModalTab } from "../components/user-modal/UserModal"
+import { UserModal } from "../components/user-modal/UserModal"
+import { resolveLeaf, firstSubOf, type TopTabId, type SubTabId, type LeafId } from "../components/user-modal/userModalTree"
+import { useSubtabStore } from "../components/user-modal/userModalSubtabStore"
 import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
 import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 import { ToastContainer } from "../components/toast/ToastContainer"
@@ -91,25 +93,41 @@ export default function AppLayout() {
   const activeSessionId = chatMatch?.params.sessionId ?? null
 
   // User modal state
-  const [modalTab, setModalTab] = useState<UserModalTab | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [activeTop, setActiveTop] = useState<TopTabId>('about-me')
+  const [activeSub, setActiveSub] = useState<SubTabId | undefined>(undefined)
 
-  function openModal(tab: UserModalTab) {
+  function openModal(leaf: LeafId | string) {
+    const { top, sub: resolved } = resolveLeaf(leaf)
+    const remembered = useSubtabStore.getState().lastSub[top]
+    const sub = resolved ?? remembered ?? firstSubOf(top)
     setAdminTab(null)
     setPersonaOverlay(null)
-    setModalTab(tab)
+    setActiveTop(top)
+    setActiveSub(sub)
+    setModalOpen(true)
   }
 
   function closeModal() {
-    setModalTab(null)
+    setModalOpen(false)
     setAdminTab(null)
     setPersonaOverlay(null)
+  }
+
+  function handleTabChange(top: TopTabId, sub?: SubTabId) {
+    const finalSub = sub ?? useSubtabStore.getState().lastSub[top] ?? firstSubOf(top)
+    setActiveTop(top)
+    setActiveSub(finalSub)
+    if (finalSub) {
+      useSubtabStore.getState().setLastSub(top, finalSub)
+    }
   }
 
   // Admin modal state
   const [adminTab, setAdminTab] = useState<AdminModalTab | null>(null)
 
   function openAdmin() {
-    setModalTab(null)
+    setModalOpen(false)
     setPersonaOverlay(null)
     setAdminTab('users')
   }
@@ -126,7 +144,7 @@ export default function AppLayout() {
 
   const openPersonaOverlay = useCallback(
     (personaId: string | null, tab: PersonaOverlayTab = "overview") => {
-      setModalTab(null)
+      setModalOpen(false)
       setAdminTab(null)
       setPersonaOverlay({ personaId, tab })
     },
@@ -202,7 +220,8 @@ export default function AppLayout() {
         activeSessionId={activeSessionId}
         onOpenModal={openModal}
         onCloseModal={closeModal}
-        activeModalTab={modalTab}
+        activeModalTop={modalOpen ? activeTop : null}
+        activeModalSub={modalOpen ? activeSub ?? null : null}
         onOpenAdmin={openAdmin}
         isAdminOpen={adminTab !== null}
         hasApiKeyProblem={hasApiKeyProblem}
@@ -227,11 +246,12 @@ export default function AppLayout() {
         />
         <main id="main-content" tabIndex={-1} className="relative flex-1 overflow-auto bg-surface">
           <Outlet context={{ openPersonaOverlay, openModal }} />
-          {modalTab !== null && (
+          {modalOpen && (
             <UserModal
-              activeTab={modalTab}
+              activeTop={activeTop}
+              activeSub={activeSub}
               onClose={closeModal}
-              onTabChange={setModalTab}
+              onTabChange={handleTabChange}
               displayName={displayName}
               hasApiKeyProblem={hasApiKeyProblem}
               onProvidersChanged={notifyProvidersChanged}

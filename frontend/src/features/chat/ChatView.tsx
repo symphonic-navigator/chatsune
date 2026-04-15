@@ -656,7 +656,7 @@ export function ChatView({ persona }: ChatViewProps) {
           </p>
           <button
             type="button"
-            onClick={() => openModal?.('llm')}
+            onClick={() => openModal?.('llm-providers')}
             className="inline-flex items-center px-4 py-2 rounded bg-purple/70 text-white"
           >
             Set up now

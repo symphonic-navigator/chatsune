@@ -1,0 +1,118 @@
+/**
+ * Static navigation tree for the UserModal 2-level pill navigation.
+ * Provides type definitions, the tree itself, and resolver helpers.
+ */
+
+export type TopTabId =
+  | 'about-me'
+  | 'personas'
+  | 'chats'
+  | 'knowledge'
+  | 'my-data'
+  | 'settings'
+  | 'job-log'
+
+export type SubTabId =
+  // chats
+  | 'projects'
+  | 'history'
+  | 'bookmarks'
+  // my-data
+  | 'uploads'
+  | 'artefacts'
+  // settings
+  | 'llm-providers'
+  | 'models'
+  | 'api-keys'
+  | 'mcp'
+  | 'integrations'
+  | 'display'
+
+/** Any navigable leaf — either a standalone top tab or a sub-tab. */
+export type LeafId = TopTabId | SubTabId
+
+interface SubTab { id: SubTabId; label: string }
+export interface TopTab { id: TopTabId; label: string; children?: SubTab[] }
+
+export const TABS_TREE: TopTab[] = [
+  { id: 'about-me',  label: 'About me' },
+  { id: 'personas',  label: 'Personas' },
+  {
+    id: 'chats',
+    label: 'Chats',
+    children: [
+      { id: 'projects',  label: 'Projects' },
+      { id: 'history',   label: 'History' },
+      { id: 'bookmarks', label: 'Bookmarks' },
+    ],
+  },
+  { id: 'knowledge', label: 'Knowledge' },
+  {
+    id: 'my-data',
+    label: 'My data',
+    children: [
+      { id: 'uploads',   label: 'Uploads' },
+      { id: 'artefacts', label: 'Artefacts' },
+    ],
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    children: [
+      { id: 'llm-providers', label: 'LLM Providers' },
+      { id: 'models',        label: 'Models' },
+      { id: 'api-keys',      label: 'API-Keys' },
+      { id: 'mcp',           label: 'MCP' },
+      { id: 'integrations',  label: 'Integrations' },
+      { id: 'display',       label: 'Display' },
+    ],
+  },
+  { id: 'job-log', label: 'Job-Log' },
+]
+
+// Build a lookup map: sub-tab id → parent top-tab id
+const _subToTop = new Map<SubTabId, TopTabId>()
+for (const top of TABS_TREE) {
+  if (top.children) {
+    for (const sub of top.children) {
+      _subToTop.set(sub.id, top.id)
+    }
+  }
+}
+
+// All known top-tab IDs as a set for fast checking
+const _topIds = new Set<string>(TABS_TREE.map((t) => t.id))
+
+/**
+ * Resolve any leaf ID (top or sub) to a `{ top, sub? }` pair.
+ * Handles legacy IDs that were renamed:
+ *   - `'llm'`      → `{ top: 'settings', sub: 'llm-providers' }`
+ *   - `'settings'` → `{ top: 'settings', sub: 'display' }`  (old flat Settings tab)
+ */
+export function resolveLeaf(leaf: LeafId | string): { top: TopTabId; sub?: SubTabId } {
+  // Legacy renames
+  if (leaf === 'llm') return { top: 'settings', sub: 'llm-providers' }
+  // Old flat 'settings' tab → now Display under Settings
+  // But 'settings' is now also a valid TopTabId — if passed as a leaf we open
+  // Settings with its first sub selected (resolveLeaf returns top only; the
+  // caller then picks the remembered or first sub).  No rename needed here
+  // because 'settings' IS a valid TopTabId.
+
+  if (_topIds.has(leaf)) {
+    return { top: leaf as TopTabId }
+  }
+
+  const parent = _subToTop.get(leaf as SubTabId)
+  if (parent) {
+    return { top: parent, sub: leaf as SubTabId }
+  }
+
+  // Unknown leaf — fall back to about-me
+  return { top: 'about-me' }
+}
+
+/** Return the first sub-tab id for a top tab, or undefined for leaf-only tops. */
+export function firstSubOf(topId: TopTabId): SubTabId | undefined {
+  const top = TABS_TREE.find((t) => t.id === topId)
+  return top?.children?.[0]?.id
+}

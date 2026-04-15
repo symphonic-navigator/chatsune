@@ -18,51 +18,24 @@ import { llmApi } from '../../../core/api/llm'
 import { webSearchApi } from '../../../core/api/websearch'
 import { eventBus } from '../../../core/websocket/eventBus'
 import { Topics } from '../../../core/types/events'
+import { TABS_TREE, type TopTabId, type SubTabId } from './userModalTree'
+import { useSubtabStore } from './userModalSubtabStore'
 
-export type UserModalTab =
-  | 'about-me'
-  | 'personas'
-  | 'projects'
-  | 'history'
-  | 'knowledge'
-  | 'bookmarks'
-  | 'llm'
-  | 'uploads'
-  | 'artefacts'
-  | 'models'
-  | 'job-log'
-  | 'settings'
-  | 'api-keys'
-  | 'mcp'
-  | 'integrations'
+// Re-export for backwards compatibility — consumers that imported UserModalTab
+// by name from this module will still compile.
+export type { TopTabId, SubTabId }
 
-interface Tab {
-  id: UserModalTab
-  label: string
-}
-
-const TABS: Tab[] = [
-  { id: 'about-me', label: 'About me' },
-  { id: 'personas', label: 'Personas' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'history', label: 'History' },
-  { id: 'knowledge', label: 'Knowledge' },
-  { id: 'bookmarks', label: 'Bookmarks' },
-  { id: 'llm', label: 'LLM Providers' },
-  { id: 'uploads', label: 'Uploads' },
-  { id: 'artefacts', label: 'Artefacts' },
-  { id: 'models', label: 'Models' },
-  { id: 'job-log', label: 'Job-Log' },
-  { id: 'settings', label: 'Settings' },
-  { id: 'api-keys', label: 'API-Keys' },
-  { id: 'mcp', label: 'MCP' },
-  { id: 'integrations', label: 'Integrations' },
-]
+/**
+ * @deprecated Use TopTabId / SubTabId. Kept so existing imports do not break
+ * during the transition period.
+ */
+export type UserModalTab = TopTabId | SubTabId
 
 interface UserModalProps {
-  activeTab: UserModalTab
+  activeTop: TopTabId
+  activeSub: SubTabId | undefined
   onClose: () => void
-  onTabChange: (tab: UserModalTab) => void
+  onTabChange: (top: TopTabId, sub?: SubTabId) => void
   displayName: string
   /**
    * Kept on the prop-surface for callers that still pass it. The badge
@@ -79,17 +52,29 @@ interface UserModalProps {
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
-export function UserModal({ activeTab, onClose, onTabChange, displayName, onProvidersChanged, onOpenPersonaOverlay }: UserModalProps) {
+export function UserModal({
+  activeTop,
+  activeSub,
+  onClose,
+  onTabChange,
+  displayName,
+  onProvidersChanged,
+  onOpenPersonaOverlay,
+}: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
+  const setLastSub = useSubtabStore((s) => s.setLastSub)
 
   // LLM-connection badge: an exclamation flag appears on the LLM Providers
-  // tab when the user has zero connections configured. We fetch once on
-  // mount and re-fetch whenever the connection list mutates server-side.
+  // sub-tab (and propagated to the Settings top-pill) when the user has zero
+  // connections configured.
   const [hasNoLlmConnection, setHasNoLlmConnection] = useState(false)
 
-  // API-key badge: flips to true when any web-search provider is missing
-  // its credential. Same "has gaps" semantic as the pre-refactor version.
+  // API-key badge: flips to true when any web-search provider is missing its
+  // credential. Propagated to the Settings top-pill.
   const [hasApiKeyProblem, setHasApiKeyProblem] = useState(false)
+
+  // True when either of the above flags is set — shown on the Settings top-pill.
+  const settingsHasProblem = hasNoLlmConnection || hasApiKeyProblem
 
   const refreshConnectionCount = useCallback(async () => {
     try {
@@ -168,6 +153,23 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, onProv
     }
   }, [onClose])
 
+  // The active sub-tab node from the tree (null for leaf-only top tabs)
+  const activeTopNode = TABS_TREE.find((t) => t.id === activeTop)
+  const subTabs = activeTopNode?.children ?? []
+
+  /** Derive the content key: prefer activeSub if it belongs to the current top,
+   *  otherwise fall back to the top id itself (for leaf-only tops). */
+  const contentKey: TopTabId | SubTabId = activeSub ?? activeTop
+
+  function handleTopClick(top: TopTabId) {
+    onTabChange(top)
+  }
+
+  function handleSubClick(sub: SubTabId) {
+    setLastSub(activeTop, sub)
+    onTabChange(activeTop, sub)
+  }
+
   return (
     <>
       {/* Backdrop — covers entire screen, clicking it closes the modal */}
@@ -203,10 +205,11 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, onProv
           </button>
         </div>
 
-        {/* Tab bar */}
+        {/* Top-level tab bar (row 1) */}
         <div role="tablist" aria-label="User area sections" className="flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
-          {TABS.map((tab) => {
-            const selected = activeTab === tab.id
+          {TABS_TREE.map((tab) => {
+            const selected = activeTop === tab.id
+            const showBadge = tab.id === 'settings' && settingsHasProblem
             return (
               <button
                 key={tab.id}
@@ -216,7 +219,7 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, onProv
                 aria-selected={selected}
                 aria-controls={`user-tabpanel-${tab.id}`}
                 tabIndex={selected ? 0 : -1}
-                onClick={() => onTabChange(tab.id)}
+                onClick={() => handleTopClick(tab.id)}
                 className={[
                   'px-3 py-2.5 text-[12px] border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap',
                   selected
@@ -225,39 +228,70 @@ export function UserModal({ activeTab, onClose, onTabChange, displayName, onProv
                 ].join(' ')}
               >
                 {tab.label}
-                {tab.id === 'api-keys' && hasApiKeyProblem && (
-                  <span className="ml-1.5 text-[10px] text-red-400" title="API key issue detected" aria-label="API key issue detected">!</span>
-                )}
-                {tab.id === 'llm' && hasNoLlmConnection && (
-                  <span className="ml-1.5 text-[10px] text-red-400" title="No LLM connection configured" aria-label="No LLM connection configured">!</span>
+                {showBadge && (
+                  <span className="ml-1.5 text-[10px] text-red-400" title="Attention required" aria-label="Attention required">!</span>
                 )}
               </button>
             )
           })}
         </div>
 
+        {/* Sub-tab bar (row 2) — only rendered when the active top has children */}
+        {subTabs.length > 0 && (
+          <div role="tablist" aria-label={`${activeTopNode?.label ?? ''} sub-sections`} className="flex flex-wrap gap-1 px-4 py-2 border-b border-white/6 bg-white/2 flex-shrink-0">
+            {subTabs.map((sub) => {
+              const selected = activeSub === sub.id
+              const showSubBadge =
+                (sub.id === 'api-keys' && hasApiKeyProblem) ||
+                (sub.id === 'llm-providers' && hasNoLlmConnection)
+              return (
+                <button
+                  key={sub.id}
+                  type="button"
+                  role="tab"
+                  id={`user-subtab-${sub.id}`}
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => handleSubClick(sub.id)}
+                  className={[
+                    'px-2.5 py-1 text-[11px] rounded-full cursor-pointer transition-colors whitespace-nowrap',
+                    selected
+                      ? 'bg-gold/15 text-gold'
+                      : 'text-white/50 hover:text-white/80 hover:bg-white/6',
+                  ].join(' ')}
+                >
+                  {sub.label}
+                  {showSubBadge && (
+                    <span className="ml-1 text-[10px] text-red-400" title="Attention required" aria-label="Attention required">!</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {/* Tab content */}
         <div
           role="tabpanel"
-          id={`user-tabpanel-${activeTab}`}
-          aria-labelledby={`user-tab-${activeTab}`}
-          className="flex-1 overflow-hidden flex flex-col">
-          {activeTab === 'about-me' && <AboutMeTab />}
-          {activeTab === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} />}
-          {activeTab === 'projects' && <ProjectsTab />}
-          {activeTab === 'history' && <HistoryTab onClose={onClose} />}
-          {activeTab === 'knowledge' && <KnowledgeTab />}
-          {activeTab === 'bookmarks' && <BookmarksTab onClose={onClose} />}
-          {activeTab === 'llm' && <LlmProvidersTab />}
-          {activeTab === 'uploads' && <UploadsTab />}
-          {activeTab === 'artefacts' && <ArtefactsTab onClose={onClose} />}
-          {activeTab === 'models' && <ModelsTab />}
-          {activeTab === 'job-log' && <JobLogTab />}
-          {activeTab === 'settings' && <SettingsTab />}
-          {activeTab === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
-          {/* onProvidersChanged is kept on the prop-surface but currently unused downstream (Phase 8). */}
-          {activeTab === 'mcp' && <McpTab />}
-          {activeTab === 'integrations' && <IntegrationsTab />}
+          id={`user-tabpanel-${contentKey}`}
+          aria-labelledby={`user-tab-${contentKey}`}
+          className="flex-1 overflow-hidden flex flex-col"
+        >
+          {contentKey === 'about-me' && <AboutMeTab />}
+          {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} />}
+          {contentKey === 'projects' && <ProjectsTab />}
+          {contentKey === 'history' && <HistoryTab onClose={onClose} />}
+          {contentKey === 'knowledge' && <KnowledgeTab />}
+          {contentKey === 'bookmarks' && <BookmarksTab onClose={onClose} />}
+          {contentKey === 'llm-providers' && <LlmProvidersTab />}
+          {contentKey === 'uploads' && <UploadsTab />}
+          {contentKey === 'artefacts' && <ArtefactsTab onClose={onClose} />}
+          {contentKey === 'models' && <ModelsTab />}
+          {contentKey === 'job-log' && <JobLogTab />}
+          {contentKey === 'display' && <SettingsTab />}
+          {contentKey === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
+          {contentKey === 'mcp' && <McpTab />}
+          {contentKey === 'integrations' && <IntegrationsTab />}
         </div>
       </div>
     </>

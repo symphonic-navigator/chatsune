@@ -28,7 +28,7 @@ import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import type { PersonaDto } from "../../../core/types/persona"
 import { chatApi, type ChatSessionDto } from "../../../core/api/chat"
-import type { UserModalTab } from "../user-modal/UserModal"
+import type { TopTabId, SubTabId } from "../user-modal/userModalTree"
 import { safeLocalStorage } from "../../../core/utils/safeStorage"
 
 interface SidebarProps {
@@ -36,9 +36,10 @@ interface SidebarProps {
   sessions: ChatSessionDto[]
   activePersonaId: string | null
   activeSessionId: string | null
-  onOpenModal: (tab: UserModalTab) => void
+  onOpenModal: (leaf: string) => void
   onCloseModal: () => void
-  activeModalTab: UserModalTab | null
+  activeModalTop: TopTabId | null
+  activeModalSub: SubTabId | null
   onOpenAdmin: () => void
   isAdminOpen: boolean
   hasApiKeyProblem: boolean
@@ -135,7 +136,8 @@ export function Sidebar({
   activeSessionId,
   onOpenModal,
   onCloseModal,
-  activeModalTab,
+  activeModalTop,
+  activeModalSub,
   onOpenAdmin,
   isAdminOpen,
   hasApiKeyProblem,
@@ -306,9 +308,9 @@ export function Sidebar({
   }
 
   /** Open a modal tab and dismiss the mobile drawer. */
-  function openModalAndClose(tab: UserModalTab) {
+  function openModalAndClose(leaf: string) {
     closeDrawerIfMobile()
-    onOpenModal(tab)
+    onOpenModal(leaf)
   }
 
   /** Open the persona overlay and dismiss the mobile drawer. */
@@ -433,12 +435,19 @@ export function Sidebar({
     }
   }
 
-  const isTabActive = (tab: UserModalTab) => activeModalTab === tab
+  const isTabActive = (leaf: string): boolean => {
+    if (activeModalTop === null) return false
+    if (activeModalSub === leaf) return true           // sub-tab match
+    if (activeModalTop === leaf) return true           // top match (with or without sub)
+    return false
+  }
 
-  const avatarTab: UserModalTab = hasApiKeyProblem ? 'api-keys' : 'about-me'
+  // Avatar click opens 'api-keys' leaf (resolves to settings→api-keys) on problem,
+  // otherwise opens 'about-me'. Resolution happens inside AppLayout via resolveLeaf.
+  const avatarTab: string = hasApiKeyProblem ? 'api-keys' : 'about-me'
 
   const avatarHighlight =
-    activeModalTab === 'about-me' || activeModalTab === 'settings' || activeModalTab === 'api-keys'
+    activeModalTop === 'about-me' || activeModalTop === 'settings'
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import type { TopTabId, SubTabId } from '../user-modal/userModalTree'
 
 const mockNavigate = vi.fn()
 
@@ -27,7 +28,8 @@ const defaults = {
   activeSessionId: null,
   onOpenModal: vi.fn(),
   onCloseModal: vi.fn(),
-  activeModalTab: null as null,
+  activeModalTop: null as TopTabId | null,
+  activeModalSub: null as SubTabId | null,
   onOpenAdmin: vi.fn(),
   isAdminOpen: false,
   hasApiKeyProblem: false,
@@ -58,5 +60,18 @@ describe('Sidebar — overlay close on navigation', () => {
     renderSidebar({ onCloseModal })
     await userEvent.click(screen.getByText('Personas'))
     expect(onCloseModal).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Sidebar — isTabActive sub-tab highlight', () => {
+  it('highlights the Bookmarks nav row when activeModalTop=chats and activeModalSub=bookmarks', () => {
+    renderSidebar({ activeModalTop: 'chats', activeModalSub: 'bookmarks' })
+    // NavRow renders a div[role="button"] containing the label text.
+    // When isActive, NavRow sets aria-current="page".
+    // getByText finds the label span inside NavRow; .closest finds the row element.
+    const labelSpan = screen.getByText('Bookmarks')
+    const navRow = labelSpan.closest('[role="button"]')
+    expect(navRow).not.toBeNull()
+    expect(navRow).toHaveAttribute('aria-current', 'page')
   })
 })

@@ -13,6 +13,7 @@ export function NavRow({ icon, label, onClick, actions, isActive }: NavRowProps)
     <div
       role="button"
       tabIndex={0}
+      aria-current={isActive ? 'page' : undefined}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick() } }}
       className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 mx-1.5 my-0.5 cursor-pointer transition-colors hover:bg-white/6"
