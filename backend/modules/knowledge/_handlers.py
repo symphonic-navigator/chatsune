@@ -1,7 +1,9 @@
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 import backend.modules.embedding as embedding
 from backend.database import get_db
@@ -12,6 +14,8 @@ from backend.ws.event_bus import get_event_bus
 from shared.dtos.knowledge import (
     CreateDocumentRequest,
     CreateLibraryRequest,
+    KnowledgeDocumentDto,
+    KnowledgeLibraryDto,
     UpdateDocumentRequest,
     UpdateLibraryRequest,
 )
@@ -26,7 +30,12 @@ from shared.events.knowledge import (
 )
 from shared.topics import Topics
 
+_log = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/knowledge")
+
+# 200 MB hard cap on uploads — mirrors the uncompressed cap inside _import.
+_MAX_IMPORT_ARCHIVE_BYTES = 200 * 1024 * 1024
 
 
 def _repo() -> KnowledgeRepository:
@@ -109,30 +118,12 @@ async def create_library(
     body: CreateLibraryRequest,
     user: dict = Depends(require_active_session),
 ):
-    repo = _repo()
-    doc = await repo.create_library(
+    dto, _doc = await _create_library_internal(
         user_id=user["sub"],
         name=body.name,
         description=body.description,
         nsfw=body.nsfw,
     )
-    dto = KnowledgeRepository.to_library_dto(doc)
-
-    correlation_id = str(uuid4())
-    now = datetime.now(timezone.utc)
-    event_bus = get_event_bus()
-    await event_bus.publish(
-        Topics.KNOWLEDGE_LIBRARY_CREATED,
-        KnowledgeLibraryCreatedEvent(
-            library=dto,
-            correlation_id=correlation_id,
-            timestamp=now,
-        ),
-        scope=f"user:{user['sub']}",
-        target_user_ids=[user["sub"]],
-        correlation_id=correlation_id,
-    )
-
     return dto
 
 
@@ -222,6 +213,94 @@ async def list_documents(
     return [KnowledgeRepository.to_document_dto(d) for d in docs]
 
 
+async def _create_document_internal(
+    user_id: str,
+    library_id: str,
+    title: str,
+    content: str,
+    media_type: str,
+    correlation_id: str | None = None,
+) -> KnowledgeDocumentDto:
+    """Core document-upload pipeline: insert document, publish created event,
+    and trigger chunking + embedding. Used by both the HTTP handler and the
+    library-import path so chunking/embedding logic is not duplicated.
+
+    Caller MUST have already verified that the library exists and is owned
+    by ``user_id``.
+    """
+    repo = _repo()
+    doc = await repo.create_document(
+        user_id=user_id,
+        library_id=library_id,
+        title=title,
+        content=content,
+        media_type=media_type,
+    )
+    await repo.increment_document_count(library_id, user_id, 1)
+
+    dto = KnowledgeRepository.to_document_dto(doc)
+
+    if correlation_id is None:
+        correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.KNOWLEDGE_DOCUMENT_CREATED,
+        KnowledgeDocumentCreatedEvent(
+            document=dto,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"user:{user_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+    await _trigger_embedding(doc, user_id, repo, correlation_id)
+
+    return dto
+
+
+async def _create_library_internal(
+    user_id: str,
+    name: str,
+    description: str | None,
+    nsfw: bool,
+    correlation_id: str | None = None,
+) -> tuple[KnowledgeLibraryDto, dict]:
+    """Core library-creation pipeline: insert library and publish created event.
+
+    Returns ``(dto, raw_doc)`` so callers (e.g. the import path) can reach
+    the underlying ``library_id`` without an extra DB roundtrip.
+    """
+    repo = _repo()
+    doc = await repo.create_library(
+        user_id=user_id,
+        name=name,
+        description=description,
+        nsfw=nsfw,
+    )
+    dto = KnowledgeRepository.to_library_dto(doc)
+
+    if correlation_id is None:
+        correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.KNOWLEDGE_LIBRARY_CREATED,
+        KnowledgeLibraryCreatedEvent(
+            library=dto,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"user:{user_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+    return dto, doc
+
+
 @router.post("/libraries/{library_id}/documents", status_code=201)
 async def create_document(
     library_id: str,
@@ -233,35 +312,13 @@ async def create_document(
     if not library:
         raise HTTPException(status_code=404, detail="Library not found")
 
-    doc = await repo.create_document(
+    return await _create_document_internal(
         user_id=user["sub"],
         library_id=library_id,
         title=body.title,
         content=body.content,
         media_type=body.media_type,
     )
-    await repo.increment_document_count(library_id, user["sub"], 1)
-
-    dto = KnowledgeRepository.to_document_dto(doc)
-
-    correlation_id = str(uuid4())
-    now = datetime.now(timezone.utc)
-    event_bus = get_event_bus()
-    await event_bus.publish(
-        Topics.KNOWLEDGE_DOCUMENT_CREATED,
-        KnowledgeDocumentCreatedEvent(
-            document=dto,
-            correlation_id=correlation_id,
-            timestamp=now,
-        ),
-        scope=f"user:{user['sub']}",
-        target_user_ids=[user["sub"]],
-        correlation_id=correlation_id,
-    )
-
-    await _trigger_embedding(doc, user["sub"], repo, correlation_id)
-
-    return dto
 
 
 @router.get("/libraries/{library_id}/documents/{doc_id}")
@@ -401,3 +458,54 @@ async def retry_document_embedding(
     await _trigger_embedding(doc, user["sub"], repo, correlation_id)
 
     return {"status": "ok"}
+
+
+# ------------------------------------------------------------------
+# Export / Import
+# ------------------------------------------------------------------
+#
+# Archive format is documented in ``_export.py``. The routes live here so
+# the module's full HTTP surface is in one place. Orchestration logic lives
+# in the ``_export`` / ``_import`` helpers.
+
+
+@router.get("/libraries/{library_id}/export")
+async def export_library(
+    library_id: str,
+    user: dict = Depends(require_active_session),
+):
+    """Stream a ``.chatsune-knowledge.tar.gz`` download for the given library."""
+    # Deferred import to avoid circular imports at module load.
+    from backend.modules.knowledge._export import export_library_archive
+
+    archive_bytes, filename = await export_library_archive(
+        user_id=user["sub"],
+        library_id=library_id,
+    )
+    return StreamingResponse(
+        iter([archive_bytes]),
+        media_type="application/gzip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(archive_bytes)),
+        },
+    )
+
+
+@router.post("/libraries/import", status_code=201)
+async def import_library(
+    file: UploadFile,
+    user: dict = Depends(require_active_session),
+) -> KnowledgeLibraryDto:
+    """Accept a ``.chatsune-knowledge.tar.gz`` upload and create a new library."""
+    # Deferred import to avoid circular imports at module load.
+    from backend.modules.knowledge._import import import_library_archive
+
+    data = await file.read()
+    if len(data) > _MAX_IMPORT_ARCHIVE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Archive exceeds 200 MB upload limit",
+        )
+
+    return await import_library_archive(user_id=user["sub"], archive_bytes=data)
