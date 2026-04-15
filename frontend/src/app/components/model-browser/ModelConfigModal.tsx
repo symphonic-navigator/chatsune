@@ -14,6 +14,10 @@ function toNullIfEmpty(s: string): string | null {
   return trimmed.length === 0 ? null : trimmed
 }
 
+function isPowerOfTwo(n: number): boolean {
+  return n > 0 && (n & (n - 1)) === 0
+}
+
 /**
  * Per-user model configuration modal. Saves via the connection-scoped
  * user-config endpoint; the path is derived from the model's
@@ -24,8 +28,8 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   const [isFavourite, setIsFavourite] = useState(cfg?.is_favourite ?? false)
   const [isHidden, setIsHidden] = useState(cfg?.is_hidden ?? false)
   const [customDisplayName, setCustomDisplayName] = useState(cfg?.custom_display_name ?? '')
-  const [customContextWindow, setCustomContextWindow] = useState<string>(
-    cfg?.custom_context_window != null ? String(cfg.custom_context_window) : '',
+  const [customContextWindow, setCustomContextWindow] = useState<number | null>(
+    cfg?.custom_context_window ?? null,
   )
   const [notes, setNotes] = useState(cfg?.notes ?? '')
   const [systemPromptAddition, setSystemPromptAddition] = useState(
@@ -34,23 +38,20 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const modelMax = model.context_window ?? 0
+  const sliderDisabled = modelMax <= 80_000
+  const step = isPowerOfTwo(modelMax) ? 4096 : 4000
+  const displayValue = customContextWindow ?? modelMax
+
   async function handleSave() {
     setSaving(true)
     setError(null)
     try {
-      const ctxParsed = customContextWindow.trim() === ''
-        ? null
-        : Number.parseInt(customContextWindow, 10)
-      if (ctxParsed !== null && (!Number.isFinite(ctxParsed) || ctxParsed <= 0)) {
-        setError('Context window must be a positive number.')
-        setSaving(false)
-        return
-      }
       const body: SetUserModelConfigRequest = {
         is_favourite: isFavourite,
         is_hidden: isHidden,
         custom_display_name: toNullIfEmpty(customDisplayName),
-        custom_context_window: ctxParsed,
+        custom_context_window: customContextWindow,
         notes: toNullIfEmpty(notes),
         system_prompt_addition: toNullIfEmpty(systemPromptAddition),
       }
@@ -95,25 +96,36 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
         </button>
       </div>
 
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 text-[13px] text-white/80">
-          <input
-            type="checkbox"
-            checked={isFavourite}
-            onChange={(e) => setIsFavourite(e.target.checked)}
-            className="accent-purple-400"
-          />
-          Favourite
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-white/80">
-          <input
-            type="checkbox"
-            checked={isHidden}
-            onChange={(e) => setIsHidden(e.target.checked)}
-            className="accent-purple-400"
-          />
-          Hide
-        </label>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setIsFavourite(!isFavourite)}
+          aria-pressed={isFavourite}
+          className={[
+            'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] border transition-colors',
+            isFavourite
+              ? 'bg-gold/20 border-gold/60 text-gold'
+              : 'bg-white/5 border-white/15 text-white/60 hover:text-white/80',
+          ].join(' ')}
+        >
+          <span className="text-[14px]">{isFavourite ? '★' : '☆'}</span>
+          <span>Favourite</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsHidden(!isHidden)}
+          aria-pressed={!isHidden}
+          className={[
+            'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] border transition-colors',
+            !isHidden
+              ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300'
+              : 'bg-white/5 border-white/15 text-white/60 hover:text-white/80',
+          ].join(' ')}
+        >
+          <span className="text-[14px]">{isHidden ? '⦸' : '👁'}</span>
+          <span>{isHidden ? 'Hidden' : 'Visible'}</span>
+        </button>
       </div>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
@@ -127,17 +139,46 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
         />
       </label>
 
-      <label className="flex flex-col gap-1 text-[12px] text-white/70">
-        Custom context window (tokens)
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+            Custom context window
+          </label>
+          <span className="font-mono text-[13px] text-gold">
+            {displayValue.toLocaleString()} tokens
+            {customContextWindow === null && <span className="text-white/40"> (model default)</span>}
+          </span>
+        </div>
+
         <input
-          type="number"
-          min={1}
-          value={customContextWindow}
-          onChange={(e) => setCustomContextWindow(e.target.value)}
-          placeholder={String(model.context_window)}
-          className="rounded bg-white/5 border border-white/10 px-3 py-1.5 text-[13px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25"
+          type="range"
+          min={80_000}
+          max={modelMax}
+          step={step}
+          value={customContextWindow ?? modelMax}
+          onChange={(e) => setCustomContextWindow(Number(e.target.value))}
+          disabled={sliderDisabled}
+          className="w-full accent-gold disabled:opacity-30"
         />
-      </label>
+
+        <div className="flex items-center justify-between text-[10px] font-mono text-white/40">
+          <span>80k min</span>
+          <button
+            type="button"
+            onClick={() => setCustomContextWindow(null)}
+            className="text-white/50 hover:text-white/80 underline font-sans text-[11px]"
+          >
+            Use model default
+          </button>
+          <span>{modelMax.toLocaleString()} max</span>
+        </div>
+
+        {sliderDisabled && (
+          <p className="text-[10px] text-white/40 mt-1">
+            Model max ≤ 80k — context cannot be narrowed further.
+          </p>
+        )}
+      </div>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">
         Notes
