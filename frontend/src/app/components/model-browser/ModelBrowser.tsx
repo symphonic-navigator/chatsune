@@ -205,19 +205,55 @@ function ConnectionGroup({
 }: ConnectionGroupProps) {
   const isCollapsed = useCollapsedGroups((s) => s.collapsed.has(connectionId))
   const toggle = useCollapsedGroups((s) => s.toggle)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+
+  async function handleRefresh(ev: React.MouseEvent) {
+    ev.stopPropagation()
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshError(null)
+    try {
+      await llmApi.refreshConnectionModels(connectionId)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Refresh failed'
+      setRefreshError(msg)
+      window.setTimeout(() => setRefreshError(null), 5000)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <section className="mb-4">
-      <header className="border-b border-white/6 px-3 py-2">
+      <header className="border-b border-white/6 px-3 py-2 flex items-center gap-2">
         <button
           type="button"
           onClick={() => toggle(connectionId)}
-          className="flex items-center gap-2 text-left w-full"
+          className="flex items-center gap-2 text-left flex-1 min-w-0"
           aria-expanded={!isCollapsed}
         >
           <span className="text-white/50 text-[11px]">{isCollapsed ? '▸' : '▾'}</span>
-          <span className="text-[13px] font-semibold text-white/85">{displayName}</span>
-          <span className="text-[11px] font-mono text-white/35">— {slug}</span>
+          <span className="text-[13px] font-semibold text-white/85 truncate">{displayName}</span>
+          <span className="text-[11px] font-mono text-white/35 truncate">— {slug}</span>
+        </button>
+        {refreshError && (
+          <span className="text-[11px] text-red-300 truncate" title={refreshError}>
+            {refreshError}
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          aria-label="Refresh models from upstream"
+          title="Refresh models from upstream"
+          className={[
+            'shrink-0 rounded border border-white/10 px-2 py-0.5 text-[11px] text-white/70 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed',
+            refreshing ? 'animate-pulse' : '',
+          ].join(' ')}
+        >
+          {refreshing ? '…' : '⟳'}
         </button>
       </header>
       {!isCollapsed && (
