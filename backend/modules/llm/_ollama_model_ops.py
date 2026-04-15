@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from datetime import UTC, datetime
 from typing import Any, Awaitable, Callable
@@ -26,6 +27,7 @@ from shared.events.llm import (
 )
 from shared.topics import Topics
 
+_log = logging.getLogger(__name__)
 _TIMEOUT = httpx.Timeout(60.0, read=None)  # no read timeout for long streams
 _DEFAULT_THROTTLE_S = 0.2  # 5 Hz
 
@@ -104,9 +106,8 @@ class OllamaModelOps:
             return
         try:
             await self._on_models_changed()
-        except Exception as exc:  # noqa: BLE001
-            import logging
-            logging.getLogger(__name__).warning(
+        except Exception as exc:  # noqa: BLE001 — best-effort refresh, must not fail the pull/delete
+            _log.warning(
                 "on_models_changed hook failed for scope=%s: %s",
                 self._scope, exc,
             )
