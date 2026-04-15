@@ -510,20 +510,24 @@ def _build_adapter_router() -> APIRouter:
 
     def _make_on_models_changed(c: ResolvedConnection, event_bus: EventBus):
         """Build a callback that refreshes LLM metadata cache for ``c`` and
-        emits ``LLM_CONNECTION_MODELS_REFRESHED`` on success. Used as the
+        emits ``LLM_CONNECTION_MODELS_REFRESHED`` on success or failure. Used as the
         ``on_models_changed`` hook for post-pull and post-delete operations.
         """
         adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
         redis = get_redis()
 
         async def _cb() -> None:
-            await refresh_connection_models(c, adapter_cls, redis)
+            error_msg: str | None = None
+            try:
+                await refresh_connection_models(c, adapter_cls, redis)
+            except Exception as exc:  # noqa: BLE001 — surface to frontend via event
+                error_msg = str(exc)
             await event_bus.publish(
                 Topics.LLM_CONNECTION_MODELS_REFRESHED,
                 LlmConnectionModelsRefreshedEvent(
                     connection_id=c.id,
-                    success=True,
-                    error=None,
+                    success=error_msg is None,
+                    error=error_msg,
                     timestamp=datetime.now(UTC),
                 ),
                 target_user_ids=[c.user_id],
