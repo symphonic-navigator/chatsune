@@ -3,11 +3,15 @@ import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
 import { llmApi } from '../../../core/api/llm'
+import { ApiError } from '../../../core/api/client'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
+import { useNotificationStore } from '../../../core/store/notificationStore'
+import { triggerBlobDownload } from '../../../core/utils/download'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { ProfileCrop } from '../../../core/types/persona'
 import { PersonaCloneDialog } from './PersonaCloneDialog'
+import { ExportPersonaModal } from './ExportPersonaModal'
 
 interface OverviewTabProps {
   persona: PersonaDto
@@ -28,6 +32,9 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [cloneOpen, setCloneOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const addNotification = useNotificationStore((s) => s.addNotification)
   // "true" while we don't yet know — prevents a premature banner flash.
   const [modelResolved, setModelResolved] = useState<boolean>(true)
 
@@ -98,6 +105,35 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
     }
   }
 
+  async function handleExport(includeContent: boolean) {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const { blob, filename } = await personasApi.exportPersona(persona.id, includeContent)
+      triggerBlobDownload({ blob, filename })
+      setExportOpen(false)
+      addNotification({
+        level: 'success',
+        title: 'Export started',
+        message: `${persona.name} downloaded as ${filename}.`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to export persona.'
+      addNotification({
+        level: 'error',
+        title: 'Export failed',
+        message,
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col items-center px-6 py-8 gap-6">
       {/* Avatar — clickable to change */}
@@ -157,6 +193,16 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           source={persona}
           onClose={() => setCloneOpen(false)}
           onCloned={() => setCloneOpen(false)}
+        />
+      )}
+
+      {exportOpen && (
+        <ExportPersonaModal
+          personaName={persona.name}
+          chakraHex={chakra.hex}
+          busy={exporting}
+          onCancel={() => setExportOpen(false)}
+          onExport={handleExport}
         />
       )}
 
@@ -298,6 +344,15 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
           className="flex-1 rounded-lg py-2 text-[12px] text-white/70 border border-white/10 hover:bg-white/5"
         >
           Clone
+        </button>
+        <button
+          type="button"
+          onClick={() => setExportOpen(true)}
+          disabled={exporting}
+          title="Export this persona as a .chatsune-persona.tar.gz archive"
+          className="flex-1 rounded-lg py-2 text-[12px] text-white/70 border border-white/10 hover:bg-white/5 disabled:opacity-50"
+        >
+          {exporting ? 'Exporting…' : 'Export'}
         </button>
       </div>
 
