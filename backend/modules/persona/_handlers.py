@@ -517,6 +517,27 @@ async def get_avatar_url(persona_id: str, user: dict = Depends(require_active_se
     }
 
 
+class ClonePersonaRequest(BaseModel):
+    name: str | None = None
+    clone_memory: bool = False
+
+
+@router.post("/{persona_id}/clone")
+async def clone_persona_endpoint(
+    persona_id: str,
+    body: ClonePersonaRequest,
+    user: dict = Depends(require_active_session),
+) -> PersonaDto:
+    from backend.modules.persona import clone_persona
+
+    return await clone_persona(
+        user_id=user["sub"],
+        source_id=persona_id,
+        name=body.name,
+        clone_memory=body.clone_memory,
+    )
+
+
 class UpdateAvatarCropRequest(BaseModel):
     x: float = 0
     y: float = 0
