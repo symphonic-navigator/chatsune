@@ -26,6 +26,20 @@ class AvatarStore:
             return None
         return path.read_bytes()
 
+    def duplicate(self, filename: str) -> str | None:
+        """Copy an existing avatar file, returning the new filename.
+
+        Returns ``None`` if the source file does not exist.
+        """
+        source = self._root / filename
+        if not source.exists():
+            return None
+        extension = filename.rsplit(".", 1)[-1] if "." in filename else "bin"
+        new_name = f"{uuid4()}.{extension}"
+        target = self._root / new_name
+        target.write_bytes(source.read_bytes())
+        return new_name
+
     def delete(self, filename: str) -> str | None:
         """Delete an avatar file.
 
