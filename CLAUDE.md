@@ -65,6 +65,44 @@ even if local development works fine.
 
 ---
 
+## Data Model Migrations — No More Wipes
+
+**Effective 2026-04-15 (alpha → beta release).** Up to this point we wiped
+MongoDB on data-model changes. That stops now: the product is in beta with
+real users, and re-onboarding everyone after every schema change is no longer
+acceptable.
+
+### Hard rules
+
+- **Never** assume the database can be wiped. If a change would require a
+  wipe to work, it is incomplete.
+- **Backwards-compatible reads are the default.** When adding a field, give
+  it a sensible default in the Pydantic model (`= 0`, `= []`, `= None`, etc.)
+  so existing documents deserialise without error.
+- **Renaming or removing a field requires a migration.** Either:
+  1. Read both old and new field names for one release, write only the new
+     one (lazy migration on read), then drop the old read path in a follow-up
+     release; or
+  2. Write a one-shot migration script under `backend/migrations/` that
+     rewrites existing documents and is idempotent (safe to re-run).
+- **Type changes are migrations**, not just contract changes — even
+  widening (e.g. `int` → `int | None`) needs the default story sorted out.
+- **Index changes** must be expressed declaratively and applied at startup
+  (idempotent `create_index` calls). Never assume an index can be dropped
+  without thinking about ongoing queries.
+- **Test the upgrade path.** Before merging a schema-affecting change,
+  exercise it against a database that already contains old-shape documents
+  (a dump from staging or a hand-crafted fixture). Build passing is not
+  sufficient evidence.
+
+### When in doubt
+
+If you are unsure whether a change needs a migration, **ask before
+implementing**. The cost of a five-minute conversation is much lower than
+the cost of telling testers to recreate their accounts.
+
+---
+
 ## LLM Test Harness
 
 Located at `backend/llm_harness/`. A standalone tool for direct LLM calls against
