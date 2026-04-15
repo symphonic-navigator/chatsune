@@ -7,6 +7,7 @@ import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { ProfileCrop } from '../../../core/types/persona'
+import { PersonaCloneDialog } from './PersonaCloneDialog'
 
 interface OverviewTabProps {
   persona: PersonaDto
@@ -26,6 +27,7 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
   const [cropOpen, setCropOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [cloneOpen, setCloneOpen] = useState(false)
   // "true" while we don't yet know — prevents a premature banner flash.
   const [modelResolved, setModelResolved] = useState<boolean>(true)
 
@@ -149,6 +151,14 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         initialCrop={persona.profile_crop}
         accentColour={chakra.hex}
       />
+
+      {cloneOpen && (
+        <PersonaCloneDialog
+          source={persona}
+          onClose={() => setCloneOpen(false)}
+          onCloned={() => setCloneOpen(false)}
+        />
+      )}
 
       {/* Name + tagline + model */}
       <div className="flex flex-col items-center gap-1 text-center">
@@ -279,6 +289,17 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
       <p className="text-[11px] text-white/60 font-mono">
         created {createdDate}
       </p>
+
+      {/* Persona actions */}
+      <div className="w-full max-w-sm flex gap-2">
+        <button
+          type="button"
+          onClick={() => setCloneOpen(true)}
+          className="flex-1 rounded-lg py-2 text-[12px] text-white/70 border border-white/10 hover:bg-white/5"
+        >
+          Clone
+        </button>
+      </div>
 
       {/* Danger zone — delete */}
       <div className="w-full max-w-sm mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
