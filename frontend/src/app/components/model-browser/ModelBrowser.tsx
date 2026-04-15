@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import { llmApi } from '../../../core/api/llm'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import type { EnrichedModelDto } from '../../../core/types/llm'
-import { applyModelFilters, sortModels, type ModelFilters } from './modelFilters'
+import { applyModelFilters, slugWithoutConnection, sortModels, type ModelFilters } from './modelFilters'
 import { ModelConfigModal } from './ModelConfigModal'
+import { useCollapsedGroups } from './modelBrowserStore'
 
 export interface LockedFilters {
   capTools?: true
@@ -17,6 +19,11 @@ interface ModelBrowserProps {
   lockedFilters?: LockedFilters
 }
 
+const OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',
+  color: 'rgba(255,255,255,0.85)',
+}
+
 /**
  * Grouped model browser — one section per Connection, with filter chips
  * for capabilities and favourites. Admin curation is gone; the only
@@ -27,6 +34,7 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   const { groups, loading, error, refresh } = useEnrichedModels()
   const [filters, setFilters] = useState<ModelFilters>({})
   const [search, setSearch] = useState('')
+  const [providerFilter, setProviderFilter] = useState<string>('')
   const [configModel, setConfigModel] = useState<EnrichedModelDto | null>(null)
 
   const effectiveFilters = useMemo<ModelFilters>(() => ({
@@ -39,12 +47,20 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
 
   const filteredGroups = useMemo(() => {
     return groups
+      .filter((g) => !providerFilter || g.connection.id === providerFilter)
       .map((g) => ({
         connection: g.connection,
         models: sortModels(applyModelFilters(g.models, effectiveFilters), { field: 'name', direction: 'asc' }),
       }))
       .filter((g) => g.models.length > 0)
-  }, [groups, effectiveFilters])
+  }, [groups, effectiveFilters, providerFilter])
+
+  async function toggleFavourite(model: EnrichedModelDto) {
+    const slug = slugWithoutConnection(model.unique_id)
+    const currentFav = !!model.user_config?.is_favourite
+    await llmApi.setUserModelConfig(model.connection_id, slug, { is_favourite: !currentFav })
+    // Event flow (LLM_USER_MODEL_CONFIG_UPDATED) triggers a refresh automatically
+  }
 
   if (loading) {
     return <div className="p-6 text-sm text-white/60">Loading models…</div>
@@ -84,6 +100,19 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           placeholder="Search model name…"
           className="flex-1 min-w-[180px] rounded bg-white/5 border border-white/10 px-3 py-1 text-[12px] text-white/85 placeholder:text-white/30 outline-none focus:border-white/25"
         />
+        <select
+          value={providerFilter}
+          onChange={(e) => setProviderFilter(e.target.value)}
+          className="rounded border border-white/15 bg-black/30 px-2 py-1 text-[12px] text-white/80"
+          aria-label="Filter by provider"
+        >
+          <option value="" style={OPTION_STYLE}>All providers</option>
+          {groups.map((g) => (
+            <option key={g.connection.id} value={g.connection.id} style={OPTION_STYLE}>
+              {g.connection.display_name} — {g.connection.slug}
+            </option>
+          ))}
+        </select>
         <Chip
           active={!!filters.favouritesOnly}
           onClick={() => setFilters((f) => ({ ...f, favouritesOnly: !f.favouritesOnly }))}
@@ -125,27 +154,17 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           <div className="p-6 text-[13px] text-white/50">No models match the current filters.</div>
         )}
         {filteredGroups.map((group) => (
-          <section key={group.connection.id} className="mb-4">
-            <header className="flex items-baseline gap-2 border-b border-white/6 px-3 py-2">
-              <h4 className="text-[13px] font-semibold text-white/85">
-                {group.connection.display_name}
-              </h4>
-              <span className="text-[11px] font-mono text-white/35">
-                {group.connection.slug}
-              </span>
-            </header>
-            <ul className="divide-y divide-white/5">
-              {group.models.map((model) => (
-                <ModelRow
-                  key={model.unique_id}
-                  model={model}
-                  isCurrent={model.unique_id === currentModelId}
-                  onSelect={onSelect}
-                  onEdit={() => setConfigModel(model)}
-                />
-              ))}
-            </ul>
-          </section>
+          <ConnectionGroup
+            key={group.connection.id}
+            connectionId={group.connection.id}
+            displayName={group.connection.display_name}
+            slug={group.connection.slug}
+            models={group.models}
+            currentModelId={currentModelId}
+            onSelect={onSelect}
+            onEdit={(model) => setConfigModel(model)}
+            onToggleFavourite={toggleFavourite}
+          />
         ))}
       </div>
 
@@ -163,14 +182,71 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   )
 }
 
+interface ConnectionGroupProps {
+  connectionId: string
+  displayName: string
+  slug: string
+  models: EnrichedModelDto[]
+  currentModelId?: string | null
+  onSelect?: (model: EnrichedModelDto) => void
+  onEdit: (model: EnrichedModelDto) => void
+  onToggleFavourite: (model: EnrichedModelDto) => Promise<void>
+}
+
+function ConnectionGroup({
+  connectionId,
+  displayName,
+  slug,
+  models,
+  currentModelId,
+  onSelect,
+  onEdit,
+  onToggleFavourite,
+}: ConnectionGroupProps) {
+  const isCollapsed = useCollapsedGroups((s) => s.collapsed.has(connectionId))
+  const toggle = useCollapsedGroups((s) => s.toggle)
+
+  return (
+    <section className="mb-4">
+      <header className="border-b border-white/6 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => toggle(connectionId)}
+          className="flex items-center gap-2 text-left w-full"
+          aria-expanded={!isCollapsed}
+        >
+          <span className="text-white/50 text-[11px]">{isCollapsed ? '▸' : '▾'}</span>
+          <span className="text-[13px] font-semibold text-white/85">{displayName}</span>
+          <span className="text-[11px] font-mono text-white/35">— {slug}</span>
+        </button>
+      </header>
+      {!isCollapsed && (
+        <ul className="divide-y divide-white/5 mt-1">
+          {models.map((model) => (
+            <ModelRow
+              key={model.unique_id}
+              model={model}
+              isCurrent={model.unique_id === currentModelId}
+              onSelect={onSelect}
+              onEdit={() => onEdit(model)}
+              onToggleFavourite={() => void onToggleFavourite(model)}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 interface ModelRowProps {
   model: EnrichedModelDto
   isCurrent: boolean
   onSelect?: (model: EnrichedModelDto) => void
   onEdit: () => void
+  onToggleFavourite: () => void
 }
 
-function ModelRow({ model, isCurrent, onSelect, onEdit }: ModelRowProps) {
+function ModelRow({ model, isCurrent, onSelect, onEdit, onToggleFavourite }: ModelRowProps) {
   const displayName = model.user_config?.custom_display_name ?? model.display_name
   const contextWindow = model.user_config?.custom_context_window ?? model.context_window
   const isFavourite = !!model.user_config?.is_favourite
@@ -193,13 +269,30 @@ function ModelRow({ model, isCurrent, onSelect, onEdit }: ModelRowProps) {
       ].join(' ')}
       onClick={handleRowClick}
     >
+      {/* Inline star — stopPropagation prevents the row click from firing */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleFavourite() }}
+        aria-label={isFavourite ? 'Remove favourite' : 'Mark as favourite'}
+        className={[
+          'shrink-0 text-[14px] transition-colors',
+          isFavourite ? 'text-gold' : 'text-white/30 hover:text-white/60',
+        ].join(' ')}
+      >
+        {isFavourite ? '★' : '☆'}
+      </button>
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          {isFavourite && <span className="text-gold text-[12px]">★</span>}
           <span className="text-[13px] text-white/85 truncate">{displayName}</span>
+          {model.quantisation_level && (
+            <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 text-[10px] font-mono text-white/60">
+              {model.quantisation_level}
+            </span>
+          )}
           {isCurrent && (
-            <span className="rounded bg-purple/30 px-1.5 py-0.5 text-[10px] text-white/85">
-              aktuell
+            <span className="shrink-0 rounded bg-purple/30 px-1.5 py-0.5 text-[10px] text-white/85">
+              current
             </span>
           )}
         </div>
@@ -256,7 +349,7 @@ function Chip({
           : 'bg-white/5 text-white/65 hover:bg-white/10',
         locked ? 'opacity-70 cursor-not-allowed' : '',
       ].join(' ')}
-      title={locked ? 'Durch Kontext vorgegeben' : undefined}
+      title={locked ? 'Required by context' : undefined}
     >
       {children}
     </button>

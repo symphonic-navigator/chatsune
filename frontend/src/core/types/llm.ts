@@ -62,6 +62,7 @@ export interface UpdateConnectionRequest {
 
 export interface ModelMetaDto {
   connection_id: string
+  connection_slug: string
   connection_display_name: string
   model_id: string
   display_name: string
