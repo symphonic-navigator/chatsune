@@ -621,3 +621,31 @@ migration.
 **Adapter-level filter for unusable models:** The `ollama_http` adapter drops any model without a `context_length` from `list_models()`. A model without a known max context window cannot be reasoned about and is not offered to the user.
 
 **DTO impact:** `ModelMetaDto` gains `connection_slug` (used in `unique_id` composition) and keeps `quantisation_level` (populated where the adapter reports it). `connection_id` is retained for internal bookkeeping (tracker enrichment, debug collector).
+
+---
+
+## INS-020 — Persona & Knowledge Portability: Scope Split, Allowlist Export, Green-Meadow Import (2026-04-15)
+
+**Decision:** Personas and knowledge libraries are exportable/importable as `.chatsune-persona.tar.gz` and `.chatsune-knowledge.tar.gz` archives. The split of what travels with a persona is deliberate and explicit:
+
+- **a) Personality** (always): `system_prompt`, `nsfw`, `name`, `tagline`, `colour_scheme`, `monogram`, `profile_crop`, avatar binary, and the full chat history (all sessions, flat).
+- **b) Content** (optional, `include_content` flag): memory (journal entries + memory bodies), artefacts (with their full version history), storage uploads (files tagged to the persona, binaries in `storage/files/`).
+- **Excluded, by design**: technical config (`model_unique_id`, temperature, reasoning/soft-cot, vision fallback, voice, MCP, integrations) and knowledge library assignments. Neither is portable across installs — the user reconfigures them after import.
+
+**Why the split:** Technical config binds the persona to the target system's LLM connections and model slugs (INS-019) which don't exist on the receiving side. Knowledge assignments bind to libraries that may not exist. Attempting to carry them would either fail on import or silently produce a broken persona. Forcing the user to re-link is honest and trivial (one click per assignment).
+
+**Archive format:** Gzip-compressed tar with a `manifest.json` as the first file (`format`, `version`, `exported_at`, `include_content`). This allows future format versioning without breaking old archives. All payloads are JSON serialisable with explicit Pydantic DTOs in `shared/dtos/export.py`.
+
+**Explicit field allowlist at serialization:** Session export uses `_EXPORTED_SESSION_FIELDS` in `chat/__init__.py`, NOT `model_dump()` of the raw document. Personality export likewise names each included field. Rationale: this guarantees that when new fields are added to a schema (e.g., a future `project_id` on `ChatSessionDocument`), they are automatically excluded from exports unless a developer explicitly opts them in. This is the mechanism that delivers the "project-linked chats export flat" requirement before the project-linking feature exists.
+
+**New UUIDs on import, id-map for cross-references:** Every imported document gets a fresh UUID (or `ObjectId` where the collection natively uses it — artefacts). Cross-references that must be preserved (artefact → session) use an `original_id` field carried on the export DTO plus an `old_id → new_id` map computed during session import. This way the receiving instance has no collisions with existing data and no assumption of a "clean" database.
+
+**Rollback via cascade helper:** Persona import runs compensating cleanup on any failure by calling `cascade_delete_persona` (factored out of the existing DELETE handler). Both the user-facing DELETE and the import rollback path go through the same helper — behaviour stays identical. Knowledge import uses the existing `KnowledgeRepository.delete_library` cascade. Rollback is best-effort: a failure during rollback is logged but never masks the original exception.
+
+**Knowledge documents re-embed on import:** `knowledge_chunks` and embeddings are NOT exported. The import path funnels each document through the existing upload service (`_create_document_internal`), which triggers chunking and embedding normally via the existing event flow. Exporting embeddings would bind the archive to the embedder version and dimension; re-deriving on import is cheaper than a compatibility matrix.
+
+**200MB caps, both compressed and uncompressed:** HTTP layer rejects uploads >200MB compressed (413). The extractor tracks running uncompressed bytes during tar walk and rejects >200MB uncompressed — zip-bomb protection. Both caps were picked as round "big enough for anything sensible, small enough to fit a response cycle" numbers; revisit if they bite.
+
+**Green-meadow assumption on reimport:** The user after import finds a persona/library that behaves like a freshly created one — new IDs, no links to prior configuration. No merge, no conflict resolution, no "do you want to replace the existing?". This matches user intent for the portability use case and keeps the import path simple and auditable.
+
+**Why not a dedicated `portability` module:** Persona already orchestrates across `chat`, `memory`, `artefact`, `storage` for its cascade delete. Export/import is the same orchestration in the opposite direction, so it belongs in the persona module. A standalone portability module would either re-create those cross-module calls or import persona's internals — either way, a module-boundary regression. Knowledge is small enough that its export/import stays in its own module unchanged.
