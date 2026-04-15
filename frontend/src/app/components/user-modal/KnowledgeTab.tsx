@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { knowledgeApi } from '../../../core/api/knowledge'
+import { ApiError } from '../../../core/api/client'
 import { useKnowledgeStore } from '../../../core/store/knowledgeStore'
+import { useNotificationStore } from '../../../core/store/notificationStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { triggerBlobDownload } from '../../../core/utils/download'
 import type { KnowledgeDocumentDto, KnowledgeLibraryDto } from '../../../core/types/knowledge'
 import { DocumentEditorModal } from './DocumentEditorModal'
 import { LibraryEditorModal } from './LibraryEditorModal'
@@ -60,6 +63,68 @@ export function KnowledgeTab() {
   const [libraryModal, setLibraryModal] = useState<LibraryModalState>({ mode: 'none' })
   const [documentModal, setDocumentModal] = useState<DocumentModalState>({ mode: 'none' })
   const [loadingDoc, setLoadingDoc] = useState<string | null>(null)
+  const [exportingLibraryId, setExportingLibraryId] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const importInputRef = useRef<HTMLInputElement>(null)
+  const addNotification = useNotificationStore((s) => s.addNotification)
+
+  async function handleExportLibrary(library: KnowledgeLibraryDto) {
+    if (exportingLibraryId) return
+    setExportingLibraryId(library.id)
+    try {
+      const { blob, filename } = await knowledgeApi.exportLibrary(library.id)
+      triggerBlobDownload({ blob, filename })
+      addNotification({
+        level: 'success',
+        title: 'Library exported',
+        message: `${library.name} downloaded as ${filename}.`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to export library.'
+      addNotification({
+        level: 'error',
+        title: 'Export failed',
+        message,
+      })
+    } finally {
+      setExportingLibraryId(null)
+    }
+  }
+
+  async function handleImportFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null
+    event.target.value = ''
+    if (!file) return
+
+    setImporting(true)
+    try {
+      const created = await knowledgeApi.importLibrary(file)
+      addNotification({
+        level: 'success',
+        title: 'Library imported',
+        message: `${created.name} has been imported.`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to import library.'
+      addNotification({
+        level: 'error',
+        title: 'Import failed',
+        message,
+      })
+    } finally {
+      setImporting(false)
+    }
+  }
 
   useEffect(() => {
     fetchLibraries()
@@ -134,14 +199,33 @@ export function KnowledgeTab() {
         <span className="text-[11px] font-mono uppercase tracking-wider text-white/40">
           Your Libraries
         </span>
-        <button
-          type="button"
-          onClick={() => setLibraryModal({ mode: 'create' })}
-          className="rounded border border-gold/30 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 hover:border-gold/40 cursor-pointer"
-        >
-          + New Library
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="rounded border border-white/15 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/65 transition-colors hover:border-white/30 hover:text-white/85 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+            title="Import a library archive"
+          >
+            {importing ? 'Importing…' : '⇪ Import'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setLibraryModal({ mode: 'create' })}
+            className="rounded border border-gold/30 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 hover:border-gold/40 cursor-pointer"
+          >
+            + New Library
+          </button>
+        </div>
       </div>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".tar.gz,.gz,application/gzip"
+        className="hidden"
+        onChange={handleImportFile}
+      />
 
       {/* Library list */}
       <div className="flex-1 overflow-y-auto">
@@ -188,6 +272,18 @@ export function KnowledgeTab() {
                   {hasFailed && (
                     <span className="flex-shrink-0 text-[12px]" title="Some documents have failed embeddings">⚠</span>
                   )}
+                </button>
+
+                {/* Export button */}
+                <button
+                  type="button"
+                  onClick={() => handleExportLibrary(library)}
+                  disabled={exportingLibraryId === library.id}
+                  aria-label={`Export library ${library.name}`}
+                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  title="Export library"
+                >
+                  {exportingLibraryId === library.id ? '…' : '⇩'}
                 </button>
 
                 {/* Edit button */}

@@ -1,7 +1,10 @@
 import { useEffect, useId, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
 import { personasApi } from '../../../core/api/personas'
+import { ApiError } from '../../../core/api/client'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
+import { useNotificationStore } from '../../../core/store/notificationStore'
+import { triggerBlobDownload } from '../../../core/utils/download'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
@@ -9,6 +12,7 @@ import type { Connection } from '../../../core/types/llm'
 import type { PersonaDto } from '../../../core/types/persona'
 import { ModelSelectionModal } from '../model-browser/ModelSelectionModal'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
+import { ExportPersonaModal } from './ExportPersonaModal'
 
 interface EditTabProps {
   persona: PersonaDto
@@ -47,6 +51,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [visionPickerOpen, setVisionPickerOpen] = useState(false)
   const [visionFallbackDisplayName, setVisionFallbackDisplayName] = useState<string | null>(null)
   const [cropOpen, setCropOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const addNotification = useNotificationStore((s) => s.addNotification)
 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
@@ -150,6 +157,35 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       await onSave(isCreating ? null : persona.id, data)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleExport(includeContent: boolean) {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const { blob, filename } = await personasApi.exportPersona(persona.id, includeContent)
+      triggerBlobDownload({ blob, filename })
+      setExportOpen(false)
+      addNotification({
+        level: 'success',
+        title: 'Export started',
+        message: `${persona.name} downloaded as ${filename}.`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to export persona.'
+      addNotification({
+        level: 'error',
+        title: 'Export failed',
+        message,
+      })
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -468,21 +504,42 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           />
         </div>
 
-        {/* Save button */}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={!canSave || saving}
-          className="mt-2 py-2 px-6 rounded-lg text-[13px] font-semibold transition-all self-end"
-          style={{
-            background: canSave && !saving ? chakra.hex : 'rgba(255,255,255,0.06)',
-            color: canSave && !saving ? '#0f0d16' : 'rgba(255,255,255,0.25)',
-            cursor: canSave && !saving ? 'pointer' : 'not-allowed',
-            border: 'none',
-          }}
-        >
-          {saving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
-        </button>
+        {/* Action buttons */}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div>
+            {!isCreating && (
+              <button
+                type="button"
+                onClick={() => setExportOpen(true)}
+                disabled={exporting}
+                className="py-2 px-4 rounded-lg text-[13px] font-semibold transition-all"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${chakra.hex}33`,
+                  color: exporting ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.8)',
+                  cursor: exporting ? 'not-allowed' : 'pointer',
+                }}
+                title="Export this persona as a .chatsune-persona.tar.gz archive"
+              >
+                {exporting ? 'Exporting…' : 'Export'}
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave || saving}
+            className="py-2 px-6 rounded-lg text-[13px] font-semibold transition-all"
+            style={{
+              background: canSave && !saving ? chakra.hex : 'rgba(255,255,255,0.06)',
+              color: canSave && !saving ? '#0f0d16' : 'rgba(255,255,255,0.25)',
+              cursor: canSave && !saving ? 'pointer' : 'not-allowed',
+              border: 'none',
+            }}
+          >
+            {saving ? 'Saving…' : isCreating ? 'Create' : 'Save'}
+          </button>
+        </div>
       </div>
 
       {visionPickerOpen && (
@@ -527,6 +584,16 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           onSelect={handleModelSelect}
           onClose={() => setModelModalOpen(false)}
           mode="in-parent"
+        />
+      )}
+
+      {exportOpen && !isCreating && (
+        <ExportPersonaModal
+          personaName={persona.name}
+          chakraHex={chakra.hex}
+          busy={exporting}
+          onCancel={() => setExportOpen(false)}
+          onExport={handleExport}
         />
       )}
     </>

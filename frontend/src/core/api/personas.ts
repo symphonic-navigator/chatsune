@@ -1,5 +1,6 @@
 import { api, currentAccessToken } from "./client"
 import { ApiError } from "./client"
+import { parseContentDispositionFilename } from "../utils/download"
 import type {
   PersonaDto,
   CreatePersonaRequest,
@@ -9,6 +10,8 @@ import type {
 function baseUrl(): string {
   return import.meta.env.VITE_API_URL ?? ""
 }
+
+const PERSONA_EXPORT_FALLBACK_FILENAME = "persona-export.chatsune-persona.tar.gz"
 
 export const personasApi = {
   list: () =>
@@ -69,5 +72,68 @@ export const personasApi = {
   avatarSrc: async (personaId: string, _updatedAt?: string): Promise<string> => {
     const res = await api.get<{ url: string }>(`/api/personas/${personaId}/avatar-url`)
     return `${baseUrl()}${res.url}`
+  },
+
+  /**
+   * Download a persona archive as a gzip Blob. Returns the raw bytes plus the
+   * filename the backend suggested in `Content-Disposition`. If the header
+   * cannot be parsed, a generic fallback filename is used.
+   */
+  exportPersona: async (
+    personaId: string,
+    includeContent: boolean,
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const token = currentAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    const query = includeContent ? "?include_content=true" : "?include_content=false"
+    const res = await fetch(
+      `${baseUrl()}/api/personas/${personaId}/export${query}`,
+      {
+        method: "GET",
+        headers,
+        credentials: "include",
+      },
+    )
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { detail?: string } | null
+      throw new ApiError(res.status, body?.detail ?? res.statusText, body)
+    }
+    const blob = await res.blob()
+    const filename =
+      parseContentDispositionFilename(res.headers.get("Content-Disposition")) ??
+      PERSONA_EXPORT_FALLBACK_FILENAME
+    return { blob, filename }
+  },
+
+  /**
+   * Upload a persona archive as multipart/form-data. Returns the created
+   * PersonaDto on success. Surfaces HTTP 413 as a readable error so callers
+   * can show a toast with a concrete message.
+   */
+  importPersona: async (file: File): Promise<PersonaDto> => {
+    const form = new FormData()
+    form.append("file", file)
+    const token = currentAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
+    const res = await fetch(`${baseUrl()}/api/personas/import`, {
+      method: "POST",
+      headers,
+      body: form,
+      credentials: "include",
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { detail?: string } | null
+      if (res.status === 413) {
+        throw new ApiError(
+          413,
+          body?.detail ?? "Archive exceeds the 200 MB upload limit.",
+          body,
+        )
+      }
+      throw new ApiError(res.status, body?.detail ?? res.statusText, body)
+    }
+    return res.json() as Promise<PersonaDto>
   },
 }
