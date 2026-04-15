@@ -20,6 +20,12 @@ class Topics:
     LLM_CONNECTION_STATUS_CHANGED = "llm.connection.status_changed"
     LLM_CONNECTION_MODELS_REFRESHED = "llm.connection.models_refreshed"
     LLM_CONNECTION_SLUG_RENAMED = "llm.connection.slug_renamed"
+    LLM_MODEL_PULL_STARTED = "llm.model.pull.started"
+    LLM_MODEL_PULL_PROGRESS = "llm.model.pull.progress"
+    LLM_MODEL_PULL_COMPLETED = "llm.model.pull.completed"
+    LLM_MODEL_PULL_FAILED = "llm.model.pull.failed"
+    LLM_MODEL_PULL_CANCELLED = "llm.model.pull.cancelled"
+    LLM_MODEL_DELETED = "llm.model.deleted"
     # --- Web Search ---
     WEBSEARCH_CREDENTIAL_SET = "websearch.credential.set"
     WEBSEARCH_CREDENTIAL_REMOVED = "websearch.credential.removed"
