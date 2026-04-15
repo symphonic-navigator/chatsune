@@ -105,7 +105,7 @@ class OllamaModelOps:
                     "POST",
                     f"{self._base_url}/api/pull",
                     headers=_auth_headers(self._api_key),
-                    json={"name": slug, "stream": True},
+                    json={"model": slug, "stream": True},
                 ) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
@@ -222,7 +222,7 @@ class OllamaModelOps:
                 "DELETE",
                 f"{self._base_url}/api/delete",
                 headers=_auth_headers(self._api_key),
-                json={"name": name},
+                json={"model": name},
             )
             resp.raise_for_status()
         await self._bus.publish(

@@ -106,7 +106,7 @@ def build_admin_router(
         if not ok:
             raise HTTPException(404, "pull not found")
 
-    @router.delete("/ollama-local/models/{name}", status_code=204)
+    @router.delete("/ollama-local/models/{name:path}", status_code=204)
     async def delete_model(
         name: str, _user: dict = Depends(require_admin),
     ) -> None:

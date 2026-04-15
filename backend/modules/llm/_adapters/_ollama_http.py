@@ -537,7 +537,7 @@ def _build_adapter_router() -> APIRouter:
         if not ok:
             raise HTTPException(404, "pull not found")
 
-    @router.delete("/models/{name}", status_code=204)
+    @router.delete("/models/{name:path}", status_code=204)
     async def delete_model(
         name: str,
         c: ResolvedConnection = Depends(resolve_connection_for_user),
