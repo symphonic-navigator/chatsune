@@ -33,6 +33,7 @@ from shared.dtos.llm import (
     UserModelConfigDto,
 )
 from shared.events.llm import (
+    ConnectionSlugRenamedEvent,
     LlmConnectionCreatedEvent,
     LlmConnectionModelsRefreshedEvent,
     LlmConnectionRemovedEvent,
@@ -156,8 +157,14 @@ async def update_connection(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> ConnectionDto:
+    repo = _repo()
+    # Fetch the current document so we can detect a slug change after the update.
+    existing = await repo.find(user["sub"], connection_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    old_slug = existing["slug"]
     try:
-        doc = await _repo().update(
+        doc = await repo.update(
             user["sub"],
             connection_id,
             display_name=body.display_name,
@@ -177,6 +184,17 @@ async def update_connection(
     # next request rebuilds it from the fresh config.
     get_semaphore_registry().evict(connection_id)
     dto = ConnectionRepository.to_dto(doc)
+    if doc["slug"] != old_slug:
+        await event_bus.publish(
+            Topics.LLM_CONNECTION_SLUG_RENAMED,
+            ConnectionSlugRenamedEvent(
+                connection_id=doc["_id"],
+                old_slug=old_slug,
+                new_slug=doc["slug"],
+                timestamp=datetime.now(timezone.utc),
+            ),
+            target_user_ids=[user["sub"]],
+        )
     await event_bus.publish(
         Topics.LLM_CONNECTION_UPDATED,
         LlmConnectionUpdatedEvent(

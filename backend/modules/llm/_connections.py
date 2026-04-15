@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import re
+import re as _re
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -16,7 +16,7 @@ from shared.dtos.llm import ConnectionDto
 
 _log = logging.getLogger(__name__)
 
-_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+_SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
 def _fernet() -> Fernet:
@@ -166,10 +166,12 @@ class ConnectionRepository:
         doc = await self.find(user_id, connection_id)
         if doc is None:
             raise ConnectionNotFoundError(connection_id)
-        update: dict = {"updated_at": datetime.now(UTC)}
+
+        slug_changed = slug is not None and slug != doc["slug"]
+        update_payload: dict = {"updated_at": datetime.now(UTC)}
         if display_name is not None:
-            update["display_name"] = display_name
-        if slug is not None and slug != doc["slug"]:
+            update_payload["display_name"] = display_name
+        if slug_changed:
             _validate_slug(slug)
             dup = await self._col.find_one(
                 {"user_id": user_id, "slug": slug, "_id": {"$ne": connection_id}}
@@ -177,17 +179,62 @@ class ConnectionRepository:
             if dup:
                 suggested = await self.suggest_slug(user_id, slug)
                 raise SlugAlreadyExistsError(slug, suggested)
-            update["slug"] = slug
+            update_payload["slug"] = slug
         if config is not None:
             plain, encrypted = _split_config(doc["adapter_type"], config)
-            update["config"] = plain
-            update["config_encrypted"] = encrypted
-        updated = await self._col.find_one_and_update(
-            {"_id": connection_id, "user_id": user_id},
-            {"$set": update},
-            return_document=True,
+            update_payload["config"] = plain
+            update_payload["config_encrypted"] = encrypted
+
+        if not slug_changed:
+            # Fast path — single-document update, no cascade needed.
+            return await self._col.find_one_and_update(
+                {"_id": connection_id, "user_id": user_id},
+                {"$set": update_payload},
+                return_document=True,
+            )
+
+        # Slug changed — run connection update + cascade in a single transaction
+        # so that no document is left referencing the old slug if a step fails.
+        old_slug = doc["slug"]
+        client = self._col.database.client
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                await self._col.update_one(
+                    {"_id": connection_id, "user_id": user_id},
+                    {"$set": update_payload},
+                    session=session,
+                )
+                await self._cascade_unique_id_prefix(
+                    session, "personas", user_id, old_slug, slug,
+                )
+                await self._cascade_unique_id_prefix(
+                    session, "llm_user_model_configs", user_id, old_slug, slug,
+                )
+        return await self.find(user_id, connection_id)
+
+    async def _cascade_unique_id_prefix(
+        self,
+        session,
+        collection: str,
+        user_id: str,
+        old_slug: str,
+        new_slug: str,
+    ) -> None:
+        """Update model_unique_id for every document in *collection* whose
+        model_unique_id starts with ``old_slug:`` and belongs to *user_id*."""
+        col = self._col.database[collection]
+        prefix_pattern = f"^{_re.escape(old_slug)}:"
+        cursor = col.find(
+            {"user_id": user_id, "model_unique_id": {"$regex": prefix_pattern}},
+            session=session,
         )
-        return updated
+        async for doc in cursor:
+            suffix = doc["model_unique_id"].split(":", 1)[1]
+            await col.update_one(
+                {"_id": doc["_id"]},
+                {"$set": {"model_unique_id": f"{new_slug}:{suffix}"}},
+                session=session,
+            )
 
     async def delete(self, user_id: str, connection_id: str) -> bool:
         result = await self._col.delete_one(
