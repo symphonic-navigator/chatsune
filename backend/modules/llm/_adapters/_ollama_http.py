@@ -13,6 +13,8 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
+from datetime import UTC, datetime
+
 from backend.config import settings
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -429,25 +431,55 @@ class OllamaHttpAdapter(BaseAdapter):
 # ----- adapter sub-router (test + diagnostics) -----
 
 def _build_adapter_router() -> APIRouter:
+    from backend.database import get_db
+    from backend.modules.llm._connections import ConnectionRepository
     from backend.modules.llm._resolver import resolve_connection_for_user
+    from backend.ws.event_bus import EventBus, get_event_bus
+    from shared.events.llm import LlmConnectionUpdatedEvent
+    from shared.topics import Topics
+
     router = APIRouter()
+
+    def _repo() -> ConnectionRepository:
+        return ConnectionRepository(get_db())
 
     @router.post("/test")
     async def test_connection(
         c: ResolvedConnection = Depends(resolve_connection_for_user),
+        event_bus: EventBus = Depends(get_event_bus),
+        repo: ConnectionRepository = Depends(_repo),
     ) -> dict:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
+        valid = False
+        error: str | None = None
         try:
             async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
                 resp = await client.get(f"{url}/api/tags",
                                         headers=_auth_headers(api_key))
                 if resp.status_code in (401, 403):
-                    return {"valid": False, "error": "Invalid API key"}
-                resp.raise_for_status()
-                return {"valid": True, "error": None}
+                    error = "Invalid API key"
+                else:
+                    resp.raise_for_status()
+                    valid = True
         except Exception as exc:
-            return {"valid": False, "error": str(exc)}
+            error = str(exc)
+
+        updated = await repo.update_test_status(
+            c.user_id,
+            c.id,
+            status="valid" if valid else "failed",
+            error=error,
+        )
+        if updated is not None:
+            await event_bus.publish(
+                Topics.LLM_CONNECTION_UPDATED,
+                LlmConnectionUpdatedEvent(
+                    connection=ConnectionRepository.to_dto(updated),
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return {"valid": valid, "error": error}
 
     @router.get("/diagnostics")
     async def diagnostics(
