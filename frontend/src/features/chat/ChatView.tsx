@@ -38,7 +38,6 @@ import { useArtefactEvents } from '../artefact/useArtefactEvents'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
-import { ModelInfoPill } from './ModelInfoPill'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettings } from '../voice/stores/voiceSettingsStore'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
@@ -818,11 +817,6 @@ export function ChatView({ persona }: ChatViewProps) {
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
-          {/* Model pill — desktop only; tooltip on hover. Mobile keeps the bar
-              compact and skips this entirely. */}
-          <div className="hidden lg:inline-flex">
-            <ModelInfoPill persona={persona} />
-          </div>
         </div>
         {/* Desktop topbar indicators */}
         <div className="hidden lg:flex items-center gap-2">

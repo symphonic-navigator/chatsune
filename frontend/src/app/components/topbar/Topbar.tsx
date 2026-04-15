@@ -1,9 +1,11 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
+import type { ModelMetaDto } from "../../../core/types/llm"
+import { llmApi } from "../../../core/api/llm"
 import { JobsPill } from "./JobsPill"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 
@@ -12,6 +14,76 @@ const SECTION_TITLES: Record<string, string> = {
   "/projects": "Projects",
   "/history": "History",
   "/knowledge": "Knowledge",
+}
+
+function ModelPill({ modelUniqueId }: { modelUniqueId: string }) {
+  const [, ...slugParts] = modelUniqueId.split(":")
+  const slug = slugParts.join(":") || modelUniqueId
+  const connectionId = modelUniqueId.includes(":") ? modelUniqueId.split(":")[0] : null
+
+  const [open, setOpen] = useState(false)
+  const [model, setModel] = useState<ModelMetaDto | null>(null)
+
+  useEffect(() => {
+    if (!connectionId || !slug) {
+      setModel(null)
+      return
+    }
+    let cancelled = false
+    llmApi
+      .listConnectionModels(connectionId)
+      .then((models) => {
+        if (cancelled) return
+        setModel(models.find((m) => m.model_id === slug) ?? null)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setModel(null)
+      })
+    return () => { cancelled = true }
+  }, [connectionId, slug])
+
+  return (
+    <span
+      className="relative hidden lg:inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold cursor-default">
+        {slug}
+      </span>
+      {open && model && (
+        <div
+          role="tooltip"
+          className="absolute left-0 top-full mt-2 z-50 w-72 rounded-md border border-gold/25 bg-[#0b0a08] lg:bg-[#0b0a08]/95 lg:backdrop-blur-sm shadow-sm lg:shadow-[0_8px_24px_rgba(0,0,0,0.5)] px-3 py-2.5 text-[12px] font-mono leading-relaxed"
+        >
+          <ModelTooltipRow label="Provider" value={model.connection_display_name} />
+          <ModelTooltipRow label="Model" value={model.model_id} />
+          {model.parameter_count && (
+            <ModelTooltipRow label="Size" value={model.parameter_count} />
+          )}
+          {model.quantisation_level && (
+            <ModelTooltipRow label="Quant" value={model.quantisation_level} />
+          )}
+          {model.context_window > 0 && (
+            <ModelTooltipRow
+              label="Context"
+              value={`${model.context_window.toLocaleString()} tokens`}
+            />
+          )}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function ModelTooltipRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-white/40">{label}</span>
+      <span className="truncate text-white/85">{value}</span>
+    </div>
+  )
 }
 
 function LivePill({ isLive, wsStatus }: { isLive: boolean; wsStatus: string }) {
@@ -148,15 +220,9 @@ export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = fals
             </div>
           </div>
         )}
-        {persona && persona.model_unique_id && (() => {
-          const [, ...slugParts] = persona.model_unique_id.split(":")
-          const slug = slugParts.join(":") || persona.model_unique_id
-          return (
-            <span className="hidden rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold lg:inline">
-              {slug}
-            </span>
-          )
-        })()}
+        {persona && persona.model_unique_id && (
+          <ModelPill modelUniqueId={persona.model_unique_id} />
+        )}
         <div className="ml-auto hidden flex-shrink-0 items-center gap-1.5 lg:flex">
           <JobsPill personas={personas} />
           <LivePill isLive={isLive} wsStatus={wsStatus} />
