@@ -1,5 +1,6 @@
 import { api, ApiError, currentAccessToken } from './client'
 import { parseContentDispositionFilename } from '../utils/download'
+import type { DeletionReportDto } from '../types/deletion'
 import type {
   KnowledgeDocumentDetailDto,
   KnowledgeDocumentDto,
@@ -24,7 +25,7 @@ export const knowledgeApi = {
     api.put<KnowledgeLibraryDto>(`/api/knowledge/libraries/${id}`, body),
 
   deleteLibrary: (id: string) =>
-    api.delete<{ status: string }>(`/api/knowledge/libraries/${id}`),
+    api.delete<DeletionReportDto>(`/api/knowledge/libraries/${id}`),
 
   // Documents
   listDocuments: (libraryId: string) =>

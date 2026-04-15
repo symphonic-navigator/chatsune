@@ -110,6 +110,23 @@ class KnowledgeRepository:
         )
 
     async def delete_library(self, library_id: str, user_id: str) -> bool:
+        """Cascade-delete a library and return whether the library doc was removed.
+
+        Kept for backwards compatibility (notably the knowledge import rollback
+        path). For full per-step counts use :meth:`delete_library_with_counts`.
+        """
+        result = await self.delete_library_with_counts(library_id, user_id)
+        return result["library_deleted"]
+
+    async def delete_library_with_counts(
+        self, library_id: str, user_id: str,
+    ) -> dict:
+        """Cascade-delete a library, returning per-step counts.
+
+        Returns ``{"library_deleted": bool, "documents_deleted": int,
+        "chunks_deleted": int}``. Embedding vectors live inside the chunks
+        collection and are removed implicitly with the chunk delete.
+        """
         # Collect document IDs for cascade
         cursor = self._documents.find(
             {"library_id": library_id, "user_id": user_id},
@@ -118,14 +135,26 @@ class KnowledgeRepository:
         doc_ids = [d["_id"] async for d in cursor]
 
         # Cascade: delete chunks for all documents in this library
+        chunks_deleted = 0
         if doc_ids:
-            await self._chunks.delete_many({"document_id": {"$in": doc_ids}, "user_id": user_id})
+            chunk_result = await self._chunks.delete_many(
+                {"document_id": {"$in": doc_ids}, "user_id": user_id},
+            )
+            chunks_deleted = chunk_result.deleted_count
 
         # Cascade: delete all documents in this library
-        await self._documents.delete_many({"library_id": library_id, "user_id": user_id})
+        doc_result = await self._documents.delete_many(
+            {"library_id": library_id, "user_id": user_id},
+        )
 
-        result = await self._libraries.delete_one({"_id": library_id, "user_id": user_id})
-        return result.deleted_count > 0
+        lib_result = await self._libraries.delete_one(
+            {"_id": library_id, "user_id": user_id},
+        )
+        return {
+            "library_deleted": lib_result.deleted_count > 0,
+            "documents_deleted": doc_result.deleted_count,
+            "chunks_deleted": chunks_deleted,
+        }
 
     async def increment_document_count(
         self, library_id: str, user_id: str, delta: int

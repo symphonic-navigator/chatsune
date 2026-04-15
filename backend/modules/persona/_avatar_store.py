@@ -26,10 +26,18 @@ class AvatarStore:
             return None
         return path.read_bytes()
 
-    def delete(self, filename: str) -> None:
-        """Delete an avatar file."""
+    def delete(self, filename: str) -> str | None:
+        """Delete an avatar file.
+
+        Returns ``None`` on success (a missing file counts as success because
+        the post-condition — file does not exist — is already met). Returns
+        a short human-readable error string on a real I/O failure so the
+        cascade-delete report can surface it as a warning.
+        """
         path = self._root / filename
         try:
             path.unlink(missing_ok=True)
-        except OSError:
-            logger.warning("Failed to delete avatar: %s", filename)
+            return None
+        except OSError as exc:
+            logger.warning("Failed to delete avatar: %s (%s)", filename, exc)
+            return f"avatar file '{filename}': {exc}"

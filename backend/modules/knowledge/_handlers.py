@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 import backend.modules.embedding as embedding
 from backend.database import get_db
 from backend.dependencies import require_active_session
+from backend.modules.knowledge._cascade import cascade_delete_library
 from backend.modules.knowledge._chunker import chunk_document
 from backend.modules.knowledge._repository import KnowledgeRepository
 from backend.ws.event_bus import get_event_bus
@@ -172,9 +173,13 @@ async def delete_library(
     user: dict = Depends(require_active_session),
 ):
     repo = _repo()
-    deleted = await repo.delete_library(library_id, user["sub"])
-    if not deleted:
+    # Verify library exists and belongs to user before running cascade,
+    # so 404 still surfaces correctly when the id is bogus.
+    library = await repo.get_library(library_id, user["sub"])
+    if not library:
         raise HTTPException(status_code=404, detail="Library not found")
+
+    deleted, report = await cascade_delete_library(library_id=library_id, user_id=user["sub"])
 
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
@@ -191,7 +196,7 @@ async def delete_library(
         correlation_id=correlation_id,
     )
 
-    return {"status": "ok"}
+    return report
 
 
 # ------------------------------------------------------------------

@@ -127,6 +127,20 @@ class PersonaRepository:
         )
         return result.deleted_count > 0
 
+    async def remove_library_from_all_personas(
+        self, user_id: str, library_id: str,
+    ) -> int:
+        """Pull a deleted library id from every persona that referenced it.
+
+        Returns the number of persona documents that were updated. Used by
+        the knowledge-library cascade to maintain bidirectional consistency.
+        """
+        result = await self._collection.update_many(
+            {"user_id": user_id, "knowledge_library_ids": library_id},
+            {"$pull": {"knowledge_library_ids": library_id}},
+        )
+        return result.modified_count
+
     async def list_monograms_for_user(
         self, user_id: str, exclude_persona_id: str | None = None,
     ) -> set[str]:

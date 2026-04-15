@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { knowledgeApi } from '../../../core/api/knowledge'
 import { ApiError } from '../../../core/api/client'
+import { DeletionReportSheet } from '../../../core/components/DeletionReportSheet'
 import { useKnowledgeStore } from '../../../core/store/knowledgeStore'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { triggerBlobDownload } from '../../../core/utils/download'
+import type { DeletionReportDto } from '../../../core/types/deletion'
 import type { KnowledgeDocumentDto, KnowledgeLibraryDto } from '../../../core/types/knowledge'
 import { DocumentEditorModal } from './DocumentEditorModal'
 import { LibraryEditorModal } from './LibraryEditorModal'
@@ -65,6 +67,7 @@ export function KnowledgeTab() {
   const [loadingDoc, setLoadingDoc] = useState<string | null>(null)
   const [exportingLibraryId, setExportingLibraryId] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [deletionReport, setDeletionReport] = useState<DeletionReportDto | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const addNotification = useNotificationStore((s) => s.addNotification)
 
@@ -144,7 +147,16 @@ export function KnowledgeTab() {
 
   async function handleDeleteLibrary() {
     if (libraryModal.mode !== 'edit') return
-    await knowledgeApi.deleteLibrary(libraryModal.library.id)
+    const library = libraryModal.library
+    const report = await knowledgeApi.deleteLibrary(library.id)
+    setDeletionReport(report)
+    addNotification({
+      level: report.success ? 'success' : 'warning',
+      title: report.success ? 'Library deleted' : 'Library deletion partially failed',
+      message: report.success
+        ? `${library.name} has been permanently deleted.`
+        : `${library.name} could not be fully removed — see the report for details.`,
+    })
   }
 
   async function handleOpenDocument(libraryId: string, doc: KnowledgeDocumentDto) {
@@ -378,6 +390,12 @@ export function KnowledgeTab() {
           onClose={() => setDocumentModal({ mode: 'none' })}
         />
       )}
+
+      {/* Cascade-delete report — shown after the editor modal closes. */}
+      <DeletionReportSheet
+        report={deletionReport}
+        onClose={() => setDeletionReport(null)}
+      />
     </div>
   )
 }

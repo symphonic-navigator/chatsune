@@ -395,6 +395,34 @@ class ChatRepository:
         """Return the number of messages in a session."""
         return await self._messages.count_documents({"session_id": session_id})
 
+    async def count_messages_for_persona(
+        self, user_id: str, persona_id: str,
+    ) -> int:
+        """Total messages across every session of a (user, persona)."""
+        cursor = self._sessions.find(
+            {"user_id": user_id, "persona_id": persona_id},
+            projection={"_id": 1},
+        )
+        session_ids = [doc["_id"] async for doc in cursor]
+        if not session_ids:
+            return 0
+        return await self._messages.count_documents(
+            {"session_id": {"$in": session_ids}},
+        )
+
+    async def remove_library_from_all_sessions(
+        self, user_id: str, library_id: str,
+    ) -> int:
+        """Pull a deleted library id from every session that referenced it.
+
+        Returns the number of session documents that were updated.
+        """
+        result = await self._sessions.update_many(
+            {"user_id": user_id, "knowledge_library_ids": library_id},
+            {"$pull": {"knowledge_library_ids": library_id}},
+        )
+        return result.modified_count
+
     async def list_messages(self, session_id: str) -> list[dict]:
         cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
         return await cursor.to_list(length=5000)
