@@ -48,6 +48,12 @@ class LlmConnectionModelsRefreshedEvent(BaseModel):
     timestamp: datetime
 
 
+class ConnectionSlugRenamedEvent(BaseModel):
+    connection_id: str
+    old_slug: str
+    new_slug: str
+
+
 class LlmUserModelConfigUpdatedEvent(BaseModel):
     """Emitted when a user updates OR deletes their model config. Delete sends defaults."""
     type: str = "llm.user_model_config.updated"

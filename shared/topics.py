@@ -18,6 +18,7 @@ class Topics:
     LLM_CONNECTION_TESTED = "llm.connection.tested"
     LLM_CONNECTION_STATUS_CHANGED = "llm.connection.status_changed"
     LLM_CONNECTION_MODELS_REFRESHED = "llm.connection.models_refreshed"
+    LLM_CONNECTION_SLUG_RENAMED = "llm.connection.slug_renamed"
     # --- Web Search ---
     WEBSEARCH_CREDENTIAL_SET = "websearch.credential.set"
     WEBSEARCH_CREDENTIAL_REMOVED = "websearch.credential.removed"

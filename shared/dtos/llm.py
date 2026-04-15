@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 
 class ModelMetaDto(BaseModel):
     connection_id: str
+    connection_slug: str
     connection_display_name: str = ""
     model_id: str
     display_name: str
@@ -20,7 +21,7 @@ class ModelMetaDto(BaseModel):
     @computed_field
     @property
     def unique_id(self) -> str:
-        return f"{self.connection_id}:{self.model_id}"
+        return f"{self.connection_slug}:{self.model_id}"
 
 
 class UserModelConfigDto(BaseModel):
@@ -58,8 +59,8 @@ class SetUserModelConfigDto(BaseModel):
     def validate_context_window(cls, v: int | None) -> int | None:
         if v is None:
             return None
-        if v < 96_000:
-            raise ValueError("custom_context_window must be at least 96000")
+        if v < 80_000:
+            raise ValueError("custom_context_window must be at least 80000")
         return v
 
 
