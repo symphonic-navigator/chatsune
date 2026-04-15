@@ -45,7 +45,7 @@ async def describe_image(
 
     Args:
         user_id: The ID of the user whose connection should be used.
-        model_unique_id: Full model ID in ``<connection_id>:<model_slug>`` format.
+        model_unique_id: Full model ID in ``<connection_slug>:<model_slug>`` format.
         image_bytes: Raw image bytes to encode and send.
         media_type: MIME type of the image, e.g. ``"image/png"``.
 
@@ -58,7 +58,7 @@ async def describe_image(
     """
     if ":" not in model_unique_id:
         raise VisionFallbackError(
-            f"Invalid model_unique_id format (expected '<connection_id>:<slug>'): {model_unique_id!r}"
+            f"Invalid model_unique_id format (expected '<connection_slug>:<slug>'): {model_unique_id!r}"
         )
 
     _, model_slug = model_unique_id.split(":", 1)

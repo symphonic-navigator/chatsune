@@ -1,4 +1,4 @@
-"""Resolve a connection_id + current user into a ResolvedConnection."""
+"""Resolve a connection (by _id or slug) + current user into a ResolvedConnection."""
 
 from fastapi import Depends, HTTPException, Path
 
@@ -35,12 +35,16 @@ async def resolve_connection_for_user(
     return _to_resolved(doc)
 
 
-async def resolve_owned_connection(
-    user_id: str, connection_id: str,
+async def resolve_owned_connection_by_slug(
+    user_id: str, connection_slug: str,
 ) -> ResolvedConnection | None:
-    """Non-HTTP variant used from internal call sites (stream_completion)."""
+    """Non-HTTP variant used from internal call sites (stream_completion).
+
+    Looks up the Connection by ``(user_id, slug)`` — the left segment of a
+    ``<connection_slug>:<model_slug>`` unique_id.
+    """
     repo = ConnectionRepository(get_db())
-    doc = await repo.find(user_id, connection_id)
+    doc = await repo.find_by_slug(user_id, connection_slug)
     if doc is None:
         return None
     return _to_resolved(doc)

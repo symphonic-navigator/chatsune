@@ -53,14 +53,14 @@ async def _validate_model_unique_id(user_id: str, model_unique_id: str) -> None:
     if ":" not in model_unique_id:
         raise HTTPException(
             status_code=400,
-            detail="model_unique_id must be in format 'connection_id:model_slug'",
+            detail="model_unique_id must be in format 'connection_slug:model_slug'",
         )
-    connection_id = model_unique_id.split(":", 1)[0]
-    c = await resolve_owned_connection(user_id, connection_id)
+    connection_slug = model_unique_id.split(":", 1)[0]
+    c = await resolve_owned_connection(user_id, connection_slug)
     if c is None:
         raise HTTPException(
             status_code=422,
-            detail=f"Unknown or unowned connection '{connection_id}' in model_unique_id",
+            detail=f"Unknown or unowned connection '{connection_slug}' in model_unique_id",
         )
 
 

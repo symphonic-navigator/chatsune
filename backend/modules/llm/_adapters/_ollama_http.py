@@ -142,7 +142,7 @@ def _auth_headers(api_key: str | None) -> dict:
 
 
 def _map_to_dto(
-    connection_id: str, connection_display_name: str,
+    connection_id: str, connection_display_name: str, connection_slug: str,
     model_name: str, detail: dict,
 ) -> ModelMetaDto:
     capabilities = detail.get("capabilities", [])
@@ -167,6 +167,7 @@ def _map_to_dto(
     return ModelMetaDto(
         connection_id=connection_id,
         connection_display_name=connection_display_name,
+        connection_slug=connection_slug,
         model_id=model_name,
         display_name=_build_display_name(model_name),
         context_window=context_window,
@@ -275,7 +276,7 @@ class OllamaHttpAdapter(BaseAdapter):
                 *(_fetch_one(e["name"]) for e in tag_entries),
             )
         metas = [
-            _map_to_dto(c.id, c.display_name, name, detail)
+            _map_to_dto(c.id, c.display_name, c.slug, name, detail)
             for name, detail in results if detail is not None
         ]
         return _filter_unusable(metas)

@@ -321,10 +321,10 @@ async def run_inference(
         await repo.update_session_state(session_id, "idle")
         return
 
-    llm_connection_id, model_slug = model_unique_id.split(":", 1)
-    resolved_connection = await resolve_owned_connection(user_id, llm_connection_id)
+    llm_connection_slug, model_slug = model_unique_id.split(":", 1)
+    resolved_connection = await resolve_owned_connection(user_id, llm_connection_slug)
     connection_display_name = (
-        resolved_connection.display_name if resolved_connection is not None else llm_connection_id
+        resolved_connection.display_name if resolved_connection is not None else llm_connection_slug
     )
     adapter_type = (
         resolved_connection.adapter_type if resolved_connection is not None else "unknown"

@@ -31,7 +31,11 @@ from backend.modules.llm._metadata import (
     refresh_connection_models,
 )
 from backend.modules.llm._registry import ADAPTER_REGISTRY
-from backend.modules.llm._resolver import resolve_owned_connection
+from backend.modules.llm._resolver import resolve_owned_connection_by_slug
+
+# Convenience alias — callers that split a model_unique_id pass a slug as the
+# second argument; this name is kept for backwards compatibility.
+resolve_owned_connection = resolve_owned_connection_by_slug
 from backend.modules.llm._semaphores import get_semaphore_registry
 from backend.modules.llm._token_estimate import DEFAULT_CONTEXT_WINDOW
 from backend.modules.llm._user_config import UserModelConfigRepository
@@ -53,7 +57,7 @@ class LlmConnectionNotFoundError(Exception):
 
 
 class LlmInvalidModelUniqueIdError(Exception):
-    """model_unique_id is not in ``<connection_id>:<model_slug>`` format."""
+    """model_unique_id is not in ``<connection_slug>:<model_slug>`` format."""
 
 
 async def init_indexes(db) -> None:
@@ -63,13 +67,13 @@ async def init_indexes(db) -> None:
 
 
 def parse_model_unique_id(model_unique_id: str) -> tuple[str, str]:
-    """Split ``<connection_id>:<model_slug>`` into ``(connection_id, model_slug)``."""
+    """Split ``<connection_slug>:<model_slug>`` into ``(connection_slug, model_slug)``."""
     if ":" not in model_unique_id:
         raise LlmInvalidModelUniqueIdError(model_unique_id)
-    connection_id, model_slug = model_unique_id.split(":", 1)
-    if not connection_id or not model_slug:
+    connection_slug, model_slug = model_unique_id.split(":", 1)
+    if not connection_slug or not model_slug:
         raise LlmInvalidModelUniqueIdError(model_unique_id)
-    return connection_id, model_slug
+    return connection_slug, model_slug
 
 
 async def stream_completion(
@@ -86,10 +90,10 @@ async def stream_completion(
         LlmConnectionNotFoundError: connection does not exist or is not owned
             by ``user_id``.
     """
-    connection_id, _ = parse_model_unique_id(model_unique_id)
-    c = await resolve_owned_connection(user_id, connection_id)
+    connection_slug, _ = parse_model_unique_id(model_unique_id)
+    c = await resolve_owned_connection_by_slug(user_id, connection_slug)
     if c is None:
-        raise LlmConnectionNotFoundError(connection_id)
+        raise LlmConnectionNotFoundError(connection_slug)
 
     adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
     adapter = adapter_cls()
@@ -152,7 +156,7 @@ async def _publish_inference_started(**fields) -> None:
                 connection_slug=fields["connection_slug"],
                 adapter_type=fields["adapter_type"],
                 model_slug=fields["model_slug"],
-                model_unique_id=f"{fields['connection_id']}:{fields['model_slug']}",
+                model_unique_id=f"{fields['connection_slug']}:{fields['model_slug']}",
                 source=fields["source"],
                 started_at=datetime.now(timezone.utc),
                 correlation_id=str(uuid4()),
@@ -258,8 +262,8 @@ async def get_model_metadata(
     user_id: str, model_unique_id: str,
 ) -> ModelMetaDto | None:
     """Return full metadata for a single model, or ``None`` if not found."""
-    connection_id, model_slug = parse_model_unique_id(model_unique_id)
-    c = await resolve_owned_connection(user_id, connection_id)
+    connection_slug, model_slug = parse_model_unique_id(model_unique_id)
+    c = await resolve_owned_connection_by_slug(user_id, connection_slug)
     if c is None:
         return None
     adapter_cls = ADAPTER_REGISTRY.get(c.adapter_type)

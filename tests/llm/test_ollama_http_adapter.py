@@ -33,6 +33,7 @@ def test_map_to_dto_propagates_quantisation_level():
     dto = _map_to_dto(
         "conn-id",
         "Conn",
+        "my-conn-slug",
         "llama3.3",
         {
             "capabilities": [],
@@ -42,3 +43,5 @@ def test_map_to_dto_propagates_quantisation_level():
     )
     assert dto.quantisation_level == "Q4_K_M"
     assert dto.context_window == 131072
+    assert dto.connection_slug == "my-conn-slug"
+    assert dto.unique_id == "my-conn-slug:llama3.3"

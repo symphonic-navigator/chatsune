@@ -141,6 +141,11 @@ class ConnectionRepository:
             {"_id": connection_id, "user_id": user_id}
         )
 
+    async def find_by_slug(self, user_id: str, slug: str) -> dict | None:
+        return await self._col.find_one(
+            {"slug": slug, "user_id": user_id}
+        )
+
     async def find_any(self, connection_id: str) -> dict | None:
         """Owner-agnostic lookup — use only for internal tracker enrichment."""
         return await self._col.find_one({"_id": connection_id})

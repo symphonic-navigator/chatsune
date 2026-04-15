@@ -183,7 +183,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
     # Re-read safeguard config per job so env-driven toggles (kill-switch)
     # take effect without a restart.
     sg_config = SafeguardConfig.from_env()
-    connection_id, _, model_slug = job.model_unique_id.partition(":")
+    connection_slug, _, model_slug = job.model_unique_id.partition(":")
 
     # Bind job context so all log lines within this execution block carry
     # job_id, job_type, and attempt automatically.
@@ -201,7 +201,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
                     redis,
                     sg_config,
                     user_id=job.user_id,
-                    connection_id=connection_id,
+                    connection_id=connection_slug,
                     model_slug=model_slug,
                     # TODO(Task 17): pass real estimated tokens
                     estimated_input_tokens=0,
@@ -250,7 +250,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
                             redis,
                             sg_config,
                             user_id=job.user_id,
-                            connection_id=connection_id,
+                            connection_id=connection_slug,
                             model_slug=model_slug,
                         )
                         raise
@@ -259,7 +259,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
                             redis,
                             sg_config,
                             user_id=job.user_id,
-                            connection_id=connection_id,
+                            connection_id=connection_slug,
                             model_slug=model_slug,
                             # TODO(Task 17): pass real tokens spent
                             tokens_spent=0,
