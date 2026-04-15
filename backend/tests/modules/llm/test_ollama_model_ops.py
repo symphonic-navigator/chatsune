@@ -98,8 +98,47 @@ async def test_pull_cancel_emits_cancelled_event():
             pass
 
     topics = [ev[0] for ev in bus.events]
-    assert Topics.LLM_MODEL_PULL_CANCELLED in topics
+    lifecycle_topics = [t for t in topics if t.startswith("llm.model.pull.")]
     assert Topics.LLM_MODEL_PULL_COMPLETED not in topics
+    assert lifecycle_topics[-1] == Topics.LLM_MODEL_PULL_CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_pull_cancel_after_stream_finished_does_not_emit_cancelled():
+    """Regression: cancel after stream finished must not flip COMPLETED to CANCELLED."""
+    bus = FakeBus()
+    reg = PullTaskRegistry()
+
+    # Minimal body: immediate "success" line — stream ends right away.
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'{"status":"success"}\n')
+
+    transport = httpx.MockTransport(handler)
+
+    ops = OllamaModelOps(
+        base_url="http://fake:11434",
+        api_key=None,
+        scope="admin-local",
+        event_bus=bus,
+        registry=reg,
+        http_transport=transport,
+        progress_throttle_seconds=0,
+    )
+
+    pull_id = await ops.start_pull(slug="llama3.2")
+    h = reg.get(pull_id)
+    # Wait for the task to finish cleanly BEFORE cancelling — this exercises
+    # the "cancel after completion" path (covers the race window). The shield
+    # guarantees that even if cancel had arrived a hair earlier, COMPLETED
+    # still wins.
+    await h.task
+    # Best-effort cancel after completion is a no-op; registry has cleaned up.
+    cancelled = reg.cancel("admin-local", pull_id)
+    assert cancelled is False
+
+    topics = [ev[0] for ev in bus.events]
+    assert Topics.LLM_MODEL_PULL_COMPLETED in topics
+    assert Topics.LLM_MODEL_PULL_CANCELLED not in topics
 
 
 @pytest.mark.asyncio

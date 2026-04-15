@@ -91,8 +91,12 @@ class OllamaModelOps:
             ),
             correlation_id=pull_id,
         )
+
+        completed_published = False
         last_emit = 0.0
-        last_state: dict | None = None
+        last_state: dict[str, Any] | None = None
+        last_emitted_state: dict[str, Any] | None = None
+
         try:
             async with httpx.AsyncClient(
                 timeout=_TIMEOUT, transport=self._transport,
@@ -115,33 +119,49 @@ class OllamaModelOps:
                         now = time.monotonic()
                         if now - last_emit >= self._throttle:
                             await self._emit_progress(pull_id, obj)
+                            last_emitted_state = obj
                             last_emit = now
-            if last_state is not None:
-                await self._emit_progress(pull_id, last_state)
-            await self._bus.publish(
-                Topics.LLM_MODEL_PULL_COMPLETED,
-                ModelPullCompletedEvent(
-                    pull_id=pull_id,
-                    scope=self._scope,
-                    slug=slug,
-                    timestamp=datetime.now(UTC),
-                ),
-                correlation_id=pull_id,
+
+            # Stream finished cleanly. Shield the finalisation from a late
+            # cancel landing in the window between stream-end and COMPLETED,
+            # so the user doesn't see CANCELLED for a pull that actually
+            # succeeded.
+            await asyncio.shield(
+                self._finalise_success(
+                    pull_id, slug, last_state, last_emitted_state,
+                )
             )
+            completed_published = True
+
         except asyncio.CancelledError:
-            await self._bus.publish(
-                Topics.LLM_MODEL_PULL_CANCELLED,
-                ModelPullCancelledEvent(
-                    pull_id=pull_id,
-                    scope=self._scope,
-                    slug=slug,
-                    timestamp=datetime.now(UTC),
-                ),
-                correlation_id=pull_id,
-            )
+            if not completed_published:
+                # Real cancel during the pull — tell listeners. Shield so a
+                # second cancel can't swallow the CANCELLED event; the inner
+                # try/except absorbs a cancel that fires during the shield
+                # itself.
+                try:
+                    await asyncio.shield(
+                        self._bus.publish(
+                            Topics.LLM_MODEL_PULL_CANCELLED,
+                            ModelPullCancelledEvent(
+                                pull_id=pull_id,
+                                scope=self._scope,
+                                slug=slug,
+                                timestamp=datetime.now(UTC),
+                            ),
+                            correlation_id=pull_id,
+                        )
+                    )
+                except asyncio.CancelledError:
+                    pass
             raise
         except Exception as exc:
             code, message = map_ollama_error(exc)
+            # Intentionally do NOT re-raise here — the failure is surfaced
+            # via the FAILED event on the bus, not via task exception state.
+            # Keeping the task "successful" from asyncio's POV avoids
+            # spurious "Task exception was never retrieved" warnings for
+            # fire-and-forget pull tasks.
             await self._bus.publish(
                 Topics.LLM_MODEL_PULL_FAILED,
                 ModelPullFailedEvent(
@@ -155,7 +175,31 @@ class OllamaModelOps:
                 correlation_id=pull_id,
             )
 
-    async def _emit_progress(self, pull_id: str, obj: dict) -> None:
+    async def _finalise_success(
+        self,
+        pull_id: str,
+        slug: str,
+        last_state: dict[str, Any] | None,
+        last_emitted_state: dict[str, Any] | None,
+    ) -> None:
+        # Flush final state only if it hasn't already been emitted as the
+        # last throttled update. Compare by identity — same dict object
+        # means no change since the last throttled emit, so emitting it
+        # again would be a duplicate progress event for the same state.
+        if last_state is not None and last_state is not last_emitted_state:
+            await self._emit_progress(pull_id, last_state)
+        await self._bus.publish(
+            Topics.LLM_MODEL_PULL_COMPLETED,
+            ModelPullCompletedEvent(
+                pull_id=pull_id,
+                scope=self._scope,
+                slug=slug,
+                timestamp=datetime.now(UTC),
+            ),
+            correlation_id=pull_id,
+        )
+
+    async def _emit_progress(self, pull_id: str, obj: dict[str, Any]) -> None:
         await self._bus.publish(
             Topics.LLM_MODEL_PULL_PROGRESS,
             ModelPullProgressEvent(
