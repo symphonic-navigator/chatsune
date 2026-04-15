@@ -33,9 +33,9 @@ export const llmApi = {
   listConnectionModels: (id: string) =>
     api.get<ModelMetaDto[]>(`/api/llm/connections/${id}/models`),
 
-  /** Returns 202 — the refresh is asynchronous; completion flows through events. */
+  /** Returns 200 once the upstream query finishes; emits LLM_CONNECTION_MODELS_REFRESHED. */
   refreshConnectionModels: (id: string) =>
-    api.post<void>(`/api/llm/connections/${id}/models/refresh`),
+    api.post<void>(`/api/llm/connections/${id}/refresh`),
 
   /** Adapter sub-router — live test against the remote end. */
   testConnection: (id: string) =>
