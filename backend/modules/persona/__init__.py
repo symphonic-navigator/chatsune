@@ -5,6 +5,7 @@ Public API: import only from this file.
 
 from backend.modules.persona._avatar_url import sign_avatar_url
 from backend.modules.persona._cascade import cascade_delete_persona
+from backend.modules.persona._clone import clone_persona
 from backend.modules.persona._handlers import router
 from backend.modules.persona._repository import PersonaRepository
 from backend.database import get_db
@@ -82,5 +83,6 @@ __all__ = [
     "unwire_personas_for_connection",
     "remove_library_from_all_personas",
     "cascade_delete_persona",
+    "clone_persona",
     "list_persona_ids_for_user",
 ]
