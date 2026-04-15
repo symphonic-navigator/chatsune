@@ -9,6 +9,7 @@ import type {
   SetUserModelConfigRequest,
   TestResultResponse,
 } from "../types/llm"
+import type { StartPullResponse, ListPullsResponse } from "./ollamaLocal"
 
 export const llmApi = {
   listAdapters: () =>
@@ -65,4 +66,25 @@ export const llmApi = {
 
   listUserModelConfigs: () =>
     api.get<UserModelConfigDto[]>("/api/llm/user-model-configs"),
+
+  pullModel: (connectionId: string, slug: string) =>
+    api.post<StartPullResponse>(
+      `/api/llm/connections/${connectionId}/adapter/pull`,
+      { slug },
+    ),
+
+  cancelModelPull: (connectionId: string, pullId: string) =>
+    api.post<void>(
+      `/api/llm/connections/${connectionId}/adapter/pull/${pullId}/cancel`,
+    ),
+
+  deleteConnectionModel: (connectionId: string, name: string) =>
+    api.delete<void>(
+      `/api/llm/connections/${connectionId}/adapter/models/${encodeURIComponent(name)}`,
+    ),
+
+  listConnectionPulls: (connectionId: string) =>
+    api.get<ListPullsResponse>(
+      `/api/llm/connections/${connectionId}/adapter/pulls`,
+    ),
 }
