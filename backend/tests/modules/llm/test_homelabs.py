@@ -99,3 +99,115 @@ async def test_sanity_cap_on_create(test_db):
     await repo.create(user_id="u1", display_name="B")
     with pytest.raises(TooManyHomelabsError):
         await repo.create(user_id="u1", display_name="C")
+
+
+from backend.modules.llm._homelab_tokens import API_KEY_PREFIX
+from backend.modules.llm._homelabs import ApiKeyRepository, TooManyApiKeysError
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_returns_plaintext_once(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    homelab, _ = await hrepo.create(user_id="u1", display_name="A")
+    key_doc, plaintext = await krepo.create(
+        user_id="u1",
+        homelab_id=homelab["homelab_id"],
+        display_name="Bob",
+        allowed_model_slugs=["llama3.2:8b"],
+    )
+    assert plaintext.startswith(API_KEY_PREFIX)
+    assert key_doc["display_name"] == "Bob"
+    assert key_doc["allowed_model_slugs"] == ["llama3.2:8b"]
+    assert key_doc["status"] == "active"
+    assert key_doc["api_key_hash"] == hash_token(plaintext)
+
+
+@pytest.mark.asyncio
+async def test_list_api_keys_scoped_to_homelab(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    h1, _ = await hrepo.create(user_id="u1", display_name="A")
+    h2, _ = await hrepo.create(user_id="u1", display_name="B")
+    await krepo.create(user_id="u1", homelab_id=h1["homelab_id"], display_name="Key1", allowed_model_slugs=[])
+    await krepo.create(user_id="u1", homelab_id=h1["homelab_id"], display_name="Key2", allowed_model_slugs=[])
+    await krepo.create(user_id="u1", homelab_id=h2["homelab_id"], display_name="Key3", allowed_model_slugs=[])
+    keys = await krepo.list(homelab_id=h1["homelab_id"])
+    assert sorted(k["display_name"] for k in keys) == ["Key1", "Key2"]
+
+
+@pytest.mark.asyncio
+async def test_revoke_flips_status(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    homelab, _ = await hrepo.create(user_id="u1", display_name="A")
+    key_doc, _ = await krepo.create(
+        user_id="u1",
+        homelab_id=homelab["homelab_id"],
+        display_name="K",
+        allowed_model_slugs=[],
+    )
+    await krepo.revoke(user_id="u1", homelab_id=homelab["homelab_id"], api_key_id=key_doc["api_key_id"])
+    refreshed = await krepo.get(user_id="u1", homelab_id=homelab["homelab_id"], api_key_id=key_doc["api_key_id"])
+    assert refreshed["status"] == "revoked"
+    assert refreshed["revoked_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_update_rename_and_allowlist(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    homelab, _ = await hrepo.create(user_id="u1", display_name="A")
+    key_doc, _ = await krepo.create(
+        user_id="u1", homelab_id=homelab["homelab_id"], display_name="K", allowed_model_slugs=[],
+    )
+    updated = await krepo.update(
+        user_id="u1",
+        homelab_id=homelab["homelab_id"],
+        api_key_id=key_doc["api_key_id"],
+        display_name="K2",
+        allowed_model_slugs=["llama3.2:8b", "mistral:7b"],
+    )
+    assert updated["display_name"] == "K2"
+    assert updated["allowed_model_slugs"] == ["llama3.2:8b", "mistral:7b"]
+
+
+@pytest.mark.asyncio
+async def test_find_active_by_hash_with_homelab_scope(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    homelab, _ = await hrepo.create(user_id="u1", display_name="A")
+    _, plaintext = await krepo.create(
+        user_id="u1", homelab_id=homelab["homelab_id"], display_name="K", allowed_model_slugs=[],
+    )
+    got = await krepo.find_active_by_hash(
+        homelab_id=homelab["homelab_id"], api_key_hash=hash_token(plaintext),
+    )
+    assert got is not None
+    missing = await krepo.find_active_by_hash(
+        homelab_id="other", api_key_hash=hash_token(plaintext),
+    )
+    assert missing is None
+
+
+@pytest.mark.asyncio
+async def test_api_key_sanity_cap_on_create(test_db):
+    hrepo = HomelabRepository(test_db)
+    krepo = ApiKeyRepository(test_db, max_per_homelab=2)
+    await hrepo.create_indexes()
+    await krepo.create_indexes()
+    homelab, _ = await hrepo.create(user_id="u1", display_name="A")
+    await krepo.create(user_id="u1", homelab_id=homelab["homelab_id"], display_name="A", allowed_model_slugs=[])
+    await krepo.create(user_id="u1", homelab_id=homelab["homelab_id"], display_name="B", allowed_model_slugs=[])
+    with pytest.raises(TooManyApiKeysError):
+        await krepo.create(user_id="u1", homelab_id=homelab["homelab_id"], display_name="C", allowed_model_slugs=[])

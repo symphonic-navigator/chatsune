@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets as _secrets
 from datetime import UTC, datetime
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -141,3 +142,147 @@ class HomelabRepository:
                 }
             },
         )
+
+
+class ApiKeyRepository:
+    def __init__(
+        self, db: AsyncIOMotorDatabase, max_per_homelab: int = 50
+    ) -> None:
+        self._col = db["llm_homelab_api_keys"]
+        self._max_per_homelab = max_per_homelab
+
+    async def create_indexes(self) -> None:
+        await self._col.create_index("api_key_hash", unique=True)
+        await self._col.create_index([("homelab_id", 1), ("created_at", 1)])
+
+    async def create(
+        self,
+        user_id: str,
+        homelab_id: str,
+        display_name: str,
+        allowed_model_slugs: list[str],
+    ) -> tuple[dict, str]:
+        count = await self._col.count_documents({"homelab_id": homelab_id})
+        if count >= self._max_per_homelab:
+            raise TooManyApiKeysError(
+                f"Homelab {homelab_id} already has {count} api-keys (max {self._max_per_homelab})"
+            )
+        plaintext = generate_api_key()
+        now = datetime.now(UTC)
+        doc = {
+            "homelab_id": homelab_id,
+            "user_id": user_id,
+            "api_key_id": _secrets.token_urlsafe(8),
+            "display_name": display_name,
+            "api_key_hash": hash_token(plaintext),
+            "api_key_hint": hint_for(plaintext),
+            "allowed_model_slugs": list(allowed_model_slugs),
+            "status": "active",
+            "created_at": now,
+            "revoked_at": None,
+            "last_used_at": None,
+        }
+        await self._col.insert_one(doc)
+        return doc, plaintext
+
+    async def list(self, homelab_id: str) -> list[dict]:
+        cursor = self._col.find({"homelab_id": homelab_id}).sort("created_at", 1)
+        return [doc async for doc in cursor]
+
+    async def get(
+        self, user_id: str, homelab_id: str, api_key_id: str
+    ) -> dict:
+        doc = await self._col.find_one(
+            {
+                "user_id": user_id,
+                "homelab_id": homelab_id,
+                "api_key_id": api_key_id,
+            }
+        )
+        if doc is None:
+            raise ApiKeyNotFoundError(api_key_id)
+        return doc
+
+    async def update(
+        self,
+        user_id: str,
+        homelab_id: str,
+        api_key_id: str,
+        display_name: str | None = None,
+        allowed_model_slugs: list[str] | None = None,
+    ) -> dict:
+        set_fields: dict = {}
+        if display_name is not None:
+            set_fields["display_name"] = display_name
+        if allowed_model_slugs is not None:
+            set_fields["allowed_model_slugs"] = list(allowed_model_slugs)
+        if not set_fields:
+            return await self.get(user_id, homelab_id, api_key_id)
+        res = await self._col.find_one_and_update(
+            {
+                "user_id": user_id,
+                "homelab_id": homelab_id,
+                "api_key_id": api_key_id,
+            },
+            {"$set": set_fields},
+            return_document=True,
+        )
+        if res is None:
+            raise ApiKeyNotFoundError(api_key_id)
+        return res
+
+    async def revoke(
+        self, user_id: str, homelab_id: str, api_key_id: str
+    ) -> dict:
+        now = datetime.now(UTC)
+        res = await self._col.find_one_and_update(
+            {
+                "user_id": user_id,
+                "homelab_id": homelab_id,
+                "api_key_id": api_key_id,
+            },
+            {"$set": {"status": "revoked", "revoked_at": now}},
+            return_document=True,
+        )
+        if res is None:
+            raise ApiKeyNotFoundError(api_key_id)
+        return res
+
+    async def regenerate(
+        self, user_id: str, homelab_id: str, api_key_id: str
+    ) -> tuple[dict, str]:
+        plaintext = generate_api_key()
+        res = await self._col.find_one_and_update(
+            {
+                "user_id": user_id,
+                "homelab_id": homelab_id,
+                "api_key_id": api_key_id,
+            },
+            {
+                "$set": {
+                    "api_key_hash": hash_token(plaintext),
+                    "api_key_hint": hint_for(plaintext),
+                    "status": "active",
+                    "revoked_at": None,
+                }
+            },
+            return_document=True,
+        )
+        if res is None:
+            raise ApiKeyNotFoundError(api_key_id)
+        return res, plaintext
+
+    async def find_active_by_hash(
+        self, homelab_id: str, api_key_hash: str
+    ) -> dict | None:
+        return await self._col.find_one(
+            {
+                "homelab_id": homelab_id,
+                "api_key_hash": api_key_hash,
+                "status": "active",
+            }
+        )
+
+    async def delete_for_homelab(self, homelab_id: str) -> int:
+        res = await self._col.delete_many({"homelab_id": homelab_id})
+        return res.deleted_count
