@@ -422,3 +422,150 @@ async def test_stream_completion_refused_when_config_missing(monkeypatch):
     ]
     assert len(events) == 1
     assert isinstance(events[0], StreamRefused)
+
+
+# ----- adapter sub-router (/test, /diagnostics) -----
+
+
+def _mount_community_router(monkeypatch, resolved: ResolvedConnection):
+    """Mount the community adapter router on a minimal FastAPI app and
+    override ``resolve_connection_for_user`` so the handlers receive our
+    resolved connection without needing auth.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from backend.modules.llm._adapters._community import CommunityAdapter
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    app = FastAPI()
+    router = CommunityAdapter.router()
+    assert router is not None, "Community adapter must expose a router"
+    app.include_router(router)
+
+    async def _override() -> ResolvedConnection:
+        return resolved
+
+    app.dependency_overrides[resolve_connection_for_user] = _override
+    return TestClient(app)
+
+
+def test_router_test_endpoint_reports_valid_with_model_count(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_list_models = AsyncMock(
+        return_value=[
+            {"slug": "llama3.2:8b", "display_name": "Llama", "context_length": 131072},
+            {"slug": "mistral:7b", "display_name": "Mistral", "context_length": 32768},
+        ]
+    )
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    client = _mount_community_router(monkeypatch, _resolved_conn())
+    resp = client.post("/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["model_count"] == 1
+    assert body["total_models_on_homelab"] == 2
+    assert isinstance(body["latency_ms"], int)
+    assert body["error"] is None
+
+
+def test_router_test_endpoint_reports_offline(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: None),
+    )
+    client = _mount_community_router(monkeypatch, _resolved_conn())
+    resp = client.post("/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "offline" in body["error"].lower()
+
+
+def test_router_test_endpoint_reports_key_invalid(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(return_value=None)
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    client = _mount_community_router(monkeypatch, _resolved_conn())
+    resp = client.post("/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "api" in body["error"].lower()
+
+
+def test_router_test_endpoint_missing_config(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    now = datetime.now(UTC)
+    empty = ResolvedConnection(
+        id="conn-1", user_id="u2", adapter_type="community",
+        display_name="", slug="",
+        config={"homelab_id": "", "api_key": ""},
+        created_at=now, updated_at=now,
+    )
+    client = _mount_community_router(monkeypatch, empty)
+    resp = client.post("/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+
+
+def test_router_diagnostics_offline(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: None),
+    )
+    client = _mount_community_router(monkeypatch, _resolved_conn())
+    resp = client.get("/diagnostics")
+    assert resp.status_code == 200
+    assert resp.json() == {"online": False}
+
+
+def test_router_diagnostics_online_exposes_sidecar_info(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.sidecar_version = "1.0.0"
+    fake_sidecar.engine_info = {"type": "ollama", "version": "0.5.0"}
+    fake_sidecar.capabilities = {"chat_streaming"}
+    fake_sidecar.max_concurrent = 3
+    fake_sidecar.display_name = "Wohnzimmer-GPU"
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    client = _mount_community_router(monkeypatch, _resolved_conn())
+    resp = client.get("/diagnostics")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["online"] is True
+    assert body["sidecar_version"] == "1.0.0"
+    assert body["engine"] == {"type": "ollama", "version": "0.5.0"}
+    assert body["capabilities"] == ["chat_streaming"]
+    assert body["max_concurrent"] == 3
+    assert body["display_name"] == "Wohnzimmer-GPU"

@@ -328,4 +328,96 @@ class CommunityAdapter(BaseAdapter):
 
     @classmethod
     def router(cls) -> APIRouter | None:
-        return None  # Task 5 mounts this
+        return _build_adapter_router()
+
+
+# ----- adapter sub-router -----
+
+
+def _build_adapter_router() -> APIRouter:
+    from time import monotonic
+
+    from fastapi import Depends
+
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    router = APIRouter()
+
+    @router.post("/test")
+    async def test_connection(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> dict:
+        homelab_id = (c.config.get("homelab_id") or "").strip()
+        api_key = (c.config.get("api_key") or "").strip()
+        if not homelab_id or not api_key:
+            return {
+                "valid": False,
+                "error": "Homelab-ID or API-Key is missing.",
+                "latency_ms": 0,
+                "model_count": 0,
+                "total_models_on_homelab": 0,
+            }
+
+        sidecar = get_sidecar_registry().get(homelab_id)
+        if sidecar is None:
+            return {
+                "valid": False,
+                "error": "Homelab is offline.",
+                "latency_ms": 0,
+                "model_count": 0,
+                "total_models_on_homelab": 0,
+            }
+
+        svc = _homelab_service()
+        key_doc = await svc.validate_consumer_access_key(
+            homelab_id=homelab_id, api_key_plaintext=api_key,
+        )
+        if key_doc is None:
+            return {
+                "valid": False,
+                "error": "API-Key is invalid or revoked.",
+                "latency_ms": 0,
+                "model_count": 0,
+                "total_models_on_homelab": 0,
+            }
+
+        t0 = monotonic()
+        try:
+            models = await sidecar.rpc_list_models()
+        except Exception as exc:  # noqa: BLE001 — surfaced to the frontend
+            return {
+                "valid": False,
+                "error": f"Sidecar error: {exc}",
+                "latency_ms": int((monotonic() - t0) * 1000),
+                "model_count": 0,
+                "total_models_on_homelab": 0,
+            }
+        latency_ms = int((monotonic() - t0) * 1000)
+        allow = set(key_doc.get("allowed_model_slugs", []))
+        visible = [m for m in models if m.get("slug") in allow]
+        return {
+            "valid": True,
+            "latency_ms": latency_ms,
+            "model_count": len(visible),
+            "total_models_on_homelab": len(models),
+            "error": None,
+        }
+
+    @router.get("/diagnostics")
+    async def diagnostics(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> dict:
+        homelab_id = (c.config.get("homelab_id") or "").strip()
+        sidecar = get_sidecar_registry().get(homelab_id) if homelab_id else None
+        if sidecar is None:
+            return {"online": False}
+        return {
+            "online": True,
+            "sidecar_version": sidecar.sidecar_version,
+            "engine": sidecar.engine_info,
+            "capabilities": sorted(sidecar.capabilities),
+            "max_concurrent": sidecar.max_concurrent,
+            "display_name": sidecar.display_name,
+        }
+
+    return router
