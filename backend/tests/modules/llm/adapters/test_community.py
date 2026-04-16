@@ -343,6 +343,68 @@ async def test_stream_completion_translates_thinking_delta(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_completion_translates_tool_call_with_nested_function(monkeypatch):
+    """CSP §8.2 wire format nests name/arguments under ``function``. Regression
+    test for a bug where the adapter read the top-level keys and always emitted
+    an empty tool name, causing ``No executor registered for tool ''``.
+    """
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import ToolCallEvent
+    from backend.modules.llm._csp._frames import (
+        StreamDelta,
+        StreamEndFrame,
+        StreamFrame,
+    )
+
+    frames = [
+        StreamFrame(
+            id="r",
+            delta=StreamDelta(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"loc":"Vienna"}',
+                        },
+                    }
+                ],
+            ),
+        ),
+        StreamEndFrame(id="r", finish_reason="tool_calls"),
+    ]
+
+    async def gen():
+        for f in frames:
+            yield f
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_generate_chat = MagicMock(return_value=gen())
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(_resolved_conn(), _completion_request())
+    ]
+    tool_events = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_events) == 1
+    assert tool_events[0].id == "call_1"
+    assert tool_events[0].name == "get_weather"
+    assert tool_events[0].arguments == '{"loc":"Vienna"}'
+
+
+@pytest.mark.asyncio
 async def test_stream_completion_translates_cancelled_to_aborted(monkeypatch):
     from backend.modules.llm._adapters import _community
     from backend.modules.llm._adapters._events import StreamAborted

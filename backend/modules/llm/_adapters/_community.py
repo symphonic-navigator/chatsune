@@ -70,10 +70,11 @@ def _frame_to_event(frame):
             # fragment here — chat orchestration receives one ToolCallEvent
             # per call, matching the ollama_http adapter's behaviour.
             tc = delta.tool_calls[0] if delta.tool_calls else {}
+            fn = tc.get("function") or {}
             return ToolCallEvent(
                 id=str(tc.get("id") or ""),
-                name=str(tc.get("name") or ""),
-                arguments=str(tc.get("arguments") or "{}"),
+                name=str(fn.get("name") or ""),
+                arguments=str(fn.get("arguments") or "{}"),
             )
         return None
     if isinstance(frame, StreamEndFrame):
