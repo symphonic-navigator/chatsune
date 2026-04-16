@@ -43,9 +43,16 @@ export default defineConfig({
         // App shell only — no runtime caching of API or WebSocket traffic,
         // as that would break Chatsune's event-first architecture.
         globPatterns: ["**/*.{js,css,html,svg,png,webp,woff2}"],
-        // Voice worker is 2.7 MB and only needed when user activates voice —
-        // exclude from precache so it loads on demand rather than bloating the SW cache.
-        globIgnores: ["**/voiceWorker-*.js"],
+        // Workers that must NOT be served from the SW cache:
+        //  - voiceWorker: 2.7 MB, only needed on voice activation — precaching
+        //    would bloat the SW install for a rarely-used feature.
+        //  - sandbox.worker: cross-origin-isolated execution relies on fresh
+        //    COEP/CORP headers from nginx. A cached SW response carries the
+        //    headers it was captured with, so if nginx policy changes (as it
+        //    did in cf3095d) existing clients get stuck on stale headers until
+        //    they clear site data manually. Bypassing the SW for this worker
+        //    avoids that class of bug entirely.
+        globIgnores: ["**/voiceWorker-*.js", "**/sandbox.worker-*.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
         cleanupOutdatedCaches: true,
