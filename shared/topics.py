@@ -26,6 +26,16 @@ class Topics:
     LLM_MODEL_PULL_FAILED = "llm.model.pull.failed"
     LLM_MODEL_PULL_CANCELLED = "llm.model.pull.cancelled"
     LLM_MODEL_DELETED = "llm.model.deleted"
+    # --- LLM Homelabs (community provisioning) ---
+    LLM_HOMELAB_CREATED = "llm.homelab.created"
+    LLM_HOMELAB_UPDATED = "llm.homelab.updated"
+    LLM_HOMELAB_DELETED = "llm.homelab.deleted"
+    LLM_HOMELAB_HOST_KEY_REGENERATED = "llm.homelab.host_key_regenerated"
+    LLM_HOMELAB_STATUS_CHANGED = "llm.homelab.status_changed"
+    LLM_HOMELAB_LAST_SEEN = "llm.homelab.last_seen"
+    LLM_API_KEY_CREATED = "llm.api_key.created"
+    LLM_API_KEY_UPDATED = "llm.api_key.updated"
+    LLM_API_KEY_REVOKED = "llm.api_key.revoked"
     # --- Web Search ---
     WEBSEARCH_CREDENTIAL_SET = "websearch.credential.set"
     WEBSEARCH_CREDENTIAL_REMOVED = "websearch.credential.removed"
