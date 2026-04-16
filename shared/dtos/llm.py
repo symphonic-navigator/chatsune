@@ -30,6 +30,10 @@ class UserModelConfigDto(BaseModel):
     is_hidden: bool = False
     custom_display_name: str | None = None
     custom_context_window: int | None = None
+    # Override for upstream-reported reasoning capability. Primary use case:
+    # community/homelab sidecars that don't yet detect every thinker family.
+    # ``None`` = respect upstream. ``True``/``False`` = force the flag.
+    custom_supports_reasoning: bool | None = None
     notes: str | None = None
     system_prompt_addition: str | None = None
 
@@ -39,6 +43,7 @@ class SetUserModelConfigDto(BaseModel):
     is_hidden: bool | None = None
     custom_display_name: str | None = None
     custom_context_window: int | None = None
+    custom_supports_reasoning: bool | None = None
     notes: str | None = None
     system_prompt_addition: str | None = None
 

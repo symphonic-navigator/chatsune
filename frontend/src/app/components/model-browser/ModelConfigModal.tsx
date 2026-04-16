@@ -31,6 +31,9 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
   const [customContextWindow, setCustomContextWindow] = useState<number | null>(
     cfg?.custom_context_window ?? null,
   )
+  const [customSupportsReasoning, setCustomSupportsReasoning] = useState<
+    boolean | null
+  >(cfg?.custom_supports_reasoning ?? null)
   const [notes, setNotes] = useState(cfg?.notes ?? '')
   const [systemPromptAddition, setSystemPromptAddition] = useState(
     cfg?.system_prompt_addition ?? '',
@@ -52,6 +55,7 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
         is_hidden: isHidden,
         custom_display_name: toNullIfEmpty(customDisplayName),
         custom_context_window: customContextWindow,
+        custom_supports_reasoning: customSupportsReasoning,
         notes: toNullIfEmpty(notes),
         system_prompt_addition: toNullIfEmpty(systemPromptAddition),
       }
@@ -178,6 +182,57 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
             Model max ≤ 80k — context cannot be narrowed further.
           </p>
         )}
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-white/50">
+          Reasoning capability
+        </label>
+        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <button
+            type="button"
+            onClick={() => setCustomSupportsReasoning(null)}
+            className={[
+              'rounded-full border px-3 py-1',
+              customSupportsReasoning === null
+                ? 'bg-white/10 border-white/30 text-white/90'
+                : 'border-white/15 text-white/60 hover:text-white/80',
+            ].join(' ')}
+          >
+            Default{' '}
+            <span className="text-white/40">
+              ({model.supports_reasoning ? 'on' : 'off'})
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCustomSupportsReasoning(true)}
+            className={[
+              'rounded-full border px-3 py-1',
+              customSupportsReasoning === true
+                ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300'
+                : 'border-white/15 text-white/60 hover:text-white/80',
+            ].join(' ')}
+          >
+            Force on
+          </button>
+          <button
+            type="button"
+            onClick={() => setCustomSupportsReasoning(false)}
+            className={[
+              'rounded-full border px-3 py-1',
+              customSupportsReasoning === false
+                ? 'bg-red-500/15 border-red-400/60 text-red-300'
+                : 'border-white/15 text-white/60 hover:text-white/80',
+            ].join(' ')}
+          >
+            Force off
+          </button>
+        </div>
+        <p className="text-[11px] text-white/40">
+          Override the upstream-reported reasoning flag — useful when a
+          homelab sidecar hasn't learned to detect a new thinker model.
+        </p>
       </div>
 
       <label className="flex flex-col gap-1 text-[12px] text-white/70">

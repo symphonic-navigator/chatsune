@@ -319,7 +319,19 @@ async def get_model_supports_vision(
 async def get_model_supports_reasoning(
     user_id: str, model_unique_id: str,
 ) -> bool:
-    """Return ``True`` if the model supports reasoning/thinking."""
+    """Return ``True`` if the model supports reasoning/thinking.
+
+    A per-user override (``UserModelConfig.custom_supports_reasoning``) takes
+    precedence over the upstream-reported capability — this lets the user
+    flag a community/homelab model as thinker when the sidecar has not yet
+    learned to detect it.
+    """
+    repo = UserModelConfigRepository(get_db())
+    doc = await repo.find(user_id, model_unique_id)
+    if doc is not None:
+        override = doc.get("custom_supports_reasoning")
+        if override is not None:
+            return bool(override)
     meta = await get_model_metadata(user_id, model_unique_id)
     return meta.supports_reasoning if meta else False
 

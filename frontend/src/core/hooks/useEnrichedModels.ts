@@ -66,10 +66,15 @@ export function useEnrichedModels(): UseEnrichedModels {
 
       const nextGroups: ConnectionModelGroup[] = sortedConns.map((connection, idx) => {
         const models = modelsByConnection[idx]
-          .map<EnrichedModelDto>((m) => ({
-            ...m,
-            user_config: configByUid.get(m.unique_id) ?? null,
-          }))
+          .map<EnrichedModelDto>((m) => {
+            const cfg = configByUid.get(m.unique_id) ?? null
+            // Apply the per-user reasoning override so every consumer of
+            // ``supports_reasoning`` (filters, persona editor, badges) sees
+            // the effective value without a separate lookup.
+            const supports_reasoning =
+              cfg?.custom_supports_reasoning ?? m.supports_reasoning
+            return { ...m, supports_reasoning, user_config: cfg }
+          })
           .sort((a, b) => a.display_name.localeCompare(b.display_name))
         return { connection, models }
       })

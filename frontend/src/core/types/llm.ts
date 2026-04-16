@@ -87,6 +87,8 @@ export interface UserModelConfigDto {
   is_hidden: boolean
   custom_display_name: string | null
   custom_context_window: number | null
+  /** null = honour upstream. true/false = force the flag. */
+  custom_supports_reasoning: boolean | null
   notes: string | null
   system_prompt_addition: string | null
 }
@@ -96,6 +98,7 @@ export interface SetUserModelConfigRequest {
   is_hidden?: boolean
   custom_display_name?: string | null
   custom_context_window?: number | null
+  custom_supports_reasoning?: boolean | null
   notes?: string | null
   system_prompt_addition?: string | null
 }

@@ -41,6 +41,7 @@ class UserModelConfigRepository:
             "is_hidden": False,
             "custom_display_name": None,
             "custom_context_window": None,
+            "custom_supports_reasoning": None,
             "notes": None,
             "system_prompt_addition": None,
         }
@@ -88,6 +89,7 @@ class UserModelConfigRepository:
             is_hidden=doc.get("is_hidden", False),
             custom_display_name=doc.get("custom_display_name"),
             custom_context_window=doc.get("custom_context_window"),
+            custom_supports_reasoning=doc.get("custom_supports_reasoning"),
             notes=doc.get("notes"),
             system_prompt_addition=doc.get("system_prompt_addition"),
         )
