@@ -146,3 +146,32 @@ def parse_frame(raw: str | bytes) -> BaseModel:
     if cls is None:
         raise ValueError(f"Unknown frame type: {ftype!r}")
     return cls.model_validate(obj)
+
+
+def negotiate_version(
+    sidecar_version: str, backend_version: str
+) -> tuple[bool, str, list[str]]:
+    """Return ``(accepted, negotiated_version, notices)``.
+
+    Major mismatch → ``accepted=False``, notices contain ``version_unsupported``.
+    Minor mismatch → ``accepted=True``, version becomes ``min(a.minor, b.minor)``.
+    Malformed sidecar version → rejected.
+    """
+
+    def _parse(v: str) -> tuple[int, int] | None:
+        try:
+            major_s, minor_s = v.split(".", 1)
+            return int(major_s), int(minor_s)
+        except (ValueError, AttributeError):
+            return None
+
+    sv = _parse(sidecar_version)
+    bv = _parse(backend_version)
+    if sv is None or bv is None:
+        return False, backend_version, ["version_unsupported: malformed"]
+    if sv[0] != bv[0]:
+        return False, backend_version, [
+            f"version_unsupported: backend requires CSP/{bv[0]}.x"
+        ]
+    negotiated = f"{bv[0]}.{min(sv[1], bv[1])}"
+    return True, negotiated, []

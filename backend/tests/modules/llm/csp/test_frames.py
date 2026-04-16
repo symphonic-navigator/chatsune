@@ -105,3 +105,30 @@ def test_model_meta_drops_model_without_context_length_validation():
     # The frame model requires context_length; missing → validation error
     with pytest.raises(Exception):
         ModelMeta(slug="x", display_name="X", context_length=None)
+
+
+from backend.modules.llm._csp._frames import negotiate_version
+
+
+def test_negotiate_matching_versions():
+    assert negotiate_version("1.0", "1.0") == (True, "1.0", [])
+
+
+def test_negotiate_minor_downgrade_uses_min():
+    ok, v, notices = negotiate_version("1.3", "1.1")
+    assert ok is True
+    assert v == "1.1"
+    assert notices == []
+
+
+def test_negotiate_major_mismatch_rejects():
+    ok, v, notices = negotiate_version("2.0", "1.0")
+    assert ok is False
+    assert v == "1.0"
+    assert any("version_unsupported" in n for n in notices)
+
+
+def test_negotiate_malformed_rejects():
+    ok, _, notices = negotiate_version("banana", "1.0")
+    assert ok is False
+    assert any("version_unsupported" in n for n in notices)
