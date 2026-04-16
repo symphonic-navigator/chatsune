@@ -19,6 +19,23 @@ import type {
 
 const BASE = '/api/llm/homelabs'
 
+export interface HomelabSidecarModel {
+  slug: string
+  display_name: string
+  parameter_count?: number | null
+  context_length: number
+  quantisation?: string | null
+  capabilities: string[]
+  engine_family?: string | null
+  engine_model_id?: string | null
+}
+
+export interface HomelabModelsResponse {
+  online: boolean
+  models: HomelabSidecarModel[]
+  error?: string
+}
+
 export const homelabsApi = {
   list: () => api.get<Homelab[]>(BASE),
   create: (body: CreateHomelabInput) => api.post<HomelabCreated>(BASE, body),
@@ -28,6 +45,8 @@ export const homelabsApi = {
   delete: (id: string) => api.delete<void>(`${BASE}/${id}`),
   regenerateHostKey: (id: string) =>
     api.post<HomelabHostKeyRegenerated>(`${BASE}/${id}/regenerate-host-key`),
+  listModels: (id: string) =>
+    api.get<HomelabModelsResponse>(`${BASE}/${id}/models`),
 }
 
 export const apiKeysApi = {

@@ -142,6 +142,39 @@ async def regenerate_host_key(
     )
 
 
+@router.get("/{homelab_id}/models")
+async def list_homelab_models(
+    homelab_id: str,
+    user: dict = Depends(require_active_session),
+    svc: HomelabService = Depends(_service),
+):
+    """Return the current model list reported by this homelab's sidecar.
+
+    Host-only. No API-key filtering is applied — the host is asking about
+    their own compute; everything the sidecar advertises is fair game for
+    the allowlist editor. When the sidecar is offline returns an empty
+    list plus an ``online: false`` flag so the UI can degrade gracefully.
+    """
+    try:
+        await svc.get_homelab(user["sub"], homelab_id)  # ownership
+    except HomelabNotFoundError:
+        raise HTTPException(status_code=404, detail="homelab not found")
+
+    from backend.modules.llm import get_sidecar_registry
+
+    conn = get_sidecar_registry().get(homelab_id)
+    if conn is None:
+        return {"online": False, "models": []}
+    try:
+        models = await conn.rpc_list_models()
+    except Exception as exc:  # noqa: BLE001
+        _log.warning(
+            "homelab.list_models failed homelab=%s err=%s", homelab_id, exc,
+        )
+        return {"online": True, "models": [], "error": str(exc)}
+    return {"online": True, "models": models}
+
+
 # --- API-keys ---
 
 
