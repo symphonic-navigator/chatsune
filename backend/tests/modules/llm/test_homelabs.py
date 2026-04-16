@@ -268,3 +268,63 @@ async def test_create_api_key_publishes_event(test_db):
     bus.publish.assert_awaited_once()
     args, _ = bus.publish.call_args
     assert args[0] == Topics.LLM_API_KEY_CREATED
+
+
+@pytest.mark.asyncio
+async def test_validate_consumer_access_key_returns_doc_for_active_key(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    created = await svc.create_homelab(user_id="u1", display_name="A")
+    hid = created["homelab"]["homelab_id"]
+    issued = await svc.create_api_key(
+        user_id="u1",
+        homelab_id=hid,
+        display_name="Bob",
+        allowed_model_slugs=["llama3.2:8b"],
+    )
+    plaintext = issued["plaintext_api_key"]
+
+    doc = await svc.validate_consumer_access_key(
+        homelab_id=hid, api_key_plaintext=plaintext,
+    )
+    assert doc is not None
+    assert doc["allowed_model_slugs"] == ["llama3.2:8b"]
+
+
+@pytest.mark.asyncio
+async def test_validate_consumer_access_key_returns_none_for_wrong_key(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    created = await svc.create_homelab(user_id="u1", display_name="A")
+    hid = created["homelab"]["homelab_id"]
+    await svc.create_api_key(
+        user_id="u1", homelab_id=hid, display_name="Bob",
+        allowed_model_slugs=["llama3.2:8b"],
+    )
+    doc = await svc.validate_consumer_access_key(
+        homelab_id=hid, api_key_plaintext="csapi_not_a_real_key",
+    )
+    assert doc is None
+
+
+@pytest.mark.asyncio
+async def test_validate_consumer_access_key_returns_none_when_revoked(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    created = await svc.create_homelab(user_id="u1", display_name="A")
+    hid = created["homelab"]["homelab_id"]
+    issued = await svc.create_api_key(
+        user_id="u1", homelab_id=hid, display_name="Bob",
+        allowed_model_slugs=["llama3.2:8b"],
+    )
+    plaintext = issued["plaintext_api_key"]
+    await svc.revoke_api_key(
+        user_id="u1", homelab_id=hid, api_key_id=issued["api_key"]["api_key_id"],
+    )
+    doc = await svc.validate_consumer_access_key(
+        homelab_id=hid, api_key_plaintext=plaintext,
+    )
+    assert doc is None

@@ -534,3 +534,17 @@ class HomelabService:
         if model_slug not in doc["allowed_model_slugs"]:
             return None
         return doc
+
+    async def validate_consumer_access_key(
+        self, homelab_id: str, api_key_plaintext: str
+    ) -> dict | None:
+        """Verify an API-Key without a model-slug check.
+
+        Used by the Community adapter to list models (per-model authorisation
+        is then enforced by filtering against ``allowed_model_slugs``) and by
+        the ``/test`` endpoint.
+        """
+        return await self._keys.find_active_by_hash(
+            homelab_id=homelab_id,
+            api_key_hash=hash_token(api_key_plaintext),
+        )

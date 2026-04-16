@@ -2,9 +2,31 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from backend.modules.llm._adapters._community import CommunityAdapter
+from backend.modules.llm._adapters._types import ResolvedConnection
+
+
+def _resolved_conn(
+    homelab_id: str = "Xk7bQ2eJn9m",
+    api_key: str = "csapi_test_xyz",
+) -> ResolvedConnection:
+    now = datetime.now(UTC)
+    return ResolvedConnection(
+        id="conn-1",
+        user_id="u2",
+        adapter_type="community",
+        display_name="Alice's GPU",
+        slug="alices-gpu",
+        # Secrets are merged into config by the resolver — adapter reads them from there.
+        config={"homelab_id": homelab_id, "api_key": api_key},
+        created_at=now,
+        updated_at=now,
+    )
 
 
 def test_adapter_identity():
@@ -26,3 +48,129 @@ def test_adapter_config_schema_has_two_fields():
     schema = CommunityAdapter.config_schema()
     names = {f.name for f in schema}
     assert names == {"homelab_id", "api_key"}
+
+
+# ----- fetch_models -----
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_when_sidecar_offline(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    monkeypatch.setattr(
+        _community,
+        "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: None),
+    )
+    # No homelab service call expected — sidecar offline short-circuits.
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(_resolved_conn())
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_filters_by_allowlist(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_list_models = AsyncMock(
+        return_value=[
+            {
+                "slug": "llama3.2:8b",
+                "display_name": "Llama 3.2 8B",
+                "context_length": 131072,
+                "capabilities": ["chat"],
+            },
+            {
+                "slug": "mistral:7b",
+                "display_name": "Mistral 7B",
+                "context_length": 32768,
+                "capabilities": ["chat"],
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        _community,
+        "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]}
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(_resolved_conn())
+    assert [m.model_id for m in out] == ["llama3.2:8b"]
+    # Connection identity preserved on the DTO so the frontend can display it.
+    assert out[0].connection_id == "conn-1"
+    assert out[0].connection_slug == "alices-gpu"
+    assert out[0].connection_display_name == "Alice's GPU"
+    assert out[0].context_window == 131072
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_empty_when_api_key_invalid(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_list_models = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        _community,
+        "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(return_value=None)
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(_resolved_conn())
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_empty_when_config_missing(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    # With no homelab_id we should never even reach the registry.
+    sentinel = MagicMock(side_effect=AssertionError("must not be called"))
+    monkeypatch.setattr(_community, "get_sidecar_registry", sentinel)
+
+    now = datetime.now(UTC)
+    empty = ResolvedConnection(
+        id="conn-1",
+        user_id="u2",
+        adapter_type="community",
+        display_name="",
+        slug="",
+        config={"homelab_id": "", "api_key": ""},
+        created_at=now,
+        updated_at=now,
+    )
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(empty)
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_when_rpc_raises(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_list_models = AsyncMock(side_effect=RuntimeError("boom"))
+    monkeypatch.setattr(
+        _community,
+        "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]}
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(_resolved_conn())
+    assert out == []
