@@ -460,7 +460,28 @@ async def lifespan(app: FastAPI):
         disconnect_retry_recovery_loop(get_redis()),
     )
 
-    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction, disconnect_retry")
+    # Community provisioning: periodic sidecar health ticker. Emits
+    # degraded/offline transitions based on last_traffic_at (design spec §5.10).
+    _sidecar_log = logging.getLogger("chatsune.sidecar_health")
+
+    async def _sidecar_health_loop() -> None:
+        _lifecycle_log.info("starting sidecar_health_loop")
+        try:
+            while True:
+                await asyncio.sleep(15)
+                try:
+                    await sidecar_registry.tick_health()
+                except Exception:
+                    _sidecar_log.warning("sidecar health tick failed", exc_info=True)
+        except asyncio.CancelledError:
+            _lifecycle_log.info("cancelled sidecar_health_loop")
+            raise
+        finally:
+            _lifecycle_log.info("stopped sidecar_health_loop")
+
+    sidecar_health_task = asyncio.create_task(_sidecar_health_loop())
+
+    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction, disconnect_retry, sidecar_health")
 
     yield
 
@@ -481,6 +502,7 @@ async def lifespan(app: FastAPI):
     trim_task.cancel()
     extraction_task.cancel()
     disconnect_retry_task.cancel()
+    sidecar_health_task.cancel()
     for task in (
         cleanup_task,
         memory_auto_commit_task,
@@ -489,6 +511,7 @@ async def lifespan(app: FastAPI):
         trim_task,
         extraction_task,
         disconnect_retry_task,
+        sidecar_health_task,
     ):
         try:
             await task

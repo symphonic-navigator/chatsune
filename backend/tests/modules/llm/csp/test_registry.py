@@ -54,3 +54,30 @@ async def test_revoke_closes_connection_with_auth_revoked_frame():
     assert conn.send.await_count >= 1
     conn.close.assert_awaited()
     assert reg.get("H1") is None
+
+
+@pytest.mark.asyncio
+async def test_health_monitor_transitions(monkeypatch):
+    from backend.modules.llm._csp import _registry as r_mod
+
+    now = [1000.0]
+    monkeypatch.setattr(r_mod, "_monotonic", lambda: now[0])
+
+    bus = AsyncMock()
+    reg = SidecarRegistry(event_bus=bus)
+    conn = AsyncMock()
+    conn.homelab_id = "H1"
+    conn.last_traffic_at = now[0]
+    await reg.register(user_id="u1", conn=conn)
+
+    # > 90 s of silence → degraded (status event emitted, connection kept).
+    now[0] += 100
+    bus.reset_mock()
+    await reg.tick_health()
+    bus.publish.assert_awaited()
+    assert reg.get("H1") is conn  # still present
+
+    # > 5 min total → offline + unregister.
+    now[0] += 400
+    await reg.tick_health()
+    assert reg.get("H1") is None
