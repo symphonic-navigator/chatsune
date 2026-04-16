@@ -26,6 +26,7 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
 from backend.modules.llm._handlers import router
+from backend.modules.llm._homelab_handlers import router as homelab_router
 from backend.modules.llm._homelabs import (
     ApiKeyNotFoundError,
     ApiKeyRepository,
@@ -398,6 +399,7 @@ async def delete_all_for_user(user_id: str) -> dict:
 
 __all__ = [
     "router",
+    "homelab_router",
     "init_indexes",
     "HomelabService",
     "HomelabNotFoundError",

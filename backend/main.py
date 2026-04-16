@@ -30,8 +30,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import connect_db, disconnect_db, get_db, get_redis
 from backend.modules.user import router as user_router, init_indexes as user_init_indexes
-from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
-from backend.modules.llm._homelab_handlers import router as llm_homelab_router
+from backend.modules.llm import (
+    router as llm_router,
+    init_indexes as llm_init_indexes,
+    homelab_router as llm_homelab_router,
+)
 from backend.modules.websearch import (
     router as websearch_router,
     init_indexes as websearch_init_indexes,

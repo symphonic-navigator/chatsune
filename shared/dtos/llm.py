@@ -140,6 +140,21 @@ class HomelabHostKeyRegeneratedDto(HomelabDto):
     )
 
 
+class HomelabStatusDto(BaseModel):
+    """Lightweight connection-status snapshot.
+
+    Emitted alongside ``llm.homelab.status_changed`` / ``llm.homelab.last_seen``
+    when Plan 3 (CSP sidecar) updates a homelab's live state without needing
+    to re-send the full :class:`HomelabDto`.
+    """
+
+    homelab_id: str
+    is_online: bool
+    last_seen_at: datetime | None = None
+    last_sidecar_version: str | None = None
+    last_engine_info: HomelabEngineInfoDto | None = None
+
+
 class CreateHomelabDto(BaseModel):
     display_name: str
 
