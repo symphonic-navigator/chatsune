@@ -238,29 +238,6 @@ class CommunityAdapter(BaseAdapter):
         model_slug = (request.model or "").strip()
 
         if not homelab_id or not api_key or not model_slug:
-            _log.warning(
-                "community.stream_completion.incomplete connection_id=%s "
-                "homelab_id_set=%s api_key_set=%s model_slug=%r request_model=%r "
-                "config_keys=%r",
-                connection.id, bool(homelab_id), bool(api_key),
-                model_slug, getattr(request, "model", None),
-                sorted(connection.config.keys()),
-            )
-            try:
-                from backend.database import get_db
-
-                raw = await get_db()["llm_connections"].find_one(
-                    {"_id": connection.id}
-                )
-                if raw is not None:
-                    _log.warning(
-                        "community.stream_completion.raw_doc "
-                        "plain=%r encrypted=%r",
-                        sorted((raw.get("config") or {}).keys()),
-                        sorted((raw.get("config_encrypted") or {}).keys()),
-                    )
-            except Exception as exc:  # noqa: BLE001
-                _log.warning("peek_failed %s", exc)
             yield StreamRefused(reason="incomplete_configuration")
             return
 
