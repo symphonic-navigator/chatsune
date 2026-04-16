@@ -180,36 +180,9 @@ class CommunityAdapter(BaseAdapter):
     async def fetch_models(
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        _log.warning(
-            "community.fetch_models.enter connection_id=%s slug=%s",
-            connection.id, connection.slug,
-        )
         homelab_id = (connection.config.get("homelab_id") or "").strip()
         api_key = (connection.config.get("api_key") or "").strip()
-        _log.warning(
-            "community.fetch_models.config homelab_id=%r api_key_set=%s "
-            "config_keys=%r",
-            homelab_id, bool(api_key),
-            sorted(connection.config.keys()),
-        )
         if not homelab_id or not api_key:
-            # Deep diagnostic: peek at the raw Mongo doc so we can see
-            # whether the secret made it to storage at all.
-            try:
-                from backend.database import get_db
-
-                raw = await get_db()["llm_connections"].find_one(
-                    {"_id": connection.id}
-                )
-                if raw is not None:
-                    _log.warning(
-                        "community.fetch_models.raw_doc "
-                        "plain_config_keys=%r encrypted_keys=%r",
-                        sorted((raw.get("config") or {}).keys()),
-                        sorted((raw.get("config_encrypted") or {}).keys()),
-                    )
-            except Exception as exc:  # noqa: BLE001
-                _log.warning("community.fetch_models.peek_failed err=%s", exc)
             return []
 
         sidecar = get_sidecar_registry().get(homelab_id)
@@ -241,24 +214,11 @@ class CommunityAdapter(BaseAdapter):
             )
             return []
 
-        raw_slugs = [m.get("slug") for m in raw_models]
-        kept = [
-            m for m in raw_models
+        return [
+            _model_meta_to_dto(connection, m)
+            for m in raw_models
             if m.get("slug") in allowlist and m.get("context_length")
         ]
-        dropped_no_ctx = [
-            m.get("slug") for m in raw_models
-            if m.get("slug") in allowlist and not m.get("context_length")
-        ]
-        _log.warning(
-            "community.fetch_models.result connection_id=%s homelab_id=%s "
-            "sidecar_reported=%d allowlist=%d kept=%d "
-            "sidecar_slugs=%r allowlist_slugs=%r dropped_no_ctx=%r",
-            connection.id, homelab_id,
-            len(raw_models), len(allowlist), len(kept),
-            raw_slugs, sorted(allowlist), dropped_no_ctx,
-        )
-        return [_model_meta_to_dto(connection, m) for m in kept]
 
     async def stream_completion(  # type: ignore[override]
         self,

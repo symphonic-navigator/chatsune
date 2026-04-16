@@ -157,14 +157,6 @@ async def update_connection(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> ConnectionDto:
-    _log.warning(
-        "update_connection.enter connection_id=%s display_name=%r slug=%r "
-        "config_keys=%r",
-        connection_id,
-        body.display_name,
-        body.slug,
-        sorted((body.config or {}).keys()) if body.config is not None else None,
-    )
     repo = _repo()
     # Fetch the current document so we can detect a slug change after the update.
     existing = await repo.find(user["sub"], connection_id)
@@ -254,10 +246,6 @@ async def refresh_models(
     c: ResolvedConnection = Depends(resolve_connection_for_user),
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    _log.warning(
-        "refresh_models.enter connection_id=%s slug=%s adapter_type=%s",
-        c.id, c.slug, c.adapter_type,
-    )
     adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
     redis = get_redis()
     error_msg: str | None = None
@@ -356,6 +344,12 @@ async def delete_user_model_config(
 
 
 def _mount_adapter_routers() -> None:
+    # Each adapter's sub-router mounts under a prefix that includes its
+    # ``adapter_type`` so routes from different adapters never collide.
+    # Without this, the first-registered adapter wins every shared path
+    # (e.g. ``/test``) regardless of the connection's actual adapter —
+    # which caused ``ollama_http.test`` to execute against a community
+    # connection and crash on a missing ``url`` config field.
     for adapter_type, cls in ADAPTER_REGISTRY.items():
         try:
             sub = cls.router()
@@ -369,7 +363,7 @@ def _mount_adapter_routers() -> None:
             continue
         router.include_router(
             sub,
-            prefix="/connections/{connection_id}/adapter",
+            prefix=f"/connections/{{connection_id}}/adapter/{adapter_type}",
             tags=[f"adapter:{adapter_type}"],
         )
 

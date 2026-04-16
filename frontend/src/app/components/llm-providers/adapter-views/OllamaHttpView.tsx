@@ -118,9 +118,9 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
     if (!isSaved) return null
     return {
       ps: async () =>
-        (await llmApi.getConnectionDiagnostics(connectionId)).ps as OllamaPsResponse,
+        (await llmApi.getConnectionDiagnostics(connectionId, 'ollama_http')).ps as OllamaPsResponse,
       tags: async () =>
-        (await llmApi.getConnectionDiagnostics(connectionId)).tags as OllamaTagsResponse,
+        (await llmApi.getConnectionDiagnostics(connectionId, 'ollama_http')).tags as OllamaTagsResponse,
       pull: (slug) => llmApi.pullModel(connectionId, slug),
       cancelPull: (pullId) => llmApi.cancelModelPull(connectionId, pullId),
       deleteModel: (name) => llmApi.deleteConnectionModel(connectionId, name),

@@ -38,11 +38,15 @@ export const llmApi = {
     api.post<void>(`/api/llm/connections/${id}/refresh`),
 
   /** Adapter sub-router — live test against the remote end. */
-  testConnection: (id: string) =>
-    api.post<TestResultResponse>(`/api/llm/connections/${id}/adapter/test`),
+  testConnection: (id: string, adapterType: string) =>
+    api.post<TestResultResponse>(
+      `/api/llm/connections/${id}/adapter/${adapterType}/test`,
+    ),
 
-  getConnectionDiagnostics: (id: string) =>
-    api.get<{ ps: unknown; tags: unknown }>(`/api/llm/connections/${id}/adapter/diagnostics`),
+  getConnectionDiagnostics: (id: string, adapterType: string) =>
+    api.get<{ ps: unknown; tags: unknown }>(
+      `/api/llm/connections/${id}/adapter/${adapterType}/diagnostics`,
+    ),
 
   getUserModelConfig: (connectionId: string, modelSlug: string) =>
     api.get<UserModelConfigDto>(
@@ -69,22 +73,22 @@ export const llmApi = {
 
   pullModel: (connectionId: string, slug: string) =>
     api.post<StartPullResponse>(
-      `/api/llm/connections/${connectionId}/adapter/pull`,
+      `/api/llm/connections/${connectionId}/adapter/ollama_http/pull`,
       { slug },
     ),
 
   cancelModelPull: (connectionId: string, pullId: string) =>
     api.post<void>(
-      `/api/llm/connections/${connectionId}/adapter/pull/${pullId}/cancel`,
+      `/api/llm/connections/${connectionId}/adapter/ollama_http/pull/${pullId}/cancel`,
     ),
 
   deleteConnectionModel: (connectionId: string, name: string) =>
     api.delete<void>(
-      `/api/llm/connections/${connectionId}/adapter/models/${encodeURIComponent(name)}`,
+      `/api/llm/connections/${connectionId}/adapter/ollama_http/models/${encodeURIComponent(name)}`,
     ),
 
   listConnectionPulls: (connectionId: string) =>
     api.get<ListPullsResponse>(
-      `/api/llm/connections/${connectionId}/adapter/pulls`,
+      `/api/llm/connections/${connectionId}/adapter/ollama_http/pulls`,
     ),
 }

@@ -182,7 +182,7 @@ export function ConnectionConfigModal({
       // from false to true so the placeholder updates to "leave empty to keep".
       setConnection(saved)
 
-      const result = await llmApi.testConnection(saved.id)
+      const result = await llmApi.testConnection(saved.id, saved.adapter_type)
       setTestResult(result)
 
       // Notify parent so it can refresh the connection list.
