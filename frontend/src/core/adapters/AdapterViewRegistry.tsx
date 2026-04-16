@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import type { Connection } from '../types/llm'
 import { OllamaHttpView } from '../../app/components/llm-providers/adapter-views/OllamaHttpView'
+import { CommunityView } from '../../app/components/llm-providers/adapter-views/CommunityView'
 
 export interface AdapterViewProps {
   connection: Connection
@@ -17,6 +18,7 @@ export interface AdapterViewProps {
 
 export const ADAPTER_VIEW_REGISTRY: Record<string, ComponentType<AdapterViewProps>> = {
   ollama_http: OllamaHttpView,
+  community: CommunityView,
 }
 
 export function resolveAdapterView(viewId: string): ComponentType<AdapterViewProps> | null {
