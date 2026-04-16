@@ -182,8 +182,29 @@ class ConnectionRepository:
             update_payload["slug"] = slug
         if config is not None:
             plain, encrypted = _split_config(doc["adapter_type"], config)
+            # Merge semantics for secrets: a secret field that is *absent* from
+            # the incoming config means "leave the existing value alone" — not
+            # "wipe it". A secret field present with an empty/None value is the
+            # explicit-clear case (handled inside `_split_config` by skipping it
+            # from `encrypted`; we additionally drop the existing encrypted value
+            # here so the clear actually takes effect).
+            adapter_cls = ADAPTER_REGISTRY.get(doc["adapter_type"])
+            secret_fields = (
+                adapter_cls.secret_fields if adapter_cls else frozenset()
+            )
+            merged_encrypted = dict(doc.get("config_encrypted", {}))
+            for field in secret_fields:
+                if field in encrypted:
+                    # New plaintext provided — replace.
+                    merged_encrypted[field] = encrypted[field]
+                elif field in config and (
+                    config[field] is None or config[field] == ""
+                ):
+                    # Explicit clear.
+                    merged_encrypted.pop(field, None)
+                # Otherwise field absent from incoming config → preserve.
             update_payload["config"] = plain
-            update_payload["config_encrypted"] = encrypted
+            update_payload["config_encrypted"] = merged_encrypted
 
         if not slug_changed:
             # Fast path — single-document update, no cascade needed.

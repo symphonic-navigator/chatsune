@@ -299,22 +299,44 @@ class CommunityAdapter(BaseAdapter):
     def _to_generate_chat_body(
         model_slug: str, request: CompletionRequest,
     ) -> dict:
-        # Translate the internal CompletionMessage shape into the CSP
-        # generate_chat body. Engine-specific quirks must be handled on the
-        # sidecar — this code MUST NOT branch on engine type.
+        # Translate the internal CompletionMessage / ToolDefinition shape into
+        # the CSP generate_chat body. The protocol at the boundary is
+        # OpenAI-shaped (tools wrapped in {"type":"function","function":{...}},
+        # user-side messages with multimodal content as typed parts). See
+        # docs/superpowers/specs/2026-04-16-chatsune-sidecar-spec.md §8.
+        # Engine-specific quirks live on the sidecar; this code MUST NOT
+        # branch on engine type.
         messages: list[dict] = []
         for msg in request.messages:
             text_parts = [p.text for p in msg.content if p.type == "text" and p.text]
-            images = [p.data for p in msg.content if p.type == "image" and p.data]
-            item: dict = {
-                "role": msg.role,
-                "content": "".join(text_parts) if text_parts else "",
-            }
-            if images:
-                item["images"] = images
+            image_parts = [
+                {
+                    "type": "image",
+                    "media_type": p.media_type or "image/png",
+                    "data_b64": p.data,
+                }
+                for p in msg.content
+                if p.type == "image" and p.data
+            ]
+            if msg.role == "user" and image_parts:
+                # Multimodal user turn — array of typed content parts.
+                content: str | list[dict] = [
+                    {"type": "text", "text": t} for t in text_parts
+                ] + image_parts
+            else:
+                content = "".join(text_parts) if text_parts else ""
+
+            item: dict = {"role": msg.role, "content": content}
             if msg.tool_calls:
                 item["tool_calls"] = [
-                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        },
+                    }
                     for tc in msg.tool_calls
                 ]
             if msg.tool_call_id is not None:
@@ -325,10 +347,12 @@ class CommunityAdapter(BaseAdapter):
         if request.tools:
             tools_payload = [
                 {
-                    "type": t.type,
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
                 }
                 for t in request.tools
             ]
