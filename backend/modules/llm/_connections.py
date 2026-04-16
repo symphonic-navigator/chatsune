@@ -50,6 +50,16 @@ class ConnectionNotFoundError(KeyError):
     pass
 
 
+class ConnectionSystemManagedError(ValueError):
+    """Raised when a caller attempts to edit or delete a system-managed Connection.
+
+    System-managed connections are lifecycle-owned by another module (e.g. the
+    host-self Connection mirrored from a Homelab). Callers inside the owning
+    module use the ``*_by_system`` variants to bypass this check.
+    """
+    pass
+
+
 def _validate_slug(slug: str) -> None:
     if not _SLUG_RE.match(slug):
         raise InvalidSlugError(
@@ -110,6 +120,8 @@ class ConnectionRepository:
         display_name: str,
         slug: str,
         config: dict,
+        *,
+        is_system_managed: bool = False,
     ) -> dict:
         _validate_slug(slug)
         if adapter_type not in ADAPTER_REGISTRY:
@@ -132,6 +144,7 @@ class ConnectionRepository:
             "last_test_at": None,
             "created_at": now,
             "updated_at": now,
+            "is_system_managed": bool(is_system_managed),
         }
         await self._col.insert_one(doc)
         return doc
@@ -166,6 +179,37 @@ class ConnectionRepository:
         doc = await self.find(user_id, connection_id)
         if doc is None:
             raise ConnectionNotFoundError(connection_id)
+        if doc.get("is_system_managed", False):
+            raise ConnectionSystemManagedError(connection_id)
+        return await self._do_update(doc, display_name, slug, config)
+
+    async def update_by_system(
+        self,
+        user_id: str,
+        connection_id: str,
+        display_name: str | None = None,
+        slug: str | None = None,
+        config: dict | None = None,
+    ) -> dict:
+        """Internal-only variant that bypasses the ``is_system_managed`` guard.
+
+        Use from the module that owns the system-managed connection's
+        lifecycle (e.g. :class:`HomelabService`).
+        """
+        doc = await self.find(user_id, connection_id)
+        if doc is None:
+            raise ConnectionNotFoundError(connection_id)
+        return await self._do_update(doc, display_name, slug, config)
+
+    async def _do_update(
+        self,
+        doc: dict,
+        display_name: str | None,
+        slug: str | None,
+        config: dict | None,
+    ) -> dict:
+        user_id = doc["user_id"]
+        connection_id = doc["_id"]
 
         slug_changed = slug is not None and slug != doc["slug"]
         update_payload: dict = {"updated_at": datetime.now(UTC)}
@@ -258,6 +302,18 @@ class ConnectionRepository:
             )
 
     async def delete(self, user_id: str, connection_id: str) -> bool:
+        doc = await self.find(user_id, connection_id)
+        if doc is None:
+            return False
+        if doc.get("is_system_managed", False):
+            raise ConnectionSystemManagedError(connection_id)
+        result = await self._col.delete_one(
+            {"_id": connection_id, "user_id": user_id}
+        )
+        return result.deleted_count > 0
+
+    async def delete_by_system(self, user_id: str, connection_id: str) -> bool:
+        """Internal-only variant that bypasses the ``is_system_managed`` guard."""
         result = await self._col.delete_one(
             {"_id": connection_id, "user_id": user_id}
         )
@@ -321,6 +377,7 @@ class ConnectionRepository:
             last_test_at=doc.get("last_test_at"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            is_system_managed=bool(doc.get("is_system_managed", False)),
         )
 
     @staticmethod

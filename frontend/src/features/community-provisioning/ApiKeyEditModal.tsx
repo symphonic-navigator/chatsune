@@ -1,48 +1,50 @@
 import { useState } from 'react'
 import { Sheet } from '../../core/components/Sheet'
 import { apiKeysApi } from './api'
+import type { ApiKey } from './types'
 
 /**
- * Collects a display name and concurrency ceiling and creates a fresh
- * API-Key. By design the new key starts with an empty allowlist (no
- * "tick all" convenience) — the host then ticks models explicitly in the
- * `AllowlistEditor`.
- *
- * On success the caller receives the plaintext key and is responsible
- * for rendering `ApiKeyRevealModal` — keeps this modal narrowly scoped.
+ * Explicit edit window for an API-Key. Surfaces the two fields safe for
+ * in-place editing (display name + per-key concurrency). Model allowlist
+ * lives in its own dedicated editor — keeping the surfaces separate avoids
+ * a cramped combined dialog and keeps the "Edit allowlist" CTA findable.
  */
-export function ApiKeyCreateModal({
+export function ApiKeyEditModal({
   homelabId,
+  apiKey,
   onClose,
-  onCreated,
 }: {
   homelabId: string
+  apiKey: ApiKey
   onClose: () => void
-  onCreated: (plaintext: string) => void
 }) {
-  const [name, setName] = useState('')
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(1)
+  const [name, setName] = useState(apiKey.display_name)
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(apiKey.max_concurrent)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const trimmedName = name.trim()
+  const nameInvalid = trimmedName.length < 1 || trimmedName.length > 80
   const concurrencyInvalid =
     !Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32
-  const canSubmit = !busy && trimmedName.length > 0 && !concurrencyInvalid
+
+  const nameChanged = trimmedName !== apiKey.display_name
+  const concurrencyChanged = maxConcurrent !== apiKey.max_concurrent
+  const dirty = nameChanged || concurrencyChanged
+  const canSubmit = !busy && dirty && !nameInvalid && !concurrencyInvalid
 
   async function submit() {
     if (!canSubmit) return
     setBusy(true)
     setError(null)
     try {
-      const res = await apiKeysApi.create(homelabId, {
-        display_name: trimmedName,
-        allowed_model_slugs: [],
-        max_concurrent: maxConcurrent,
+      await apiKeysApi.update(homelabId, apiKey.api_key_id, {
+        ...(nameChanged ? { display_name: trimmedName } : {}),
+        ...(concurrencyChanged ? { max_concurrent: maxConcurrent } : {}),
       })
-      onCreated(res.plaintext_api_key)
+      onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed.')
+      setError(err instanceof Error ? err.message : 'Save failed.')
     } finally {
       setBusy(false)
     }
@@ -53,13 +55,13 @@ export function ApiKeyCreateModal({
       isOpen={true}
       onClose={onClose}
       size="md"
-      ariaLabel="Create API-Key"
+      ariaLabel="Edit API-Key"
       className="border border-white/8 bg-elevated"
     >
       <div className="flex flex-col">
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <h2 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
-            Create API-Key
+            Edit API-Key
           </h2>
           <button
             type="button"
@@ -71,11 +73,6 @@ export function ApiKeyCreateModal({
           </button>
         </div>
         <div className="space-y-4 px-5 py-4">
-          <p className="text-[12px] text-white/60">
-            Give it a name that tells you who it's for. The new key starts
-            with no models allowed — tick models explicitly afterwards via
-            "Edit allowlist".
-          </p>
           <div className="space-y-1">
             <label className="block text-[11px] font-mono uppercase tracking-wider text-white/50">
               Display name
@@ -89,7 +86,6 @@ export function ApiKeyCreateModal({
                 if (e.key === 'Enter' && canSubmit) void submit()
               }}
               maxLength={80}
-              placeholder="e.g. Bob (Testphase)"
               className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60"
             />
           </div>
@@ -132,7 +128,7 @@ export function ApiKeyCreateModal({
             onClick={() => void submit()}
             className="rounded bg-gold/90 px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-gold disabled:opacity-40"
           >
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

@@ -45,6 +45,14 @@ export interface Connection {
   last_test_at: string | null   // ISO string on the wire
   created_at: string
   updated_at: string
+  /**
+   * System-managed connections are created and maintained by other backend
+   * subsystems (e.g. the host's own homelab self-connection). They cannot
+   * be edited or deleted via the generic Connection API — mutate the owning
+   * resource instead (e.g. the Homelab).
+   * Optional for backwards compat on older payloads — treat missing as false.
+   */
+  is_system_managed?: boolean
 }
 
 export interface CreateConnectionRequest {

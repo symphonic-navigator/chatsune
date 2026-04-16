@@ -91,7 +91,11 @@ async def test_community_e2e_fetch_models(test_db, monkeypatch):
     svc = HomelabService(test_db, bus)
     await svc.init()
 
-    created = await svc.create_homelab(user_id="u_host", display_name="Wohnzimmer-GPU")
+    created = await svc.create_homelab(
+        user_id="u_host",
+        display_name="Wohnzimmer-GPU",
+        host_slug="wohnzimmer-gpu",
+    )
     homelab_id = created["homelab"]["homelab_id"]
     host_key = created["plaintext_host_key"]
 

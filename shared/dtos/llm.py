@@ -1,7 +1,12 @@
+import re as _re
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, computed_field, field_validator
+
+# Kept in sync with backend/modules/llm/_connections.py::_SLUG_RE. Duplicated
+# here to keep the shared package free of backend imports.
+_SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
 class ModelMetaDto(BaseModel):
@@ -98,6 +103,9 @@ class ConnectionDto(BaseModel):
     last_test_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # Connections managed by the system (e.g. a host-self connection that mirrors
+    # a Homelab) cannot be edited or deleted via the generic connection endpoints.
+    is_system_managed: bool = False
 
 
 class CreateConnectionDto(BaseModel):
@@ -131,6 +139,14 @@ class HomelabDto(BaseModel):
     last_sidecar_version: str | None = None
     last_engine_info: HomelabEngineInfoDto | None = None
     is_online: bool = False
+    # Process-local concurrency cap shared across every consumer of this
+    # homelab (host-self + every api-key-backed Connection). Default 3 keeps
+    # pre-existing documents readable (see CLAUDE.md §Data-Model Migrations).
+    max_concurrent_requests: int = 3
+    # Slug under which a system-managed self-Connection is registered for the
+    # host. ``None`` for homelabs created before this field existed; such
+    # homelabs don't have a self-Connection — the host continues to use api-keys.
+    host_slug: str | None = None
 
 
 class HomelabCreatedDto(HomelabDto):
@@ -162,6 +178,8 @@ class HomelabStatusDto(BaseModel):
 
 class CreateHomelabDto(BaseModel):
     display_name: str
+    host_slug: str
+    max_concurrent_requests: int = 3
 
     @field_validator("display_name")
     @classmethod
@@ -173,9 +191,28 @@ class CreateHomelabDto(BaseModel):
             raise ValueError("display_name must be 80 characters or fewer")
         return v
 
+    @field_validator("host_slug")
+    @classmethod
+    def _slug_shape(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _SLUG_RE.match(v):
+            raise ValueError(
+                "host_slug must be 1-63 chars, lowercase alphanumeric with hyphens, "
+                "starting with a letter or digit"
+            )
+        return v
+
+    @field_validator("max_concurrent_requests")
+    @classmethod
+    def _mcr_bounds(cls, v: int) -> int:
+        if v < 1 or v > 64:
+            raise ValueError("max_concurrent_requests must be between 1 and 64")
+        return v
+
 
 class UpdateHomelabDto(BaseModel):
     display_name: str | None = None
+    max_concurrent_requests: int | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -187,6 +224,15 @@ class UpdateHomelabDto(BaseModel):
             raise ValueError("display_name must not be empty")
         if len(v) > 80:
             raise ValueError("display_name must be 80 characters or fewer")
+        return v
+
+    @field_validator("max_concurrent_requests")
+    @classmethod
+    def _mcr_bounds(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 1 or v > 64:
+            raise ValueError("max_concurrent_requests must be between 1 and 64")
         return v
 
 
@@ -200,6 +246,9 @@ class ApiKeyDto(BaseModel):
     created_at: datetime
     revoked_at: datetime | None = None
     last_used_at: datetime | None = None
+    # Per-api-key concurrency cap enforced in CommunityAdapter. Default 1 keeps
+    # pre-existing documents readable (see CLAUDE.md §Data-Model Migrations).
+    max_concurrent: int = 1
 
 
 class ApiKeyCreatedDto(ApiKeyDto):
@@ -211,6 +260,7 @@ class ApiKeyCreatedDto(ApiKeyDto):
 class CreateApiKeyDto(BaseModel):
     display_name: str
     allowed_model_slugs: list[str] = Field(default_factory=list)
+    max_concurrent: int = 1
 
     @field_validator("display_name")
     @classmethod
@@ -222,10 +272,18 @@ class CreateApiKeyDto(BaseModel):
             raise ValueError("display_name must be 80 characters or fewer")
         return v
 
+    @field_validator("max_concurrent")
+    @classmethod
+    def _mc_bounds(cls, v: int) -> int:
+        if v < 1 or v > 32:
+            raise ValueError("max_concurrent must be between 1 and 32")
+        return v
+
 
 class UpdateApiKeyDto(BaseModel):
     display_name: str | None = None
     allowed_model_slugs: list[str] | None = None
+    max_concurrent: int | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -237,4 +295,13 @@ class UpdateApiKeyDto(BaseModel):
             raise ValueError("display_name must not be empty")
         if len(v) > 80:
             raise ValueError("display_name must be 80 characters or fewer")
+        return v
+
+    @field_validator("max_concurrent")
+    @classmethod
+    def _mc_bounds(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if v < 1 or v > 32:
+            raise ValueError("max_concurrent must be between 1 and 32")
         return v

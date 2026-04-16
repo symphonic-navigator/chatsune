@@ -15,6 +15,8 @@ function makeHomelab(overrides: Partial<Homelab> = {}): Homelab {
     last_sidecar_version: null,
     last_engine_info: null,
     is_online: false,
+    max_concurrent_requests: 3,
+    host_slug: 'home-lab-1',
     ...overrides,
   }
 }
@@ -30,6 +32,7 @@ function makeApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
     created_at: '2026-04-16T10:00:00Z',
     revoked_at: null,
     last_used_at: null,
+    max_concurrent: 1,
     ...overrides,
   }
 }

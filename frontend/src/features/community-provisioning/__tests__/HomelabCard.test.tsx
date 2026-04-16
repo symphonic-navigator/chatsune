@@ -7,6 +7,7 @@ import type { Homelab } from '../types'
 // the card's own output.
 vi.mock('../ApiKeyList', () => ({ ApiKeyList: () => null }))
 vi.mock('../HostKeyRevealModal', () => ({ HostKeyRevealModal: () => null }))
+vi.mock('../HomelabEditModal', () => ({ HomelabEditModal: () => null }))
 
 const sample: Homelab = {
   homelab_id: 'Xk7bQ2eJn9m',
@@ -18,6 +19,8 @@ const sample: Homelab = {
   last_sidecar_version: null,
   last_engine_info: null,
   is_online: false,
+  max_concurrent_requests: 3,
+  host_slug: 'wohnzimmer-gpu',
 }
 
 describe('HomelabCard', () => {

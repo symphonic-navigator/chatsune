@@ -690,3 +690,25 @@ migration.
 **Redis pseudonymisation:** Every per-user Redis key (`safeguard:queue:{user_id}`, `safeguard:budget:{user_id}:*`, circuit-breaker keys, refresh tokens) embeds only the `user_id` UUID — never username or email. After `users`-document deletion the UUID maps to nothing. SCAN+DEL of those patterns is therefore idempotent cleanup rather than privacy-critical; still performed because dangling keys waste memory.
 
 **Attestation audit row written AFTER the cascade.** The cascade step 8 wipes all audit rows tied to the user; writing a `user.self_deleted` row afterwards leaves exactly one surviving trace — the attestation. This matches GDPR's "legitimate interest" carve-out for records of the deletion itself.
+
+---
+
+## INS-023 — Community Provisioning: Host Self-Connection & Layered Concurrency (2026-04-16)
+
+**Decision:** Homelab hosts access their own compute through a system-managed `community` Connection, auto-created alongside the Homelab under a host-supplied slug. Not a special "host mode" flag on the adapter path — it's an ordinary Connection whose config carries `is_host_self: true` and whose lifecycle is owned by `HomelabService`. The frontend treats `is_system_managed=True` rows as read-only (separate "Self-Hosted" section in the providers list, edit/delete disabled, generic `PATCH/DELETE /connections/{id}` return HTTP 400).
+
+**Why a Connection and not a special path:** the adapter layer, resolver, per-connection semaphore, model-cache, and model-picker all key off Connection. Threading a second path for "host talks to own homelab" through every layer would double the surface area. Making the host-self case a Connection keeps the adapter registry uniform; the only branching is `is_host_self` inside `CommunityAdapter.fetch_models/stream_completion`, which skips api-key validation and the allowlist filter.
+
+**Three layers of concurrency, acquired in order:**
+
+1. **Per-Connection semaphore** (existing, INS-017) — gates each user's own parallel requests through their one Connection.
+2. **Per-API-Key semaphore** (new, `ApiKeySemaphoreRegistry` keyed by `api_key_id`, default 1) — lets the host hand out keys with different parallelism budgets (a test key gets 1, a trusted collaborator gets 4). Host-self path skips this layer.
+3. **Homelab-wide semaphore** (new, `HomelabSemaphoreRegistry` keyed by `homelab_id`, default 3) — the host's setting for total simultaneous requests across ALL consumers (host-self + every api-key). This is the "homelab total capacity" number the host owns.
+
+All three are process-local `asyncio.Semaphore`s held in `_KeyedSemRegistry`. Size is read from the current DB value and the registry rebuilds on change. Acquisition order in `CommunityAdapter.stream_completion` is api-key → homelab-wide (inside the already-acquired per-connection sem). Sidecar-declared `max_concurrent` from the handshake is left in place as a safety ceiling.
+
+**Host-configured, not sidecar-declared:** the CSP handshake still advertises `max_concurrent`, but what the host edits in the UI is stored on the Homelab document. The host's policy trumps the sidecar's advertisement for the purposes of scheduling; the sidecar's internal semaphore remains as a hard backend safety cap.
+
+**Self-connection lifecycle:** `HomelabService.create_homelab` reserves the slug (rejecting with HTTP 409 + `suggested_slug` on collision), inserts the homelab, inserts the `community` Connection with `is_system_managed=True` and `config.max_parallel = homelab.max_concurrent_requests`, and emits paired `LLM_HOMELAB_CREATED` + `LLM_CONNECTION_CREATED`. `update_homelab` cascades renames and max-concurrency changes to the self-connection. `delete_homelab` drops the self-connection via `delete_by_system` (bypasses the generic `is_system_managed` guard) and evicts all three semaphore registry entries. No MongoDB transaction spans both inserts — the self-connection create runs after the homelab insert and best-effort-rolls-back the homelab on failure; this keeps the service free of Motor session plumbing and the failure mode is tiny (uuid-slug collision within the same user).
+
+**Backwards-compat (no-wipe):** existing homelab documents predate `max_concurrent_requests` and `host_slug` — they deserialise with defaults (`3` and `None` respectively), which means they don't have a self-connection. Hosts of legacy homelabs continue to use API-Keys until they create a new homelab. No migration script; no DB touch. Pydantic models use `int = 3` / `str | None = None` / `bool = False` defaults so old documents decode cleanly (CLAUDE.md §Data-Model Migrations rule).

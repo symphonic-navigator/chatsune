@@ -224,14 +224,16 @@ async def test_create_homelab_publishes_event(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    result = await svc.create_homelab(user_id="u1", display_name="A")
+    result = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-a")
     assert result["plaintext_host_key"].startswith("cshost_")
     assert "plaintext_host_key" not in result["homelab"]
-    bus.publish.assert_awaited_once()
-    args, kwargs = bus.publish.call_args
-    # publish(topic, event, target_user_ids=[...])
-    assert args[0] == Topics.LLM_HOMELAB_CREATED
-    assert kwargs["target_user_ids"] == ["u1"]
+    # Two events: LLM_HOMELAB_CREATED + LLM_CONNECTION_CREATED (self-connection).
+    assert bus.publish.await_count == 2
+    topics = {call.args[0] for call in bus.publish.call_args_list}
+    assert Topics.LLM_HOMELAB_CREATED in topics
+    assert Topics.LLM_CONNECTION_CREATED in topics
+    for call in bus.publish.call_args_list:
+        assert call.kwargs["target_user_ids"] == ["u1"]
 
 
 @pytest.mark.asyncio
@@ -239,7 +241,7 @@ async def test_delete_homelab_cascades_api_keys(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    created = await svc.create_homelab(user_id="u1", display_name="A")
+    created = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-del")
     hid = created["homelab"]["homelab_id"]
     await svc.create_api_key(
         user_id="u1", homelab_id=hid, display_name="K", allowed_model_slugs=[]
@@ -257,7 +259,7 @@ async def test_create_api_key_publishes_event(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    created = await svc.create_homelab(user_id="u1", display_name="A")
+    created = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-cak")
     bus.reset_mock()
     await svc.create_api_key(
         user_id="u1",
@@ -275,7 +277,7 @@ async def test_validate_consumer_access_key_returns_doc_for_active_key(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    created = await svc.create_homelab(user_id="u1", display_name="A")
+    created = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-vak1")
     hid = created["homelab"]["homelab_id"]
     issued = await svc.create_api_key(
         user_id="u1",
@@ -297,7 +299,7 @@ async def test_validate_consumer_access_key_returns_none_for_wrong_key(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    created = await svc.create_homelab(user_id="u1", display_name="A")
+    created = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-vak2")
     hid = created["homelab"]["homelab_id"]
     await svc.create_api_key(
         user_id="u1", homelab_id=hid, display_name="Bob",
@@ -314,7 +316,7 @@ async def test_validate_consumer_access_key_returns_none_when_revoked(test_db):
     bus = AsyncMock()
     svc = HomelabService(test_db, bus)
     await svc.init()
-    created = await svc.create_homelab(user_id="u1", display_name="A")
+    created = await svc.create_homelab(user_id="u1", display_name="A", host_slug="lab-vak3")
     hid = created["homelab"]["homelab_id"]
     issued = await svc.create_api_key(
         user_id="u1", homelab_id=hid, display_name="Bob",

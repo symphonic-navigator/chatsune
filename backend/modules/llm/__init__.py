@@ -45,6 +45,7 @@ from backend.modules.llm._homelabs import (
     HomelabNotFoundError,
     HomelabRepository,
     HomelabService,
+    HostSlugAlreadyExistsError,
     TooManyApiKeysError,
     TooManyHomelabsError,
 )
@@ -430,6 +431,7 @@ __all__ = [
     "ApiKeyNotFoundError",
     "TooManyHomelabsError",
     "TooManyApiKeysError",
+    "HostSlugAlreadyExistsError",
     "stream_completion",
     "parse_model_unique_id",
     "ContentDelta",

@@ -21,6 +21,17 @@ export interface Homelab {
   last_sidecar_version: string | null
   last_engine_info: HomelabEngineInfo | null
   is_online: boolean
+  /**
+   * Total simultaneous requests across ALL users of this homelab. Defaults
+   * to 3 on the wire; optional here only to keep older payloads decoding.
+   */
+  max_concurrent_requests: number
+  /**
+   * Slug for the host's own self-access connection, auto-created alongside
+   * the homelab. Nullable only for older homelabs created before this field
+   * existed; new creates always carry a value.
+   */
+  host_slug: string | null
 }
 
 export interface HomelabCreated extends Homelab {
@@ -43,6 +54,8 @@ export interface ApiKey {
   created_at: string
   revoked_at: string | null
   last_used_at: string | null
+  /** Per-API-Key concurrency ceiling. Default 1 on the wire. */
+  max_concurrent: number
 }
 
 export interface ApiKeyCreated extends ApiKey {
@@ -51,18 +64,23 @@ export interface ApiKeyCreated extends ApiKey {
 
 export interface CreateHomelabInput {
   display_name: string
+  host_slug: string
+  max_concurrent_requests?: number
 }
 
 export interface UpdateHomelabInput {
   display_name?: string
+  max_concurrent_requests?: number
 }
 
 export interface CreateApiKeyInput {
   display_name: string
   allowed_model_slugs: string[]
+  max_concurrent?: number
 }
 
 export interface UpdateApiKeyInput {
   display_name?: string
   allowed_model_slugs?: string[]
+  max_concurrent?: number
 }

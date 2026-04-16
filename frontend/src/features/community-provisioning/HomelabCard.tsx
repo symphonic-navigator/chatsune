@@ -1,41 +1,22 @@
 import { useState } from 'react'
 import { ApiKeyList } from './ApiKeyList'
 import { homelabsApi } from './api'
+import { HomelabEditModal } from './HomelabEditModal'
 import { HostKeyRevealModal } from './HostKeyRevealModal'
 import type { Homelab } from './types'
 
 /**
  * Card representation of a single homelab. Shows live online/offline badge,
- * last-seen engine info, and surfaces the three host actions: rename,
- * regenerate host-key (with one-shot reveal), and delete.
- *
- * Inline rename via double-click mirrors the pattern in
- * `ConnectionConfigModal` (dedicated form) — here we keep it lightweight
- * because renaming is the only editable field.
+ * last-seen engine info, and surfaces the host actions: edit (display name
+ * + max concurrency), regenerate host-key (with one-shot reveal), and
+ * delete.
  */
 export function HomelabCard({ homelab }: { homelab: Homelab }) {
   const [expanded, setExpanded] = useState(false)
-  const [renaming, setRenaming] = useState(false)
-  const [nameDraft, setNameDraft] = useState(homelab.display_name)
+  const [editing, setEditing] = useState(false)
   const [revealKey, setRevealKey] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  async function saveName() {
-    const trimmed = nameDraft.trim()
-    setRenaming(false)
-    if (!trimmed || trimmed === homelab.display_name) {
-      setNameDraft(homelab.display_name)
-      return
-    }
-    setError(null)
-    try {
-      await homelabsApi.update(homelab.homelab_id, { display_name: trimmed })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Rename failed.')
-      setNameDraft(homelab.display_name)
-    }
-  }
 
   async function regenerate() {
     const ok = window.confirm(
@@ -76,31 +57,9 @@ export function HomelabCard({ homelab }: { homelab: Homelab }) {
     <div className="rounded border border-white/8 bg-white/[0.03] p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {renaming ? (
-            <input
-              autoFocus
-              value={nameDraft}
-              onChange={(e) => setNameDraft(e.target.value)}
-              onBlur={() => void saveName()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void saveName()
-                if (e.key === 'Escape') {
-                  setRenaming(false)
-                  setNameDraft(homelab.display_name)
-                }
-              }}
-              maxLength={80}
-              className="w-full rounded border border-white/10 bg-black/30 px-2 py-1 text-sm text-white outline-none focus:border-gold/60"
-            />
-          ) : (
-            <h3
-              className="cursor-text truncate text-[14px] font-semibold text-white/90"
-              onDoubleClick={() => setRenaming(true)}
-              title="Double-click to rename"
-            >
-              {homelab.display_name}
-            </h3>
-          )}
+          <h3 className="truncate text-[14px] font-semibold text-white/90">
+            {homelab.display_name}
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-white/40">
             <code className="font-mono text-white/60">{homelab.homelab_id}</code>
             <span>·</span>
@@ -117,6 +76,17 @@ export function HomelabCard({ homelab }: { homelab: Homelab }) {
             >
               {online ? 'online' : 'offline'}
             </span>
+          </div>
+          <div className="mt-1 text-[11px] text-white/40">
+            Max parallel{' '}
+            <span className="text-white/60">{homelab.max_concurrent_requests}</span>
+            {homelab.host_slug && (
+              <>
+                <span className="mx-1">·</span>
+                Self-slug{' '}
+                <code className="font-mono text-white/60">{homelab.host_slug}</code>
+              </>
+            )}
           </div>
           {engine && (
             <div className="mt-1 text-[11px] text-white/40">
@@ -138,6 +108,14 @@ export function HomelabCard({ homelab }: { homelab: Homelab }) {
             className="rounded border border-white/15 px-2 py-1 text-[11px] text-white/80 hover:bg-white/5"
           >
             {expanded ? 'Hide keys' : 'Manage keys'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={busy}
+            className="rounded border border-white/15 px-2 py-1 text-[11px] text-white/80 hover:bg-white/5 disabled:opacity-40"
+          >
+            Edit
           </button>
           <button
             type="button"
@@ -170,6 +148,9 @@ export function HomelabCard({ homelab }: { homelab: Homelab }) {
         </div>
       )}
 
+      {editing && (
+        <HomelabEditModal homelab={homelab} onClose={() => setEditing(false)} />
+      )}
       {revealKey && (
         <HostKeyRevealModal plaintext={revealKey} onClose={() => setRevealKey(null)} />
       )}
