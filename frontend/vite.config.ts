@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config"
+import { defineConfig, type Plugin } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from "vite-plugin-pwa"
@@ -9,8 +9,26 @@ const backendWs = backendUrl.replace(/^http/, "ws")
 // Dark base colour from the design palette; also used as manifest theme/background.
 const THEME_COLOUR = "#0a0710"
 
+// Vite's `server.headers` option only applies to a subset of dev-server
+// responses — notably it is NOT applied to worker-script chunks served via
+// `?worker_file`, which breaks module-workers in a COEP-isolated document.
+// Registering our own middleware in `configureServer` guarantees every
+// response (including worker chunks) carries the isolation headers.
+const crossOriginIsolationHeaders: Plugin = {
+  name: "cross-origin-isolation-headers",
+  configureServer(server) {
+    server.middlewares.use((_req, res, next) => {
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
+      res.setHeader("Cross-Origin-Embedder-Policy", "credentialless")
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin")
+      next()
+    })
+  },
+}
+
 export default defineConfig({
   plugins: [
+    crossOriginIsolationHeaders,
     react(),
     tailwindcss(),
     VitePWA({
@@ -85,13 +103,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    headers: {
-      // Required for SharedArrayBuffer (multi-threaded WASM in voice mode).
-      // COEP=credentialless is more lenient than require-corp — it lets us
-      // fetch HuggingFace model files without forcing CORP on every CDN.
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "credentialless",
-    },
+    // Cross-origin isolation headers are applied via the
+    // `crossOriginIsolationHeaders` plugin above so that they also cover
+    // worker-script chunks, which `server.headers` does not reach.
     proxy: {
       "/api": backendUrl,
       "/ws": {
