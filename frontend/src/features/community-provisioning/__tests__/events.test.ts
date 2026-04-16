@@ -34,9 +34,10 @@ function makeApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
   }
 }
 
-function event(type: string, fields: Record<string, unknown>): BaseEvent {
-  // Chatsune events are flat — fields sit at the top level of the object,
-  // never wrapped in `payload`. See shared/events/llm.py.
+function event(type: string, payload: Record<string, unknown>): BaseEvent {
+  // The backend wraps every event in a BaseEvent envelope — domain fields
+  // live under `payload`, not at the top level. See
+  // backend/ws/event_bus.py::publish.
   return {
     id: 'e1',
     type,
@@ -44,8 +45,8 @@ function event(type: string, fields: Record<string, unknown>): BaseEvent {
     scope: 'global',
     correlation_id: 'c1',
     timestamp: '2026-04-16T10:00:00Z',
-    ...fields,
-  } as unknown as BaseEvent
+    payload,
+  }
 }
 
 describe('handleCommunityProvisioningEvent', () => {

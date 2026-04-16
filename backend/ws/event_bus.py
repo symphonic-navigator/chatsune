@@ -48,6 +48,16 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.LLM_MODEL_PULL_FAILED: ([], True),
     Topics.LLM_MODEL_PULL_CANCELLED: ([], True),
     Topics.LLM_MODEL_DELETED: ([], True),
+    # LLM Homelabs (community provisioning) — target user only
+    Topics.LLM_HOMELAB_CREATED: ([], True),
+    Topics.LLM_HOMELAB_UPDATED: ([], True),
+    Topics.LLM_HOMELAB_DELETED: ([], True),
+    Topics.LLM_HOMELAB_HOST_KEY_REGENERATED: ([], True),
+    Topics.LLM_HOMELAB_STATUS_CHANGED: ([], True),
+    Topics.LLM_HOMELAB_LAST_SEEN: ([], True),
+    Topics.LLM_API_KEY_CREATED: ([], True),
+    Topics.LLM_API_KEY_UPDATED: ([], True),
+    Topics.LLM_API_KEY_REVOKED: ([], True),
     # Web Search — target user only
     Topics.WEBSEARCH_CREDENTIAL_SET: ([], True),
     Topics.WEBSEARCH_CREDENTIAL_REMOVED: ([], True),
