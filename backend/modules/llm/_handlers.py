@@ -246,6 +246,10 @@ async def refresh_models(
     c: ResolvedConnection = Depends(resolve_connection_for_user),
     event_bus: EventBus = Depends(get_event_bus),
 ):
+    _log.warning(
+        "refresh_models.enter connection_id=%s slug=%s adapter_type=%s",
+        c.id, c.slug, c.adapter_type,
+    )
     adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
     redis = get_redis()
     error_msg: str | None = None

@@ -180,8 +180,16 @@ class CommunityAdapter(BaseAdapter):
     async def fetch_models(
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
+        _log.warning(
+            "community.fetch_models.enter connection_id=%s slug=%s",
+            connection.id, connection.slug,
+        )
         homelab_id = (connection.config.get("homelab_id") or "").strip()
         api_key = (connection.config.get("api_key") or "").strip()
+        _log.warning(
+            "community.fetch_models.config homelab_id=%r api_key_set=%s",
+            homelab_id, bool(api_key),
+        )
         if not homelab_id or not api_key:
             return []
 
@@ -223,8 +231,8 @@ class CommunityAdapter(BaseAdapter):
             m.get("slug") for m in raw_models
             if m.get("slug") in allowlist and not m.get("context_length")
         ]
-        _log.info(
-            "community.fetch_models connection_id=%s homelab_id=%s "
+        _log.warning(
+            "community.fetch_models.result connection_id=%s homelab_id=%s "
             "sidecar_reported=%d allowlist=%d kept=%d "
             "sidecar_slugs=%r allowlist_slugs=%r dropped_no_ctx=%r",
             connection.id, homelab_id,
