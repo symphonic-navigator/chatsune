@@ -25,6 +25,7 @@ export type SubTabId =
   | 'artefacts'
   // settings
   | 'llm-providers'
+  | 'community-provisioning'
   | 'models'
   | 'api-keys'
   | 'mcp'
@@ -62,12 +63,13 @@ export const TABS_TREE: TopTab[] = [
     id: 'settings',
     label: 'Settings',
     children: [
-      { id: 'llm-providers', label: 'LLM Providers' },
-      { id: 'models',        label: 'Models' },
-      { id: 'api-keys',      label: 'API-Keys' },
-      { id: 'mcp',           label: 'MCP' },
-      { id: 'integrations',  label: 'Integrations' },
-      { id: 'display',       label: 'Display' },
+      { id: 'llm-providers',          label: 'LLM Providers' },
+      { id: 'community-provisioning', label: 'Community Provisioning' },
+      { id: 'models',                 label: 'Models' },
+      { id: 'api-keys',               label: 'API-Keys' },
+      { id: 'mcp',                    label: 'MCP' },
+      { id: 'integrations',           label: 'Integrations' },
+      { id: 'display',                label: 'Display' },
     ],
   },
   { id: 'job-log', label: 'Job-Log' },
