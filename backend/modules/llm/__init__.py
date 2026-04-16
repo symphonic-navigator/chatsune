@@ -26,6 +26,15 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
 from backend.modules.llm._handlers import router
+from backend.modules.llm._homelabs import (
+    ApiKeyNotFoundError,
+    ApiKeyRepository,
+    HomelabNotFoundError,
+    HomelabRepository,
+    HomelabService,
+    TooManyApiKeysError,
+    TooManyHomelabsError,
+)
 from backend.modules.llm._metadata import (
     get_models_for_connection,
     refresh_connection_models,
@@ -64,6 +73,8 @@ async def init_indexes(db) -> None:
     """Create MongoDB indexes for the LLM module collections."""
     await ConnectionRepository(db).create_indexes()
     await UserModelConfigRepository(db).create_indexes()
+    await HomelabRepository(db).create_indexes()
+    await ApiKeyRepository(db).create_indexes()
 
 
 def parse_model_unique_id(model_unique_id: str) -> tuple[str, str]:
@@ -388,6 +399,11 @@ async def delete_all_for_user(user_id: str) -> dict:
 __all__ = [
     "router",
     "init_indexes",
+    "HomelabService",
+    "HomelabNotFoundError",
+    "ApiKeyNotFoundError",
+    "TooManyHomelabsError",
+    "TooManyApiKeysError",
     "stream_completion",
     "parse_model_unique_id",
     "ContentDelta",
