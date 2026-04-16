@@ -60,6 +60,11 @@ from backend.modules.metrics import router as metrics_router
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
+from backend.ws.sidecar_router import router as sidecar_router
+from backend.modules.llm._csp._registry import (
+    SidecarRegistry,
+    set_sidecar_registry,
+)
 from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
@@ -92,6 +97,12 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
+
+    # Community provisioning: process-local sidecar registry. Holds
+    # in-memory state for the lifetime of this backend process — every
+    # sidecar reconnect on restart is expected and normal.
+    sidecar_registry = SidecarRegistry(event_bus=event_bus)
+    set_sidecar_registry(sidecar_registry)
 
     # Load embedding model and start worker (blocking on first download)
     embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")
@@ -516,6 +527,7 @@ app.include_router(integrations_router)
 app.include_router(debug_router)
 app.include_router(jobs_http_router)
 app.include_router(ws_router)
+app.include_router(sidecar_router)
 app.include_router(metrics_router)
 
 
