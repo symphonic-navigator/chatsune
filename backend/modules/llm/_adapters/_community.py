@@ -38,6 +38,81 @@ def _homelab_service():
     return HomelabService(get_db(), get_event_bus())
 
 
+def _frame_to_event(frame):
+    """Translate a CSP frame into the adapter-layer ProviderStreamEvent.
+
+    Engine-agnostic by construction — the CSP protocol abstracts all engines
+    uniformly. If you find yourself wanting to branch on engine type here,
+    extend CSP instead.
+    """
+    from backend.modules.llm._adapters._events import (
+        ContentDelta,
+        StreamAborted,
+        StreamDone,
+        StreamError,
+        ThinkingDelta,
+        ToolCallEvent,
+    )
+    from backend.modules.llm._csp._frames import (
+        ErrFrame,
+        StreamEndFrame,
+        StreamFrame,
+    )
+
+    if isinstance(frame, StreamFrame):
+        delta = frame.delta
+        if delta.content:
+            return ContentDelta(delta=delta.content)
+        if delta.reasoning:
+            return ThinkingDelta(delta=delta.reasoning)
+        if delta.tool_calls:
+            # CSP carries tool-calls as a list of dicts. Surface only the first
+            # fragment here — chat orchestration receives one ToolCallEvent
+            # per call, matching the ollama_http adapter's behaviour.
+            tc = delta.tool_calls[0] if delta.tool_calls else {}
+            return ToolCallEvent(
+                id=str(tc.get("id") or ""),
+                name=str(tc.get("name") or ""),
+                arguments=str(tc.get("arguments") or "{}"),
+            )
+        return None
+    if isinstance(frame, StreamEndFrame):
+        if frame.finish_reason == "cancelled":
+            return StreamAborted(reason="cancelled")
+        if frame.finish_reason == "error":
+            return StreamError(
+                error_code="provider_unavailable",
+                message="Engine returned an error; see host logs.",
+            )
+        usage = frame.usage or {}
+        # Usage keys in CSP are engine-agnostic (prompt_tokens / completion_tokens).
+        return StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+        )
+    if isinstance(frame, ErrFrame):
+        # Normalise CSP err-codes to the StreamError vocabulary consumers expect.
+        mapped = {
+            "model_not_found": "model_not_found",
+            "model_oom": "provider_unavailable",
+            "engine_unavailable": "provider_unavailable",
+            "engine_error": "provider_unavailable",
+            "invalid_request": "provider_unavailable",
+            "rate_limited": "provider_unavailable",
+            "cancelled": "provider_unavailable",
+            "internal": "provider_unavailable",
+        }.get(frame.code, "provider_unavailable")
+        # Preserve the raw CSP code by surfacing it back as the StreamError
+        # error_code when it's already in the consumer vocabulary; otherwise
+        # fall back to the mapped value. This keeps model_not_found
+        # observable end-to-end.
+        return StreamError(
+            error_code=frame.code if frame.code == "model_not_found" else mapped,
+            message=frame.message,
+        )
+    return None
+
+
 # Capabilities are a string set shared by all CSP engines — this mapping is
 # intentionally engine-agnostic and lives alongside the adapter to keep the
 # translation close to the frame definition.
@@ -145,12 +220,111 @@ class CommunityAdapter(BaseAdapter):
             if m.get("slug") in allowlist and m.get("context_length")
         ]
 
-    def stream_completion(
+    async def stream_completion(  # type: ignore[override]
         self,
         connection: ResolvedConnection,
         request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        raise NotImplementedError  # Task 4
+        from backend.modules.llm._adapters._events import (
+            StreamError,
+            StreamRefused,
+        )
+
+        homelab_id = (connection.config.get("homelab_id") or "").strip()
+        api_key = (connection.config.get("api_key") or "").strip()
+        # ``request.model`` is the raw model slug; the connection-slug prefix
+        # is stripped one layer up by ``stream_completion`` in the LLM public
+        # API (see backend/modules/llm/__init__.py::parse_model_unique_id).
+        model_slug = (request.model or "").strip()
+
+        if not homelab_id or not api_key or not model_slug:
+            yield StreamRefused(reason="incomplete_configuration")
+            return
+
+        svc = _homelab_service()
+        key_doc = await svc.validate_consumer_access(
+            homelab_id=homelab_id,
+            api_key_plaintext=api_key,
+            model_slug=model_slug,
+        )
+        if key_doc is None:
+            yield StreamRefused(reason="api_key_invalid_or_model_not_allowed")
+            return
+
+        sidecar = get_sidecar_registry().get(homelab_id)
+        if sidecar is None:
+            yield StreamError(
+                error_code="provider_unavailable",
+                message="Homelab is offline.",
+            )
+            return
+
+        body = self._to_generate_chat_body(model_slug, request)
+        try:
+            async for frame in sidecar.rpc_generate_chat(body):
+                ev = _frame_to_event(frame)
+                if ev is not None:
+                    yield ev
+        except Exception as exc:  # noqa: BLE001 — surface as terminal error
+            _log.exception(
+                "community.stream_completion.failed connection_id=%s homelab_id=%s",
+                connection.id, homelab_id,
+            )
+            yield StreamError(error_code="provider_unavailable", message=str(exc))
+
+    @staticmethod
+    def _to_generate_chat_body(
+        model_slug: str, request: CompletionRequest,
+    ) -> dict:
+        # Translate the internal CompletionMessage shape into the CSP
+        # generate_chat body. Engine-specific quirks must be handled on the
+        # sidecar — this code MUST NOT branch on engine type.
+        messages: list[dict] = []
+        for msg in request.messages:
+            text_parts = [p.text for p in msg.content if p.type == "text" and p.text]
+            images = [p.data for p in msg.content if p.type == "image" and p.data]
+            item: dict = {
+                "role": msg.role,
+                "content": "".join(text_parts) if text_parts else "",
+            }
+            if images:
+                item["images"] = images
+            if msg.tool_calls:
+                item["tool_calls"] = [
+                    {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
+                    for tc in msg.tool_calls
+                ]
+            if msg.tool_call_id is not None:
+                item["tool_call_id"] = msg.tool_call_id
+            messages.append(item)
+
+        tools_payload: list[dict] | None = None
+        if request.tools:
+            tools_payload = [
+                {
+                    "type": t.type,
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                }
+                for t in request.tools
+            ]
+
+        params: dict = {}
+        if request.temperature is not None:
+            params["temperature"] = request.temperature
+
+        body: dict = {
+            "model_slug": model_slug,
+            "messages": messages,
+            "parameters": params,
+            "options": {
+                "reasoning": bool(request.reasoning_enabled and request.supports_reasoning),
+            },
+        }
+        if tools_payload is not None:
+            body["tools"] = tools_payload
+        return body
 
     @classmethod
     def router(cls) -> APIRouter | None:

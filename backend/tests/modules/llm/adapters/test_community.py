@@ -174,3 +174,251 @@ async def test_fetch_models_returns_empty_when_rpc_raises(monkeypatch):
     adapter = _community.CommunityAdapter()
     out = await adapter.fetch_models(_resolved_conn())
     assert out == []
+
+
+# ----- stream_completion -----
+
+
+def _completion_request(model_slug: str = "llama3.2:8b"):
+    from shared.dtos.inference import (
+        CompletionMessage,
+        CompletionRequest,
+        ContentPart,
+    )
+
+    return CompletionRequest(
+        model=model_slug,
+        messages=[
+            CompletionMessage(
+                role="user",
+                content=[ContentPart(type="text", text="hi")],
+            ),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_translates_frames(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import (
+        ContentDelta,
+        StreamDone,
+    )
+    from backend.modules.llm._csp._frames import (
+        StreamDelta,
+        StreamEndFrame,
+        StreamFrame,
+    )
+
+    frames = [
+        StreamFrame(id="r", delta=StreamDelta(content="He")),
+        StreamFrame(id="r", delta=StreamDelta(content="llo")),
+        StreamEndFrame(
+            id="r", finish_reason="stop",
+            usage={"prompt_tokens": 3, "completion_tokens": 2},
+        ),
+    ]
+
+    async def gen():
+        for f in frames:
+            yield f
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_generate_chat = MagicMock(return_value=gen())
+
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]}
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = []
+    async for ev in adapter.stream_completion(_resolved_conn(), _completion_request()):
+        events.append(ev)
+    # Two content deltas + one terminal StreamDone.
+    deltas = [e for e in events if isinstance(e, ContentDelta)]
+    assert [d.delta for d in deltas] == ["He", "llo"]
+    assert isinstance(events[-1], StreamDone)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_refused_when_model_not_allowed(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import StreamRefused
+
+    fake_sidecar = MagicMock()
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(return_value=None)
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(
+            _resolved_conn(), _completion_request("denied-model"),
+        )
+    ]
+    assert len(events) == 1
+    assert isinstance(events[0], StreamRefused)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_error_when_sidecar_offline(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import StreamError
+
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: None),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(_resolved_conn(), _completion_request())
+    ]
+    assert len(events) == 1
+    assert isinstance(events[0], StreamError)
+    assert events[0].error_code == "provider_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_translates_thinking_delta(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import (
+        ContentDelta,
+        StreamDone,
+        ThinkingDelta,
+    )
+    from backend.modules.llm._csp._frames import (
+        StreamDelta,
+        StreamEndFrame,
+        StreamFrame,
+    )
+
+    frames = [
+        StreamFrame(id="r", delta=StreamDelta(reasoning="thinking...")),
+        StreamFrame(id="r", delta=StreamDelta(content="answer")),
+        StreamEndFrame(id="r", finish_reason="stop"),
+    ]
+
+    async def gen():
+        for f in frames:
+            yield f
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_generate_chat = MagicMock(return_value=gen())
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(_resolved_conn(), _completion_request())
+    ]
+    assert any(isinstance(e, ThinkingDelta) and e.delta == "thinking..." for e in events)
+    assert any(isinstance(e, ContentDelta) and e.delta == "answer" for e in events)
+    assert isinstance(events[-1], StreamDone)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_translates_cancelled_to_aborted(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import StreamAborted
+    from backend.modules.llm._csp._frames import StreamEndFrame
+
+    async def gen():
+        yield StreamEndFrame(id="r", finish_reason="cancelled")
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_generate_chat = MagicMock(return_value=gen())
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(_resolved_conn(), _completion_request())
+    ]
+    assert isinstance(events[-1], StreamAborted)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_translates_err_frame(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import StreamError
+    from backend.modules.llm._csp._frames import ErrFrame
+
+    async def gen():
+        yield ErrFrame(id="r", code="model_not_found", message="nope", recoverable=False)
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_generate_chat = MagicMock(return_value=gen())
+    monkeypatch.setattr(
+        _community, "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev
+        async for ev in adapter.stream_completion(_resolved_conn(), _completion_request())
+    ]
+    assert any(isinstance(e, StreamError) and e.error_code == "model_not_found" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_refused_when_config_missing(monkeypatch):
+    from backend.modules.llm._adapters import _community
+    from backend.modules.llm._adapters._events import StreamRefused
+
+    now = datetime.now(UTC)
+    empty = ResolvedConnection(
+        id="conn-1",
+        user_id="u2",
+        adapter_type="community",
+        display_name="",
+        slug="",
+        config={"homelab_id": "", "api_key": ""},
+        created_at=now,
+        updated_at=now,
+    )
+    adapter = _community.CommunityAdapter()
+    events = [
+        ev async for ev in adapter.stream_completion(empty, _completion_request())
+    ]
+    assert len(events) == 1
+    assert isinstance(events[0], StreamRefused)
