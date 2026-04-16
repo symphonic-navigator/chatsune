@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from shared.dtos.llm import ConnectionDto, UserModelConfigDto
+from shared.dtos.llm import ApiKeyDto, ConnectionDto, HomelabDto, UserModelConfigDto
 
 
 class LlmConnectionCreatedEvent(BaseModel):
@@ -113,4 +113,64 @@ class ModelDeletedEvent(BaseModel):
     type: str = "llm.model.deleted"
     scope: str
     name: str
+    timestamp: datetime
+
+
+# --- Community Provisioning ---
+
+
+class HomelabCreatedEvent(BaseModel):
+    type: str = "llm.homelab.created"
+    homelab: HomelabDto
+    timestamp: datetime
+
+
+class HomelabUpdatedEvent(BaseModel):
+    type: str = "llm.homelab.updated"
+    homelab: HomelabDto
+    timestamp: datetime
+
+
+class HomelabDeletedEvent(BaseModel):
+    type: str = "llm.homelab.deleted"
+    homelab_id: str
+    timestamp: datetime
+
+
+class HomelabHostKeyRegeneratedEvent(BaseModel):
+    type: str = "llm.homelab.host_key_regenerated"
+    homelab: HomelabDto
+    timestamp: datetime
+
+
+class HomelabStatusChangedEvent(BaseModel):
+    type: str = "llm.homelab.status_changed"
+    homelab_id: str
+    is_online: bool
+    timestamp: datetime
+
+
+class HomelabLastSeenEvent(BaseModel):
+    type: str = "llm.homelab.last_seen"
+    homelab_id: str
+    last_seen_at: datetime
+    timestamp: datetime
+
+
+class ApiKeyCreatedEvent(BaseModel):
+    type: str = "llm.api_key.created"
+    api_key: ApiKeyDto
+    timestamp: datetime
+
+
+class ApiKeyUpdatedEvent(BaseModel):
+    type: str = "llm.api_key.updated"
+    api_key: ApiKeyDto
+    timestamp: datetime
+
+
+class ApiKeyRevokedEvent(BaseModel):
+    type: str = "llm.api_key.revoked"
+    api_key_id: str
+    homelab_id: str
     timestamp: datetime
