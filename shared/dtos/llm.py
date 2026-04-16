@@ -106,3 +106,115 @@ class UpdateConnectionDto(BaseModel):
     display_name: str | None = None
     slug: str | None = None
     config: dict[str, Any] | None = None
+
+
+# --- Community Provisioning ---
+
+
+class HomelabEngineInfoDto(BaseModel):
+    type: str
+    version: str | None = None
+
+
+class HomelabDto(BaseModel):
+    homelab_id: str
+    display_name: str
+    host_key_hint: str
+    status: Literal["active", "revoked"]
+    created_at: datetime
+    last_seen_at: datetime | None = None
+    last_sidecar_version: str | None = None
+    last_engine_info: HomelabEngineInfoDto | None = None
+    is_online: bool = False
+
+
+class HomelabCreatedDto(HomelabDto):
+    plaintext_host_key: str = Field(
+        ..., description="Shown exactly once; never returned again."
+    )
+
+
+class HomelabHostKeyRegeneratedDto(HomelabDto):
+    plaintext_host_key: str = Field(
+        ..., description="Shown exactly once; never returned again."
+    )
+
+
+class CreateHomelabDto(BaseModel):
+    display_name: str
+
+    @field_validator("display_name")
+    @classmethod
+    def _name_len(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name must not be empty")
+        if len(v) > 80:
+            raise ValueError("display_name must be 80 characters or fewer")
+        return v
+
+
+class UpdateHomelabDto(BaseModel):
+    display_name: str | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _name_len(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name must not be empty")
+        if len(v) > 80:
+            raise ValueError("display_name must be 80 characters or fewer")
+        return v
+
+
+class ApiKeyDto(BaseModel):
+    api_key_id: str
+    homelab_id: str
+    display_name: str
+    api_key_hint: str
+    allowed_model_slugs: list[str]
+    status: Literal["active", "revoked"]
+    created_at: datetime
+    revoked_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+
+class ApiKeyCreatedDto(ApiKeyDto):
+    plaintext_api_key: str = Field(
+        ..., description="Shown exactly once; never returned again."
+    )
+
+
+class CreateApiKeyDto(BaseModel):
+    display_name: str
+    allowed_model_slugs: list[str] = Field(default_factory=list)
+
+    @field_validator("display_name")
+    @classmethod
+    def _name_len(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name must not be empty")
+        if len(v) > 80:
+            raise ValueError("display_name must be 80 characters or fewer")
+        return v
+
+
+class UpdateApiKeyDto(BaseModel):
+    display_name: str | None = None
+    allowed_model_slugs: list[str] | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _name_len(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name must not be empty")
+        if len(v) > 80:
+            raise ValueError("display_name must be 80 characters or fewer")
+        return v
