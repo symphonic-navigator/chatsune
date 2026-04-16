@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { eventBus } from '../../core/websocket/eventBus'
 import { homelabsApi } from './api'
 import { handleCommunityProvisioningEvent } from './events'
@@ -18,9 +18,10 @@ import { useCommunityProvisioningStore } from './store'
  *   - Render the "Create homelab" primary action and the list.
  */
 export function CommunityProvisioningPage() {
-  const homelabs = useCommunityProvisioningStore((s) => Object.values(s.homelabs))
+  const homelabsMap = useCommunityProvisioningStore((s) => s.homelabs)
   const loaded = useCommunityProvisioningStore((s) => s.loaded)
   const setHomelabs = useCommunityProvisioningStore((s) => s.setHomelabs)
+  const homelabs = useMemo(() => Object.values(homelabsMap), [homelabsMap])
   const [showCreate, setShowCreate] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

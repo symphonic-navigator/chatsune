@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AllowlistEditor } from './AllowlistEditor'
 import { apiKeysApi } from './api'
 import { ApiKeyCreateModal } from './ApiKeyCreateModal'
@@ -12,10 +12,14 @@ import type { ApiKey } from './types'
  * homelab card is expanded; WS events keep it fresh thereafter.
  */
 export function ApiKeyList({ homelabId }: { homelabId: string }) {
-  const apiKeys = useCommunityProvisioningStore((s) =>
-    Object.values(s.apiKeysByHomelab[homelabId] ?? {}),
+  const apiKeysMap = useCommunityProvisioningStore(
+    (s) => s.apiKeysByHomelab[homelabId],
   )
   const setApiKeys = useCommunityProvisioningStore((s) => s.setApiKeys)
+  const apiKeys = useMemo(
+    () => Object.values(apiKeysMap ?? {}),
+    [apiKeysMap],
+  )
   const [showCreate, setShowCreate] = useState(false)
   const [revealKey, setRevealKey] = useState<string | null>(null)
   const [editingAllowlistFor, setEditingAllowlistFor] = useState<ApiKey | null>(null)
