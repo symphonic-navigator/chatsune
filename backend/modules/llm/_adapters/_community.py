@@ -214,11 +214,24 @@ class CommunityAdapter(BaseAdapter):
             )
             return []
 
-        return [
-            _model_meta_to_dto(connection, m)
-            for m in raw_models
+        raw_slugs = [m.get("slug") for m in raw_models]
+        kept = [
+            m for m in raw_models
             if m.get("slug") in allowlist and m.get("context_length")
         ]
+        dropped_no_ctx = [
+            m.get("slug") for m in raw_models
+            if m.get("slug") in allowlist and not m.get("context_length")
+        ]
+        _log.info(
+            "community.fetch_models connection_id=%s homelab_id=%s "
+            "sidecar_reported=%d allowlist=%d kept=%d "
+            "sidecar_slugs=%r allowlist_slugs=%r dropped_no_ctx=%r",
+            connection.id, homelab_id,
+            len(raw_models), len(allowlist), len(kept),
+            raw_slugs, sorted(allowlist), dropped_no_ctx,
+        )
+        return [_model_meta_to_dto(connection, m) for m in kept]
 
     async def stream_completion(  # type: ignore[override]
         self,
