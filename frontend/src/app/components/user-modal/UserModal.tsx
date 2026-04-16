@@ -14,6 +14,7 @@ import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
 import { LlmProvidersTab } from './LlmProvidersTab'
+import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
 import { llmApi } from '../../../core/api/llm'
 import { webSearchApi } from '../../../core/api/websearch'
 import { eventBus } from '../../../core/websocket/eventBus'
@@ -284,6 +285,7 @@ export function UserModal({
           {contentKey === 'knowledge' && <KnowledgeTab />}
           {contentKey === 'bookmarks' && <BookmarksTab onClose={onClose} />}
           {contentKey === 'llm-providers' && <LlmProvidersTab />}
+          {contentKey === 'community-provisioning' && <CommunityProvisioningPage />}
           {contentKey === 'uploads' && <UploadsTab />}
           {contentKey === 'artefacts' && <ArtefactsTab onClose={onClose} />}
           {contentKey === 'models' && <ModelsTab />}

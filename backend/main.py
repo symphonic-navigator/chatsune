@@ -30,7 +30,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import connect_db, disconnect_db, get_db, get_redis
 from backend.modules.user import router as user_router, init_indexes as user_init_indexes
-from backend.modules.llm import router as llm_router, init_indexes as llm_init_indexes
+from backend.modules.llm import (
+    router as llm_router,
+    init_indexes as llm_init_indexes,
+    homelab_router as llm_homelab_router,
+)
 from backend.modules.websearch import (
     router as websearch_router,
     init_indexes as websearch_init_indexes,
@@ -56,6 +60,8 @@ from backend.modules.metrics import router as metrics_router
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
+from backend.ws.sidecar_router import router as sidecar_router
+from backend.modules.llm import SidecarRegistry, set_sidecar_registry
 from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
@@ -88,6 +94,12 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
+
+    # Community provisioning: process-local sidecar registry. Holds
+    # in-memory state for the lifetime of this backend process — every
+    # sidecar reconnect on restart is expected and normal.
+    sidecar_registry = SidecarRegistry(event_bus=event_bus)
+    set_sidecar_registry(sidecar_registry)
 
     # Load embedding model and start worker (blocking on first download)
     embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")
@@ -445,7 +457,28 @@ async def lifespan(app: FastAPI):
         disconnect_retry_recovery_loop(get_redis()),
     )
 
-    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction, disconnect_retry")
+    # Community provisioning: periodic sidecar health ticker. Emits
+    # degraded/offline transitions based on last_traffic_at (design spec §5.10).
+    _sidecar_log = logging.getLogger("chatsune.sidecar_health")
+
+    async def _sidecar_health_loop() -> None:
+        _lifecycle_log.info("starting sidecar_health_loop")
+        try:
+            while True:
+                await asyncio.sleep(15)
+                try:
+                    await sidecar_registry.tick_health()
+                except Exception:
+                    _sidecar_log.warning("sidecar health tick failed", exc_info=True)
+        except asyncio.CancelledError:
+            _lifecycle_log.info("cancelled sidecar_health_loop")
+            raise
+        finally:
+            _lifecycle_log.info("stopped sidecar_health_loop")
+
+    sidecar_health_task = asyncio.create_task(_sidecar_health_loop())
+
+    _lifecycle_log.info("started background tasks: consumer, trim, session_cleanup, memory_auto_commit, dreaming, extraction, disconnect_retry, sidecar_health")
 
     yield
 
@@ -466,6 +499,7 @@ async def lifespan(app: FastAPI):
     trim_task.cancel()
     extraction_task.cancel()
     disconnect_retry_task.cancel()
+    sidecar_health_task.cancel()
     for task in (
         cleanup_task,
         memory_auto_commit_task,
@@ -474,6 +508,7 @@ async def lifespan(app: FastAPI):
         trim_task,
         extraction_task,
         disconnect_retry_task,
+        sidecar_health_task,
     ):
         try:
             await task
@@ -495,6 +530,7 @@ app.add_middleware(
 )
 app.include_router(user_router)
 app.include_router(llm_router)
+app.include_router(llm_homelab_router)
 app.include_router(websearch_router)
 app.include_router(persona_router)
 app.include_router(settings_router)
@@ -511,6 +547,7 @@ app.include_router(integrations_router)
 app.include_router(debug_router)
 app.include_router(jobs_http_router)
 app.include_router(ws_router)
+app.include_router(sidecar_router)
 app.include_router(metrics_router)
 
 

@@ -25,7 +25,29 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
+from backend.modules.llm._csp._connection import SidecarConnection
+from backend.modules.llm._csp._frames import (
+    HandshakeAckFrame,
+    HandshakeFrame,
+    negotiate_version,
+)
+from backend.modules.llm._csp._registry import (
+    SidecarRegistry,
+    get_sidecar_registry,
+    set_sidecar_registry,
+)
 from backend.modules.llm._handlers import router
+from backend.modules.llm._homelab_handlers import router as homelab_router
+from backend.modules.llm._homelab_tokens import HOST_KEY_PREFIX
+from backend.modules.llm._homelabs import (
+    ApiKeyNotFoundError,
+    ApiKeyRepository,
+    HomelabNotFoundError,
+    HomelabRepository,
+    HomelabService,
+    TooManyApiKeysError,
+    TooManyHomelabsError,
+)
 from backend.modules.llm._metadata import (
     get_models_for_connection,
     refresh_connection_models,
@@ -64,6 +86,8 @@ async def init_indexes(db) -> None:
     """Create MongoDB indexes for the LLM module collections."""
     await ConnectionRepository(db).create_indexes()
     await UserModelConfigRepository(db).create_indexes()
+    await HomelabRepository(db).create_indexes()
+    await ApiKeyRepository(db).create_indexes()
 
 
 def parse_model_unique_id(model_unique_id: str) -> tuple[str, str]:
@@ -387,7 +411,13 @@ async def delete_all_for_user(user_id: str) -> dict:
 
 __all__ = [
     "router",
+    "homelab_router",
     "init_indexes",
+    "HomelabService",
+    "HomelabNotFoundError",
+    "ApiKeyNotFoundError",
+    "TooManyHomelabsError",
+    "TooManyApiKeysError",
     "stream_completion",
     "parse_model_unique_id",
     "ContentDelta",
@@ -417,4 +447,12 @@ __all__ = [
     "delete_all_for_user",
     "ADAPTER_REGISTRY",
     "DEFAULT_CONTEXT_WINDOW",
+    "SidecarRegistry",
+    "SidecarConnection",
+    "HandshakeFrame",
+    "HandshakeAckFrame",
+    "negotiate_version",
+    "HOST_KEY_PREFIX",
+    "get_sidecar_registry",
+    "set_sidecar_registry",
 ]
