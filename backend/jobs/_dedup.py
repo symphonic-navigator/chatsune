@@ -31,6 +31,15 @@ from redis.asyncio import Redis
 # the TTL via ``redis.expire`` at that point.
 MEMORY_EXTRACTION_SLOT_TTL_SECONDS = 1800  # 30 minutes
 
+# Shorter cooldown applied to the in-flight slot on failure paths (generic
+# exceptions, cancellations, retryable errors that are not yet terminal).
+# The full 30-minute safety-net TTL exists purely to unblock the scope
+# after a crashed worker; when we *know* the attempt just failed we should
+# not make the user wait that long before a retry or a fresh submission
+# can take over. Ten minutes gives the retry chain room to run and still
+# frees the slot promptly if the job is abandoned.
+MEMORY_EXTRACTION_FAILURE_TTL_SECONDS = 600  # 10 minutes
+
 _log = structlog.get_logger("chatsune.jobs.dedup")
 
 

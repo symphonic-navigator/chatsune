@@ -307,7 +307,7 @@ async def process_one(redis: Redis, event_bus) -> bool:
                 redis,
                 sg_config,
                 user_id=job.user_id,
-                connection_id=connection_id,
+                connection_id=connection_slug,
                 model_slug=model_slug,
             )
         except UnrecoverableJobError as exc:

@@ -4,10 +4,12 @@ Extracts facts, preferences, and corrections from user messages and
 creates journal entries in the memory module.
 """
 
+import asyncio
 import structlog
 from datetime import UTC, datetime
 
 from backend.jobs._dedup import (
+    MEMORY_EXTRACTION_FAILURE_TTL_SECONDS,
     memory_extraction_slot_key,
     release_inflight_slot,
 )
@@ -370,6 +372,30 @@ async def handle_memory_extraction(
         )
         success = True
 
+    except asyncio.CancelledError:
+        # The consumer's execution-timeout (asyncio.timeout) aborts the
+        # handler by raising CancelledError at the current await. That
+        # does not derive from Exception, so the broader handler below
+        # would not see it — and without special handling the in-flight
+        # slot would stay held at the full 30-minute safety-net TTL,
+        # blocking any retry or fresh submission for the persona.
+        # Shorten the slot to the failure cooldown, then let the
+        # cancellation propagate so the consumer can record the failure
+        # and schedule a retry.
+        try:
+            await redis.expire(
+                inflight_key, MEMORY_EXTRACTION_FAILURE_TTL_SECONDS,
+            )
+        except Exception:
+            _log.exception(
+                "job.extraction.cooldown_refresh_failed", key=inflight_key,
+            )
+        _log.info(
+            "job.extraction.cancellation_cooldown",
+            persona_id=persona_id,
+            cooldown_seconds=MEMORY_EXTRACTION_FAILURE_TTL_SECONDS,
+        )
+        raise
     except Exception as exc:
         _log.error(
             "Memory extraction failed for persona %s, session %s: %s",
@@ -463,8 +489,20 @@ async def _on_extraction_failure(
     is_terminal = is_unrecoverable or is_last_attempt
     if not is_terminal:
         # Non-final retryable failure — consumer will retry this job.
-        # Leave the slot held; the safety-net TTL covers the whole
-        # retry chain (see JOB_REGISTRY memory_extraction config).
+        # Shorten the slot's TTL to the failure cooldown rather than
+        # leaving it at the full 30-minute safety-net TTL. That way a
+        # truly abandoned job (e.g. the handler crashed in a way that
+        # prevents the consumer from retrying) frees the scope after
+        # 10 minutes instead of half an hour, but there is still plenty
+        # of headroom for the normal retry chain to run to completion.
+        try:
+            await redis.expire(
+                inflight_key, MEMORY_EXTRACTION_FAILURE_TTL_SECONDS,
+            )
+        except Exception:
+            _log.exception(
+                "job.extraction.cooldown_refresh_failed", key=inflight_key,
+            )
         return
 
     # Terminal non-provider failure: mark source messages as extracted
