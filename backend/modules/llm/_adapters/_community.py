@@ -187,10 +187,29 @@ class CommunityAdapter(BaseAdapter):
         homelab_id = (connection.config.get("homelab_id") or "").strip()
         api_key = (connection.config.get("api_key") or "").strip()
         _log.warning(
-            "community.fetch_models.config homelab_id=%r api_key_set=%s",
+            "community.fetch_models.config homelab_id=%r api_key_set=%s "
+            "config_keys=%r",
             homelab_id, bool(api_key),
+            sorted(connection.config.keys()),
         )
         if not homelab_id or not api_key:
+            # Deep diagnostic: peek at the raw Mongo doc so we can see
+            # whether the secret made it to storage at all.
+            try:
+                from backend.database import get_db
+
+                raw = await get_db()["llm_connections"].find_one(
+                    {"_id": connection.id}
+                )
+                if raw is not None:
+                    _log.warning(
+                        "community.fetch_models.raw_doc "
+                        "plain_config_keys=%r encrypted_keys=%r",
+                        sorted((raw.get("config") or {}).keys()),
+                        sorted((raw.get("config_encrypted") or {}).keys()),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("community.fetch_models.peek_failed err=%s", exc)
             return []
 
         sidecar = get_sidecar_registry().get(homelab_id)
