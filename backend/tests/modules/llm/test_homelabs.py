@@ -211,3 +211,60 @@ async def test_api_key_sanity_cap_on_create(test_db):
     await krepo.create(user_id="u1", homelab_id=homelab["homelab_id"], display_name="B", allowed_model_slugs=[])
     with pytest.raises(TooManyApiKeysError):
         await krepo.create(user_id="u1", homelab_id=homelab["homelab_id"], display_name="C", allowed_model_slugs=[])
+
+
+from unittest.mock import AsyncMock
+
+from backend.modules.llm._homelabs import HomelabService
+from shared.topics import Topics
+
+
+@pytest.mark.asyncio
+async def test_create_homelab_publishes_event(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    result = await svc.create_homelab(user_id="u1", display_name="A")
+    assert result["plaintext_host_key"].startswith("cshost_")
+    assert "plaintext_host_key" not in result["homelab"]
+    bus.publish.assert_awaited_once()
+    args, kwargs = bus.publish.call_args
+    # publish(topic, event, target_user_ids=[...])
+    assert args[0] == Topics.LLM_HOMELAB_CREATED
+    assert kwargs["target_user_ids"] == ["u1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_homelab_cascades_api_keys(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    created = await svc.create_homelab(user_id="u1", display_name="A")
+    hid = created["homelab"]["homelab_id"]
+    await svc.create_api_key(
+        user_id="u1", homelab_id=hid, display_name="K", allowed_model_slugs=[]
+    )
+    await svc.create_api_key(
+        user_id="u1", homelab_id=hid, display_name="L", allowed_model_slugs=[]
+    )
+    await svc.delete_homelab(user_id="u1", homelab_id=hid)
+    remaining = await svc._keys.list(homelab_id=hid)
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_publishes_event(test_db):
+    bus = AsyncMock()
+    svc = HomelabService(test_db, bus)
+    await svc.init()
+    created = await svc.create_homelab(user_id="u1", display_name="A")
+    bus.reset_mock()
+    await svc.create_api_key(
+        user_id="u1",
+        homelab_id=created["homelab"]["homelab_id"],
+        display_name="Bob",
+        allowed_model_slugs=["llama3.2:8b"],
+    )
+    bus.publish.assert_awaited_once()
+    args, _ = bus.publish.call_args
+    assert args[0] == Topics.LLM_API_KEY_CREATED

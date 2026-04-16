@@ -286,3 +286,233 @@ class ApiKeyRepository:
     async def delete_for_homelab(self, homelab_id: str) -> int:
         res = await self._col.delete_many({"homelab_id": homelab_id})
         return res.deleted_count
+
+
+from shared.dtos.llm import ApiKeyDto, HomelabDto, HomelabEngineInfoDto
+from shared.events.llm import (
+    ApiKeyCreatedEvent,
+    ApiKeyRevokedEvent,
+    ApiKeyUpdatedEvent,
+    HomelabCreatedEvent,
+    HomelabDeletedEvent,
+    HomelabHostKeyRegeneratedEvent,
+    HomelabUpdatedEvent,
+)
+from shared.topics import Topics
+
+
+def _homelab_doc_to_dto(doc: dict, is_online: bool = False) -> HomelabDto:
+    engine_info = None
+    if doc.get("last_engine_info"):
+        engine_info = HomelabEngineInfoDto(**doc["last_engine_info"])
+    return HomelabDto(
+        homelab_id=doc["homelab_id"],
+        display_name=doc["display_name"],
+        host_key_hint=doc["host_key_hint"],
+        status=doc["status"],
+        created_at=doc["created_at"],
+        last_seen_at=doc.get("last_seen_at"),
+        last_sidecar_version=doc.get("last_sidecar_version"),
+        last_engine_info=engine_info,
+        is_online=is_online,
+    )
+
+
+def _api_key_doc_to_dto(doc: dict) -> ApiKeyDto:
+    return ApiKeyDto(
+        api_key_id=doc["api_key_id"],
+        homelab_id=doc["homelab_id"],
+        display_name=doc["display_name"],
+        api_key_hint=doc["api_key_hint"],
+        allowed_model_slugs=list(doc.get("allowed_model_slugs", [])),
+        status=doc["status"],
+        created_at=doc["created_at"],
+        revoked_at=doc.get("revoked_at"),
+        last_used_at=doc.get("last_used_at"),
+    )
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class HomelabService:
+    def __init__(self, db: AsyncIOMotorDatabase, event_bus) -> None:
+        self._homelabs = HomelabRepository(db)
+        self._keys = ApiKeyRepository(db)
+        self._bus = event_bus
+
+    async def init(self) -> None:
+        await self._homelabs.create_indexes()
+        await self._keys.create_indexes()
+
+    # --- Homelab ops
+
+    async def list_homelabs(
+        self, user_id: str, online_ids: set[str] | None = None
+    ) -> list[HomelabDto]:
+        docs = await self._homelabs.list(user_id)
+        online_ids = online_ids or set()
+        return [
+            _homelab_doc_to_dto(d, is_online=d["homelab_id"] in online_ids)
+            for d in docs
+        ]
+
+    async def get_homelab(
+        self, user_id: str, homelab_id: str, is_online: bool = False
+    ) -> HomelabDto:
+        doc = await self._homelabs.get(user_id, homelab_id)
+        return _homelab_doc_to_dto(doc, is_online=is_online)
+
+    async def create_homelab(
+        self, user_id: str, display_name: str
+    ) -> dict:
+        doc, plaintext = await self._homelabs.create(user_id, display_name)
+        dto = _homelab_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_HOMELAB_CREATED,
+            HomelabCreatedEvent(homelab=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return {"homelab": dto.model_dump(), "plaintext_host_key": plaintext}
+
+    async def rename_homelab(
+        self, user_id: str, homelab_id: str, display_name: str
+    ) -> HomelabDto:
+        doc = await self._homelabs.rename(user_id, homelab_id, display_name)
+        dto = _homelab_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_HOMELAB_UPDATED,
+            HomelabUpdatedEvent(homelab=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return dto
+
+    async def delete_homelab(self, user_id: str, homelab_id: str) -> None:
+        # ensure ownership
+        await self._homelabs.get(user_id, homelab_id)
+        await self._keys.delete_for_homelab(homelab_id)
+        await self._homelabs.delete(user_id, homelab_id)
+        await self._bus.publish(
+            Topics.LLM_HOMELAB_DELETED,
+            HomelabDeletedEvent(homelab_id=homelab_id, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+
+    async def regenerate_host_key(
+        self, user_id: str, homelab_id: str
+    ) -> dict:
+        doc, plaintext = await self._homelabs.regenerate_host_key(
+            user_id, homelab_id
+        )
+        dto = _homelab_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_HOMELAB_HOST_KEY_REGENERATED,
+            HomelabHostKeyRegeneratedEvent(homelab=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return {"homelab": dto.model_dump(), "plaintext_host_key": plaintext}
+
+    # --- API-key ops
+
+    async def list_api_keys(
+        self, user_id: str, homelab_id: str
+    ) -> list[ApiKeyDto]:
+        await self._homelabs.get(user_id, homelab_id)  # ownership check
+        docs = await self._keys.list(homelab_id=homelab_id)
+        return [_api_key_doc_to_dto(d) for d in docs]
+
+    async def create_api_key(
+        self,
+        user_id: str,
+        homelab_id: str,
+        display_name: str,
+        allowed_model_slugs: list[str],
+    ) -> dict:
+        await self._homelabs.get(user_id, homelab_id)  # ownership check
+        doc, plaintext = await self._keys.create(
+            user_id=user_id,
+            homelab_id=homelab_id,
+            display_name=display_name,
+            allowed_model_slugs=allowed_model_slugs,
+        )
+        dto = _api_key_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_API_KEY_CREATED,
+            ApiKeyCreatedEvent(api_key=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return {"api_key": dto.model_dump(), "plaintext_api_key": plaintext}
+
+    async def update_api_key(
+        self,
+        user_id: str,
+        homelab_id: str,
+        api_key_id: str,
+        display_name: str | None,
+        allowed_model_slugs: list[str] | None,
+    ) -> ApiKeyDto:
+        await self._homelabs.get(user_id, homelab_id)
+        doc = await self._keys.update(
+            user_id=user_id,
+            homelab_id=homelab_id,
+            api_key_id=api_key_id,
+            display_name=display_name,
+            allowed_model_slugs=allowed_model_slugs,
+        )
+        dto = _api_key_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_API_KEY_UPDATED,
+            ApiKeyUpdatedEvent(api_key=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return dto
+
+    async def revoke_api_key(
+        self, user_id: str, homelab_id: str, api_key_id: str
+    ) -> None:
+        await self._homelabs.get(user_id, homelab_id)
+        await self._keys.revoke(user_id, homelab_id, api_key_id)
+        await self._bus.publish(
+            Topics.LLM_API_KEY_REVOKED,
+            ApiKeyRevokedEvent(
+                api_key_id=api_key_id,
+                homelab_id=homelab_id,
+                timestamp=_now(),
+            ),
+            target_user_ids=[user_id],
+        )
+
+    async def regenerate_api_key(
+        self, user_id: str, homelab_id: str, api_key_id: str
+    ) -> dict:
+        await self._homelabs.get(user_id, homelab_id)
+        doc, plaintext = await self._keys.regenerate(
+            user_id, homelab_id, api_key_id
+        )
+        dto = _api_key_doc_to_dto(doc)
+        await self._bus.publish(
+            Topics.LLM_API_KEY_UPDATED,
+            ApiKeyUpdatedEvent(api_key=dto, timestamp=_now()),
+            target_user_ids=[user_id],
+        )
+        return {"api_key": dto.model_dump(), "plaintext_api_key": plaintext}
+
+    # --- Sidecar-auth helpers (used later by CSP)
+
+    async def resolve_homelab_by_host_key(self, plaintext: str) -> dict | None:
+        return await self._homelabs.find_by_host_key_hash(
+            hash_token(plaintext)
+        )
+
+    async def validate_consumer_access(
+        self, homelab_id: str, api_key_plaintext: str, model_slug: str
+    ) -> dict | None:
+        doc = await self._keys.find_active_by_hash(
+            homelab_id=homelab_id, api_key_hash=hash_token(api_key_plaintext)
+        )
+        if doc is None:
+            return None
+        if model_slug not in doc["allowed_model_slugs"]:
+            return None
+        return doc
