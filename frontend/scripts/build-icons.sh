@@ -18,7 +18,11 @@ BG="#0a0710"
 command -v rsvg-convert >/dev/null || { echo "error: rsvg-convert not found (install librsvg)" >&2; exit 1; }
 command -v magick        >/dev/null || { echo "error: magick not found (install imagemagick v7)" >&2; exit 1; }
 
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+
 cd "$PUBLIC_DIR"
+mkdir -p pwa
 
 echo "==> apple-touch-icon.png (180x180)"
 rsvg-convert -w 180 -h 180 -b "$BG" favicon.svg -o apple-touch-icon.png
@@ -35,10 +39,9 @@ rsvg-convert -w 410 -h 410 favicon.svg \
   | magick -size 512x512 "xc:${BG}" - -gravity center -composite pwa/icon-512-maskable.png
 
 echo "==> favicon.ico (16 + 32 px, from mini SVG)"
-rsvg-convert -w 16 -h 16 favicon-mini.svg -o /tmp/fox-fav-16.png
-rsvg-convert -w 32 -h 32 favicon-mini.svg -o /tmp/fox-fav-32.png
-magick /tmp/fox-fav-16.png /tmp/fox-fav-32.png favicon.ico
-rm -f /tmp/fox-fav-16.png /tmp/fox-fav-32.png
+rsvg-convert -w 16 -h 16 favicon-mini.svg -o "$TMPDIR/fav-16.png"
+rsvg-convert -w 32 -h 32 favicon-mini.svg -o "$TMPDIR/fav-32.png"
+magick "$TMPDIR/fav-16.png" "$TMPDIR/fav-32.png" favicon.ico
 
 echo
 echo "Generated:"
