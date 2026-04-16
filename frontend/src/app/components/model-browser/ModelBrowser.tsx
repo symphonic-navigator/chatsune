@@ -48,11 +48,19 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   const filteredGroups = useMemo(() => {
     return groups
       .filter((g) => !providerFilter || g.connection.id === providerFilter)
-      .map((g) => ({
-        connection: g.connection,
-        models: sortModels(applyModelFilters(g.models, effectiveFilters), { field: 'name', direction: 'asc' }),
-      }))
-      .filter((g) => g.models.length > 0)
+      .map((g) => {
+        const sourceEmpty = g.models.length === 0
+        const models = sortModels(
+          applyModelFilters(g.models, effectiveFilters),
+          { field: 'name', direction: 'asc' },
+        )
+        return { connection: g.connection, models, sourceEmpty }
+      })
+      // Keep groups whose source had models *or* whose source was already
+      // empty — the latter stay visible with a refresh affordance, which is
+      // how a just-attached upstream (e.g. a freshly-paired sidecar) gets
+      // its model list populated.
+      .filter((g) => g.models.length > 0 || g.sourceEmpty)
   }, [groups, effectiveFilters, providerFilter])
 
   async function toggleFavourite(model: EnrichedModelDto) {
@@ -257,18 +265,26 @@ function ConnectionGroup({
         </button>
       </header>
       {!isCollapsed && (
-        <ul className="divide-y divide-white/5 mt-1">
-          {models.map((model) => (
-            <ModelRow
-              key={model.unique_id}
-              model={model}
-              isCurrent={model.unique_id === currentModelId}
-              onSelect={onSelect}
-              onEdit={() => onEdit(model)}
-              onToggleFavourite={() => void onToggleFavourite(model)}
-            />
-          ))}
-        </ul>
+        models.length === 0 ? (
+          <p className="px-3 py-3 text-[12px] text-white/45">
+            No models listed for this connection yet. Click{' '}
+            <span className="font-mono text-white/65">⟳</span> to fetch from the
+            upstream.
+          </p>
+        ) : (
+          <ul className="divide-y divide-white/5 mt-1">
+            {models.map((model) => (
+              <ModelRow
+                key={model.unique_id}
+                model={model}
+                isCurrent={model.unique_id === currentModelId}
+                onSelect={onSelect}
+                onEdit={() => onEdit(model)}
+                onToggleFavourite={() => void onToggleFavourite(model)}
+              />
+            ))}
+          </ul>
+        )
       )}
     </section>
   )
