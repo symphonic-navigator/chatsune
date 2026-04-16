@@ -9,6 +9,9 @@
 #
 # Run via: pnpm run build:icons  (from the frontend/ directory)
 
+# NOTE: public/pwa/icon.svg is kept as a byte-identical copy of public/favicon.svg.
+#       If you edit the full SVG, update both files, then re-run this script.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,7 +39,7 @@ rsvg-convert -w 512 -h 512 -b "$BG" favicon.svg -o pwa/icon-512.png
 echo "==> pwa/icon-512-maskable.png (fox at 80% central, 512x512 canvas)"
 # 80% of 512 = 410 px. Render fox transparent at 410, composite onto solid 512 canvas.
 rsvg-convert -w 410 -h 410 favicon.svg \
-  | magick -size 512x512 "xc:${BG}" - -gravity center -composite pwa/icon-512-maskable.png
+  | magick -size 512x512 "xc:${BG}" - -gravity center -composite -depth 8 pwa/icon-512-maskable.png
 
 echo "==> favicon.ico (16 + 32 px, from mini SVG)"
 rsvg-convert -w 16 -h 16 favicon-mini.svg -o "$TMPDIR/fav-16.png"
