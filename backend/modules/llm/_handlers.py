@@ -157,6 +157,14 @@ async def update_connection(
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ) -> ConnectionDto:
+    _log.warning(
+        "update_connection.enter connection_id=%s display_name=%r slug=%r "
+        "config_keys=%r",
+        connection_id,
+        body.display_name,
+        body.slug,
+        sorted((body.config or {}).keys()) if body.config is not None else None,
+    )
     repo = _repo()
     # Fetch the current document so we can detect a slug change after the update.
     existing = await repo.find(user["sub"], connection_id)
