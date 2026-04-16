@@ -500,6 +500,24 @@ class HomelabService:
 
     # --- Sidecar-auth helpers (used later by CSP)
 
+    async def touch_last_seen(
+        self,
+        homelab_id: str,
+        sidecar_version: str | None,
+        engine_info: dict | None,
+    ) -> None:
+        """Record the time of the last successful sidecar handshake.
+
+        Called from the CSP endpoint every time a sidecar connects. Does
+        not ownership-check ``homelab_id`` because the caller has already
+        authenticated via the Host-Key.
+        """
+        await self._homelabs.touch_last_seen(
+            homelab_id=homelab_id,
+            sidecar_version=sidecar_version,
+            engine_info=engine_info,
+        )
+
     async def resolve_homelab_by_host_key(self, plaintext: str) -> dict | None:
         return await self._homelabs.find_by_host_key_hash(
             hash_token(plaintext)

@@ -25,8 +25,20 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
+from backend.modules.llm._csp._connection import SidecarConnection
+from backend.modules.llm._csp._frames import (
+    HandshakeAckFrame,
+    HandshakeFrame,
+    negotiate_version,
+)
+from backend.modules.llm._csp._registry import (
+    SidecarRegistry,
+    get_sidecar_registry,
+    set_sidecar_registry,
+)
 from backend.modules.llm._handlers import router
 from backend.modules.llm._homelab_handlers import router as homelab_router
+from backend.modules.llm._homelab_tokens import HOST_KEY_PREFIX
 from backend.modules.llm._homelabs import (
     ApiKeyNotFoundError,
     ApiKeyRepository,
@@ -435,4 +447,12 @@ __all__ = [
     "delete_all_for_user",
     "ADAPTER_REGISTRY",
     "DEFAULT_CONTEXT_WINDOW",
+    "SidecarRegistry",
+    "SidecarConnection",
+    "HandshakeFrame",
+    "HandshakeAckFrame",
+    "negotiate_version",
+    "HOST_KEY_PREFIX",
+    "get_sidecar_registry",
+    "set_sidecar_registry",
 ]

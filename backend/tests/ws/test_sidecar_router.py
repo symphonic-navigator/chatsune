@@ -143,18 +143,14 @@ async def test_handshake_happy_path(monkeypatch, registry):
     }
     touched: dict = {}
 
-    class StubRepo:
+    class StubService:
+        async def resolve_homelab_by_host_key(self, plaintext):
+            return homelab
+
         async def touch_last_seen(self, *, homelab_id, sidecar_version, engine_info):
             touched["homelab_id"] = homelab_id
             touched["sidecar_version"] = sidecar_version
             touched["engine_info"] = engine_info
-
-    class StubService:
-        def __init__(self) -> None:
-            self._homelabs = StubRepo()
-
-        async def resolve_homelab_by_host_key(self, plaintext):
-            return homelab
 
     monkeypatch.setattr(sr, "HomelabService", lambda *_a, **_kw: StubService())
     monkeypatch.setattr(sr, "get_db", lambda: None)
@@ -187,16 +183,12 @@ async def test_handshake_rejects_major_version_mismatch(monkeypatch, registry):
         "status": "active",
     }
 
-    class StubRepo:
-        async def touch_last_seen(self, **_kwargs):
-            raise AssertionError("touch_last_seen must not run on rejected handshake")
-
     class StubService:
-        def __init__(self) -> None:
-            self._homelabs = StubRepo()
-
         async def resolve_homelab_by_host_key(self, plaintext):
             return homelab
+
+        async def touch_last_seen(self, **_kwargs):
+            raise AssertionError("touch_last_seen must not run on rejected handshake")
 
     monkeypatch.setattr(sr, "HomelabService", lambda *_a, **_kw: StubService())
     monkeypatch.setattr(sr, "get_db", lambda: None)
@@ -226,16 +218,12 @@ async def test_list_models_roundtrip_over_handler(monkeypatch, registry):
         "status": "active",
     }
 
-    class StubRepo:
-        async def touch_last_seen(self, **_kwargs):
-            pass
-
     class StubService:
-        def __init__(self) -> None:
-            self._homelabs = StubRepo()
-
         async def resolve_homelab_by_host_key(self, plaintext):
             return homelab
+
+        async def touch_last_seen(self, **_kwargs):
+            pass
 
     monkeypatch.setattr(sr, "HomelabService", lambda *_a, **_kw: StubService())
     monkeypatch.setattr(sr, "get_db", lambda: None)

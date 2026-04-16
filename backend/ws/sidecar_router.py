@@ -15,18 +15,16 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from backend.database import get_db
-from backend.modules.llm import HomelabService
-from backend.modules.llm._csp._connection import SidecarConnection
-from backend.modules.llm._csp._frames import (
+from backend.modules.llm import (
+    HOST_KEY_PREFIX,
     HandshakeAckFrame,
     HandshakeFrame,
-    negotiate_version,
-)
-from backend.modules.llm._csp._registry import (
+    HomelabService,
+    SidecarConnection,
     SidecarRegistry,
     get_sidecar_registry,
+    negotiate_version,
 )
-from backend.modules.llm._homelab_tokens import HOST_KEY_PREFIX
 from backend.ws.event_bus import get_event_bus
 
 _log = logging.getLogger(__name__)
@@ -101,7 +99,7 @@ async def sidecar_endpoint(ws: WebSocket) -> None:
     # Stamp the homelab with the latest sidecar metadata. Best-effort: a
     # failure here must not prevent the sidecar from connecting.
     try:
-        await svc._homelabs.touch_last_seen(
+        await svc.touch_last_seen(
             homelab_id=homelab["homelab_id"],
             sidecar_version=hs.sidecar_version,
             engine_info={"type": hs.engine.type, "version": hs.engine.version},

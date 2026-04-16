@@ -61,10 +61,7 @@ from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
 from backend.ws.sidecar_router import router as sidecar_router
-from backend.modules.llm._csp._registry import (
-    SidecarRegistry,
-    set_sidecar_registry,
-)
+from backend.modules.llm import SidecarRegistry, set_sidecar_registry
 from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
