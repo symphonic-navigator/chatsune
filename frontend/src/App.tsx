@@ -8,6 +8,7 @@ import { registerClientToolHandler } from "./features/code-execution/clientToolH
 import { registerSecretsEventHandler } from "./features/integrations/secretsEventHandler"
 import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
+import './features/integrations/plugins/mistral_voice'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"

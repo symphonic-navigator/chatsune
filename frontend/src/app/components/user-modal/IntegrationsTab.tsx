@@ -6,6 +6,7 @@ import type { IntegrationDefinition } from '../../../features/integrations/types
 
 // Ensure plugins are registered
 import '../../../features/integrations/plugins/lovense'
+import '../../../features/integrations/plugins/mistral_voice'
 
 const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 font-mono"
 

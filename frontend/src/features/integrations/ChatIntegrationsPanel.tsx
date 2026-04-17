@@ -3,6 +3,7 @@ import { useIntegrationsStore } from './store'
 import { getPlugin } from './registry'
 
 import './plugins/lovense'
+import './plugins/mistral_voice'
 
 /**
  * Compact integration status & controls shown in the chat toolbar.
