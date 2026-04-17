@@ -39,12 +39,16 @@ const mistralVoicePlugin: IntegrationPlugin = {
   },
 
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
-    if (fieldKey !== 'voice_id') return []
+    if (fieldKey !== 'voice_id' && fieldKey !== 'narrator_voice_id') return []
     const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
     if (apiKey) {
       await refreshMistralVoices(apiKey)
     }
-    return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
+    const voiceOptions = mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
+    if (fieldKey === 'narrator_voice_id') {
+      return [{ value: null, label: 'Inherit from primary voice' }, ...voiceOptions]
+    }
+    return voiceOptions
   },
 }
 
