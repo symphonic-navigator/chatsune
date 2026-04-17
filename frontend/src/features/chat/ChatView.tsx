@@ -106,7 +106,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
-  const voiceEnabled = !!sttRegistry.active()?.isReady()
+  const sttEnabled = !!sttRegistry.active()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
   const [transcription, setTranscription] = useState('')
@@ -716,7 +716,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({
-    enabled: voiceEnabled,
+    enabled: sttEnabled,
     onHoldStart: handleMicPress,
     onHoldEnd: handleMicRelease,
     onTap: handleVoiceToggle,
@@ -1033,7 +1033,7 @@ export function ChatView({ persona }: ChatViewProps) {
               onEdit={handleEdit} onRegenerate={handleRegenerate}
               bookmarkedMessageIds={bookmarkedMessageIds}
               onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
-              voiceEnabled={voiceEnabled}
+              sttEnabled={sttEnabled}
               persona={persona}
             />
           )}
@@ -1050,7 +1050,7 @@ export function ChatView({ persona }: ChatViewProps) {
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
-            voiceEnabled={voiceEnabled}
+            sttEnabled={sttEnabled}
             voicePhase={pipelineState.phase}
             volumeLevel={0}
             onMicPress={handleMicPress}

@@ -22,7 +22,7 @@ interface AssistantMessageProps {
   outputTokens?: number | null;
   providerName?: string | null;
   modelName?: string | null;
-  voiceEnabled?: boolean;
+  sttEnabled?: boolean;
   messageId?: string;
   persona?: PersonaDto | null;
 }

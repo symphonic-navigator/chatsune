@@ -16,7 +16,7 @@ interface ChatInputProps {
   hasPendingUploads: boolean
   toolBar?: ReactNode
   attachmentStrip?: ReactNode
-  voiceEnabled?: boolean
+  sttEnabled?: boolean
   voicePhase?: PipelinePhase
   volumeLevel?: number
   onMicPress?: () => void
@@ -36,7 +36,7 @@ export interface ChatInputHandle {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-  { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip, voiceEnabled, voicePhase, volumeLevel, onMicPress, onMicRelease, onStopRecording }, ref,
+  { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip, sttEnabled, voicePhase, volumeLevel, onMicPress, onMicRelease, onStopRecording }, ref,
 ) {
   const { isMobile } = useViewport()
   const [text, setText] = useState('')
@@ -214,7 +214,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           rows={1}
           className="chat-text max-h-[40vh] flex-1 resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden"
         />
-        {voiceEnabled ? (
+        {sttEnabled ? (
           <VoiceButton
             phase={voicePhase ?? 'idle'}
             hasText={!!text.trim()}
