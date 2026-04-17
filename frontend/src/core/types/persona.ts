@@ -36,11 +36,11 @@ export interface PersonaDto {
   integrations_config: {
     enabled_integration_ids: string[]
   } | null;
-  voice_config: {
+  voice_config?: {
     dialogue_voice: string | null
     narrator_voice: string | null
     auto_read: boolean
-    roleplay_mode: boolean
+    narrator_mode: 'off' | 'play' | 'narrate'
   } | null;
   integration_configs?: Record<string, Record<string, unknown>>;
   created_at: string;

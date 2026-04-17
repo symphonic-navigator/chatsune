@@ -2,7 +2,7 @@ import type { ComponentType } from 'react'
 
 /** Option for select/dropdown fields with dynamic sources. */
 export interface Option {
-  value: string
+  value: string | null
   label: string
 }
 

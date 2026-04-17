@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
-import type { SpeechSegment, VoicePreset } from '../types'
+import { readAloudCacheKey } from '../pipeline/readAloudCacheKey'
+import type { NarratorMode, SpeechSegment, VoicePreset } from '../types'
 import { useSecretsStore } from '../../integrations/secretsStore'
 import { useIntegrationsStore } from '../../integrations/store'
 import type { PersonaDto } from '../../../core/types/persona'
@@ -14,32 +15,39 @@ interface ReadAloudButtonProps {
   persona?: PersonaDto | null
   dialogueVoice?: VoicePreset
   narratorVoice?: VoicePreset
-  roleplayMode?: boolean
+  mode?: NarratorMode
 }
 
 type ReadState = 'idle' | 'synthesising' | 'playing'
 
-// ── Global active-reader tracker ──
-// Only one ReadAloudButton can be active at a time. When a new one starts,
-// the previous one is cancelled. Each button subscribes to changes.
+// ── Global active-reader state ──
+// Only one ReadAloudButton (or auto-read trigger) is active at a time.
+// Both activeMessageId and activeState are kept together so buttons render
+// the correct indicator regardless of which entry point drove them.
 
 type Listener = () => void
 let activeMessageId: string | null = null
+let activeState: ReadState = 'idle'
 const listeners = new Set<Listener>()
 
-export function setActiveReader(id: string | null): void {
+export function setActiveReader(id: string | null, state: ReadState): void {
   activeMessageId = id
+  activeState = state
   listeners.forEach((fn) => fn())
 }
 
-function useActiveReader(messageId: string): boolean {
-  const [active, setActive] = useState(activeMessageId === messageId)
+function useActiveReader(messageId: string): { isActive: boolean; state: ReadState } {
+  const [snapshot, setSnapshot] = useState(() => ({
+    isActive: activeMessageId === messageId,
+    state: activeState,
+  }))
   useEffect(() => {
-    const check = () => setActive(activeMessageId === messageId)
-    listeners.add(check)
-    return () => { listeners.delete(check) }
+    const update = () => setSnapshot({ isActive: activeMessageId === messageId, state: activeState })
+    listeners.add(update)
+    update()
+    return () => { listeners.delete(update) }
   }, [messageId])
-  return active
+  return snapshot
 }
 
 // ── LRU cache ──
@@ -51,205 +59,150 @@ interface CachedAudio {
 const CACHE_MAX = 8
 const cache = new Map<string, CachedAudio>()
 
-function cacheGet(id: string): CachedAudio | undefined {
-  const entry = cache.get(id)
-  if (entry) { cache.delete(id); cache.set(id, entry) }
+function cacheGet(key: string): CachedAudio | undefined {
+  const entry = cache.get(key)
+  if (entry) { cache.delete(key); cache.set(key, entry) }
   return entry
 }
 
-function cachePut(id: string, entry: CachedAudio): void {
-  cache.delete(id)
-  cache.set(id, entry)
+function cachePut(key: string, entry: CachedAudio): void {
+  cache.delete(key)
+  cache.set(key, entry)
   if (cache.size > CACHE_MAX) {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
   }
 }
 
-// ── Imperative trigger (used by auto-read) ──
+// ── Shared synthesis runner ──
 
-/**
- * Trigger read-aloud for a message programmatically.
- * Callers must pre-validate TTS readiness and voice availability.
- * Uses the same LRU cache as the button so a manual click after
- * an auto-read hit gets instant playback.
- */
-export async function triggerReadAloud(
+async function runReadAloud(
   messageId: string,
   content: string,
-  voice: VoicePreset,
-  roleplayMode: boolean,
+  primary: VoicePreset,
+  narrator: VoicePreset,
+  narratorVoiceId: string | null,
+  mode: NarratorMode,
 ): Promise<void> {
   const tts = ttsRegistry.active()
-  if (!tts?.isReady()) return
+  if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
 
-  audioPlayback.stopAll()
-  setActiveReader(messageId)
-  const genKey = `auto-${Date.now()}`
+  const cacheKey = readAloudCacheKey(messageId, primary.id, narratorVoiceId, mode)
 
   audioPlayback.setCallbacks({
-    onSegmentStart: () => {},
-    onFinished: () => { setActiveReader(null) },
+    onSegmentStart: () => { if (activeMessageId === messageId) setActiveReader(messageId, 'playing') },
+    onFinished: () => { if (activeMessageId === messageId) setActiveReader(null, 'idle') },
   })
 
-  const cached = cacheGet(messageId)
+  const cached = cacheGet(cacheKey)
   if (cached) {
+    setActiveReader(messageId, 'playing')
     for (const { audio, segment } of cached.segments) {
       audioPlayback.enqueue(audio, segment)
     }
     return
   }
 
-  const parsed = parseForSpeech(content, roleplayMode)
-  if (parsed.length === 0) { setActiveReader(null); return }
+  const parsed = parseForSpeech(content, mode)
+  if (parsed.length === 0) { setActiveReader(null, 'idle'); return }
+
+  setActiveReader(messageId, 'synthesising')
 
   try {
     const results: CachedAudio['segments'] = []
     for (const segment of parsed) {
-      if (activeMessageId !== messageId) return // cancelled by a newer reader
+      if (activeMessageId !== messageId) return // cancelled
+      const voice = segment.type === 'voice' ? primary : narrator
       const audio = await tts.synthesise(segment.text, voice)
       if (activeMessageId !== messageId) return
       results.push({ audio, segment })
       audioPlayback.enqueue(audio, segment)
     }
-    cachePut(messageId, { segments: results })
+    cachePut(cacheKey, { segments: results })
   } catch (err) {
-    console.error('[AutoRead] TTS synthesis failed:', err, genKey)
-    setActiveReader(null)
+    if (activeMessageId !== messageId) return
+    console.error('[ReadAloud] TTS synthesis failed:', err)
+    setActiveReader(null, 'idle')
     const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
     useNotificationStore.getState().addNotification({
       level: 'error',
       title: 'Read aloud failed',
       message: isAuthError
-        ? 'Couldn\'t read reply aloud — check your Mistral API key.'
-        : 'Couldn\'t read reply aloud — check the console for details.',
+        ? "Couldn't read reply aloud — check your Mistral API key."
+        : "Couldn't read reply aloud — check the console for details.",
     })
   }
 }
 
+// ── Imperative trigger for auto-read ──
+
+/**
+ * Trigger read-aloud for a message programmatically. Drives the same global
+ * state and cache as the manual click path.
+ */
+export async function triggerReadAloud(
+  messageId: string,
+  content: string,
+  primary: VoicePreset,
+  narrator: VoicePreset,
+  narratorVoiceId: string | null,
+  mode: NarratorMode,
+): Promise<void> {
+  audioPlayback.stopAll()
+  setActiveReader(messageId, 'synthesising')
+  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode)
+}
+
 // ── Component ──
 
-export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
-  // All hooks must be called unconditionally — gate is evaluated after.
-
-  // Subscribe to both stores so the component re-renders when secrets are
-  // hydrated/cleared or integration configs change.
+export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, mode }: ReadAloudButtonProps) {
   useSecretsStore((s) => s.secrets)
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
 
-  const isActive = useActiveReader(messageId)
-  const [localState, setLocalState] = useState<ReadState>('idle')
-  const stateRef = useRef<ReadState>('idle')
-  const genRef = useRef(0) // generation counter to cancel stale synthesis
+  const { isActive, state } = useActiveReader(messageId)
 
-  const setState = useCallback((s: ReadState) => {
-    stateRef.current = s
-    setLocalState(s)
-  }, [])
-
-  // If another button took over, reset our state
-  useEffect(() => {
-    if (!isActive && stateRef.current !== 'idle') {
-      setState('idle')
-    }
-  }, [isActive, setState])
-
-  // Resolve the active TTS integration and the persona-selected voice_id.
   const activeTTS = definitions.find(
     (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
   )
   const ttsReady = ttsRegistry.active()?.isReady() === true
-  const voiceId = activeTTS
-    ? (persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined)
-    : undefined
+  const integrationCfg = activeTTS ? persona?.integration_configs?.[activeTTS.id] : undefined
+  const voiceId = (integrationCfg?.voice_id as string | undefined) ?? undefined
+  const narratorVoiceId = (integrationCfg?.narrator_voice_id as string | null | undefined) ?? null
+  const resolvedMode: NarratorMode = mode ?? persona?.voice_config?.narrator_mode ?? 'off'
 
   const handleClick = useCallback(async () => {
-    // If WE are active, stop
-    if (isActive && stateRef.current !== 'idle') {
+    if (isActive && state !== 'idle') {
       audioPlayback.stopAll()
-      setActiveReader(null)
-      setState('idle')
+      setActiveReader(null, 'idle')
       return
     }
 
-    // Take over: stop any other active reader
     audioPlayback.stopAll()
-    setActiveReader(messageId)
-    const gen = ++genRef.current
 
-    audioPlayback.setCallbacks({
-      onSegmentStart: () => { if (gen === genRef.current) setState('playing') },
-      onFinished: () => { if (gen === genRef.current) { setState('idle'); setActiveReader(null) } },
-    })
-
-    // Cache hit → instant playback
-    const cached = cacheGet(messageId)
-    if (cached) {
-      setState('playing')
-      for (const { audio, segment } of cached.segments) {
-        audioPlayback.enqueue(audio, segment)
-      }
-      return
-    }
-
-    // Synthesise fresh
     const tts = ttsRegistry.active()
     if (!tts) {
-      console.warn('[ReadAloud] No TTS engine active — complete voice setup first')
-      setActiveReader(null)
+      console.warn('[ReadAloud] No TTS engine active')
       return
     }
 
-    // Resolve the persona-selected voice. Legacy dialogueVoice/narratorVoice
-    // props (from the Kokoro era) still win if explicitly passed — useful for
-    // testing — but the default path pulls from persona.integration_configs.
     const personaVoice = voiceId ? tts.voices.find((v) => v.id === voiceId) : undefined
     const primary = dialogueVoice ?? personaVoice
-
     if (!primary) {
-      console.warn('[ReadAloud] No voice resolved — persona has no voice_id or it does not match any Mistral voice')
-      setActiveReader(null)
+      console.warn('[ReadAloud] No voice resolved')
       return
     }
 
-    const narrator: VoicePreset = narratorVoice ?? personaVoice ?? primary
+    const personaNarrator = narratorVoiceId ? tts.voices.find((v) => v.id === narratorVoiceId) : undefined
+    const narrator: VoicePreset = narratorVoice ?? personaNarrator ?? primary
 
-    const parsed = parseForSpeech(content, roleplayMode)
-    if (parsed.length === 0) { setActiveReader(null); return }
-
-    setState('synthesising')
-
-    try {
-      const results: CachedAudio['segments'] = []
-      for (const segment of parsed) {
-        if (gen !== genRef.current) return // cancelled
-        const voice = segment.type === 'voice' ? primary : narrator
-        const audio = await tts.synthesise(segment.text, voice)
-        if (gen !== genRef.current) return // cancelled between segments
-        results.push({ audio, segment })
-        audioPlayback.enqueue(audio, segment)
-      }
-      cachePut(messageId, { segments: results })
-    } catch (err) {
-      if (gen !== genRef.current) return // cancelled, not a real error
-      console.error('[ReadAloud] TTS synthesis failed:', err)
-      setState('idle')
-      setActiveReader(null)
-      const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
-      useNotificationStore.getState().addNotification({
-        level: 'error',
-        title: 'Read aloud failed',
-        message: isAuthError
-          ? 'Couldn\'t read reply aloud — check your Mistral API key.'
-          : 'Couldn\'t read reply aloud — check the console for details.',
-      })
-    }
-  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState, isActive, voiceId])
+    setActiveReader(messageId, 'synthesising')
+    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode)
+  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId])
 
   if (!ttsReady || !voiceId) return null
 
-  const displayState = isActive ? localState : 'idle'
+  const displayState = isActive ? state : 'idle'
   const label = displayState === 'synthesising' ? 'Preparing...' : displayState === 'playing' ? 'Stop' : 'Read'
   const active = displayState !== 'idle'
 

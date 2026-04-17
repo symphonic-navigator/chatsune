@@ -1,4 +1,4 @@
-import type { SpeechSegment } from '../types'
+import type { NarratorMode, SpeechSegment } from '../types'
 
 function preprocess(text: string): string {
   let s = text
@@ -13,24 +13,28 @@ function preprocess(text: string): string {
   s = s.replace(/^[-*+]\s+/gm, '')                // unordered list markers
   s = s.replace(/^\d+\.\s+/gm, '')                // ordered list markers
   s = s.replace(/^>\s?/gm, '')                    // blockquotes
-  s = s.replace(/\n{2,}/g, '\n')                  // collapse multiple blank lines left by removed blocks
+  s = s.replace(/\n{2,}/g, '\n')                  // collapse blank lines
   return s.trim()
 }
 
-function parseRoleplay(text: string): SpeechSegment[] {
+// In 'play' mode: "..." → voice, *...* → narration, else → narration.
+// In 'narrate' mode: "..." → voice, everything else (including *...*) → narration.
+function splitSegments(text: string, mode: 'play' | 'narrate'): SpeechSegment[] {
   const segments: SpeechSegment[] = []
-  const pattern = /"([^"]+)"|\u201c([^\u201d]+)\u201d|\*([^*]+)\*/g
+  const pattern = mode === 'play'
+    ? /"([^"]+)"|\u201c([^\u201d]+)\u201d|\*([^*]+)\*/g
+    : /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
   let lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      const unmarked = text.slice(lastIndex, match.index).trim()
+  for (const match of text.matchAll(pattern)) {
+    const idx = match.index as number
+    if (idx > lastIndex) {
+      const unmarked = text.slice(lastIndex, idx).trim()
       if (unmarked) segments.push({ type: 'narration', text: unmarked })
     }
     if (match[1] !== undefined) segments.push({ type: 'voice', text: match[1] })
     else if (match[2] !== undefined) segments.push({ type: 'voice', text: match[2] })
     else if (match[3] !== undefined) segments.push({ type: 'narration', text: match[3] })
-    lastIndex = pattern.lastIndex
+    lastIndex = idx + match[0].length
   }
   if (lastIndex < text.length) {
     const trailing = text.slice(lastIndex).trim()
@@ -39,9 +43,9 @@ function parseRoleplay(text: string): SpeechSegment[] {
   return segments
 }
 
-export function parseForSpeech(text: string, roleplay: boolean): SpeechSegment[] {
+export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[] {
   const cleaned = preprocess(text)
   if (!cleaned) return []
-  if (!roleplay) return [{ type: 'voice', text: cleaned }]
-  return parseRoleplay(cleaned)
+  if (mode === 'off') return [{ type: 'voice', text: cleaned }]
+  return splitSegments(cleaned, mode)
 }

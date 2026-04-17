@@ -28,13 +28,13 @@ type FieldDef = {
   description?: string
   placeholder?: string
   secret?: boolean
-  options?: Array<{ value: string; label: string }>
+  options?: Array<{ value: string | null; label: string }>
   options_source?: 'plugin'
 }
 
 type OptionsProvider = (
   fieldKey: string,
-) => Array<{ value: string; label: string }> | Promise<Array<{ value: string; label: string }>>
+) => Array<{ value: string | null; label: string }> | Promise<Array<{ value: string | null; label: string }>>
 
 interface Props {
   fields: FieldDef[]
@@ -250,7 +250,7 @@ function SelectField({
   onChange(v: string): void
   optionsProvider?: OptionsProvider
 }) {
-  const [options, setOptions] = useState<Array<{ value: string; label: string }>>(
+  const [options, setOptions] = useState<Array<{ value: string | null; label: string }>>(
     field.options ?? [],
   )
 
@@ -293,7 +293,7 @@ function SelectField({
           —
         </option>
         {options.map((o) => (
-          <option key={o.value} value={o.value} style={OPTION_STYLE}>
+          <option key={o.value ?? ''} value={o.value ?? ''} style={OPTION_STYLE}>
             {o.label}
           </option>
         ))}

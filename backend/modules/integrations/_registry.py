@@ -193,6 +193,14 @@ def _register_builtins() -> None:
                 "required": True,
                 "description": "Voice used when this persona speaks.",
             },
+            {
+                "key": "narrator_voice_id",
+                "label": "Narrator Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": False,
+                "description": "Voice used for narration / prose when narrator mode is active. Leave at 'Inherit' to use the primary voice.",
+            },
         ],
         tool_definitions=[],
     ))

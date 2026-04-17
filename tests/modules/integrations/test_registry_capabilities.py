@@ -30,3 +30,10 @@ def test_mistral_voice_has_persona_voice_field():
     defn = get("mistral_voice")
     voice_field = next(f for f in defn.persona_config_fields if f["key"] == "voice_id")
     assert voice_field["field_type"] == "select"
+
+
+def test_mistral_voice_has_narrator_voice_field():
+    defn = get("mistral_voice")
+    field = next(f for f in defn.persona_config_fields if f["key"] == "narrator_voice_id")
+    assert field["field_type"] == "select"
+    assert field["required"] is False
