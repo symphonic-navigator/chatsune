@@ -146,6 +146,15 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     }
   }, [isActive, setState])
 
+  // Resolve the active TTS integration and the persona-selected voice_id.
+  const activeTTS = definitions.find(
+    (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
+  )
+  const ttsReady = ttsRegistry.active()?.isReady() === true
+  const voiceId = activeTTS
+    ? (persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined)
+    : undefined
+
   const handleClick = useCallback(async () => {
     // If WE are active, stop
     if (isActive && stateRef.current !== 'idle') {
@@ -182,9 +191,20 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
       setActiveReader(null)
       return
     }
-    const fallbackVoice = tts.voices[0]
-    const dVoice = dialogueVoice ?? fallbackVoice
-    const nVoice = narratorVoice ?? fallbackVoice
+
+    // Resolve the persona-selected voice. Legacy dialogueVoice/narratorVoice
+    // props (from the Kokoro era) still win if explicitly passed — useful for
+    // testing — but the default path pulls from persona.integration_configs.
+    const personaVoice = voiceId ? tts.voices.find((v) => v.id === voiceId) : undefined
+    const primary = dialogueVoice ?? personaVoice
+    const narrator = narratorVoice ?? personaVoice ?? primary
+
+    if (!primary) {
+      console.warn('[ReadAloud] No voice resolved — persona has no voice_id or it does not match any Mistral voice')
+      setActiveReader(null)
+      return
+    }
+
     const parsed = parseForSpeech(content, roleplayMode)
     if (parsed.length === 0) { setActiveReader(null); return }
 
@@ -194,7 +214,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
       const results: CachedAudio['segments'] = []
       for (const segment of parsed) {
         if (gen !== genRef.current) return // cancelled
-        const voice = segment.type === 'voice' ? dVoice : nVoice
+        const voice = segment.type === 'voice' ? primary : narrator
         const audio = await tts.synthesise(segment.text, voice)
         if (gen !== genRef.current) return // cancelled between segments
         results.push({ audio, segment })
@@ -207,17 +227,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
       setState('idle')
       setActiveReader(null)
     }
-  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState, isActive])
-
-  // Gate: only render if a TTS engine is active and ready, and the persona has
-  // a voice_id configured for that integration.
-  const activeTTS = definitions.find(
-    (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
-  )
-  const ttsReady = ttsRegistry.active()?.isReady() === true
-  const voiceId = activeTTS
-    ? (persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined)
-    : undefined
+  }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState, isActive, voiceId])
 
   if (!ttsReady || !voiceId) return null
 
