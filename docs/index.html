@@ -76,16 +76,19 @@
     /* ─── Slide Stage ─────────────────────────────────────────────── */
     .stage {
       position: fixed;
-      top: 56px; bottom: 60px; left: 0; right: 0;
+      top: 56px; bottom: 72px; left: 0; right: 0;
       overflow: hidden;
     }
 
     /* ─── Individual Slides ───────────────────────────────────────── */
     .slide {
       position: absolute; inset: 0;
-      display: flex; align-items: center; justify-content: center;
+      display: flex;
+      align-items: safe center; /* falls back to flex-start on overflow — fixes mobile clipping */
+      justify-content: center;
       padding: 32px 24px;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       opacity: 0;
       transform: translateY(18px);
       transition: opacity 0.45s ease, transform 0.45s ease;
@@ -98,6 +101,8 @@
       width: 100%;
       max-width: 760px;
       margin: 0 auto;
+      /* ensures the inner block never gets taller than it needs to */
+      align-self: safe center;
     }
 
     /* ─── Typography ──────────────────────────────────────────────── */
@@ -316,29 +321,32 @@
     /* ─── Bottom Navigation ───────────────────────────────────────── */
     .bottom-nav {
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
-      height: 60px;
+      height: 72px;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 0 24px;
+      padding: 0 32px;
       background: rgba(10,10,10,0.95);
       border-top: 1px solid var(--divider-gold);
       backdrop-filter: blur(20px);
     }
 
-    .nav-btn {
-      font-family: system-ui, sans-serif;
-      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
-      color: var(--text-muted); background: none;
-      border: 1px solid var(--border-neutral); border-radius: 8px;
-      padding: 7px 16px; cursor: pointer;
-      transition: color 0.2s, border-color 0.2s, background 0.2s;
-      display: flex; align-items: center; gap: 7px;
+    .nav-arrow {
+      width: 52px; height: 52px; border-radius: 50%;
+      border: 1px solid var(--gold-border);
+      background: var(--surface-base);
+      color: var(--text-secondary);
+      font-size: 26px; line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: color 0.2s, border-color 0.2s, background 0.2s, box-shadow 0.2s;
+      user-select: none;
     }
-    .nav-btn:hover:not(:disabled) {
+    .nav-arrow:hover:not(:disabled) {
       color: var(--text-primary);
-      border-color: var(--gold-border);
+      border-color: var(--gold-border-active);
       background: var(--gold-subtle);
+      box-shadow: 0 0 20px var(--gold-glow);
     }
-    .nav-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+    .nav-arrow:disabled { opacity: 0.15; cursor: not-allowed; }
 
     .prog-dots { display: flex; gap: 6px; align-items: center; }
     .prog-dot  {
@@ -359,12 +367,25 @@
     /* ─── Responsive ──────────────────────────────────────────────── */
     @media (max-width: 680px) {
       .grid-2, .grid-3, .two-col, .stats-row { grid-template-columns: 1fr; }
-      .compare-table { font-size: 11px; }
-      .compare-table td, .compare-table th { padding: 7px 8px; }
-      h1 { font-size: 38px; }
-      h2 { font-size: 26px; }
+      h1 { font-size: 32px; letter-spacing: -1px; }
+      h2 { font-size: 24px; }
+      .lead { font-size: 15px; margin-bottom: 20px; }
+      .slide { padding: 20px 16px; }
+      .card { padding: 14px 16px; }
+      .two-col { gap: 16px; margin-top: 16px; }
+      .grid-2, .grid-3 { gap: 10px; margin-top: 16px; }
       .top-bar { padding: 0 16px; }
-      .bottom-nav { padding: 0 16px; }
+      .bottom-nav { padding: 0 20px; height: 64px; }
+      .nav-arrow { width: 44px; height: 44px; font-size: 22px; }
+      .feature-list li { padding: 9px 0; font-size: 13px; }
+      .diagram { padding: 16px 12px; }
+    }
+
+    /* Extra-small (phones in portrait) */
+    @media (max-width: 400px) {
+      h1 { font-size: 28px; }
+      h2 { font-size: 21px; }
+      .slide { padding: 16px 14px; }
     }
   </style>
 </head>
@@ -648,83 +669,34 @@
       </div>
     </div>
 
-    <!-- 10 · Comparison ─────────────────────────────────────────── -->
+    <!-- 10 · Integrations ───────────────────────────────────────── -->
     <div class="slide" data-index="10">
       <div class="slide-inner">
-        <div class="eyebrow">Competitive landscape</div>
-        <h2>How we compare.</h2>
-        <table class="compare-table">
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th class="hl">Chatsune</th>
-              <th>Open WebUI</th>
-              <th>SillyTavern</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>BYOK enforced per user</td>
-              <td class="hl-col"><span class="yes">✓ Always</span></td>
-              <td><span class="par">~ Admin-shared common</span></td>
-              <td><span class="par">~ Varies by setup</span></td>
-            </tr>
-            <tr>
-              <td>Homelab reverse sidecar (CGNAT-safe)</td>
-              <td class="hl-col"><span class="yes">✓ Native</span></td>
-              <td><span class="no">✗</span></td>
-              <td><span class="no">✗</span></td>
-            </tr>
-            <tr>
-              <td>GPU sharing between trusted users</td>
-              <td class="hl-col"><span class="yes">✓ Invitation-based</span></td>
-              <td><span class="no">✗</span></td>
-              <td><span class="no">✗</span></td>
-            </tr>
-            <tr>
-              <td>Background memory consolidation</td>
-              <td class="hl-col"><span class="yes">✓ "Dreaming" system</span></td>
-              <td><span class="no">✗</span></td>
-              <td><span class="par">~ Character cards only</span></td>
-            </tr>
-            <tr>
-              <td>Local CPU embeddings (no external API)</td>
-              <td class="hl-col"><span class="yes">✓ Arctic Embed ONNX</span></td>
-              <td><span class="par">~ Ext. API or vector DB</span></td>
-              <td><span class="no">✗</span></td>
-            </tr>
-            <tr>
-              <td>Client-side JS tool sandbox</td>
-              <td class="hl-col"><span class="yes">✓ Isolated Web Worker</span></td>
-              <td><span class="no">✗</span></td>
-              <td><span class="no">✗</span></td>
-            </tr>
-            <tr>
-              <td>Vision fallback (auto-delegate)</td>
-              <td class="hl-col"><span class="yes">✓ Automatic</span></td>
-              <td><span class="no">✗ Manual model selection</span></td>
-              <td><span class="no">✗ Manual</span></td>
-            </tr>
-            <tr>
-              <td>Soft chain-of-thought injection</td>
-              <td class="hl-col"><span class="yes">✓ Auto for all models</span></td>
-              <td><span class="no">✗</span></td>
-              <td><span class="no">✗</span></td>
-            </tr>
-            <tr>
-              <td>Event-driven real-time (no polling)</td>
-              <td class="hl-col"><span class="yes">✓ Redis Streams</span></td>
-              <td><span class="par">~ REST-heavy</span></td>
-              <td><span class="par">~ Varies</span></td>
-            </tr>
-            <tr>
-              <td>Copyleft licence</td>
-              <td class="hl-col"><span class="yes">✓ GPLv3</span></td>
-              <td><span class="par">Apache 2.0</span></td>
-              <td><span class="yes">✓ AGPL-3.0</span></td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="eyebrow">Integrations &amp; plugins</div>
+        <h2>Connect the world<br>around you.</h2>
+        <p style="margin-bottom:0;">Chatsune's plugin system extends the companion experience beyond text. External services, real-world hardware, and custom tools connect via a structured gateway — all under your control, all running on your instance.</p>
+        <div class="grid-2" style="margin-top:20px;">
+          <div class="card">
+            <div class="card-label">MCP Gateway</div>
+            <h3>Model Context Protocol</h3>
+            <p>First-class MCP support connects your companions to external tools and services — home automation, calendars, custom APIs. The persona orchestrates; the tools execute.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Hardware integrations</div>
+            <h3>Real-world feedback loops</h3>
+            <p>Companions are not limited to the screen. The integration layer allows events to flow outward — to physical devices, local services, and anything reachable on your network.</p>
+          </div>
+          <div class="card" style="border-color:rgba(167,139,250,0.25);background:rgba(167,139,250,0.04);">
+            <div class="card-label" style="color:var(--lavender);">Example integration</div>
+            <h3 style="color:var(--text-primary);">Lovense</h3>
+            <p>Connected devices pair with the conversation layer via the Lovense API. The companion can trigger haptic events, react to context, and maintain continuity of experience — privately, locally, without cloud relay. Your hardware. Your intimacy. Your rules.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Open plugin system</div>
+            <h3>Write your own</h3>
+            <p>Plugins are first-class citizens. Implement the interface, register with the gateway, distribute under GPLv3. No proprietary extension market — just open code.</p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -839,9 +811,9 @@
 
   <!-- ─── Bottom Navigation ──────────────────────────────────────── -->
   <nav class="bottom-nav">
-    <button class="nav-btn" id="prevBtn" onclick="nav(-1)" disabled>← Prev</button>
+    <button class="nav-arrow" id="prevBtn" onclick="nav(-1)" disabled aria-label="Previous slide">←</button>
     <div class="prog-dots" id="dots"></div>
-    <button class="nav-btn" id="nextBtn" onclick="nav(1)">Next →</button>
+    <button class="nav-arrow" id="nextBtn" onclick="nav(1)" aria-label="Next slide">→</button>
   </nav>
 
   <!-- ─── Script ────────────────────────────────────────────────── -->
