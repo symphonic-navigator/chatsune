@@ -87,7 +87,7 @@ function resolveGapMs(integrationCfg: Record<string, unknown> | undefined): numb
     if (Number.isFinite(n) && n >= 0) return n
   }
   if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw
-  return 100
+  return 500
 }
 
 // ── Shared synthesis runner ──

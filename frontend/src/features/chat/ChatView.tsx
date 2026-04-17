@@ -676,7 +676,7 @@ export function ChatView({ persona }: ChatViewProps) {
       // fall back to 100 ms. One-off inline helper — shared module not worth
       // the indirection for a single call-site.
       const gapRaw = ttsDefn ? intConfigs?.[ttsDefn.id]?.config?.playback_gap_ms : undefined
-      let gapMs = 100
+      let gapMs = 500
       if (typeof gapRaw === 'string') {
         const parsed = Number.parseInt(gapRaw, 10)
         if (Number.isFinite(parsed) && parsed >= 0) gapMs = parsed

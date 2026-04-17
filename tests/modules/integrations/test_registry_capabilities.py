@@ -44,6 +44,6 @@ def test_mistral_voice_has_playback_gap_field():
     field = next(f for f in defn.config_fields if f["key"] == "playback_gap_ms")
     assert field["field_type"] == "select"
     assert field["required"] is False
-    expected_values = {"0", "50", "100", "200", "300", "500"}
+    expected_values = {"100", "200", "300", "400", "500", "600", "700", "800"}
     actual_values = {o["value"] for o in field["options"]}
     assert actual_values == expected_values
