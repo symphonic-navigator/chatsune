@@ -27,7 +27,7 @@ interface AssistantMessageProps {
   persona?: PersonaDto | null;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled, messageId, persona }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
