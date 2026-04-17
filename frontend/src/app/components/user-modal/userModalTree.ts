@@ -31,6 +31,7 @@ export type SubTabId =
   | 'mcp'
   | 'integrations'
   | 'display'
+  | 'voice'
 
 /** Any navigable leaf — either a standalone top tab or a sub-tab. */
 export type LeafId = TopTabId | SubTabId
@@ -70,6 +71,7 @@ export const TABS_TREE: TopTab[] = [
       { id: 'mcp',                    label: 'MCP' },
       { id: 'integrations',           label: 'Integrations' },
       { id: 'display',                label: 'Display' },
+      { id: 'voice',                  label: 'Voice' },
     ],
   },
   { id: 'job-log', label: 'Job-Log' },
