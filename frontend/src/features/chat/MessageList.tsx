@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
+import type { PersonaDto } from '../../core/types/persona'
 import { UserBubble } from './UserBubble'
 import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
@@ -40,12 +41,13 @@ interface MessageListProps {
   bookmarkedMessageIds: Set<string>
   onBookmark: (messageId: string) => void
   voiceEnabled?: boolean
+  persona?: PersonaDto | null
 }
 
 export function MessageList({
   sessionId, messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
-  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, voiceEnabled,
+  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, voiceEnabled, persona,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
@@ -184,7 +186,8 @@ export function MessageList({
                   providerName={msg.provider_name}
                   modelName={msg.model_name}
                   voiceEnabled={voiceEnabled}
-                  messageId={msg.id} />
+                  messageId={msg.id}
+                  persona={persona} />
               </div>
             )
           }

@@ -969,6 +969,7 @@ export function ChatView({ persona }: ChatViewProps) {
               bookmarkedMessageIds={bookmarkedMessageIds}
               onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
               voiceEnabled={voiceEnabled}
+              persona={persona}
             />
           )}
 

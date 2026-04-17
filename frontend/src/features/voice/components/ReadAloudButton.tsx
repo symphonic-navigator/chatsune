@@ -3,10 +3,14 @@ import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
 import type { SpeechSegment, VoicePreset } from '../types'
+import { useSecretsStore } from '../../integrations/secretsStore'
+import { useIntegrationsStore } from '../../integrations/store'
+import type { PersonaDto } from '../../../core/types/persona'
 
 interface ReadAloudButtonProps {
   messageId: string
   content: string
+  persona?: PersonaDto | null
   dialogueVoice?: VoicePreset
   narratorVoice?: VoicePreset
   roleplayMode?: boolean
@@ -63,7 +67,15 @@ function cachePut(id: string, entry: CachedAudio): void {
 
 // ── Component ──
 
-export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
+export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {
+  // All hooks must be called unconditionally — gate is evaluated after.
+
+  // Subscribe to both stores so the component re-renders when secrets are
+  // hydrated/cleared or integration configs change.
+  useSecretsStore((s) => s.secrets)
+  const definitions = useIntegrationsStore((s) => s.definitions)
+  const configs = useIntegrationsStore((s) => s.configs)
+
   const isActive = useActiveReader(messageId)
   const [localState, setLocalState] = useState<ReadState>('idle')
   const stateRef = useRef<ReadState>('idle')
@@ -143,6 +155,18 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
       setActiveReader(null)
     }
   }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState, isActive])
+
+  // Gate: only render if a TTS engine is active and ready, and the persona has
+  // a voice_id configured for that integration.
+  const activeTTS = definitions.find(
+    (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
+  )
+  const ttsReady = ttsRegistry.active()?.isReady() === true
+  const voiceId = activeTTS
+    ? (persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined)
+    : undefined
+
+  if (!ttsReady || !voiceId) return null
 
   const displayState = isActive ? localState : 'idle'
   const label = displayState === 'synthesising' ? 'Preparing...' : displayState === 'playing' ? 'Stop' : 'Read'

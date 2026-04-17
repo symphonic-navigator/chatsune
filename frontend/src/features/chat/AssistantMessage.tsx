@@ -5,6 +5,7 @@ import { ThinkingBubble } from './ThinkingBubble'
 import { StatsLine } from './StatsLine'
 import { ReadAloudButton } from '../voice/components/ReadAloudButton'
 import type { Highlighter } from 'shiki'
+import type { PersonaDto } from '../../core/types/persona'
 
 const REFUSAL_FALLBACK_TEXT = 'The model declined this request.'
 
@@ -23,9 +24,10 @@ interface AssistantMessageProps {
   modelName?: string | null;
   voiceEnabled?: boolean;
   messageId?: string;
+  persona?: PersonaDto | null;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled, messageId }: AssistantMessageProps) {
+export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, voiceEnabled, messageId, persona }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -136,7 +138,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
                 </button>
               )}
               {voiceEnabled && messageId && (
-                <ReadAloudButton messageId={messageId} content={effectiveContent} />
+                <ReadAloudButton messageId={messageId} content={effectiveContent} persona={persona} />
               )}
               {canRegenerate && onRegenerate && (
                 <button type="button" onClick={onRegenerate}
