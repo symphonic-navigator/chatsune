@@ -231,16 +231,30 @@ function SelectField({
   )
 
   useEffect(() => {
-    if (field.options) {
+    // Dynamic options: provider takes precedence over whatever static
+    // `options` the field carries. Empty arrays are still arrays, so the
+    // previous truthiness check trapped plugin-backed fields in the static
+    // branch with `setOptions([])` and never invoked the provider.
+    if (field.options_source === 'plugin' && optionsProvider) {
+      const result = optionsProvider(field.key)
+      if (result instanceof Promise) {
+        result.then(setOptions).catch(() => setOptions([]))
+      } else {
+        setOptions(result)
+      }
+      return
+    }
+    if (field.options && field.options.length > 0) {
       setOptions(field.options)
       return
     }
-    if (!optionsProvider) return
-    const result = optionsProvider(field.key)
-    if (result instanceof Promise) {
-      result.then(setOptions).catch(() => setOptions([]))
-    } else {
-      setOptions(result)
+    if (optionsProvider) {
+      const result = optionsProvider(field.key)
+      if (result instanceof Promise) {
+        result.then(setOptions).catch(() => setOptions([]))
+      } else {
+        setOptions(result)
+      }
     }
   }, [field, optionsProvider])
 
