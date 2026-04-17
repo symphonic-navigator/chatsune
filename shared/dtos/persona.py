@@ -67,6 +67,7 @@ class CreatePersonaDto(BaseModel):
     display_order: int = 0
     pinned: bool = False
     profile_image: str | None = None
+    integration_configs: dict[str, dict] = Field(default_factory=dict)
     voice_config: VoiceConfigDto | None = None
 
 
