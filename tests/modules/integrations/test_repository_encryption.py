@@ -96,3 +96,18 @@ async def test_upsert_returns_redacted_doc(mongo_db: AsyncIOMotorDatabase):
     )
     assert "config_encrypted" not in result
     assert result["config"]["api_key"] == {"is_set": True}
+
+
+@pytest.mark.asyncio
+async def test_delete_all_for_user_removes_encrypted_secrets(mongo_db: AsyncIOMotorDatabase):
+    repo = IntegrationRepository(mongo_db)
+    await repo.upsert_config(
+        user_id="u1",
+        integration_id="mistral_voice",
+        enabled=True,
+        config={"api_key": "sk-test"},
+    )
+    deleted = await repo.delete_all_for_user("u1")
+    assert deleted == 1
+    remaining = await repo.get_user_config("u1", "mistral_voice")
+    assert remaining is None
