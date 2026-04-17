@@ -19,11 +19,16 @@ interface SecretsClearedEvent extends BaseEvent {
 }
 
 function handleIntegrationSecretsHydrated(event: BaseEvent): void {
+  // TEMP TRACING — remove after hydrate-event bug is found
+  console.log('[secretsEventHandler] hydrated received:', event)
   const e = event as SecretsHydratedEvent
+  console.log('[secretsEventHandler] hydrated → integration_id:', e.integration_id, 'secrets keys:', Object.keys(e.secrets ?? {}))
   useSecretsStore.getState().setSecrets(e.integration_id, e.secrets)
 }
 
 function handleIntegrationSecretsCleared(event: BaseEvent): void {
+  // TEMP TRACING — remove after hydrate-event bug is found
+  console.log('[secretsEventHandler] cleared received:', event)
   const e = event as SecretsClearedEvent
   useSecretsStore.getState().clearSecrets(e.integration_id)
 }
