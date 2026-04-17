@@ -53,6 +53,10 @@ export default defineConfig({
         globIgnores: ["**/sandbox.worker-*.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
+        // Main bundle currently sits just above Workbox's 2 MiB default, which
+        // refuses to precache it. Give comfortable headroom; future work can
+        // code-split if the bundle keeps growing.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         cleanupOutdatedCaches: true,
       },
       includeAssets: [
