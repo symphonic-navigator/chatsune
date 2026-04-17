@@ -13,7 +13,7 @@ import { MemoriesTab } from './MemoriesTab'
 import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
-import { sttRegistry } from '../../../features/voice/engines/registry'
+import { sttRegistry, ttsRegistry } from '../../../features/voice/engines/registry'
 import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 import { useSecretsStore } from '../../../features/integrations/secretsStore'
 
@@ -119,7 +119,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   // Subscribe so we re-render on any secrets-store change, ensuring
   // sttRegistry.active()?.isReady() is re-evaluated after secrets hydrate.
   useSecretsStore((s) => s.secrets)
-  const voiceEnabled = !!sttRegistry.active()?.isReady()
+  const voiceEnabled = !!(sttRegistry.active()?.isReady() || ttsRegistry.active()?.isReady())
 
   // While a deletion report is showing, the modal stays mounted so the
   // user can read the report; navigation away happens only after they
