@@ -7,10 +7,12 @@ import type {
   TranscriptionResponse,
   SpeechRequest,
   VoiceCreateRequest,
-  VoiceListResponse,
   VoiceResponse,
 } from '@mistralai/mistralai/models/components'
-import type { SpeechResponse } from '@mistralai/mistralai/models/operations'
+import type {
+  SpeechResponse,
+  ListVoicesV1AudioVoicesGetRequest,
+} from '@mistralai/mistralai/models/operations'
 
 function client(apiKey: string): Mistral {
   return new Mistral({ apiKey })
@@ -43,7 +45,9 @@ export interface SynthesiseParams {
 
 export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): Promise<Blob> {
   const request: SpeechRequest = {
-    model: 'voxtral-tts-latest',
+    // SDK README confirms voxtral-mini-latest as the TTS model identifier
+    // (same name as the STT model — Voxtral is a unified speech model)
+    model: 'voxtral-mini-latest',
     input: text,
     voiceId,
     stream: false,
@@ -66,8 +70,20 @@ function mapVoice(raw: VoiceResponse): MistralVoice {
 }
 
 export async function listVoices(apiKey: string): Promise<MistralVoice[]> {
-  const result: VoiceListResponse = await client(apiKey).audio.voices.list()
-  return result.items.map(mapVoice)
+  const PAGE_SIZE = 100
+  const voices: MistralVoice[] = []
+  let offset = 0
+
+  // The API defaults to 10 per page; paginate with offset/limit until all pages consumed
+  while (true) {
+    const request: ListVoicesV1AudioVoicesGetRequest = { limit: PAGE_SIZE, offset }
+    const page = await client(apiKey).audio.voices.list(request)
+    voices.push(...page.items.map(mapVoice))
+    if (page.page >= page.totalPages) break
+    offset += PAGE_SIZE
+  }
+
+  return voices
 }
 
 export async function cloneVoice({ apiKey, audio, name }: {
