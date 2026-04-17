@@ -48,6 +48,7 @@ export function ExtraConfigComponent() {
 
   const refresh = useCallback(async () => {
     if (!apiKey) return
+    setError(null)
     try {
       setVoices(await listVoices(apiKey))
       await refreshMistralVoices(apiKey)
@@ -78,6 +79,7 @@ export function ExtraConfigComponent() {
   const handleRemove = async (voiceId: string) => {
     if (!apiKey) return
     if (!confirm('Delete this cloned voice?')) return
+    setError(null)
     try {
       await deleteVoice(apiKey, voiceId)
       await refresh()
@@ -88,6 +90,7 @@ export function ExtraConfigComponent() {
   }
 
   const startRecording = async () => {
+    setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mr = new MediaRecorder(stream)

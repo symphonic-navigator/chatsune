@@ -20,7 +20,7 @@ const DEFAULT_DURATIONS: Record<AppNotification["level"], number | null> = {
   success: 4000,
   info: 4000,
   warning: 6000,
-  error: null,
+  error: 10000,
 }
 
 interface ToastProps {
