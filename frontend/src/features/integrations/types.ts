@@ -10,10 +10,13 @@ export interface Option {
 export interface IntegrationConfigField {
   key: string
   label: string
-  field_type: 'text' | 'number' | 'boolean'
+  field_type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'textarea'
   placeholder: string
   required: boolean
   description: string
+  secret?: boolean
+  options_source?: 'plugin'
+  options?: Array<{ value: string; label: string }>
 }
 
 /** Mirrors IntegrationDefinitionDto from the backend. */
