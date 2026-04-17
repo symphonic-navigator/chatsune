@@ -663,16 +663,23 @@ export function ChatView({ persona }: ChatViewProps) {
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
       if (!lastAssistant || !lastAssistant.content) return
 
-      const roleplayMode = !!persona?.voice_config?.roleplay_mode
+      const narratorMode = persona?.voice_config?.narrator_mode ?? 'off'
+      const ttsDefn = intDefinitions.find((d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled)
+      const narratorVoiceId = ttsDefn
+        ? ((persona?.integration_configs?.[ttsDefn.id]?.narrator_voice_id as string | null | undefined) ?? null)
+        : null
+      const narratorVoice = narratorVoiceId
+        ? (tts?.voices.find((v) => v.id === narratorVoiceId) ?? voice)
+        : voice
 
-      void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, roleplayMode)
+      void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, narratorVoice, narratorVoiceId, narratorMode)
     })()
   }, [isStreaming, persona, intDefinitions, intConfigs])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
     // Cancel any active Read Aloud (stop playback + discard pending synthesis)
-    setActiveReader(null)
+    setActiveReader(null, 'idle')
     audioPlayback.stopAll()
     voicePipeline.startRecording('push-to-talk')
   }, [])
@@ -690,7 +697,7 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
-      setActiveReader(null)
+      setActiveReader(null, 'idle')
       audioPlayback.stopAll()
       voicePipeline.startRecording('continuous')
     }
