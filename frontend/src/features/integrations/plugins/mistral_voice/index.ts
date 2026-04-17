@@ -1,7 +1,7 @@
 import type { IntegrationPlugin, Option } from '../../types'
 import { sttRegistry, ttsRegistry } from '../../../voice/engines/registry'
 import { MistralSTTEngine, MistralTTSEngine } from './engines'
-import { mistralVoices, refreshMistralVoices } from './voices'
+import { mistralVoices, refreshMistralVoices, invalidateVoicesCache } from './voices'
 import { useSecretsStore } from '../../secretsStore'
 import { registerPlugin } from '../../registry'
 import { ExtraConfigComponent } from './ExtraConfigComponent'
@@ -33,6 +33,9 @@ const mistralVoicePlugin: IntegrationPlugin = {
     }
     sttInstance = null
     ttsInstance = null
+    // Bump generation and clear list so any in-flight refresh from a prior
+    // activate becomes a no-op and the stale voices don't linger.
+    invalidateVoicesCache()
   },
 
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
