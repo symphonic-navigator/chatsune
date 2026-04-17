@@ -3,6 +3,7 @@ import type { SpeechSegment } from '../types'
 interface QueueEntry { audio: Float32Array; segment: SpeechSegment }
 
 export interface AudioPlaybackCallbacks {
+  gapMs?: number
   onSegmentStart: (segment: SpeechSegment) => void
   onFinished: () => void
 }
@@ -13,16 +14,30 @@ class AudioPlaybackImpl {
   private currentSource: AudioBufferSourceNode | null = null
   private callbacks: AudioPlaybackCallbacks | null = null
   private playing = false
+  private streamClosed = false
+  private pendingGapTimer: ReturnType<typeof setTimeout> | null = null
 
   setCallbacks(callbacks: AudioPlaybackCallbacks): void { this.callbacks = callbacks }
 
   enqueue(audio: Float32Array, segment: SpeechSegment): void {
     this.queue.push({ audio, segment })
-    if (!this.playing) this.playNext()
+    if (!this.playing && this.pendingGapTimer === null) this.playNext()
+  }
+
+  closeStream(): void {
+    this.streamClosed = true
+    if (!this.playing && this.queue.length === 0 && this.pendingGapTimer === null) {
+      this.callbacks?.onFinished()
+    }
   }
 
   stopAll(): void {
     this.queue = []
+    this.streamClosed = false
+    if (this.pendingGapTimer !== null) {
+      clearTimeout(this.pendingGapTimer)
+      this.pendingGapTimer = null
+    }
     if (this.currentSource) {
       this.currentSource.onended = null // prevent stale onended → playNext → onFinished
       try { this.currentSource.stop() } catch { /* already stopped */ }
@@ -33,9 +48,21 @@ class AudioPlaybackImpl {
 
   skipCurrent(): void {
     if (this.currentSource) {
-      // Keep onended intact — it calls playNext for the next segment
+      // Keep onended intact — it schedules the next segment.
       try { this.currentSource.stop() } catch { /* already stopped */ }
       this.currentSource = null
+    }
+  }
+
+  private scheduleNext(): void {
+    const gap = this.callbacks?.gapMs ?? 0
+    if (gap > 0) {
+      this.pendingGapTimer = setTimeout(() => {
+        this.pendingGapTimer = null
+        this.playNext()
+      }, gap)
+    } else {
+      this.playNext()
     }
   }
 
@@ -43,7 +70,7 @@ class AudioPlaybackImpl {
     const entry = this.queue.shift()
     if (!entry) {
       this.playing = false
-      this.callbacks?.onFinished()
+      if (this.streamClosed) this.callbacks?.onFinished()
       return
     }
 
@@ -54,8 +81,6 @@ class AudioPlaybackImpl {
       if (!this.ctx || this.ctx.state === 'closed') {
         this.ctx = new AudioContext({ sampleRate: 24_000 })
       }
-
-      // Resume suspended AudioContext (browser policy: needs user gesture)
       if (this.ctx.state === 'suspended') {
         await this.ctx.resume()
       }
@@ -70,15 +95,14 @@ class AudioPlaybackImpl {
 
       source.onended = () => {
         this.currentSource = null
-        this.playNext()
+        this.scheduleNext()
       }
 
       source.start()
     } catch (err) {
       console.error('[AudioPlayback] Failed to play segment:', err)
       this.currentSource = null
-      // Try next segment instead of getting permanently stuck
-      this.playNext()
+      this.scheduleNext()
     }
   }
 
