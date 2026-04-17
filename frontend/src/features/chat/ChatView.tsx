@@ -704,22 +704,22 @@ export function ChatView({ persona }: ChatViewProps) {
     voicePipeline.stopPlayback()
   }, [])
 
-  const handleToggleContinuous = useCallback(() => {
+  const handleVoiceToggle = useCallback(() => {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
       setActiveReader(null, 'idle')
       audioPlayback.stopAll()
-      voicePipeline.startRecording('continuous')
+      voicePipeline.startRecording('push-to-talk')
     }
   }, [pipelineState.phase])
 
-  // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle continuous
+  // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({
     enabled: voiceEnabled,
     onHoldStart: handleMicPress,
     onHoldEnd: handleMicRelease,
-    onTap: handleToggleContinuous,
+    onTap: handleVoiceToggle,
   })
 
   if (connectionCount === 0) {
