@@ -45,9 +45,9 @@ export interface SynthesiseParams {
 
 export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): Promise<Blob> {
   const request: SpeechRequest = {
-    // SDK README confirms voxtral-mini-latest as the TTS model identifier
-    // (same name as the STT model — Voxtral is a unified speech model)
-    model: 'voxtral-mini-latest',
+    // STT and TTS use different Voxtral snapshots. STT uses voxtral-mini-latest;
+    // TTS is a separate model identifier — the SDK README's example was wrong.
+    model: 'voxtral-mini-tts-2603',
     input: text,
     voiceId,
     stream: false,
