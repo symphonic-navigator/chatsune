@@ -148,6 +148,8 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # Integrations — secrets hydration (ephemeral, target user only)
     "integration.secrets.hydrated": ([], True),
     "integration.secrets.cleared": ([], True),
+    # Integrations — config changes (target user only)
+    "integration.config.updated": ([], True),
     # Debug — admins only, no target user
     Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
     Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
