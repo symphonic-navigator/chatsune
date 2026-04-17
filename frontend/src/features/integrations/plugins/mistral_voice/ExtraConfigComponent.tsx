@@ -90,7 +90,7 @@ export function ExtraConfigComponent() {
     <section className="mt-4 space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
       <h4 className="text-sm font-medium">Your cloned voices</h4>
       {voices.length === 0 && <p className="text-xs text-white/50">None yet.</p>}
-      <ul className="space-y-1">
+      <ul className="space-y-1 max-h-48 overflow-y-auto pr-1">
         {voices.map((v) => (
           <li key={v.id} className="flex items-center justify-between text-sm">
             <span>{v.name}</span>
