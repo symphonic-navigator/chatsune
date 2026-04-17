@@ -105,7 +105,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
-  const voiceInputMode = useVoiceSettingsStore((s) => s.inputMode)
+  const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
   const voiceEnabled = !!sttRegistry.active()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
@@ -608,22 +608,21 @@ export function ChatView({ persona }: ChatViewProps) {
       onStateChange: setPipelineState,
       onTranscription: (text) => {
         setTranscription(text)
-        if (voiceInputMode === 'continuous' && text.trim()) {
-          // Continuous mode: briefly show, then auto-send
+        if (autoSendTranscription && text.trim()) {
+          // Auto-send mode: briefly show the transcription, then send.
           setTimeout(() => {
             handleSend(text)
             setTranscription('')
           }, 800)
         } else {
-          // PTT mode: put text in input field for editing before send
+          // Default (push-to-talk review) mode: put text in input for editing before send.
           chatInputRef.current?.setText(text)
-          // Clear overlay after a moment
           setTimeout(() => setTranscription(''), 1500)
         }
       },
     })
     return () => voicePipeline.dispose()
-  }, [voiceInputMode, setPipelineState])
+  }, [autoSendTranscription, setPipelineState])
 
   // Auto-read: when streaming ends, speak the last assistant reply if the
   // persona has auto_read enabled, a TTS engine is ready, and a voice_id is
@@ -1047,7 +1046,7 @@ export function ChatView({ persona }: ChatViewProps) {
             />
           )}
 
-          {transcription && <TranscriptionOverlay text={transcription} mode={voiceInputMode} />}
+          {transcription && <TranscriptionOverlay text={transcription} autoSend={autoSendTranscription} />}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
