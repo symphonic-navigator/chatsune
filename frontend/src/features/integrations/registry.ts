@@ -17,3 +17,8 @@ export function getPlugin(id: string): IntegrationPlugin | undefined {
 export function getAllPlugins(): Map<string, IntegrationPlugin> {
   return plugins
 }
+
+/** FOR TESTING ONLY — clears all registered plugins. Do not call in production. */
+export function _resetPluginRegistry(): void {
+  plugins.clear()
+}

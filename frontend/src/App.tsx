@@ -6,6 +6,7 @@ import { useBootstrap } from "./core/hooks/useBootstrap"
 import BackendUnavailablePage from "./app/pages/BackendUnavailablePage"
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import { registerSecretsEventHandler } from "./features/integrations/secretsEventHandler"
+import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
@@ -77,9 +78,11 @@ function AppRoutes() {
 
     const unregisterClientTool = registerClientToolHandler()
     const unregisterSecrets = registerSecretsEventHandler()
+    const cleanupPluginLifecycle = initPluginLifecycle()
     return () => {
       unregisterClientTool()
       unregisterSecrets()
+      cleanupPluginLifecycle()
     }
   }, [isAuthenticated])
 
