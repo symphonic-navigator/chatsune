@@ -23,8 +23,14 @@ const mistralVoicePlugin: IntegrationPlugin = {
   },
 
   onDeactivate(): void {
-    // EngineRegistry has no unregister method — engines remain listed but
-    // the caller is expected to setActive to a different engine. Nothing to do here.
+    // If the active engine belongs to this plugin, clear it so active()
+    // doesn't return a stale/disposed instance after deactivation.
+    if (sttInstance && sttRegistry.active()?.id === sttInstance.id) {
+      sttRegistry.clearActive()
+    }
+    if (ttsInstance && ttsRegistry.active()?.id === ttsInstance.id) {
+      ttsRegistry.clearActive()
+    }
     sttInstance = null
     ttsInstance = null
   },

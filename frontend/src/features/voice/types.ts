@@ -19,7 +19,7 @@ export interface TTSEngine {
 }
 export interface EngineRegistry<T extends STTEngine | TTSEngine> {
   register(engine: T): void; get(id: string): T | undefined; list(): T[]
-  active(): T | undefined; setActive(id: string): Promise<void>
+  active(): T | undefined; setActive(id: string): Promise<void>; clearActive(): void
 }
 export interface SpeechSegment { type: 'voice' | 'narration'; text: string }
 export type PipelinePhase = 'idle' | 'listening' | 'recording' | 'transcribing' | 'waiting-for-llm' | 'speaking'

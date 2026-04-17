@@ -4,10 +4,20 @@ class EngineRegistryImpl<T extends STTEngine | TTSEngine> implements EngineRegis
   private engines = new Map<string, T>()
   private activeEngine: T | undefined = undefined
 
-  register(engine: T): void { this.engines.set(engine.id, engine) }
+  register(engine: T): void {
+    this.engines.set(engine.id, engine)
+    // Auto-promote the first registered engine so active() is never
+    // undefined when at least one engine exists.
+    if (!this.activeEngine) {
+      this.activeEngine = engine
+    }
+  }
+
   get(id: string): T | undefined { return this.engines.get(id) }
   list(): T[] { return Array.from(this.engines.values()) }
   active(): T | undefined { return this.activeEngine }
+
+  clearActive(): void { this.activeEngine = undefined }
 
   async setActive(id: string): Promise<void> {
     const engine = this.engines.get(id)
