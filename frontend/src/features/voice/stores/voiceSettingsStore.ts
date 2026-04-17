@@ -1,35 +1,19 @@
 import { create } from 'zustand'
-import type { VoiceSettings } from '../types'
+import { persist } from 'zustand/middleware'
 
-const STORAGE_KEY = 'chatsune_voice_settings'
-
-const DEFAULT_SETTINGS: VoiceSettings = { enabled: false, inputMode: 'push-to-talk' }
-
-export function loadVoiceSettings(): VoiceSettings {
-  try {
-    if (typeof localStorage === 'undefined') return { ...DEFAULT_SETTINGS }
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_SETTINGS }
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
-  } catch {
-    return { ...DEFAULT_SETTINGS }
-  }
-}
-
-export function saveVoiceSettings(settings: VoiceSettings): void {
-  if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-}
+type InputMode = 'push-to-talk' | 'continuous'
 
 interface VoiceSettingsState {
-  settings: VoiceSettings
-  update: (patch: Partial<VoiceSettings>) => void
+  inputMode: InputMode
+  setInputMode(mode: InputMode): void
 }
 
-export const useVoiceSettings = create<VoiceSettingsState>((set, get) => ({
-  settings: loadVoiceSettings(),
-  update: (patch) => {
-    const next = { ...get().settings, ...patch }
-    set({ settings: next })
-    saveVoiceSettings(next)
-  },
-}))
+export const useVoiceSettingsStore = create<VoiceSettingsState>()(
+  persist(
+    (set) => ({
+      inputMode: 'push-to-talk',
+      setInputMode: (inputMode) => set({ inputMode }),
+    }),
+    { name: 'voice-settings' },
+  ),
+)

@@ -13,7 +13,7 @@ import { MemoriesTab } from './MemoriesTab'
 import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
-import { useVoiceSettings } from '../../../features/voice/stores/voiceSettingsStore'
+import { sttRegistry } from '../../../features/voice/engines/registry'
 import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 
 export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations' | 'voice'
@@ -115,7 +115,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   }, [onClose])
 
   const addNotification = useNotificationStore((s) => s.addNotification)
-  const voiceEnabled = useVoiceSettings((s) => s.settings.enabled)
+  const voiceEnabled = !!sttRegistry.active()?.isReady()
 
   // While a deletion report is showing, the modal stays mounted so the
   // user can read the report; navigation away happens only after they

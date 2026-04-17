@@ -39,7 +39,8 @@ import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 import { useViewport } from '../../core/hooks/useViewport'
-import { useVoiceSettings } from '../voice/stores/voiceSettingsStore'
+import { useVoiceSettingsStore } from '../voice/stores/voiceSettingsStore'
+import { sttRegistry } from '../voice/engines/registry'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
@@ -100,9 +101,9 @@ export function ChatView({ persona }: ChatViewProps) {
   // Mobile-only expandable tray for Tool-Toggles (< lg:). Desktop renders them inline.
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
 
-  // Voice integration state
-  const voiceEnabled = useVoiceSettings((s) => s.settings.enabled)
-  const voiceInputMode = useVoiceSettings((s) => s.settings.inputMode)
+  // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
+  const voiceInputMode = useVoiceSettingsStore((s) => s.inputMode)
+  const voiceEnabled = !!sttRegistry.active()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
   const [transcription, setTranscription] = useState('')
@@ -598,9 +599,8 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [effectiveSessionId, isIncognito, personaId])
 
-  // Voice pipeline callbacks
+  // Voice pipeline callbacks — always registered; the pipeline itself guards against missing engines
   useEffect(() => {
-    if (!voiceEnabled) return
     voicePipeline.setCallbacks({
       onStateChange: setPipelineState,
       onTranscription: (text) => {
@@ -620,7 +620,7 @@ export function ChatView({ persona }: ChatViewProps) {
       },
     })
     return () => voicePipeline.dispose()
-  }, [voiceEnabled, voiceInputMode, setPipelineState])
+  }, [voiceInputMode, setPipelineState])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {

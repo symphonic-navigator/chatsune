@@ -24,6 +24,6 @@ export interface EngineRegistry<T extends STTEngine | TTSEngine> {
 export interface SpeechSegment { type: 'voice' | 'narration'; text: string }
 export type PipelinePhase = 'idle' | 'listening' | 'recording' | 'transcribing' | 'waiting-for-llm' | 'speaking'
 export interface PipelineState { phase: PipelinePhase; segment?: number; total?: number }
-export interface VoiceSettings { enabled: boolean; inputMode: 'push-to-talk' | 'continuous' }
+export interface VoiceSettings { inputMode: 'push-to-talk' | 'continuous' }
 export interface VoiceCapabilities { getUserMedia: boolean; webgpu: boolean; wasm: boolean; cacheStorage: boolean }
 export interface ModelInfo { id: string; label: string; size: number; downloaded: boolean }
