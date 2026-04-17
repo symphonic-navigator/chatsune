@@ -27,3 +27,4 @@ export interface PipelineState { phase: PipelinePhase; segment?: number; total?:
 export interface VoiceSettings { inputMode: 'push-to-talk' | 'continuous' }
 export interface VoiceCapabilities { getUserMedia: boolean; webgpu: boolean; wasm: boolean; cacheStorage: boolean }
 export interface ModelInfo { id: string; label: string; size: number; downloaded: boolean }
+export type NarratorMode = 'off' | 'play' | 'narrate'
