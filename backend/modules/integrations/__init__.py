@@ -4,6 +4,8 @@ Public API: import only from this file.
 """
 
 import logging
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from backend.modules.integrations._handlers import router
 from backend.modules.integrations._registry import (
@@ -12,6 +14,11 @@ from backend.modules.integrations._registry import (
 )
 from backend.modules.integrations._repository import IntegrationRepository
 from shared.dtos.inference import ToolDefinition
+from shared.events.integrations import (
+    IntegrationSecretsClearedEvent,
+    IntegrationSecretsHydratedEvent,
+)
+from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
 
@@ -71,6 +78,46 @@ async def get_integration_prompt_extensions(
     return "\n\n".join(parts) if parts else None
 
 
+async def emit_integration_secrets_for_user(
+    *,
+    user_id: str,
+    repo: IntegrationRepository,
+    event_bus,
+) -> None:
+    """Emit one hydrated event per enabled integration that has secret fields."""
+    for integration_id, secrets in await repo.list_enabled_with_secrets(user_id):
+        event = IntegrationSecretsHydratedEvent(
+            integration_id=integration_id,
+            secrets=secrets,
+            correlation_id=str(uuid4()),
+            timestamp=datetime.now(timezone.utc),
+        )
+        await event_bus.publish(
+            topic=Topics.INTEGRATION_SECRETS_HYDRATED,
+            event=event,
+            target_user_ids=[user_id],
+        )
+
+
+async def emit_integration_secrets_cleared(
+    *,
+    user_id: str,
+    integration_id: str,
+    event_bus,
+) -> None:
+    """Emit a secrets-cleared event so the frontend drops cached secrets."""
+    event = IntegrationSecretsClearedEvent(
+        integration_id=integration_id,
+        correlation_id=str(uuid4()),
+        timestamp=datetime.now(timezone.utc),
+    )
+    await event_bus.publish(
+        topic=Topics.INTEGRATION_SECRETS_CLEARED,
+        event=event,
+        target_user_ids=[user_id],
+    )
+
+
 async def delete_all_for_user(user_id: str) -> int:
     """Delete every integration config owned by ``user_id``.
 
@@ -94,5 +141,7 @@ __all__ = [
     "get_enabled_integration_ids",
     "get_integration_tools",
     "get_integration_prompt_extensions",
+    "emit_integration_secrets_for_user",
+    "emit_integration_secrets_cleared",
     "delete_all_for_user",
 ]
