@@ -65,6 +65,59 @@ function cachePut(id: string, entry: CachedAudio): void {
   }
 }
 
+// ── Imperative trigger (used by auto-read) ──
+
+/**
+ * Trigger read-aloud for a message programmatically.
+ * Callers must pre-validate TTS readiness and voice availability.
+ * Uses the same LRU cache as the button so a manual click after
+ * an auto-read hit gets instant playback.
+ */
+export async function triggerReadAloud(
+  messageId: string,
+  content: string,
+  voice: VoicePreset,
+  roleplayMode: boolean,
+): Promise<void> {
+  const tts = ttsRegistry.active()
+  if (!tts?.isReady()) return
+
+  audioPlayback.stopAll()
+  setActiveReader(messageId)
+  const genKey = `auto-${Date.now()}`
+
+  audioPlayback.setCallbacks({
+    onSegmentStart: () => {},
+    onFinished: () => { setActiveReader(null) },
+  })
+
+  const cached = cacheGet(messageId)
+  if (cached) {
+    for (const { audio, segment } of cached.segments) {
+      audioPlayback.enqueue(audio, segment)
+    }
+    return
+  }
+
+  const parsed = parseForSpeech(content, roleplayMode)
+  if (parsed.length === 0) { setActiveReader(null); return }
+
+  try {
+    const results: CachedAudio['segments'] = []
+    for (const segment of parsed) {
+      if (activeMessageId !== messageId) return // cancelled by a newer reader
+      const audio = await tts.synthesise(segment.text, voice)
+      if (activeMessageId !== messageId) return
+      results.push({ audio, segment })
+      audioPlayback.enqueue(audio, segment)
+    }
+    cachePut(messageId, { segments: results })
+  } catch (err) {
+    console.error('[AutoRead] TTS synthesis failed:', err, genKey)
+    setActiveReader(null)
+  }
+}
+
 // ── Component ──
 
 export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, roleplayMode = false }: ReadAloudButtonProps) {

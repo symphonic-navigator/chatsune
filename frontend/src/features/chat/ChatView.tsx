@@ -45,8 +45,9 @@ import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
-import { setActiveReader } from '../voice/components/ReadAloudButton'
+import { setActiveReader, triggerReadAloud } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
+import { ttsRegistry } from '../voice/engines/registry'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -621,6 +622,43 @@ export function ChatView({ persona }: ChatViewProps) {
     })
     return () => voicePipeline.dispose()
   }, [voiceInputMode, setPipelineState])
+
+  // Auto-read: when streaming ends, speak the last assistant reply if the
+  // persona has auto_read enabled, a TTS engine is ready, and a voice_id is
+  // configured for the active TTS integration.
+  const prevIsStreamingRef = useRef(false)
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current
+    prevIsStreamingRef.current = isStreaming
+
+    if (!wasStreaming || isStreaming) return // only fire on streaming → done transition
+
+    const autoRead = !!persona?.voice_config?.auto_read
+    if (!autoRead) return
+
+    const tts = ttsRegistry.active()
+    const ttsReady = tts?.isReady() === true
+    if (!ttsReady) return
+
+    const activeTTS = intDefinitions.find(
+      (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,
+    )
+    if (!activeTTS) return
+
+    const voiceId = persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
+    if (!voiceId) return
+
+    const voice = tts!.voices.find((v) => v.id === voiceId)
+    if (!voice) return
+
+    const msgs = useChatStore.getState().messages
+    const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+    if (!lastAssistant || !lastAssistant.content) return
+
+    const roleplayMode = !!persona?.voice_config?.roleplay_mode
+
+    void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, roleplayMode)
+  }, [isStreaming, persona, intDefinitions, intConfigs])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
