@@ -23,7 +23,7 @@ const OPTION_STYLE: React.CSSProperties = {
 type FieldDef = {
   key: string
   label: string
-  field_type: 'text' | 'password' | 'number' | 'select' | 'textarea'
+  field_type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'textarea'
   required?: boolean
   description?: string
   placeholder?: string
@@ -152,6 +152,23 @@ function FieldRow({
         {secretSet && !value && (
           <p className={SECRET_HINT}>Currently configured. Type a new value to replace.</p>
         )}
+        {field.description && <p className={DESCRIPTION}>{field.description}</p>}
+      </div>
+    )
+  }
+
+  if (field.field_type === 'boolean') {
+    return (
+      <div>
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={value === 'true'}
+            onChange={(e) => onChange(e.target.checked ? 'true' : 'false')}
+            className="w-4 h-4 accent-gold rounded"
+          />
+          <span className="text-[13px] font-mono text-white/75">{field.label}{field.required ? ' *' : ''}</span>
+        </label>
         {field.description && <p className={DESCRIPTION}>{field.description}</p>}
       </div>
     )

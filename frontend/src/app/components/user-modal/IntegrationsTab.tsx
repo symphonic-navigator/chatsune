@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useIntegrationsStore } from '../../../features/integrations/store'
 import { getPlugin } from '../../../features/integrations/registry'
+import { GenericConfigForm } from '../../../features/integrations/components/GenericConfigForm'
 import type { IntegrationDefinition } from '../../../features/integrations/types'
 
 // Ensure plugins are registered
@@ -15,6 +16,7 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
   const userConfig = config?.config ?? {}
   const health = healthStatus[definition.id] ?? 'unknown'
 
+  // localConfig is only used by the full-replacement ConfigComponent path (e.g. Lovense).
   const [localConfig, setLocalConfig] = useState<Record<string, unknown>>(userConfig)
   const [saving, setSaving] = useState(false)
 
@@ -50,15 +52,17 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
     const plugin = getPlugin(definition.id)
     if (!plugin?.healthCheck) return
 
+    const configSnapshot = config?.config ?? {}
     let cancelled = false
-    plugin.healthCheck(localConfig).then((status) => {
+    plugin.healthCheck(configSnapshot).then((status) => {
       if (!cancelled) setHealth(definition.id, status)
     })
     return () => { cancelled = true }
-  }, [enabled, definition.id, localConfig, setHealth])
+  }, [enabled, definition.id, config, setHealth])
 
   const plugin = getPlugin(definition.id)
   const ConfigUI = plugin?.ConfigComponent
+  const ExtraUI = plugin?.ExtraConfigComponent
 
   const configDirty = JSON.stringify(localConfig) !== JSON.stringify(userConfig)
 
@@ -98,19 +102,41 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
       <p className="text-[11px] text-white/40 font-mono leading-relaxed mb-3">{definition.description}</p>
 
       {/* Config UI (only when enabled) */}
-      {enabled && ConfigUI && (
+      {enabled && (
         <div className="mt-3 pt-3 border-t border-white/6">
           <label className={LABEL}>Configuration</label>
-          <ConfigUI config={localConfig} onChange={setLocalConfig} />
-          {configDirty && (
-            <button
-              type="button"
-              onClick={handleSaveConfig}
-              disabled={saving}
-              className="mt-3 px-4 py-1.5 rounded-lg font-mono text-[11px] uppercase tracking-wider border border-gold/60 bg-gold/12 text-gold hover:bg-gold/20 transition-all"
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+          {ConfigUI ? (
+            // Full-replacement custom config (e.g. Lovense pairing flow)
+            <>
+              <ConfigUI config={localConfig} onChange={setLocalConfig} />
+              {configDirty && (
+                <button
+                  type="button"
+                  onClick={handleSaveConfig}
+                  disabled={saving}
+                  className="mt-3 px-4 py-1.5 rounded-lg font-mono text-[11px] uppercase tracking-wider border border-gold/60 bg-gold/12 text-gold hover:bg-gold/20 transition-all"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              )}
+            </>
+          ) : (
+            // Generic config form driven by the integration's config_fields
+            <>
+              {definition.config_fields.length > 0 ? (
+                <GenericConfigForm
+                  fields={definition.config_fields}
+                  initialValues={userConfig}
+                  onSubmit={async (values) => {
+                    await upsertConfig(definition.id, enabled, values)
+                  }}
+                  optionsProvider={(fieldKey) => plugin?.getPersonaConfigOptions?.(fieldKey) ?? []}
+                />
+              ) : (
+                <p className="text-[11px] text-white/30 font-mono">No configuration required.</p>
+              )}
+              {ExtraUI && <ExtraUI />}
+            </>
           )}
         </div>
       )}
