@@ -48,6 +48,8 @@ import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
 import { setActiveReader, triggerReadAloud } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 import { ttsRegistry } from '../voice/engines/registry'
+import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
+import { useSecretsStore } from '../integrations/secretsStore'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -648,16 +650,23 @@ export function ChatView({ persona }: ChatViewProps) {
     const voiceId = persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
     if (!voiceId) return
 
-    const voice = tts!.voices.find((v) => v.id === voiceId)
-    if (!voice) return
+    void (async () => {
+      // If the Mistral engine's voice list hasn't loaded yet, wait for it.
+      if (tts!.voices.length === 0) {
+        const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
+        if (apiKey) await refreshMistralVoices(apiKey)
+      }
+      const voice = tts!.voices.find((v) => v.id === voiceId)
+      if (!voice) return
 
-    const msgs = useChatStore.getState().messages
-    const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
-    if (!lastAssistant || !lastAssistant.content) return
+      const msgs = useChatStore.getState().messages
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (!lastAssistant || !lastAssistant.content) return
 
-    const roleplayMode = !!persona?.voice_config?.roleplay_mode
+      const roleplayMode = !!persona?.voice_config?.roleplay_mode
 
-    void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, roleplayMode)
+      void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, roleplayMode)
+    })()
   }, [isStreaming, persona, intDefinitions, intConfigs])
 
   // Mic handlers
