@@ -221,13 +221,6 @@ class EventBus:
         # Coerce TopicDefinition to string for consistent dict/set lookups
         topic_str = str(topic)
 
-        # TEMP TRACING — remove after hydrate-event bug is found
-        if topic_str.startswith("integration.secrets"):
-            _log.info(
-                "[TRACE] EventBus.publish called topic=%r target_user_ids=%r",
-                topic_str, target_user_ids,
-            )
-
         now = datetime.now(timezone.utc)
         envelope = BaseEvent(
             type=topic_str,
@@ -270,13 +263,6 @@ class EventBus:
             # Redis stream IDs have the form "<ms>-<seq>"; BaseEvent.sequence is str.
             envelope.sequence = stream_id
             # NOTE: periodic xtrim runs in start_periodic_trim() — no inline trim here.
-
-        # TEMP TRACING — remove after hydrate-event bug is found
-        if topic_str.startswith("integration.secrets"):
-            _log.info(
-                "[TRACE] EventBus calling _fan_out topic=%r target_user_ids=%r",
-                topic_str, target_user_ids or [],
-            )
 
         await self._fan_out(
             topic_str,
@@ -335,13 +321,6 @@ class EventBus:
 
         roles, send_to_targets = _FANOUT[topic]
 
-        # TEMP TRACING — remove after hydrate-event bug is found
-        if topic.startswith("integration.secrets"):
-            _log.info(
-                "[TRACE] _fan_out routing rule topic=%r roles=%r send_to_targets=%r target_user_ids=%r",
-                topic, roles, send_to_targets, target_user_ids,
-            )
-
         # BD-031: broadcasts to ALL connected users with matching roles —
         # no resource-level filtering (see comment on _FANOUT).
         await self._manager.broadcast_to_roles(roles, event_dict)
@@ -356,29 +335,9 @@ class EventBus:
                 target_user_ids[0], target_connection_id, event_dict,
             )
         elif send_to_targets and not target_user_ids:
-            # TEMP TRACING — remove after hydrate-event bug is found
-            if topic.startswith("integration.secrets"):
-                _log.warning(
-                    "[TRACE] send_to_targets=True but target_user_ids is EMPTY — event dropped topic=%r",
-                    topic,
-                )
+            pass
         elif send_to_targets and target_user_ids:
-            # TEMP TRACING — remove after hydrate-event bug is found
-            if topic.startswith("integration.secrets"):
-                for uid in target_user_ids:
-                    conn_ids = self._manager.connection_ids_for_user(uid)
-                    _log.info(
-                        "[TRACE] delivering topic=%r user=%r active_connections=%r",
-                        topic, uid, conn_ids,
-                    )
             await self._manager.send_to_users(target_user_ids, event_dict)
-            # TEMP TRACING — remove after hydrate-event bug is found
-            if topic.startswith("integration.secrets"):
-                payload_keys = list(event_dict.get("payload", {}).keys())
-                _log.info(
-                    "[TRACE] send_to_users completed topic=%r users=%r payload_keys=%r",
-                    topic, target_user_ids, payload_keys,
-                )
 
         # BD-020: sync cached role when an admin changes a user's role
         if topic == Topics.USER_UPDATED:

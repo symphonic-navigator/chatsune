@@ -37,15 +37,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
 
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
 
-  console.log('[PVC] definitionsCount =', definitions.length)
-  console.log('[PVC] configsKeys =', Object.keys(configs ?? {}))
-  console.log('[PVC] activeTTS.id =', activeTTS?.id)
-  console.log('[PVC] activeTTS.capabilities =', activeTTS?.capabilities)
-  console.log('[PVC] activeTTS.persona_config_fields =', JSON.stringify(activeTTS?.persona_config_fields))
-  console.log('[PVC] ttsPlugin.id =', ttsPlugin?.id)
-  console.log('[PVC] ttsPlugin.hasGetOptions =', typeof ttsPlugin?.getPersonaConfigOptions === 'function')
-  console.log('[PVC] ttsPlugin keys =', ttsPlugin ? Object.keys(ttsPlugin) : 'NO PLUGIN')
-
   // Subscribe to secrets so optionsProvider gets a new identity when secrets
   // are hydrated — this triggers SelectField's useEffect to re-fetch the list.
   const secrets = useSecretsStore((s) => s.secrets)
@@ -53,7 +44,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   const optionsProvider = useCallback(
     (fieldKey: string) =>
       ttsPlugin?.getPersonaConfigOptions?.(fieldKey) ?? Promise.resolve([]),
-    // secrets in deps forces re-identity when secrets are hydrated
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ttsPlugin, secrets],
   )

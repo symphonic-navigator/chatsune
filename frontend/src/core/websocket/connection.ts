@@ -73,10 +73,6 @@ export function connect() {
       }
 
       const event = data as BaseEvent
-      // TEMP TRACING — remove after hydrate-event bug is found
-      if (typeof event.type === 'string' && event.type.startsWith('integration.secrets')) {
-        console.log('[connection] integration.secrets frame received, about to emit:', event)
-      }
       if (event.sequence) {
         useEventStore.getState().setLastSequence(event.sequence)
       }

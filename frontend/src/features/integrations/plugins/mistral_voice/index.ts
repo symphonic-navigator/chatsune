@@ -36,21 +36,12 @@ const mistralVoicePlugin: IntegrationPlugin = {
   },
 
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
-    console.log('[mistral] getPersonaConfigOptions called with fieldKey=', fieldKey)
     if (fieldKey !== 'voice_id') return []
     const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-    console.log('[mistral] apiKey present?', !!apiKey, 'mistralVoices.current.length BEFORE refresh:', mistralVoices.current.length)
     if (apiKey) {
-      try {
-        await refreshMistralVoices(apiKey)
-        console.log('[mistral] after refresh, voices count:', mistralVoices.current.length, 'sample:', mistralVoices.current.slice(0, 3))
-      } catch (err) {
-        console.error('[mistral] refreshMistralVoices threw:', err)
-      }
+      await refreshMistralVoices(apiKey)
     }
-    const options = mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
-    console.log('[mistral] returning options count:', options.length)
-    return options
+    return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
   },
 }
 
