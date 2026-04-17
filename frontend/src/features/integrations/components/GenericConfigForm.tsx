@@ -42,6 +42,11 @@ interface Props {
   onSubmit(values: Record<string, string>): void | Promise<void>
   optionsProvider?: OptionsProvider
   submitLabel?: string
+  /**
+   * When true, the form auto-submits on every field change and does not
+   * render a submit button. Use for single-field config like a voice picker.
+   */
+  autoSubmit?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,6 +68,7 @@ export function GenericConfigForm({
   onSubmit,
   optionsProvider,
   submitLabel = 'Save',
+  autoSubmit = false,
 }: Props) {
   const [values, setValues] = useState<Record<string, string>>(() => {
     const seed: Record<string, string> = {}
@@ -73,6 +79,18 @@ export function GenericConfigForm({
     return seed
   })
   const [submitting, setSubmitting] = useState(false)
+
+  const submitLater = (nextValues: Record<string, string>) => {
+    if (!autoSubmit) return
+    const payload: Record<string, string> = {}
+    for (const f of fields) {
+      // Omit secret fields the user left blank (keep existing server-side value).
+      if (f.secret && nextValues[f.key] === '') continue
+      payload[f.key] = nextValues[f.key]
+    }
+    setSubmitting(true)
+    Promise.resolve(onSubmit(payload)).finally(() => setSubmitting(false))
+  }
 
   return (
     <form
@@ -98,16 +116,22 @@ export function GenericConfigForm({
           key={f.key}
           field={f}
           value={values[f.key]}
-          onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
+          onChange={(v) => {
+            const next = { ...values, [f.key]: v }
+            setValues(next)
+            submitLater(next)
+          }}
           secretSet={isSecretSet(initialValues[f.key])}
           optionsProvider={optionsProvider}
         />
       ))}
-      <div>
-        <button type="submit" disabled={submitting} className={SUBMIT_BASE}>
-          {submitting ? 'Saving…' : submitLabel}
-        </button>
-      </div>
+      {!autoSubmit && (
+        <div>
+          <button type="submit" disabled={submitting} className={SUBMIT_BASE}>
+            {submitting ? 'Saving…' : submitLabel}
+          </button>
+        </div>
+      )}
     </form>
   )
 }

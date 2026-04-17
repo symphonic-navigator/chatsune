@@ -191,6 +191,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             }}
             optionsProvider={optionsProvider}
             submitLabel="Save voice"
+            autoSubmit
           />
         )}
       </div>
