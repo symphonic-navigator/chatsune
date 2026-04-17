@@ -30,6 +30,8 @@ export interface IntegrationDefinition {
   has_tools: boolean
   has_response_tags: boolean
   has_prompt_extension: boolean
+  capabilities: string[]
+  persona_config_fields: IntegrationConfigField[]
 }
 
 /** Mirrors UserIntegrationConfigDto from the backend. */

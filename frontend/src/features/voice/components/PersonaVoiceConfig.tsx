@@ -1,9 +1,9 @@
 import { useCallback, useState } from 'react'
 import type { PersonaDto } from '../../../core/types/persona'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
-import { ttsRegistry } from '../engines/registry'
-import { audioPlayback } from '../infrastructure/audioPlayback'
-import type { VoicePreset } from '../types'
+import { useIntegrationsStore } from '../../integrations/store'
+import { getPlugin } from '../../integrations/registry'
+import { GenericConfigForm } from '../../integrations/components/GenericConfigForm'
 
 interface Props {
   persona: PersonaDto
@@ -12,173 +12,71 @@ interface Props {
 }
 
 const LABEL = 'block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 font-mono'
-const OPTION_STYLE: React.CSSProperties = {
-  background: '#0f0d16',
-  color: 'rgba(255,255,255,0.85)',
-}
+
+const TTS_PROVIDER = 'tts_provider'
 
 export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
-  const engine = ttsRegistry.active()
-  const voices: VoicePreset[] = engine?.voices ?? []
+  const definitions = useIntegrationsStore((s) => s.definitions)
+  const configs = useIntegrationsStore((s) => s.configs)
 
-  const [dialogueVoice, setDialogueVoice] = useState<string>(
-    persona.voice_config?.dialogue_voice ?? ''
-  )
-  const [narratorVoice, setNarratorVoice] = useState<string>(
-    persona.voice_config?.narrator_voice ?? ''
-  )
   const [autoRead, setAutoRead] = useState<boolean>(
-    persona.voice_config?.auto_read ?? false
+    persona.voice_config?.auto_read ?? false,
   )
   const [roleplayMode, setRoleplayMode] = useState<boolean>(
-    persona.voice_config?.roleplay_mode ?? false
+    persona.voice_config?.roleplay_mode ?? false,
   )
   const [saving, setSaving] = useState(false)
-  const [previewing, setPreviewing] = useState<'dialogue' | 'narrator' | null>(null)
 
-  const persist = useCallback(async (patch: Partial<{
-    dialogue_voice: string | null
-    narrator_voice: string | null
-    auto_read: boolean
-    roleplay_mode: boolean
-  }>) => {
-    setSaving(true)
-    try {
-      await onSave(persona.id, {
-        voice_config: {
-          dialogue_voice: dialogueVoice || null,
-          narrator_voice: narratorVoice || null,
-          auto_read: autoRead,
-          roleplay_mode: roleplayMode,
-          ...patch,
-        },
-      })
-    } finally {
-      setSaving(false)
-    }
-  }, [persona.id, onSave, dialogueVoice, narratorVoice, autoRead, roleplayMode])
+  // Find the first enabled TTS integration
+  const activeTTS = definitions.find(
+    (d) =>
+      d.capabilities?.includes(TTS_PROVIDER) &&
+      configs?.[d.id]?.enabled,
+  )
 
-  const handleDialogueVoiceChange = useCallback(async (value: string) => {
-    setDialogueVoice(value)
-    await persist({ dialogue_voice: value || null })
-  }, [persist])
+  const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
 
-  const handleNarratorVoiceChange = useCallback(async (value: string) => {
-    setNarratorVoice(value)
-    await persist({ narrator_voice: value || null })
-  }, [persist])
+  const persistVoiceConfig = useCallback(
+    async (patch: Partial<{ auto_read: boolean; roleplay_mode: boolean }>) => {
+      setSaving(true)
+      try {
+        await onSave(persona.id, {
+          voice_config: {
+            dialogue_voice: persona.voice_config?.dialogue_voice ?? null,
+            narrator_voice: persona.voice_config?.narrator_voice ?? null,
+            auto_read: autoRead,
+            roleplay_mode: roleplayMode,
+            ...patch,
+          },
+        })
+      } finally {
+        setSaving(false)
+      }
+    },
+    [persona.id, persona.voice_config, onSave, autoRead, roleplayMode],
+  )
 
-  const handleAutoReadChange = useCallback(async (value: boolean) => {
-    setAutoRead(value)
-    await persist({ auto_read: value })
-  }, [persist])
+  const handleAutoReadChange = useCallback(
+    async (value: boolean) => {
+      setAutoRead(value)
+      await persistVoiceConfig({ auto_read: value })
+    },
+    [persistVoiceConfig],
+  )
 
-  const handleRoleplayModeChange = useCallback(async (value: boolean) => {
-    setRoleplayMode(value)
-    await persist({ roleplay_mode: value })
-  }, [persist])
-
-  const handlePreview = useCallback(async (slot: 'dialogue' | 'narrator') => {
-    if (!engine || !engine.isReady()) return
-    const voiceId = slot === 'dialogue' ? dialogueVoice : narratorVoice
-    const preset = voices.find((v) => v.id === voiceId)
-    if (!preset) return
-
-    setPreviewing(slot)
-    try {
-      const sampleText = slot === 'dialogue'
-        ? 'Hello, I am your companion. How can I help you today?'
-        : 'The air was thick with anticipation as the story began to unfold.'
-      const audio = await engine.synthesise(sampleText, preset)
-      audioPlayback.enqueue(audio, { type: slot === 'narrator' ? 'narration' : 'voice', text: sampleText })
-    } finally {
-      setPreviewing(null)
-    }
-  }, [engine, dialogueVoice, narratorVoice, voices])
-
-  const selectStyle: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.03)',
-    border: `1px solid ${chakra.hex}33`,
-    borderRadius: '6px',
-    color: 'rgba(255,255,255,0.8)',
-    padding: '6px 10px',
-    fontSize: '12px',
-    fontFamily: 'inherit',
-    width: '100%',
-    outline: 'none',
-  }
-
-  if (voices.length === 0) {
-    return (
-      <div className="flex flex-col gap-4 p-6 max-w-xl">
-        <p className="text-[11px] text-white/40 font-mono leading-relaxed">
-          No TTS voices are loaded. Enable voice mode in Settings first, then return here to configure per-persona voice preferences.
-        </p>
-      </div>
-    )
-  }
+  const handleRoleplayModeChange = useCallback(
+    async (value: boolean) => {
+      setRoleplayMode(value)
+      await persistVoiceConfig({ roleplay_mode: value })
+    },
+    [persistVoiceConfig],
+  )
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-xl">
       <p className="text-[11px] text-white/40 font-mono leading-relaxed">
-        Configure how this persona speaks. Dialogue voice is used for the persona's words; narrator voice is used for narrated passages in roleplay mode.
+        Configure how this persona speaks. Enable a TTS integration and select a voice below.
       </p>
-
-      {/* Dialogue Voice */}
-      <div>
-        <label className={LABEL}>Dialogue Voice</label>
-        <div className="flex gap-2 items-center">
-          <select
-            style={selectStyle}
-            value={dialogueVoice}
-            disabled={saving}
-            onChange={(e) => handleDialogueVoiceChange(e.target.value)}
-          >
-            <option value="" style={OPTION_STYLE}>— None —</option>
-            {voices.map((v) => (
-              <option key={v.id} value={v.id} style={OPTION_STYLE}>
-                {v.name}{v.gender ? ` (${v.gender})` : ''}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={!dialogueVoice || previewing !== null}
-            onClick={() => handlePreview('dialogue')}
-            className="px-3 py-1.5 rounded text-[11px] font-mono border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            {previewing === 'dialogue' ? '…' : 'Preview'}
-          </button>
-        </div>
-      </div>
-
-      {/* Narrator Voice */}
-      <div>
-        <label className={LABEL}>Narrator Voice</label>
-        <div className="flex gap-2 items-center">
-          <select
-            style={selectStyle}
-            value={narratorVoice}
-            disabled={saving}
-            onChange={(e) => handleNarratorVoiceChange(e.target.value)}
-          >
-            <option value="" style={OPTION_STYLE}>— None —</option>
-            {voices.map((v) => (
-              <option key={v.id} value={v.id} style={OPTION_STYLE}>
-                {v.name}{v.gender ? ` (${v.gender})` : ''}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            disabled={!narratorVoice || previewing !== null}
-            onClick={() => handlePreview('narrator')}
-            className="px-3 py-1.5 rounded text-[11px] font-mono border border-white/10 text-white/50 hover:text-white/80 hover:border-white/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
-          >
-            {previewing === 'narrator' ? '…' : 'Preview'}
-          </button>
-        </div>
-      </div>
 
       {/* Toggles */}
       <div className="flex flex-col gap-4">
@@ -247,6 +145,34 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             />
           </button>
         </div>
+      </div>
+
+      {/* Voice selection — driven by active TTS integration */}
+      <div>
+        <label className={LABEL}>Voice</label>
+        {!activeTTS && (
+          <p className="text-[11px] text-white/40 font-mono leading-relaxed">
+            Activate a TTS integration under Settings → Integrations to select a voice for this persona.
+          </p>
+        )}
+        {activeTTS && (
+          <GenericConfigForm
+            fields={activeTTS.persona_config_fields}
+            initialValues={persona.integration_configs?.[activeTTS.id] ?? {}}
+            onSubmit={async (values) => {
+              await onSave(persona.id, {
+                integration_configs: {
+                  ...(persona.integration_configs ?? {}),
+                  [activeTTS.id]: values,
+                },
+              })
+            }}
+            optionsProvider={(fieldKey) =>
+              Promise.resolve(ttsPlugin?.getPersonaConfigOptions?.(fieldKey) ?? [])
+            }
+            submitLabel="Save voice"
+          />
+        )}
       </div>
     </div>
   )

@@ -42,6 +42,8 @@ async def list_definitions(
             has_tools=len(d.tool_definitions) > 0,
             has_response_tags=bool(d.response_tag_prefix),
             has_prompt_extension=bool(d.system_prompt_template),
+            capabilities=[c.value for c in d.capabilities],
+            persona_config_fields=[IntegrationConfigFieldDto(**f) for f in d.persona_config_fields],
         )
         for d in defs.values()
     ]

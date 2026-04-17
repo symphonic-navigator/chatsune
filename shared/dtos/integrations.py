@@ -18,10 +18,13 @@ class IntegrationConfigFieldDto(BaseModel):
     """Describes one user-configurable field for an integration."""
     key: str
     label: str
-    field_type: Literal["text", "number", "boolean"]
+    field_type: Literal["text", "password", "number", "boolean", "select", "textarea"]
     placeholder: str = ""
     required: bool = True
     description: str = ""
+    secret: bool = False
+    options_source: str | None = None
+    options: list[dict] = []
 
 
 class IntegrationDefinitionDto(BaseModel):
@@ -35,6 +38,8 @@ class IntegrationDefinitionDto(BaseModel):
     has_tools: bool = False
     has_response_tags: bool = False
     has_prompt_extension: bool = False
+    capabilities: list[str] = []
+    persona_config_fields: list[IntegrationConfigFieldDto] = []
 
 
 class UserIntegrationConfigDto(BaseModel):

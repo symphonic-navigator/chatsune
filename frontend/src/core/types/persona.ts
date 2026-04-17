@@ -42,6 +42,7 @@ export interface PersonaDto {
     auto_read: boolean
     roleplay_mode: boolean
   } | null;
+  integration_configs?: Record<string, Record<string, unknown>>;
   created_at: string;
   updated_at: string;
 }

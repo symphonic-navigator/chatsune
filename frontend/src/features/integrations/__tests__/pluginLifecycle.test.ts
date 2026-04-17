@@ -28,6 +28,8 @@ describe('pluginLifecycle', () => {
       has_tools: false,
       has_response_tags: false,
       has_prompt_extension: false,
+      capabilities: [],
+      persona_config_fields: [],
     }
     const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {} }
 
@@ -54,6 +56,8 @@ describe('pluginLifecycle', () => {
       has_tools: false,
       has_response_tags: false,
       has_prompt_extension: false,
+      capabilities: [],
+      persona_config_fields: [],
     }
     const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {} }
 
@@ -81,6 +85,8 @@ describe('pluginLifecycle', () => {
       has_tools: false,
       has_response_tags: false,
       has_prompt_extension: false,
+      capabilities: [],
+      persona_config_fields: [],
     }
     const config: UserIntegrationConfig = { integration_id: 'test_plugin', enabled: true, config: {} }
 
@@ -113,6 +119,8 @@ describe('pluginLifecycle', () => {
       has_tools: false,
       has_response_tags: false,
       has_prompt_extension: false,
+      capabilities: [],
+      persona_config_fields: [],
     }
     const enabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {} }
     const disabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {} }
