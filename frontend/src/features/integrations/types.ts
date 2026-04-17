@@ -1,3 +1,11 @@
+import type { ComponentType } from 'react'
+
+/** Option for select/dropdown fields with dynamic sources. */
+export interface Option {
+  value: string
+  label: string
+}
+
 /** Mirrors IntegrationConfigFieldDto from the backend. */
 export interface IntegrationConfigField {
   key: string
@@ -58,5 +66,17 @@ export interface IntegrationPlugin {
   emergencyStop?: (config: Record<string, unknown>) => Promise<void>
 
   /** Custom config UI component (rendered in IntegrationsTab). */
-  ConfigComponent?: React.ComponentType<{ config: Record<string, unknown>; onChange: (config: Record<string, unknown>) => void }>
+  ConfigComponent?: ComponentType<{ config: Record<string, unknown>; onChange: (config: Record<string, unknown>) => void }>
+
+  /** Renders below the generic config form; not used if ConfigComponent is set. */
+  ExtraConfigComponent?: ComponentType
+
+  /** Dynamic options for persona_config_fields with options_source = 'plugin'. */
+  getPersonaConfigOptions?(fieldKey: string): Option[] | Promise<Option[]>
+
+  /** Called when the integration becomes active (enabled + secrets hydrated if any). */
+  onActivate?(): void
+
+  /** Called when the integration is disabled or its secrets are cleared. */
+  onDeactivate?(): void
 }
