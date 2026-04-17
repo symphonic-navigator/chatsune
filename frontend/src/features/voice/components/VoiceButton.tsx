@@ -1,3 +1,5 @@
+import { useSecretsStore } from '../../integrations/secretsStore'
+import { sttRegistry } from '../engines/registry'
 import type { PipelinePhase } from '../types'
 
 interface VoiceButtonProps {
@@ -27,6 +29,10 @@ export function VoiceButton({
   onMicRelease,
   onStopRecording,
 }: VoiceButtonProps) {
+  // Re-render whenever secrets change so the mic gate reflects current STT readiness.
+  useSecretsStore((s) => s.secrets)
+  const sttReady = sttRegistry.active()?.isReady() === true
+
   const baseClass = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors'
 
   // State 1: Streaming — cancel button (red stop)
@@ -105,14 +111,14 @@ export function VoiceButton({
     )
   }
 
-  // State 5: Has text — send button (white arrow)
-  if (hasText) {
+  // State 5: Has text, OR STT not ready (empty prompt but no mic available) — send button
+  if (hasText || !sttReady) {
     return (
       <button
         type="button"
         data-testid="send-button"
         onClick={onSend}
-        disabled={disabled || hasPendingUploads}
+        disabled={!hasText || disabled || hasPendingUploads}
         title="Send message"
         aria-label="Send message"
         className={`${baseClass} border border-white/10 bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6`}
@@ -124,7 +130,7 @@ export function VoiceButton({
     )
   }
 
-  // State 6: Default — mic button (hold to record)
+  // State 6: Empty prompt and STT is ready — mic button (hold to record)
   return (
     <button
       type="button"
