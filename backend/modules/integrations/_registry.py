@@ -183,6 +183,23 @@ def _register_builtins() -> None:
                 "required": True,
                 "description": "Your personal Mistral AI API key. Encrypted at rest, delivered in memory to your browser.",
             },
+            {
+                "key": "playback_gap_ms",
+                "label": "Pause between chunks",
+                "field_type": "select",
+                "required": False,
+                "description": "Gap inserted between sentences and speaker switches. Mistral TTS produces crisp boundaries — a small pause sounds more natural.",
+                "options": [
+                    {"value": "100", "label": "100 ms"},
+                    {"value": "200", "label": "200 ms"},
+                    {"value": "300", "label": "300 ms"},
+                    {"value": "400", "label": "400 ms"},
+                    {"value": "500", "label": "500 ms (default)"},
+                    {"value": "600", "label": "600 ms"},
+                    {"value": "700", "label": "700 ms"},
+                    {"value": "800", "label": "800 ms"},
+                ],
+            },
         ],
         persona_config_fields=[
             {
