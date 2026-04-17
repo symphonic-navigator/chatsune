@@ -74,6 +74,22 @@ function cachePut(key: string, entry: CachedAudio): void {
   }
 }
 
+// ── Gap resolution ──
+
+// Reads the playback_gap_ms value from a user's TTS integration config, which
+// is stored as a plain object. Values may be persisted as either string (from
+// the <select>) or number; both are accepted. Defaults to 100 ms when missing
+// or malformed.
+function resolveGapMs(integrationCfg: Record<string, unknown> | undefined): number {
+  const raw = integrationCfg?.playback_gap_ms
+  if (typeof raw === 'string') {
+    const n = Number.parseInt(raw, 10)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw
+  return 100
+}
+
 // ── Shared synthesis runner ──
 
 async function runReadAloud(
@@ -83,6 +99,7 @@ async function runReadAloud(
   narrator: VoicePreset,
   narratorVoiceId: string | null,
   mode: NarratorMode,
+  gapMs: number,
 ): Promise<void> {
   const tts = ttsRegistry.active()
   if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
@@ -90,6 +107,7 @@ async function runReadAloud(
   const cacheKey = readAloudCacheKey(messageId, primary.id, narratorVoiceId, mode)
 
   audioPlayback.setCallbacks({
+    gapMs,
     onSegmentStart: () => { if (activeMessageId === messageId) setActiveReader(messageId, 'playing') },
     onFinished: () => { if (activeMessageId === messageId) setActiveReader(null, 'idle') },
   })
@@ -100,6 +118,7 @@ async function runReadAloud(
     for (const { audio, segment } of cached.segments) {
       audioPlayback.enqueue(audio, segment)
     }
+    audioPlayback.closeStream()
     return
   }
 
@@ -119,6 +138,7 @@ async function runReadAloud(
       audioPlayback.enqueue(audio, segment)
     }
     cachePut(cacheKey, { segments: results })
+    audioPlayback.closeStream()
   } catch (err) {
     if (activeMessageId !== messageId) return
     console.error('[ReadAloud] TTS synthesis failed:', err)
@@ -147,10 +167,11 @@ export async function triggerReadAloud(
   narrator: VoicePreset,
   narratorVoiceId: string | null,
   mode: NarratorMode,
+  gapMs: number,
 ): Promise<void> {
   audioPlayback.stopAll()
   setActiveReader(messageId, 'synthesising')
-  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode)
+  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs)
 }
 
 // ── Component ──
@@ -170,6 +191,8 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   const voiceId = (integrationCfg?.voice_id as string | undefined) ?? undefined
   const narratorVoiceId = (integrationCfg?.narrator_voice_id as string | null | undefined) ?? null
   const resolvedMode: NarratorMode = mode ?? persona?.voice_config?.narrator_mode ?? 'off'
+  const integrationUserConfig = activeTTS ? configs?.[activeTTS.id]?.config : undefined
+  const gapMs = resolveGapMs(integrationUserConfig)
 
   const handleClick = useCallback(async () => {
     if (isActive && state !== 'idle') {
@@ -197,8 +220,8 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     const narrator: VoicePreset = narratorVoice ?? personaNarrator ?? primary
 
     setActiveReader(messageId, 'synthesising')
-    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode)
-  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId])
+    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs)
+  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs])
 
   if (!ttsReady || !voiceId) return null
 
