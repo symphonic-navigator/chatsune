@@ -131,7 +131,6 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
                   onSubmit={async (values) => {
                     await upsertConfig(definition.id, enabled, values)
                   }}
-                  optionsProvider={(fieldKey) => plugin?.getPersonaConfigOptions?.(fieldKey) ?? []}
                 />
               ) : (
                 <p className="text-[11px] text-white/30 font-mono">No configuration required.</p>
