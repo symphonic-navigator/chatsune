@@ -14,6 +14,7 @@ import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
 import { LlmProvidersTab } from './LlmProvidersTab'
+import { VoiceTab } from './VoiceTab'
 import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
 import { llmApi } from '../../../core/api/llm'
 import { webSearchApi } from '../../../core/api/websearch'
@@ -291,6 +292,7 @@ export function UserModal({
           {contentKey === 'models' && <ModelsTab />}
           {contentKey === 'job-log' && <JobLogTab />}
           {contentKey === 'display' && <SettingsTab />}
+          {contentKey === 'voice' && <VoiceTab />}
           {contentKey === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
           {contentKey === 'mcp' && <McpTab />}
           {contentKey === 'integrations' && <IntegrationsTab />}
