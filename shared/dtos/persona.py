@@ -47,7 +47,7 @@ class PersonaDto(BaseModel):
     profile_image: str | None
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
-    integrations_config: dict | None = None
+    integration_configs: dict[str, dict] = Field(default_factory=dict)
     voice_config: VoiceConfigDto | None = None
     created_at: datetime
     updated_at: datetime
@@ -90,5 +90,5 @@ class UpdatePersonaDto(BaseModel):
     profile_image: str | None = None
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
-    integrations_config: dict | None = None
+    integration_configs: dict[str, dict] | None = None
     voice_config: VoiceConfigDto | None = None

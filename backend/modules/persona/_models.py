@@ -24,7 +24,13 @@ class PersonaDocument(BaseModel):
     profile_image: str | None
     profile_crop: dict | None = None
     mcp_config: dict | None = None
+    # voice_config keys:
+    #   auto_read: bool — auto-play assistant messages through active TTS
+    #   roleplay_mode: bool — split dialogue vs narrator (feature not yet active)
+    # Legacy keys (dialogue_voice, narrator_voice) are ignored at read time;
+    # voice selection now lives in integration_configs[tts_integration_id].voice_id.
     voice_config: dict | None = None
+    integration_configs: dict[str, dict] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
