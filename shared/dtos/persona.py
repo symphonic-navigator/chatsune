@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from shared.dtos.mcp import PersonaMcpConfig
 
@@ -22,7 +22,22 @@ class VoiceConfigDto(BaseModel):
     dialogue_voice: str | None = None
     narrator_voice: str | None = None
     auto_read: bool = False
-    roleplay_mode: bool = False
+    narrator_mode: Literal["off", "play", "narrate"] = "off"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _translate_legacy_roleplay_mode(cls, data: object) -> object:
+        if not isinstance(data, dict):
+            return data
+        if "narrator_mode" in data:
+            data.pop("roleplay_mode", None)
+            return data
+        legacy = data.pop("roleplay_mode", None)
+        if legacy is True:
+            data["narrator_mode"] = "play"
+        elif legacy is False:
+            data["narrator_mode"] = "off"
+        return data
 
 
 class PersonaDto(BaseModel):
