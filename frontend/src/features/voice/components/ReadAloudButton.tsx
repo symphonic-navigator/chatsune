@@ -6,6 +6,7 @@ import type { SpeechSegment, VoicePreset } from '../types'
 import { useSecretsStore } from '../../integrations/secretsStore'
 import { useIntegrationsStore } from '../../integrations/store'
 import type { PersonaDto } from '../../../core/types/persona'
+import { useNotificationStore } from '../../../core/store/notificationStore'
 
 interface ReadAloudButtonProps {
   messageId: string
@@ -115,6 +116,14 @@ export async function triggerReadAloud(
   } catch (err) {
     console.error('[AutoRead] TTS synthesis failed:', err, genKey)
     setActiveReader(null)
+    const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
+    useNotificationStore.getState().addNotification({
+      level: 'error',
+      title: 'Read aloud failed',
+      message: isAuthError
+        ? 'Couldn\'t read reply aloud — check your Mistral API key.'
+        : 'Couldn\'t read reply aloud — check the console for details.',
+    })
   }
 }
 
@@ -197,13 +206,14 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     // testing — but the default path pulls from persona.integration_configs.
     const personaVoice = voiceId ? tts.voices.find((v) => v.id === voiceId) : undefined
     const primary = dialogueVoice ?? personaVoice
-    const narrator = narratorVoice ?? personaVoice ?? primary
 
     if (!primary) {
       console.warn('[ReadAloud] No voice resolved — persona has no voice_id or it does not match any Mistral voice')
       setActiveReader(null)
       return
     }
+
+    const narrator: VoicePreset = narratorVoice ?? personaVoice ?? primary
 
     const parsed = parseForSpeech(content, roleplayMode)
     if (parsed.length === 0) { setActiveReader(null); return }
@@ -226,6 +236,14 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
       console.error('[ReadAloud] TTS synthesis failed:', err)
       setState('idle')
       setActiveReader(null)
+      const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
+      useNotificationStore.getState().addNotification({
+        level: 'error',
+        title: 'Read aloud failed',
+        message: isAuthError
+          ? 'Couldn\'t read reply aloud — check your Mistral API key.'
+          : 'Couldn\'t read reply aloud — check the console for details.',
+      })
     }
   }, [messageId, content, dialogueVoice, narratorVoice, roleplayMode, setState, isActive, voiceId])
 

@@ -3,6 +3,7 @@ import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { sttRegistry, ttsRegistry } from '../engines/registry'
 import { parseForSpeech } from './audioParser'
+import { useNotificationStore } from '../../../core/store/notificationStore'
 
 export interface VoicePipelineCallbacks {
   onStateChange: (state: PipelineState) => void
@@ -88,6 +89,14 @@ class VoicePipelineImpl {
       }
     } catch (err) {
       console.error('[VoicePipeline] Transcription failed:', err)
+      const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
+      useNotificationStore.getState().addNotification({
+        level: 'error',
+        title: 'Transcription failed',
+        message: isAuthError
+          ? 'Couldn\'t transcribe audio — check your Mistral API key.'
+          : 'Couldn\'t transcribe audio — check the console for details.',
+      })
     } finally {
       if (gen !== this.generation) return // don't touch state if a new session took over
       if (this.mode === 'continuous') this.setState({ phase: 'listening' })
