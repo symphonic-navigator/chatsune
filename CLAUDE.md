@@ -24,6 +24,11 @@ The architecture here reflects hard-won lessons — do not shortcut them.
 1. Please use subagent driven implementation always (no need to ask here)
 2. Please always merge to master after implementation
 
+## Directories
+
+1. Please use devdocs/ instead of docs/ - this change is required because of
+github pages compatibility
+
 ---
 
 ## Debugging
