@@ -5,15 +5,11 @@
  *   1. Its config is enabled (configs[id].enabled === true)
  *   2. AND either the integration has no secret fields, OR secrets are hydrated
  *      (secretsStore.hasSecrets(id) === true)
- *
- * Note: the `secret` attribute on config fields is not currently included in
- * IntegrationConfigFieldDto — it will always evaluate as false until the DTO
- * is extended. For Lovense (no secret fields) this is correct. When Mistral
- * (which has an API key) is added, the DTO will need a `secret: bool` field.
  */
 import { useIntegrationsStore } from './store'
 import { useSecretsStore } from './secretsStore'
 import { getPlugin } from './registry'
+import type { IntegrationConfigField } from './types'
 
 type PluginState = 'inactive' | 'active'
 const pluginStates = new Map<string, PluginState>()
@@ -31,10 +27,7 @@ function shouldBeActive(integrationId: string): boolean {
 
   // definitions is an array — find by id
   const defn = definitions.find((d) => d.id === integrationId)
-  // Cast to any: the `secret` field exists in the backend registry but is not
-  // currently propagated via IntegrationConfigFieldDto. Gracefully returns false
-  // (i.e. no secrets required) until the DTO is extended.
-  const hasSecretFields = (defn?.config_fields ?? []).some((f: any) => f.secret === true)
+  const hasSecretFields = (defn?.config_fields ?? []).some((f: IntegrationConfigField) => Boolean(f.secret))
 
   if (hasSecretFields && !useSecretsStore.getState().hasSecrets(integrationId)) {
     return false
