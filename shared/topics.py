@@ -1,3 +1,15 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class TopicDefinition:
+    name: str
+    persist: bool = True
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Topics:
     USER_CREATED = "user.created"
     USER_UPDATED = "user.updated"
@@ -141,3 +153,10 @@ class Topics:
     DEBUG_INFERENCE_STARTED = "debug.inference.started"
     DEBUG_INFERENCE_FINISHED = "debug.inference.finished"
     DEBUG_SNAPSHOT = "debug.snapshot"
+    # Integrations — secrets hydration (ephemeral, not persisted)
+    INTEGRATION_SECRETS_HYDRATED = TopicDefinition(
+        "integration.secrets.hydrated", persist=False,
+    )
+    INTEGRATION_SECRETS_CLEARED = TopicDefinition(
+        "integration.secrets.cleared", persist=False,
+    )

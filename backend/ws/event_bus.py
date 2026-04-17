@@ -10,7 +10,7 @@ _log = logging.getLogger(__name__)
 
 from backend.ws.manager import ConnectionManager
 from shared.events.base import BaseEvent
-from shared.topics import Topics
+from shared.topics import Topics, TopicDefinition
 
 _TWENTY_FOUR_HOURS_MS = 86_400_000
 
@@ -151,6 +151,18 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.DEBUG_SNAPSHOT: (["admin", "master_admin"], False),
 }
 
+def _topic_definition_for(topic: str) -> TopicDefinition | None:
+    """Look up a topic definition by name in the Topics class.
+
+    Returns the TopicDefinition if found, otherwise None (legacy string topics
+    default to persist=True).
+    """
+    for attr_value in vars(Topics).values():
+        if isinstance(attr_value, TopicDefinition) and attr_value.name == topic:
+            return attr_value
+    return None
+
+
 # Intentionally empty after the connections refactor — repopulate when
 # a future feature needs truly cross-user broadcasts.
 _BROADCAST_ALL: set[str] = set()
@@ -197,26 +209,36 @@ class EventBus:
         correlation_id: str | None = None,
         target_connection_id: str | None = None,
     ) -> None:
+        # Coerce TopicDefinition to string for consistent dict/set lookups
+        topic_str = str(topic)
+
         now = datetime.now(timezone.utc)
         envelope = BaseEvent(
-            type=topic,
+            type=topic_str,
             scope=scope,
             correlation_id=correlation_id or str(uuid4()),
             timestamp=now,
             payload=event.model_dump(mode="json"),
         )
 
-        if topic not in _SKIP_PERSISTENCE:
+        # Check both legacy _SKIP_PERSISTENCE set and new TopicDefinition.persist flag
+        should_persist = topic_str not in _SKIP_PERSISTENCE
+        if should_persist:
+            definition = _topic_definition_for(topic_str)
+            if definition is not None and not definition.persist:
+                should_persist = False
+
+        if should_persist:
             stream_key = f"events:{scope}"
             # Persist fan-out targeting alongside the envelope so that
             # reconnect/replay can determine which users are legitimately
             # allowed to receive each historical event — without leaking
             # across users. See backend/ws/router.py replay path.
-            if topic in _BROADCAST_ALL:
+            if topic_str in _BROADCAST_ALL:
                 replay_roles: list[str] = ["*"]
                 replay_targets: list[str] = []
             else:
-                roles_rule, send_to_targets = _FANOUT.get(topic, ([], False))
+                roles_rule, send_to_targets = _FANOUT.get(topic_str, ([], False))
                 replay_roles = list(roles_rule)
                 replay_targets = (
                     list(target_user_ids or []) if send_to_targets else []
@@ -234,14 +256,14 @@ class EventBus:
             # NOTE: periodic xtrim runs in start_periodic_trim() — no inline trim here.
 
         await self._fan_out(
-            topic,
+            topic_str,
             envelope.model_dump(mode="json"),
             target_user_ids or [],
             target_connection_id=target_connection_id,
         )
 
         # Notify internal subscribers (server-side module coordination)
-        for callback in self._internal_subscribers.get(topic, []):
+        for callback in self._internal_subscribers.get(topic_str, []):
             try:
                 await callback(envelope.payload)
             except Exception:
