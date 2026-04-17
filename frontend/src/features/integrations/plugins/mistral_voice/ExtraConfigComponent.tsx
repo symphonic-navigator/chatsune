@@ -8,6 +8,26 @@ import {
 } from './api'
 import { refreshMistralVoices } from './voices'
 
+const MIC_ICON = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <rect x="5.5" y="2" width="3" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M3 7.5C3 9.985 4.765 12 7 12M7 12C9.235 12 11 9.985 11 7.5M7 12V14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+)
+
+const STOP_ICON = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <rect x="3" y="3" width="8" height="8" rx="1" fill="currentColor" />
+  </svg>
+)
+
+const UPLOAD_ICON = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <path d="M2 10V11.5C2 12.05 2.45 12.5 3 12.5H11C11.55 12.5 12 12.05 12 11.5V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M7 2V9M7 2L4.5 4.5M7 2L9.5 4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 export function ExtraConfigComponent() {
   const apiKey = useSecretsStore((s) => s.getSecret('mistral_voice', 'api_key'))
   const [voices, setVoices] = useState<MistralVoice[]>([])
@@ -129,9 +149,9 @@ export function ExtraConfigComponent() {
               type="button"
               onClick={() => void startRecording()}
               disabled={!name || busy}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs hover:bg-white/[0.06] disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs hover:bg-white/[0.06] disabled:opacity-50"
             >
-              🎙 Start recording
+              {MIC_ICON} Start recording
             </button>
           ) : (
             <div className="flex flex-col gap-1.5">
@@ -139,9 +159,9 @@ export function ExtraConfigComponent() {
                 type="button"
                 onClick={stopRecording}
                 disabled={busy}
-                className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-xs hover:bg-red-400/20"
+                className="flex items-center gap-1.5 rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-xs hover:bg-red-400/20"
               >
-                ⏹ Stop &amp; submit
+                {STOP_ICON} Stop &amp; submit
               </button>
               {(() => {
                 const mm = Math.floor(seconds / 60).toString()
@@ -160,8 +180,8 @@ export function ExtraConfigComponent() {
             </div>
           )}
 
-          <label className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs hover:bg-white/[0.06] aria-disabled:opacity-50">
-            📁 Upload audio
+          <label className="flex items-center gap-1.5 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs hover:bg-white/[0.06] aria-disabled:opacity-50">
+            {UPLOAD_ICON} Upload audio
             <input
               type="file"
               accept="audio/*"
