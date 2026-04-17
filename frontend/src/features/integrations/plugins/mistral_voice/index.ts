@@ -1,7 +1,8 @@
 import type { IntegrationPlugin, Option } from '../../types'
 import { sttRegistry, ttsRegistry } from '../../../voice/engines/registry'
 import { MistralSTTEngine, MistralTTSEngine } from './engines'
-import { mistralVoices } from './voices'
+import { mistralVoices, refreshMistralVoices } from './voices'
+import { useSecretsStore } from '../../secretsStore'
 import { registerPlugin } from '../../registry'
 
 let sttInstance: MistralSTTEngine | null = null
@@ -15,6 +16,8 @@ const mistralVoicePlugin: IntegrationPlugin = {
     if (!ttsInstance) ttsInstance = new MistralTTSEngine()
     sttRegistry.register(sttInstance)
     ttsRegistry.register(ttsInstance)
+    const key = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
+    if (key) void refreshMistralVoices(key)
   },
 
   onDeactivate(): void {
@@ -26,6 +29,10 @@ const mistralVoicePlugin: IntegrationPlugin = {
 
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
     if (fieldKey !== 'voice_id') return []
+    const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
+    if (apiKey && mistralVoices.current.length === 0) {
+      await refreshMistralVoices(apiKey)
+    }
     return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
   },
 }

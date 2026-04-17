@@ -6,6 +6,9 @@ import type {
   AudioTranscriptionRequest,
   TranscriptionResponse,
   SpeechRequest,
+  VoiceCreateRequest,
+  VoiceListResponse,
+  VoiceResponse,
 } from '@mistralai/mistralai/models/components'
 import type { SpeechResponse } from '@mistralai/mistralai/models/operations'
 
@@ -51,4 +54,43 @@ export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): P
   const binary = atob(result.audioData)
   const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0))
   return new Blob([bytes], { type: 'audio/mpeg' })
+}
+
+export interface MistralVoice {
+  id: string
+  name: string
+}
+
+function mapVoice(raw: VoiceResponse): MistralVoice {
+  return { id: raw.id, name: raw.name }
+}
+
+export async function listVoices(apiKey: string): Promise<MistralVoice[]> {
+  const result: VoiceListResponse = await client(apiKey).audio.voices.list()
+  return result.items.map(mapVoice)
+}
+
+export async function cloneVoice({ apiKey, audio, name }: {
+  apiKey: string
+  audio: Blob
+  name: string
+}): Promise<MistralVoice> {
+  // The SDK create endpoint expects base64-encoded audio, not a File/FormData upload.
+  const buffer = await audio.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  const sampleAudio = btoa(binary)
+
+  const request: VoiceCreateRequest = {
+    name,
+    sampleAudio,
+    sampleFilename: 'sample.wav',
+  }
+  const result: VoiceResponse = await client(apiKey).audio.voices.create(request)
+  return mapVoice(result)
+}
+
+export async function deleteVoice(apiKey: string, voiceId: string): Promise<void> {
+  await client(apiKey).audio.voices.delete({ voiceId })
 }
