@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from backend.dependencies import require_active_session
 from backend.modules.integrations._registry import get_all, get as get_definition
 from backend.modules.integrations._repository import IntegrationRepository
+from backend.modules.integrations import emit_integration_secrets_for_user, emit_integration_secrets_cleared
 from backend.database import get_db
 from backend.ws.event_bus import get_event_bus
 from shared.dtos.integrations import IntegrationDefinitionDto, IntegrationConfigFieldDto, UserIntegrationConfigDto
@@ -88,5 +89,17 @@ async def upsert_config(
         target_user_ids=[user["sub"]],
         correlation_id=f"int-config-{integration_id}",
     )
+
+    has_secret_fields = any(f.get("secret") for f in (definition.config_fields if definition else []))
+    if body.enabled and has_secret_fields:
+        await emit_integration_secrets_for_user(
+            user_id=user["sub"], repo=repo, event_bus=event_bus,
+        )
+    elif not body.enabled and has_secret_fields:
+        await emit_integration_secrets_cleared(
+            user_id=user["sub"],
+            integration_id=integration_id,
+            event_bus=event_bus,
+        )
 
     return UserIntegrationConfigDto(**doc)
