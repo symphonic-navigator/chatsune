@@ -77,5 +77,6 @@ export interface UpdatePersonaRequest {
   display_order?: number;
   pinned?: boolean;
   profile_image?: string | null;
+  integration_configs?: Record<string, Record<string, unknown>>;
   voice_config?: PersonaDto['voice_config'];
 }
