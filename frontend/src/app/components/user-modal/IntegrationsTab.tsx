@@ -131,6 +131,7 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
                   onSubmit={async (values) => {
                     await upsertConfig(definition.id, enabled, values)
                   }}
+                  autoSubmit
                 />
               ) : (
                 <p className="text-[11px] text-white/30 font-mono">No configuration required.</p>

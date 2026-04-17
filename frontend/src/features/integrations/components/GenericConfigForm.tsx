@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // ─── Style constants (opulent prototype palette) ──────────────────────────────
 
@@ -79,17 +79,28 @@ export function GenericConfigForm({
     return seed
   })
   const [submitting, setSubmitting] = useState(false)
+  const submitTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => () => {
+    if (submitTimer.current !== null) clearTimeout(submitTimer.current)
+  }, [])
+
+  // Debounced so rapid edits (typing an API key, tabbing through fields)
+  // collapse into a single round-trip. Select changes still feel instant.
   const submitLater = (nextValues: Record<string, string>) => {
     if (!autoSubmit) return
-    const payload: Record<string, string> = {}
-    for (const f of fields) {
-      // Omit secret fields the user left blank (keep existing server-side value).
-      if (f.secret && nextValues[f.key] === '') continue
-      payload[f.key] = nextValues[f.key]
-    }
-    setSubmitting(true)
-    Promise.resolve(onSubmit(payload)).finally(() => setSubmitting(false))
+    if (submitTimer.current !== null) clearTimeout(submitTimer.current)
+    submitTimer.current = setTimeout(() => {
+      submitTimer.current = null
+      const payload: Record<string, string> = {}
+      for (const f of fields) {
+        // Omit secret fields the user left blank (keep existing server-side value).
+        if (f.secret && nextValues[f.key] === '') continue
+        payload[f.key] = nextValues[f.key]
+      }
+      setSubmitting(true)
+      Promise.resolve(onSubmit(payload)).finally(() => setSubmitting(false))
+    }, 400)
   }
 
   return (
