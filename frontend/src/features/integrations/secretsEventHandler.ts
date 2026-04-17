@@ -1,36 +1,32 @@
 /* secretsEventHandler.ts — bridges integration.secrets.* WSS events to the
  * secrets store. Registered once at app startup via registerSecretsEventHandler().
- * Events are emitted flat (no payload wrapper) per the backend convention.
+ * The WSS transport wraps every event in an envelope with a `payload` field;
+ * the flat fields declared on the backend Pydantic class land inside that payload.
  */
 
 import type { BaseEvent } from '../../core/types/events'
 import { eventBus } from '../../core/websocket/eventBus'
 import { useSecretsStore } from './secretsStore'
 
-interface SecretsHydratedEvent extends BaseEvent {
-  type: 'integration.secrets.hydrated'
+interface SecretsHydratedPayload {
   integration_id: string
   secrets: Record<string, string>
 }
 
-interface SecretsClearedEvent extends BaseEvent {
-  type: 'integration.secrets.cleared'
+interface SecretsClearedPayload {
   integration_id: string
 }
 
 function handleIntegrationSecretsHydrated(event: BaseEvent): void {
-  // TEMP TRACING — remove after hydrate-event bug is found
-  console.log('[secretsEventHandler] hydrated received:', event)
-  const e = event as SecretsHydratedEvent
-  console.log('[secretsEventHandler] hydrated → integration_id:', e.integration_id, 'secrets keys:', Object.keys(e.secrets ?? {}))
-  useSecretsStore.getState().setSecrets(e.integration_id, e.secrets)
+  const payload = event.payload as unknown as SecretsHydratedPayload
+  if (!payload?.integration_id || !payload.secrets) return
+  useSecretsStore.getState().setSecrets(payload.integration_id, payload.secrets)
 }
 
 function handleIntegrationSecretsCleared(event: BaseEvent): void {
-  // TEMP TRACING — remove after hydrate-event bug is found
-  console.log('[secretsEventHandler] cleared received:', event)
-  const e = event as SecretsClearedEvent
-  useSecretsStore.getState().clearSecrets(e.integration_id)
+  const payload = event.payload as unknown as SecretsClearedPayload
+  if (!payload?.integration_id) return
+  useSecretsStore.getState().clearSecrets(payload.integration_id)
 }
 
 export function registerSecretsEventHandler(): () => void {
