@@ -37,15 +37,14 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
 
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
 
-  console.log('[PersonaVoiceConfig] render', {
-    definitionsCount: definitions.length,
-    configsKeys: Object.keys(configs ?? {}),
-    activeTTS_id: activeTTS?.id,
-    activeTTS_caps: activeTTS?.capabilities,
-    activeTTS_persona_fields: activeTTS?.persona_config_fields,
-    ttsPlugin_id: ttsPlugin?.id,
-    ttsPlugin_hasGetOptions: typeof ttsPlugin?.getPersonaConfigOptions === 'function',
-  })
+  console.log('[PVC] definitionsCount =', definitions.length)
+  console.log('[PVC] configsKeys =', Object.keys(configs ?? {}))
+  console.log('[PVC] activeTTS.id =', activeTTS?.id)
+  console.log('[PVC] activeTTS.capabilities =', activeTTS?.capabilities)
+  console.log('[PVC] activeTTS.persona_config_fields =', JSON.stringify(activeTTS?.persona_config_fields))
+  console.log('[PVC] ttsPlugin.id =', ttsPlugin?.id)
+  console.log('[PVC] ttsPlugin.hasGetOptions =', typeof ttsPlugin?.getPersonaConfigOptions === 'function')
+  console.log('[PVC] ttsPlugin keys =', ttsPlugin ? Object.keys(ttsPlugin) : 'NO PLUGIN')
 
   // Subscribe to secrets so optionsProvider gets a new identity when secrets
   // are hydrated — this triggers SelectField's useEffect to re-fetch the list.
