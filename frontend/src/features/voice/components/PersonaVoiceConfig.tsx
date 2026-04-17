@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { PersonaDto } from '../../../core/types/persona'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import { useIntegrationsStore } from '../../integrations/store'
+import { useSecretsStore } from '../../integrations/secretsStore'
 import { getPlugin } from '../../integrations/registry'
 import { GenericConfigForm } from '../../integrations/components/GenericConfigForm'
 
@@ -35,6 +36,18 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   )
 
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
+
+  // Subscribe to secrets so optionsProvider gets a new identity when secrets
+  // are hydrated — this triggers SelectField's useEffect to re-fetch the list.
+  const secrets = useSecretsStore((s) => s.secrets)
+
+  const optionsProvider = useCallback(
+    (fieldKey: string) =>
+      ttsPlugin?.getPersonaConfigOptions?.(fieldKey) ?? Promise.resolve([]),
+    // secrets in deps forces re-identity when secrets are hydrated
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ttsPlugin, secrets],
+  )
 
   const persistVoiceConfig = useCallback(
     async (patch: Partial<{ auto_read: boolean; roleplay_mode: boolean }>) => {
@@ -167,9 +180,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
                 },
               })
             }}
-            optionsProvider={(fieldKey) =>
-              Promise.resolve(ttsPlugin?.getPersonaConfigOptions?.(fieldKey) ?? [])
-            }
+            optionsProvider={optionsProvider}
             submitLabel="Save voice"
           />
         )}

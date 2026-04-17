@@ -38,7 +38,9 @@ const mistralVoicePlugin: IntegrationPlugin = {
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
     if (fieldKey !== 'voice_id') return []
     const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-    if (apiKey && mistralVoices.current.length === 0) {
+    if (apiKey) {
+      // Always refresh — the "only if empty" guard caused stale empty lists
+      // when the voice picker opened before the first successful fetch.
       await refreshMistralVoices(apiKey)
     }
     return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
