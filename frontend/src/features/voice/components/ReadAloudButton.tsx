@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
-import { voiceWorker } from '../workers/voiceWorkerClient'
 import { parseForSpeech } from '../pipeline/audioParser'
 import type { SpeechSegment, VoicePreset } from '../types'
 
@@ -86,7 +85,6 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
     // If WE are active, stop
     if (isActive && stateRef.current !== 'idle') {
       audioPlayback.stopAll()
-      voiceWorker.cancelAll()
       setActiveReader(null)
       setState('idle')
       return
@@ -94,7 +92,6 @@ export function ReadAloudButton({ messageId, content, dialogueVoice, narratorVoi
 
     // Take over: stop any other active reader
     audioPlayback.stopAll()
-    voiceWorker.cancelAll()
     setActiveReader(messageId)
     const gen = ++genRef.current
 

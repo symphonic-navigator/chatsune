@@ -44,11 +44,8 @@ import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
-import { SetupModal } from '../voice/components/SetupModal'
-import { useEngineLoader } from '../voice/stores/engineLoaderStore'
 import { setActiveReader } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
-import { voiceWorker } from '../voice/workers/voiceWorkerClient'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -108,10 +105,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const voiceInputMode = useVoiceSettings((s) => s.settings.inputMode)
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
-  const voiceReady = useEngineLoader((s) => s.ready)
-  const startEngineLoading = useEngineLoader((s) => s.startLoading)
   const [transcription, setTranscription] = useState('')
-  const [showSetup, setShowSetup] = useState(false)
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
   // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
   // Requires plumbing through MessageList/UserMessage; deferred — top-level error banner already exists.
@@ -604,11 +598,6 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [effectiveSessionId, isIncognito, personaId])
 
-  // Start loading voice engines in background when voice is enabled
-  useEffect(() => {
-    if (voiceEnabled) startEngineLoading()
-  }, [voiceEnabled, startEngineLoading])
-
   // Voice pipeline callbacks
   useEffect(() => {
     if (!voiceEnabled) return
@@ -635,13 +624,11 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
-    if (!voiceReady) { setShowSetup(true); return }
     // Cancel any active Read Aloud (stop playback + discard pending synthesis)
     setActiveReader(null)
     audioPlayback.stopAll()
-    voiceWorker.cancelAll()
     voicePipeline.startRecording('push-to-talk')
-  }, [voiceReady])
+  }, [])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -656,13 +643,11 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
-      if (!voiceReady) { setShowSetup(true); return }
       setActiveReader(null)
       audioPlayback.stopAll()
-      voiceWorker.cancelAll()
       voicePipeline.startRecording('continuous')
     }
-  }, [pipelineState.phase, voiceReady])
+  }, [pipelineState.phase])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle continuous
   useCtrlSpace({
@@ -1135,7 +1120,6 @@ export function ChatView({ persona }: ChatViewProps) {
         }}
         accentColour={accentColour}
       />
-      {showSetup && <SetupModal onComplete={() => setShowSetup(false)} onCancel={() => setShowSetup(false)} />}
     </div>
   )
 }

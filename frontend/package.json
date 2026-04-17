@@ -14,10 +14,8 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@huggingface/transformers": "^4.0.1",
     "@ricky0123/vad-web": "^0.0.30",
     "katex": "^0.16.45",
-    "kokoro-js": "^1.2.1",
     "mermaid": "^11.14.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -43,7 +41,6 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/unist": "^3.0.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "@webgpu/types": "^0.1.69",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -58,10 +55,5 @@
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.1.2",
     "workbox-window": "^7.4.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "@huggingface/transformers": "$@huggingface/transformers"
-    }
   }
 }
