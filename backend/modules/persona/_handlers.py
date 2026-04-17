@@ -44,6 +44,22 @@ _MAX_AVATAR_SIZE = 5 * 1024 * 1024  # 5 MB
 router = APIRouter(prefix="/api/personas")
 
 
+def _validate_integration_configs(integration_configs: dict[str, dict]) -> None:
+    # Deferred import to avoid circular dependency (integrations._handlers → persona → integrations).
+    from backend.modules.integrations._registry import get as get_integration_definition
+
+    for integration_id, values in integration_configs.items():
+        defn = get_integration_definition(integration_id)
+        if defn is None:
+            raise ValueError(f"Unknown integration: {integration_id}")
+        allowed_keys = {f["key"] for f in defn.persona_config_fields}
+        unknown = set(values.keys()) - allowed_keys
+        if unknown:
+            raise ValueError(
+                f"Unknown persona-config keys for {integration_id}: {sorted(unknown)}"
+            )
+
+
 def _persona_repo() -> PersonaRepository:
     return PersonaRepository(get_db())
 
@@ -81,6 +97,7 @@ async def create_persona(
     event_bus: EventBus = Depends(get_event_bus),
 ):
     await _validate_model_unique_id(user["sub"], body.model_unique_id)
+    _validate_integration_configs(body.integration_configs)
 
     repo = _persona_repo()
     doc = await repo.create(
@@ -208,6 +225,7 @@ async def replace_persona(
     event_bus: EventBus = Depends(get_event_bus),
 ):
     await _validate_model_unique_id(user["sub"], body.model_unique_id)
+    _validate_integration_configs(body.integration_configs)
 
     repo = _persona_repo()
     updated = await repo.update(
@@ -258,6 +276,8 @@ async def update_persona(
 
     if "model_unique_id" in fields:
         await _validate_model_unique_id(user["sub"], fields["model_unique_id"])
+    if body.integration_configs is not None:
+        _validate_integration_configs(body.integration_configs)
 
     repo = _persona_repo()
     updated = await repo.update(persona_id, user["sub"], fields)
