@@ -3,6 +3,12 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TopicDefinition:
+    """A topic identifier with metadata flags.
+
+    The string representation is the topic name, so instances can be
+    used in place of plain string constants.
+    """
+
     name: str
     persist: bool = True
 

@@ -145,6 +145,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     # MCP gateways — target user only
     Topics.MCP_TOOLS_REGISTERED: ([], True),
     Topics.MCP_GATEWAY_ERROR: ([], True),
+    # Integrations — secrets hydration (ephemeral, target user only)
+    "integration.secrets.hydrated": ([], True),
+    "integration.secrets.cleared": ([], True),
     # Debug — admins only, no target user
     Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
     Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
@@ -157,18 +160,16 @@ def _topic_definition_for(topic: str) -> TopicDefinition | None:
     Returns the TopicDefinition if found, otherwise None (legacy string topics
     default to persist=True).
     """
-    for attr_value in vars(Topics).values():
-        if isinstance(attr_value, TopicDefinition) and attr_value.name == topic:
-            return attr_value
-    return None
+    return _TOPIC_DEFINITIONS.get(topic)
 
 
 # Intentionally empty after the connections refactor — repopulate when
 # a future feature needs truly cross-user broadcasts.
 _BROADCAST_ALL: set[str] = set()
 
-# Chat events that skip Redis Streams persistence (high-frequency, ephemeral).
-# They are delivered directly to the target user's WebSocket but not stored.
+# Legacy ephemeral-topics set — predates the TopicDefinition.persist flag.
+# New ephemeral topics should be declared as TopicDefinition(..., persist=False)
+# on the Topics class; do not add new entries here.
 _SKIP_PERSISTENCE: set[str] = {
     Topics.CHAT_CONTENT_DELTA,
     Topics.CHAT_THINKING_DELTA,
@@ -181,6 +182,12 @@ _SKIP_PERSISTENCE: set[str] = {
     Topics.DEBUG_INFERENCE_STARTED,
     Topics.DEBUG_INFERENCE_FINISHED,
     Topics.DEBUG_SNAPSHOT,
+}
+
+_TOPIC_DEFINITIONS: dict[str, TopicDefinition] = {
+    v.name: v
+    for v in vars(Topics).values()
+    if isinstance(v, TopicDefinition)
 }
 
 _bus: "EventBus | None" = None
