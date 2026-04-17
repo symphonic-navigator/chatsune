@@ -18,6 +18,13 @@ export function ExtraConfigComponent() {
   // Raw MediaRecorder-based recording — audioCapture uses VAD/PTT for chat,
   // but here we need a simple manual start/stop for voice sample capture.
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null)
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!recorder) { setSeconds(0); return }
+    const interval = setInterval(() => setSeconds((s) => s + 1), 1000)
+    return () => clearInterval(interval)
+  }, [recorder])
 
   const refresh = useCallback(async () => {
     if (!apiKey) return
@@ -127,14 +134,30 @@ export function ExtraConfigComponent() {
               🎙 Start recording
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={stopRecording}
-              disabled={busy}
-              className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-xs hover:bg-red-400/20"
-            >
-              ⏹ Stop &amp; submit
-            </button>
+            <div className="flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={stopRecording}
+                disabled={busy}
+                className="rounded-lg border border-red-400/40 bg-red-400/10 px-3 py-2 text-xs hover:bg-red-400/20"
+              >
+                ⏹ Stop &amp; submit
+              </button>
+              {(() => {
+                const mm = Math.floor(seconds / 60).toString()
+                const ss = (seconds % 60).toString().padStart(2, '0')
+                const reachedRecommended = seconds >= 30
+                return (
+                  <span
+                    className={`text-[11px] font-mono ${reachedRecommended ? 'text-emerald-400' : 'text-white/60'}`}
+                  >
+                    {reachedRecommended
+                      ? `Recommended length reached (${mm}:${ss})`
+                      : `Recording: ${mm}:${ss} — recommended 30s`}
+                  </span>
+                )
+              })()}
+            </div>
           )}
 
           <label className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs hover:bg-white/[0.06] aria-disabled:opacity-50">
