@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from shared.dtos.inference import ToolDefinition
+from shared.dtos.integrations import IntegrationCapability, OptionsSource  # noqa: F401
 
 
 @dataclass(frozen=True)

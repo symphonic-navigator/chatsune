@@ -1,6 +1,17 @@
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel
+
+
+class IntegrationCapability(str, Enum):
+    TOOL_PROVIDER = "tool_provider"
+    TTS_PROVIDER = "tts_provider"
+    STT_PROVIDER = "stt_provider"
+
+
+class OptionsSource(str, Enum):
+    PLUGIN = "plugin"
 
 
 class IntegrationConfigFieldDto(BaseModel):
