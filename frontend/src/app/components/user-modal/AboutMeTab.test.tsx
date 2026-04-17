@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { AboutMeTab } from './AboutMeTab'
 
@@ -22,9 +23,15 @@ vi.mock('../../../core/api/meApi', () => ({
 }))
 
 vi.mock('../../../core/store/authStore', () => ({
-  useAuthStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({ user: { display_name: 'Chris', username: 'chris', role: 'user' } }),
+  useAuthStore: (sel?: (s: Record<string, unknown>) => unknown) => {
+    const state = { user: { display_name: 'Chris', username: 'chris', role: 'user' } }
+    return sel ? sel(state) : state
+  },
 }))
+
+function renderInRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>)
+}
 
 describe('AboutMeTab — display name field', () => {
   beforeEach(() => {
@@ -32,14 +39,14 @@ describe('AboutMeTab — display name field', () => {
   })
 
   it('renders display name input with value from auth store', async () => {
-    render(<AboutMeTab />)
+    renderInRouter(<AboutMeTab />)
     const input = await screen.findByLabelText(/display name/i, { selector: 'input' })
     expect(input).toHaveValue('Chris')
   })
 
   it('calls updateDisplayName with the new value on save', async () => {
     const { meApi } = await import('../../../core/api/meApi')
-    render(<AboutMeTab />)
+    renderInRouter(<AboutMeTab />)
 
     const input = await screen.findByLabelText(/display name/i, { selector: 'input' })
     await userEvent.clear(input)
