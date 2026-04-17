@@ -7,6 +7,7 @@ and system prompt template. Plugins are registered at import time.
 import logging
 from backend.modules.integrations._models import IntegrationDefinition
 from shared.dtos.inference import ToolDefinition
+from shared.dtos.integrations import IntegrationCapability
 
 _log = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ def _register_builtins() -> None:
                 "description": "IP address of the phone running Lovense Remote.",
             },
         ],
+        capabilities=[IntegrationCapability.TOOL_PROVIDER],
         system_prompt_template=(
             '<integrations name="lovense">\n'
             "## Lovense Integration\n\n"
