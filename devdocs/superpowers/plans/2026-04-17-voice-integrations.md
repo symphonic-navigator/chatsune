@@ -1758,24 +1758,43 @@ git commit -m "Render generic form + ExtraConfigComponent slot for integrations 
 
 ## Phase J — Mistral plugin core
 
-### Task J1: Mistral API client — STT + TTS [Needs Mistral research]
+### Task J1: Mistral API client — STT + TTS (using official SDK)
 
 **Files:**
+- Modify: `frontend/package.json`
 - Create: `frontend/src/features/integrations/plugins/mistral_voice/api.ts`
 
-- [ ] **Step 1: Write the API client skeleton.**
+**Reference:** User's research notes at `devdocs/mistral-api-notes.md` confirm the official SDK `@mistralai/mistralai` is the right integration path. All calls stay browser-side (CORS OK, BYOK).
+
+- [ ] **Step 1: Install the Mistral SDK.**
+
+```bash
+cd frontend && pnpm add @mistralai/mistralai
+```
+
+Verify `package.json` now lists the dependency.
+
+- [ ] **Step 2: Write the API wrapper.**
 
 ```typescript
-// All calls go directly from the browser to Mistral with the user's API key.
-// Endpoint paths, payload shapes, and response shapes are filled from the
-// user's Mistral research notes. Keep fetch signatures + return types stable
-// so the engine code doesn't have to change when filling in the details.
+// frontend/src/features/integrations/plugins/mistral_voice/api.ts
+//
+// Thin wrapper around the official @mistralai/mistralai SDK. Keeps engine
+// code (engines.ts) decoupled from the SDK's exact call shapes — if the
+// SDK changes, only this file changes. All calls go directly browser →
+// Mistral; the user's API key is passed per call.
+//
+// SDK method names below follow the README at
+// https://github.com/mistralai/client-ts. If the exact method for TTS or
+// STT differs from what's written here (e.g. `client.audio.speech.create`
+// vs. `client.tts.generate`), consult the installed SDK's .d.ts files
+// (node_modules/@mistralai/mistralai/) and adjust the three call sites.
 
-const MISTRAL_API_BASE = 'https://api.mistral.ai/v1'
+import { MistralClient } from '@mistralai/mistralai'
 
-// Endpoint paths — CONFIRM FROM USER'S MISTRAL RESEARCH NOTES before wiring:
-const STT_ENDPOINT = `${MISTRAL_API_BASE}/audio/transcriptions`   // TODO confirm
-const TTS_ENDPOINT = `${MISTRAL_API_BASE}/audio/speech`           // TODO confirm
+function client(apiKey: string): MistralClient {
+  return new MistralClient({ apiKey })
+}
 
 export interface TranscribeParams {
   apiKey: string
@@ -1784,19 +1803,14 @@ export interface TranscribeParams {
 }
 
 export async function transcribe({ apiKey, audio, language }: TranscribeParams): Promise<string> {
-  const form = new FormData()
-  form.append('file', audio)  // verify field name from Mistral docs
-  form.append('model', 'voxtral-mini')  // verify model name / default from research
-  if (language) form.append('language', language)
-
-  const res = await fetch(STT_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
+  const file = new File([audio], 'recording.wav', { type: audio.type || 'audio/wav' })
+  const result: any = await (client(apiKey) as any).audio.transcriptions.create({
+    file,
+    model: 'voxtral-mini-latest',   // confirm against SDK / Mistral docs
+    language,
   })
-  if (!res.ok) throw new Error(`Mistral STT failed: ${res.status} ${await res.text()}`)
-  const data = await res.json()
-  return data.text as string   // verify field name from response shape
+  // Response shape per Mistral docs: { text: string, ... }
+  return result.text as string
 }
 
 export interface SynthesiseParams {
@@ -1805,31 +1819,36 @@ export interface SynthesiseParams {
   voiceId: string
 }
 
-export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): Promise<ArrayBuffer> {
-  const res = await fetch(TTS_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      input: text,
-      voice: voiceId,
-      model: 'voxtral-mini-tts',  // verify from research
-    }),
+export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): Promise<Blob> {
+  const result: any = await (client(apiKey) as any).audio.speech.create({
+    input: text,
+    voice: voiceId,
+    model: 'voxtral-tts-latest',  // confirm against SDK / Mistral docs
   })
-  if (!res.ok) throw new Error(`Mistral TTS failed: ${res.status} ${await res.text()}`)
-  return await res.arrayBuffer()
+  // SDK may return Blob directly, or a response object with .blob() / .arrayBuffer().
+  if (result instanceof Blob) return result
+  if (typeof result?.blob === 'function') return await result.blob()
+  if (result instanceof ArrayBuffer) return new Blob([result])
+  // Fallback: assume { audio: base64 } or similar — read SDK .d.ts and adjust.
+  throw new Error('Unexpected Mistral TTS response shape; inspect SDK types in node_modules')
 }
 ```
 
-Comments marked `TODO confirm` / `verify from research` indicate the exact point where the user's Mistral notes must land. The shape of the functions stays stable — only the inner fetch payload changes.
+The `as any` casts are intentional escape hatches for the three spots where we call SDK methods whose exact names may differ. When running the plan, the engineer opens `node_modules/@mistralai/mistralai/` to confirm, drops the `as any`, and replaces the call shape with the real one. The surrounding API (function names and return types) stays stable so `engines.ts` never needs to change.
 
-- [ ] **Step 2: Commit.**
+- [ ] **Step 3: Compile-check.**
 
 ```bash
-git add frontend/src/features/integrations/plugins/mistral_voice/api.ts
-git commit -m "Scaffold Mistral STT/TTS API client"
+cd frontend && pnpm tsc --noEmit
+```
+
+Expected: clean. If the `MistralClient` import errors with "has no exported member", check the SDK's default-vs-named export convention and adjust (e.g. `import Mistral from '@mistralai/mistralai'` and `new Mistral(...)`).
+
+- [ ] **Step 4: Commit.**
+
+```bash
+git add frontend/package.json frontend/pnpm-lock.yaml frontend/src/features/integrations/plugins/mistral_voice/api.ts
+git commit -m "Add Mistral SDK wrapper for STT and TTS"
 ```
 
 ---
@@ -1840,18 +1859,17 @@ git commit -m "Scaffold Mistral STT/TTS API client"
 - Create: `frontend/src/features/integrations/plugins/mistral_voice/voices.ts`
 - Create: `frontend/src/features/integrations/plugins/mistral_voice/engines.ts`
 
-- [ ] **Step 1: Voices list.**
+- [ ] **Step 1: Voices list — start empty.**
+
+Per Mistral's voice model: `client.voices.list()` returns the full set (stock + any clones the user created). There is no separate static stock list we need to hard-code.
 
 ```typescript
 // frontend/src/features/integrations/plugins/mistral_voice/voices.ts
 import type { VoicePreset } from '../../../voice/types'
 
-// Stock voices — CONFIRM IDs from user's Mistral research notes.
-export const STOCK_VOICES: VoicePreset[] = [
-  { id: 'nova',  name: 'Nova'  },
-  { id: 'lyra',  name: 'Lyra'  },
-  { id: 'ember', name: 'Ember' },
-]
+// Populated at runtime by the plugin from client.voices.list().
+// Empty at module load; engines.ts reads it via a mutable export.
+export const mistralVoices: { current: VoicePreset[] } = { current: [] }
 ```
 
 - [ ] **Step 2: Engines.**
@@ -1859,7 +1877,7 @@ export const STOCK_VOICES: VoicePreset[] = [
 ```typescript
 // frontend/src/features/integrations/plugins/mistral_voice/engines.ts
 import { transcribe, synthesise } from './api'
-import { STOCK_VOICES } from './voices'
+import { mistralVoices } from './voices'
 import { useSecretsStore } from '../../secretsStore'
 import type { STTEngine, TTSEngine, VoicePreset } from '../../../voice/types'
 
@@ -1874,7 +1892,7 @@ export class MistralSTTEngine implements STTEngine {
   id = 'mistral_stt'
   name = 'Mistral Voxtral'
   modelSize = 0
-  languages = ['en', 'de']  // adjust after research
+  languages = ['en', 'de']  // SDK may accept other BCP-47 codes
 
   async init(): Promise<void> { /* no-op, no local model */ }
   async dispose(): Promise<void> { /* no-op */ }
@@ -1894,7 +1912,12 @@ export class MistralTTSEngine implements TTSEngine {
   id = 'mistral_tts'
   name = 'Mistral Voice'
   modelSize = 0
-  voices: VoicePreset[] = STOCK_VOICES  // extended at runtime when clones load
+
+  // Live view on the mutable mistralVoices.current — the plugin refreshes
+  // it from the SDK's voice list on activate and after clone/delete.
+  get voices(): VoicePreset[] {
+    return mistralVoices.current
+  }
 
   async init(): Promise<void> { /* no-op */ }
   async dispose(): Promise<void> { /* no-op */ }
@@ -1903,17 +1926,15 @@ export class MistralTTSEngine implements TTSEngine {
     return !!getApiKey()
   }
 
-  async synthesise(text: string, voiceId: string): Promise<ArrayBuffer> {
+  async synthesise(text: string, voiceId: string): Promise<Blob> {
     const key = getApiKey()
     if (!key) throw new Error('Mistral API key not configured')
     return synthesise({ apiKey: key, text, voiceId })
   }
-
-  setDynamicVoices(extra: VoicePreset[]) {
-    this.voices = [...STOCK_VOICES, ...extra]
-  }
 }
 ```
+
+Note: `TTSEngine.synthesise` return type changes from `ArrayBuffer` to `Blob` (SDK returns a Blob directly in the user's reference). If the current `TTSEngine` interface declares `Promise<ArrayBuffer>`, update the interface in `frontend/src/features/voice/types.ts` and the consumers (`audioPlayback.ts`) in the same commit — `new Audio(URL.createObjectURL(blob)).play()` is the direct Blob path.
 
 Verify the exact `STTEngine` / `TTSEngine` interface shapes in `frontend/src/features/voice/types.ts` and match fields precisely. Adjust field names if the current interface uses e.g. `synthesize` (American spelling) — align with existing code.
 
@@ -1966,10 +1987,11 @@ export const mistralVoicePlugin: IntegrationPlugin = {
     if (ttsInstance) ttsRegistry.unregister(ttsInstance.id)
   },
 
-  getPersonaConfigOptions(fieldKey: string): Option[] {
+  async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
     if (fieldKey !== 'voice_id') return []
-    // Cloned voices added later (Task L1).
-    return (ttsInstance?.voices ?? []).map((v) => ({ value: v.id, label: v.name }))
+    // Refreshes from the Mistral SDK on each call, cached implicitly via mistralVoices.current.
+    // Actual fetch happens in Task M2 (voice cloning UI also triggers refresh).
+    return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
   },
 }
 ```
@@ -2201,73 +2223,98 @@ git commit -m "Auto-read: gate on TTS readiness and persona voice_id"
 
 ## Phase M — Voice cloning
 
-### Task M1: Extend Mistral API client with voice-cloning calls [Needs Mistral research]
+### Task M1: Extend Mistral API client with voice-cloning calls (SDK)
 
 **Files:**
 - Modify: `frontend/src/features/integrations/plugins/mistral_voice/api.ts`
+- Modify: `frontend/src/features/integrations/plugins/mistral_voice/voices.ts`
 
-- [ ] **Step 1: Append cloning functions.**
+**Reference:** `devdocs/mistral-api-notes.md` confirms `client.voices.delete(voiceId)` and hook-style `cloneVoice`/`listVoices` wrappers. SDK exposes a `voices` namespace.
+
+- [ ] **Step 1: Append cloning / listing functions to `api.ts`.**
 
 ```typescript
-// CONFIRM endpoints + payload shapes from user's Mistral research notes.
-const VOICES_ENDPOINT = `${MISTRAL_API_BASE}/voices`             // TODO confirm
-const VOICE_CLONE_ENDPOINT = `${MISTRAL_API_BASE}/voices/clone`  // TODO confirm
+// Append to frontend/src/features/integrations/plugins/mistral_voice/api.ts
 
-export interface ClonedVoice {
-  id: string
+export interface MistralVoice {
+  id: string       // SDK returns voice_id — normalise to `id` here for our internal shape
   name: string
-  is_user_cloned: boolean
 }
 
-export async function listVoices(apiKey: string): Promise<ClonedVoice[]> {
-  const res = await fetch(VOICES_ENDPOINT, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${apiKey}` },
-  })
-  if (!res.ok) throw new Error(`Mistral list-voices failed: ${res.status}`)
-  const data = await res.json()
-  // Response shape — CONFIRM:
-  return (data.voices ?? []).map((v: any) => ({
-    id: v.id,
-    name: v.name,
-    is_user_cloned: Boolean(v.is_user_cloned ?? v.owned_by_user),
-  }))
+function mapVoice(raw: any): MistralVoice {
+  return { id: raw.voice_id ?? raw.id, name: raw.name }
+}
+
+export async function listVoices(apiKey: string): Promise<MistralVoice[]> {
+  const result: any = await (client(apiKey) as any).voices.list()
+  // SDK may return an array directly, or { data: [...] } — handle both.
+  const list = Array.isArray(result) ? result : (result?.data ?? result?.voices ?? [])
+  return list.map(mapVoice)
 }
 
 export async function cloneVoice({ apiKey, audio, name }: {
   apiKey: string
   audio: Blob
   name: string
-}): Promise<ClonedVoice> {
-  const form = new FormData()
-  form.append('file', audio)
-  form.append('name', name)
-  const res = await fetch(VOICE_CLONE_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  })
-  if (!res.ok) throw new Error(`Mistral voice-clone failed: ${res.status}`)
-  const data = await res.json()
-  return { id: data.id, name: data.name, is_user_cloned: true }
+}): Promise<MistralVoice> {
+  const file = new File([audio], 'sample.wav', { type: audio.type || 'audio/wav' })
+  const result: any = await (client(apiKey) as any).voices.clone({ file, name })
+  return mapVoice(result)
 }
 
 export async function deleteVoice(apiKey: string, voiceId: string): Promise<void> {
-  const res = await fetch(`${VOICES_ENDPOINT}/${voiceId}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${apiKey}` },
-  })
-  if (!res.ok) throw new Error(`Mistral delete-voice failed: ${res.status}`)
+  await (client(apiKey) as any).voices.delete(voiceId)
 }
 ```
 
-All `TODO confirm` spots are filled in from the user's research at implementation time.
+The `as any` on the SDK client is the same escape hatch as in Task J1. The engineer opens the SDK's `.d.ts` files, confirms the exact method names and argument shapes (e.g. `voices.clone({ file, name })` vs. `voices.create({ file, name })`), drops the casts, and adjusts.
 
-- [ ] **Step 2: Commit.**
+- [ ] **Step 2: Refresh-helper for `mistralVoices`.**
+
+Append to `voices.ts`:
+
+```typescript
+import { listVoices } from './api'
+
+export async function refreshMistralVoices(apiKey: string): Promise<void> {
+  try {
+    const all = await listVoices(apiKey)
+    mistralVoices.current = all.map((v) => ({ id: v.id, name: v.name }))
+  } catch {
+    // Soft-fail — keep whatever we had.
+  }
+}
+```
+
+- [ ] **Step 3: Plugin calls the refresh on activate.**
+
+In `plugins/mistral_voice/index.ts`, extend `onActivate`:
+
+```typescript
+import { refreshMistralVoices } from './voices'
+import { useSecretsStore } from '../../secretsStore'
+
+onActivate() {
+  if (!sttInstance) sttInstance = new MistralSTTEngine()
+  if (!ttsInstance) ttsInstance = new MistralTTSEngine()
+  sttRegistry.register(sttInstance)
+  ttsRegistry.register(ttsInstance)
+  const key = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
+  if (key) refreshMistralVoices(key)  // fire-and-forget
+}
+```
+
+- [ ] **Step 4: Compile-check.**
 
 ```bash
-git add frontend/src/features/integrations/plugins/mistral_voice/api.ts
-git commit -m "Add Mistral voice list/clone/delete API calls"
+cd frontend && pnpm tsc --noEmit
+```
+
+- [ ] **Step 5: Commit.**
+
+```bash
+git add frontend/src/features/integrations/plugins/mistral_voice/
+git commit -m "Add Mistral voice list/clone/delete via SDK and refresh helper"
 ```
 
 ---
@@ -2282,11 +2329,12 @@ git commit -m "Add Mistral voice list/clone/delete API calls"
 ```tsx
 import { useEffect, useRef, useState } from 'react'
 import { useSecretsStore } from '../../secretsStore'
-import { cloneVoice, deleteVoice, listVoices, type ClonedVoice } from './api'
+import { cloneVoice, deleteVoice, listVoices, type MistralVoice } from './api'
+import { refreshMistralVoices } from './voices'
 import { startMicRecording, type MicRecording } from '../../../voice/infrastructure/audioCapture'
 
 export function ExtraConfigComponent() {
-  const [voices, setVoices] = useState<ClonedVoice[]>([])
+  const [voices, setVoices] = useState<MistralVoice[]>([])
   const [name, setName] = useState('')
   const [recording, setRecording] = useState<MicRecording | null>(null)
   const [busy, setBusy] = useState(false)
@@ -2297,7 +2345,8 @@ export function ExtraConfigComponent() {
     if (!apiKey) return
     try {
       const all = await listVoices(apiKey)
-      setVoices(all.filter((v) => v.is_user_cloned))
+      setVoices(all)  // SDK doesn't distinguish stock vs. cloned — show all
+      await refreshMistralVoices(apiKey)  // keep mistralVoices.current in sync for engines
     } catch (e: any) {
       setError(e.message)
     }
@@ -2401,29 +2450,25 @@ export const mistralVoicePlugin: IntegrationPlugin = {
 }
 ```
 
-- [ ] **Step 3: Update `getPersonaConfigOptions` to include cloned voices.**
+- [ ] **Step 3: Ensure `getPersonaConfigOptions` pulls the fresh voice list.**
+
+The existing implementation (Task J3) reads `mistralVoices.current`. After a clone/delete, `refreshMistralVoices(apiKey)` updates it, and the next dropdown open will see the new voice — no further changes needed here beyond what Task M2 Step 1 already does via `refreshVoices()`.
+
+If the dropdown is opened *before* the user has added their key and `mistralVoices.current` is empty, call `refreshMistralVoices` lazily from `getPersonaConfigOptions`:
 
 ```typescript
-// inside mistralVoicePlugin:
+// inside mistralVoicePlugin.getPersonaConfigOptions:
 async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
   if (fieldKey !== 'voice_id') return []
   const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-  const stock = (ttsInstance?.voices ?? []).map((v) => ({ value: v.id, label: v.name }))
-  if (!apiKey) return stock
-  try {
-    const all = await listVoices(apiKey)
-    const cloned = all.filter((v) => v.is_user_cloned).map((v) => ({ value: v.id, label: `${v.name} (cloned)` }))
-    if (ttsInstance) {
-      ttsInstance.setDynamicVoices(cloned.map((c) => ({ id: c.value, name: c.label })))
-    }
-    return [...stock, ...cloned]
-  } catch {
-    return stock
+  if (apiKey && mistralVoices.current.length === 0) {
+    await refreshMistralVoices(apiKey)
   }
+  return mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
 }
 ```
 
-Note the signature now returns `Promise<Option[]>`. Make sure the interface in `types.ts` allows the async form (it already does per Task H1).
+The signature stays `Promise<Option[]>` as declared in Task H1.
 
 - [ ] **Step 4: Build check.**
 
