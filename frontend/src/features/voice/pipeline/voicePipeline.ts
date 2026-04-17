@@ -1,4 +1,4 @@
-import type { PipelineState, VoicePreset } from '../types'
+import type { NarratorMode, PipelineState, VoicePreset } from '../types'
 import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { sttRegistry, ttsRegistry } from '../engines/registry'
@@ -105,11 +105,11 @@ class VoicePipelineImpl {
   }
 
   async speakResponse(
-    text: string, dialogueVoice: VoicePreset, narratorVoice: VoicePreset, roleplayMode: boolean,
+    text: string, dialogueVoice: VoicePreset, narratorVoice: VoicePreset, mode: NarratorMode,
   ): Promise<void> {
     const tts = ttsRegistry.active()
     if (!tts) return
-    const segments = parseForSpeech(text, roleplayMode)
+    const segments = parseForSpeech(text, mode)
     if (segments.length === 0) return
     this.setState({ phase: 'speaking', segment: 0, total: segments.length })
     audioPlayback.setCallbacks({
