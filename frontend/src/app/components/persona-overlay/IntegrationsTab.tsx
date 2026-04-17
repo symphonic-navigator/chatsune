@@ -23,7 +23,9 @@ export function IntegrationsTab({ persona, onSave }: Props) {
     if (!loaded) load()
   }, [loaded, load])
 
-  const availableDefs = definitions.filter((d) => configs[d.id]?.enabled)
+  const availableDefs = definitions.filter(
+    (d) => configs[d.id]?.enabled && d.capabilities?.includes('tool_provider')
+  )
 
   const handleToggle = useCallback(async (id: string) => {
     const next = enabledIds.includes(id)
