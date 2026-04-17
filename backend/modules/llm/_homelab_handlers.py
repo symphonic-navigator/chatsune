@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
+from backend.modules.llm._connections import InvalidSlugError
 from backend.modules.llm._homelabs import (
     ApiKeyNotFoundError,
     HomelabNotFoundError,
     HomelabService,
+    HostSlugAlreadyExistsError,
     TooManyApiKeysError,
     TooManyHomelabsError,
 )
@@ -64,10 +66,20 @@ async def create_homelab(
 ):
     try:
         result = await svc.create_homelab(
-            user_id=user["sub"], display_name=body.display_name
+            user_id=user["sub"],
+            display_name=body.display_name,
+            host_slug=body.host_slug,
+            max_concurrent_requests=body.max_concurrent_requests,
         )
     except TooManyHomelabsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except HostSlugAlreadyExistsError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "slug_exists", "suggested_slug": e.suggested},
+        ) from e
+    except InvalidSlugError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return HomelabCreatedDto(
         plaintext_host_key=result["plaintext_host_key"], **result["homelab"]
     )
@@ -102,11 +114,14 @@ async def update_homelab(
     user: dict = Depends(require_active_session),
     svc: HomelabService = Depends(_service),
 ):
-    if body.display_name is None:
+    if body.display_name is None and body.max_concurrent_requests is None:
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
-        return await svc.rename_homelab(
-            user["sub"], homelab_id, body.display_name
+        return await svc.update_homelab(
+            user_id=user["sub"],
+            homelab_id=homelab_id,
+            display_name=body.display_name,
+            max_concurrent_requests=body.max_concurrent_requests,
         )
     except HomelabNotFoundError:
         raise HTTPException(status_code=404, detail="homelab not found")
@@ -207,6 +222,7 @@ async def create_api_key(
             homelab_id=homelab_id,
             display_name=body.display_name,
             allowed_model_slugs=body.allowed_model_slugs,
+            max_concurrent=body.max_concurrent,
         )
     except HomelabNotFoundError:
         raise HTTPException(status_code=404, detail="homelab not found")
@@ -225,7 +241,11 @@ async def update_api_key(
     user: dict = Depends(require_active_session),
     svc: HomelabService = Depends(_service),
 ):
-    if body.display_name is None and body.allowed_model_slugs is None:
+    if (
+        body.display_name is None
+        and body.allowed_model_slugs is None
+        and body.max_concurrent is None
+    ):
         raise HTTPException(status_code=400, detail="nothing to update")
     try:
         return await svc.update_api_key(
@@ -234,6 +254,7 @@ async def update_api_key(
             api_key_id=api_key_id,
             display_name=body.display_name,
             allowed_model_slugs=body.allowed_model_slugs,
+            max_concurrent=body.max_concurrent,
         )
     except (HomelabNotFoundError, ApiKeyNotFoundError):
         raise HTTPException(status_code=404, detail="not found")

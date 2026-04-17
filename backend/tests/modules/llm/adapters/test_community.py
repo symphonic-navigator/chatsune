@@ -98,6 +98,9 @@ async def test_fetch_models_filters_by_allowlist(monkeypatch):
     fake_svc.validate_consumer_access_key = AsyncMock(
         return_value={"allowed_model_slugs": ["llama3.2:8b"]}
     )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
+    )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
     adapter = _community.CommunityAdapter()
@@ -123,6 +126,9 @@ async def test_fetch_models_empty_when_api_key_invalid(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access_key = AsyncMock(return_value=None)
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
+    )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
     adapter = _community.CommunityAdapter()
@@ -168,6 +174,9 @@ async def test_fetch_models_returns_empty_when_rpc_raises(monkeypatch):
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access_key = AsyncMock(
         return_value={"allowed_model_slugs": ["llama3.2:8b"]}
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -232,7 +241,14 @@ async def test_stream_completion_translates_frames(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]}
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        }
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -282,7 +298,14 @@ async def test_stream_completion_error_when_sidecar_offline(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        },
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -328,7 +351,14 @@ async def test_stream_completion_translates_thinking_delta(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        },
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -388,7 +418,14 @@ async def test_stream_completion_translates_tool_call_with_nested_function(monke
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        },
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -421,7 +458,14 @@ async def test_stream_completion_translates_cancelled_to_aborted(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        },
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 
@@ -450,7 +494,14 @@ async def test_stream_completion_translates_err_frame(monkeypatch):
     )
     fake_svc = MagicMock()
     fake_svc.validate_consumer_access = AsyncMock(
-        return_value={"allowed_model_slugs": ["llama3.2:8b"]},
+        return_value={
+            "allowed_model_slugs": ["llama3.2:8b"],
+            "api_key_id": "key-1",
+            "max_concurrent": 1,
+        },
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
     )
     monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
 

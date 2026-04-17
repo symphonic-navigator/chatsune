@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AllowlistEditor } from './AllowlistEditor'
 import { apiKeysApi } from './api'
 import { ApiKeyCreateModal } from './ApiKeyCreateModal'
+import { ApiKeyEditModal } from './ApiKeyEditModal'
 import { ApiKeyRevealModal } from './ApiKeyRevealModal'
 import { useCommunityProvisioningStore } from './store'
 import type { ApiKey } from './types'
@@ -23,6 +24,7 @@ export function ApiKeyList({ homelabId }: { homelabId: string }) {
   const [showCreate, setShowCreate] = useState(false)
   const [revealKey, setRevealKey] = useState<string | null>(null)
   const [editingAllowlistFor, setEditingAllowlistFor] = useState<ApiKey | null>(null)
+  const [editingFor, setEditingFor] = useState<ApiKey | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -131,9 +133,22 @@ export function ApiKeyList({ homelabId }: { homelabId: string }) {
                       {k.allowed_model_slugs.length} model
                       {k.allowed_model_slugs.length === 1 ? '' : 's'} allowed
                     </span>
+                    <span>·</span>
+                    <span>
+                      max parallel{' '}
+                      <span className="text-white/60">{k.max_concurrent}</span>
+                    </span>
                   </div>
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingFor(k)}
+                    disabled={revoked}
+                    className="rounded border border-white/15 px-2 py-1 text-[11px] text-white/80 hover:bg-white/5 disabled:opacity-40"
+                  >
+                    Edit
+                  </button>
                   <button
                     type="button"
                     onClick={() => setEditingAllowlistFor(k)}
@@ -183,6 +198,13 @@ export function ApiKeyList({ homelabId }: { homelabId: string }) {
           homelabId={homelabId}
           apiKey={editingAllowlistFor}
           onClose={() => setEditingAllowlistFor(null)}
+        />
+      )}
+      {editingFor && (
+        <ApiKeyEditModal
+          homelabId={homelabId}
+          apiKey={editingFor}
+          onClose={() => setEditingFor(null)}
         />
       )}
     </div>

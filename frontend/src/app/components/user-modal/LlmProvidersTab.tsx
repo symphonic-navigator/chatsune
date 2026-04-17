@@ -70,6 +70,13 @@ export function LlmProvidersTab() {
     )
   }
 
+  // Split the flat connection list into two visually distinct groups. Self-
+  // hosted connections (homelab self-connections) are owned by the Homelab
+  // module — they render first, non-interactive, with guidance pointing at
+  // the Homelabs page. Everything else is an ordinary user-managed provider.
+  const selfHosted = items.filter((c) => c.is_system_managed === true)
+  const providers = items.filter((c) => c.is_system_managed !== true)
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
@@ -96,27 +103,60 @@ export function LlmProvidersTab() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
-        <h3 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
-          LLM Providers
-        </h3>
-        <button
-          type="button"
-          onClick={() => setWizardOpen(true)}
-          className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80"
-        >
-          + Connection
-        </button>
+      <div className="flex-1 overflow-y-auto">
+        {selfHosted.length > 0 && (
+          <div>
+            <div className="border-b border-white/6 px-5 py-3">
+              <h3 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
+                Self-Hosted
+              </h3>
+              <p className="mt-1 text-[11px] text-white/50">
+                Your own homelab compute. Manage it under Homelabs.
+              </p>
+            </div>
+            <ul className="divide-y divide-white/5 px-2 py-2">
+              {selfHosted.map((c) => (
+                <ConnectionListItem
+                  key={c.id}
+                  connection={c}
+                  isSelfHosted
+                  onClick={() => setEditing(c)}
+                />
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div>
+          <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
+            <h3 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
+              Providers
+            </h3>
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="rounded bg-purple/70 px-3 py-1 text-[12px] text-white hover:bg-purple/80"
+            >
+              + Connection
+            </button>
+          </div>
+          {providers.length === 0 ? (
+            <p className="px-5 py-4 text-[12px] text-white/50">
+              No provider connections yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-white/5 px-2 py-2">
+              {providers.map((c) => (
+                <ConnectionListItem
+                  key={c.id}
+                  connection={c}
+                  onClick={() => setEditing(c)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
-      <ul className="flex-1 divide-y divide-white/5 overflow-y-auto px-2 py-2">
-        {items.map((c) => (
-          <ConnectionListItem
-            key={c.id}
-            connection={c}
-            onClick={() => setEditing(c)}
-          />
-        ))}
-      </ul>
 
       {wizardOpen && (
         <AddConnectionWizard

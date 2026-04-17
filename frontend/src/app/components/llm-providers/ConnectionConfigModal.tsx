@@ -238,6 +238,12 @@ export function ConnectionConfigModal({
 
   const AdapterView = adapter ? resolveAdapterView(adapter.view_id) : null
 
+  // System-managed connections (e.g. a homelab's self-connection) are owned
+  // by another subsystem. The Providers list already prevents opening this
+  // modal for them, but harden the modal itself as a safety net: banner +
+  // locked inputs + hidden save/delete.
+  const isSystemManaged = !isNew && connection.is_system_managed === true
+
   return (
     <Sheet
       isOpen={true}
@@ -264,6 +270,14 @@ export function ConnectionConfigModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {isSystemManaged && (
+            <div className="rounded border border-gold/30 bg-gold/10 px-3 py-2 text-[12px] text-gold/80">
+              This connection is managed by your Homelab settings. Edit the
+              homelab to change display name or max parallel; delete the
+              homelab to remove it here.
+            </div>
+          )}
+
           {/* Generic frame: display name + slug */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
@@ -274,7 +288,9 @@ export function ConnectionConfigModal({
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-purple/60"
+                readOnly={isSystemManaged}
+                disabled={isSystemManaged}
+                className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-purple/60 disabled:opacity-60"
               />
             </div>
             <div className="space-y-1">
@@ -285,7 +301,9 @@ export function ConnectionConfigModal({
                 type="text"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-sm text-white outline-none focus:border-purple/60"
+                readOnly={isSystemManaged}
+                disabled={isSystemManaged}
+                className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-sm text-white outline-none focus:border-purple/60 disabled:opacity-60"
               />
             </div>
           </div>
@@ -369,9 +387,9 @@ export function ConnectionConfigModal({
               onClick={onClose}
               className="text-[12px] text-white/60 hover:text-white/80"
             >
-              Cancel
+              {isSystemManaged ? 'Close' : 'Cancel'}
             </button>
-            {!isNew && onDeleted && (
+            {!isNew && onDeleted && !isSystemManaged && (
               <button
                 type="button"
                 onClick={handleDelete}
@@ -392,24 +410,26 @@ export function ConnectionConfigModal({
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleSave({ closeAfter: false })}
-              disabled={saving}
-              className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40"
-            >
-              {saving && !closeAfter ? 'Saving…' : 'Save'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSave({ closeAfter: true })}
-              disabled={saving}
-              className="rounded bg-gold/90 px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-gold disabled:opacity-40"
-            >
-              {saving && closeAfter ? 'Saving…' : 'Save and close'}
-            </button>
-          </div>
+          {!isSystemManaged && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSave({ closeAfter: false })}
+                disabled={saving}
+                className="rounded border border-white/15 px-3 py-1 text-[12px] text-white/80 hover:bg-white/5 disabled:opacity-40"
+              >
+                {saving && !closeAfter ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSave({ closeAfter: true })}
+                disabled={saving}
+                className="rounded bg-gold/90 px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-gold disabled:opacity-40"
+              >
+                {saving && closeAfter ? 'Saving…' : 'Save and close'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </Sheet>

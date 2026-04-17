@@ -1,48 +1,49 @@
 import { useState } from 'react'
 import { Sheet } from '../../core/components/Sheet'
-import { apiKeysApi } from './api'
+import { homelabsApi } from './api'
+import type { Homelab } from './types'
 
 /**
- * Collects a display name and concurrency ceiling and creates a fresh
- * API-Key. By design the new key starts with an empty allowlist (no
- * "tick all" convenience) — the host then ticks models explicitly in the
- * `AllowlistEditor`.
- *
- * On success the caller receives the plaintext key and is responsible
- * for rendering `ApiKeyRevealModal` — keeps this modal narrowly scoped.
+ * Explicit edit window for a homelab. Replaces the old double-click-to-rename
+ * affordance on the card: surfaces display name and the homelab-wide
+ * `max_concurrent_requests` ceiling in one place, sends a single PATCH.
  */
-export function ApiKeyCreateModal({
-  homelabId,
+export function HomelabEditModal({
+  homelab,
   onClose,
-  onCreated,
 }: {
-  homelabId: string
+  homelab: Homelab
   onClose: () => void
-  onCreated: (plaintext: string) => void
 }) {
-  const [name, setName] = useState('')
-  const [maxConcurrent, setMaxConcurrent] = useState<number>(1)
+  const [name, setName] = useState(homelab.display_name)
+  const [maxConcurrent, setMaxConcurrent] = useState<number>(
+    homelab.max_concurrent_requests,
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const trimmedName = name.trim()
+  const nameInvalid = trimmedName.length < 1 || trimmedName.length > 80
   const concurrencyInvalid =
-    !Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 32
-  const canSubmit = !busy && trimmedName.length > 0 && !concurrencyInvalid
+    !Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 64
+
+  const nameChanged = trimmedName !== homelab.display_name
+  const concurrencyChanged = maxConcurrent !== homelab.max_concurrent_requests
+  const dirty = nameChanged || concurrencyChanged
+  const canSubmit = !busy && dirty && !nameInvalid && !concurrencyInvalid
 
   async function submit() {
     if (!canSubmit) return
     setBusy(true)
     setError(null)
     try {
-      const res = await apiKeysApi.create(homelabId, {
-        display_name: trimmedName,
-        allowed_model_slugs: [],
-        max_concurrent: maxConcurrent,
+      await homelabsApi.update(homelab.homelab_id, {
+        ...(nameChanged ? { display_name: trimmedName } : {}),
+        ...(concurrencyChanged ? { max_concurrent_requests: maxConcurrent } : {}),
       })
-      onCreated(res.plaintext_api_key)
+      onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed.')
+      setError(err instanceof Error ? err.message : 'Save failed.')
     } finally {
       setBusy(false)
     }
@@ -53,13 +54,13 @@ export function ApiKeyCreateModal({
       isOpen={true}
       onClose={onClose}
       size="md"
-      ariaLabel="Create API-Key"
+      ariaLabel="Edit homelab"
       className="border border-white/8 bg-elevated"
     >
       <div className="flex flex-col">
         <div className="flex items-center justify-between border-b border-white/6 px-5 py-3">
           <h2 className="text-[13px] font-mono uppercase tracking-wider text-white/60">
-            Create API-Key
+            Edit homelab
           </h2>
           <button
             type="button"
@@ -71,11 +72,6 @@ export function ApiKeyCreateModal({
           </button>
         </div>
         <div className="space-y-4 px-5 py-4">
-          <p className="text-[12px] text-white/60">
-            Give it a name that tells you who it's for. The new key starts
-            with no models allowed — tick models explicitly afterwards via
-            "Edit allowlist".
-          </p>
           <div className="space-y-1">
             <label className="block text-[11px] font-mono uppercase tracking-wider text-white/50">
               Display name
@@ -89,7 +85,6 @@ export function ApiKeyCreateModal({
                 if (e.key === 'Enter' && canSubmit) void submit()
               }}
               maxLength={80}
-              placeholder="e.g. Bob (Testphase)"
               className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60"
             />
           </div>
@@ -100,7 +95,7 @@ export function ApiKeyCreateModal({
             <input
               type="number"
               min={1}
-              max={32}
+              max={64}
               value={maxConcurrent}
               onChange={(e) => setMaxConcurrent(Number(e.target.value))}
               onKeyDown={(e) => {
@@ -109,7 +104,7 @@ export function ApiKeyCreateModal({
               className="w-28 rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-gold/60"
             />
             <p className="text-[11px] text-white/50">
-              How many simultaneous requests this API-Key can make.
+              Total simultaneous requests across ALL users of this homelab.
             </p>
           </div>
           {error && (
@@ -132,7 +127,7 @@ export function ApiKeyCreateModal({
             onClick={() => void submit()}
             className="rounded bg-gold/90 px-4 py-1.5 text-[12px] font-semibold text-black hover:bg-gold disabled:opacity-40"
           >
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

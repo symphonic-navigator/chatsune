@@ -9,6 +9,7 @@ from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import (
     ConnectionNotFoundError,
     ConnectionRepository,
+    ConnectionSystemManagedError,
     InvalidAdapterTypeError,
     InvalidSlugError,
     SlugAlreadyExistsError,
@@ -173,6 +174,10 @@ async def update_connection(
         )
     except ConnectionNotFoundError:
         raise HTTPException(status_code=404, detail="Not found")
+    except ConnectionSystemManagedError:
+        raise HTTPException(
+            status_code=400, detail="connection is system-managed",
+        )
     except InvalidSlugError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except SlugAlreadyExistsError as exc:
@@ -215,7 +220,12 @@ async def delete_connection(
     # Unwire dependent personas BEFORE deleting the connection. Crossing a
     # module boundary so the persona module owns the actual DB write.
     affected = await unwire_personas_for_connection(user["sub"], connection_id)
-    deleted = await _repo().delete(user["sub"], connection_id)
+    try:
+        deleted = await _repo().delete(user["sub"], connection_id)
+    except ConnectionSystemManagedError:
+        raise HTTPException(
+            status_code=400, detail="connection is system-managed",
+        )
     if not deleted:
         raise HTTPException(status_code=404, detail="Not found")
     get_semaphore_registry().evict(connection_id)

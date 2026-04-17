@@ -21,6 +21,10 @@ from backend.modules.llm._adapters._types import (
     ResolvedConnection,
 )
 from backend.modules.llm._csp._registry import get_sidecar_registry
+from backend.modules.llm._homelab_semaphores import (
+    get_api_key_semaphore_registry,
+    get_homelab_semaphore_registry,
+)
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
@@ -182,8 +186,9 @@ class CommunityAdapter(BaseAdapter):
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
         homelab_id = (connection.config.get("homelab_id") or "").strip()
+        is_host_self = bool(connection.config.get("is_host_self"))
         api_key = (connection.config.get("api_key") or "").strip()
-        if not homelab_id or not api_key:
+        if not homelab_id or (not is_host_self and not api_key):
             return []
 
         sidecar = get_sidecar_registry().get(homelab_id)
@@ -195,6 +200,32 @@ class CommunityAdapter(BaseAdapter):
             return []
 
         svc = _homelab_service()
+
+        # Resolve the homelab-wide concurrency cap. For host-self we still
+        # share the same cap — listing is cheap but this keeps behaviour
+        # uniform across all consumers of the homelab.
+        homelab_doc = await svc.find_homelab_by_id(homelab_id)
+        hw_cap = int((homelab_doc or {}).get("max_concurrent_requests", 3))
+        hw_sem = get_homelab_semaphore_registry().get(homelab_id, hw_cap)
+
+        if is_host_self:
+            # Host path: bypass api-key validation AND bypass the allowlist
+            # filter — the host can see every model their own sidecar reports.
+            try:
+                async with hw_sem:
+                    raw_models = await sidecar.rpc_list_models()
+            except Exception as exc:  # noqa: BLE001 — degrade gracefully
+                _log.warning(
+                    "community.fetch_models.rpc_failed connection_id=%s homelab_id=%s err=%s",
+                    connection.id, homelab_id, exc,
+                )
+                return []
+            return [
+                _model_meta_to_dto(connection, m)
+                for m in raw_models
+                if m.get("context_length")
+            ]
+
         key_doc = await svc.validate_consumer_access_key(
             homelab_id=homelab_id, api_key_plaintext=api_key,
         )
@@ -207,7 +238,8 @@ class CommunityAdapter(BaseAdapter):
         allowlist = set(key_doc.get("allowed_model_slugs", []))
 
         try:
-            raw_models = await sidecar.rpc_list_models()
+            async with hw_sem:
+                raw_models = await sidecar.rpc_list_models()
         except Exception as exc:  # noqa: BLE001 — degrade gracefully on RPC failure
             _log.warning(
                 "community.fetch_models.rpc_failed connection_id=%s homelab_id=%s err=%s",
@@ -232,25 +264,36 @@ class CommunityAdapter(BaseAdapter):
         )
 
         homelab_id = (connection.config.get("homelab_id") or "").strip()
+        is_host_self = bool(connection.config.get("is_host_self"))
         api_key = (connection.config.get("api_key") or "").strip()
         # ``request.model`` is the raw model slug; the connection-slug prefix
         # is stripped one layer up by ``stream_completion`` in the LLM public
         # API (see backend/modules/llm/__init__.py::parse_model_unique_id).
         model_slug = (request.model or "").strip()
 
-        if not homelab_id or not api_key or not model_slug:
+        if not homelab_id or not model_slug or (not is_host_self and not api_key):
             yield StreamRefused(reason="incomplete_configuration")
             return
 
         svc = _homelab_service()
-        key_doc = await svc.validate_consumer_access(
-            homelab_id=homelab_id,
-            api_key_plaintext=api_key,
-            model_slug=model_slug,
-        )
-        if key_doc is None:
-            yield StreamRefused(reason="api_key_invalid_or_model_not_allowed")
-            return
+
+        api_key_id: str | None = None
+        api_key_max_concurrent = 1
+        if not is_host_self:
+            key_doc = await svc.validate_consumer_access(
+                homelab_id=homelab_id,
+                api_key_plaintext=api_key,
+                model_slug=model_slug,
+            )
+            if key_doc is None:
+                yield StreamRefused(reason="api_key_invalid_or_model_not_allowed")
+                return
+            api_key_id = key_doc["api_key_id"]
+            api_key_max_concurrent = int(key_doc.get("max_concurrent", 1))
+
+        # Homelab-wide cap, read from the homelab doc (owner-agnostic lookup).
+        homelab_doc = await svc.find_homelab_by_id(homelab_id)
+        hw_cap = int((homelab_doc or {}).get("max_concurrent_requests", 3))
 
         sidecar = get_sidecar_registry().get(homelab_id)
         if sidecar is None:
@@ -260,18 +303,37 @@ class CommunityAdapter(BaseAdapter):
             )
             return
 
+        hw_sem = get_homelab_semaphore_registry().get(homelab_id, hw_cap)
         body = self._to_generate_chat_body(model_slug, request)
-        try:
-            async for frame in sidecar.rpc_generate_chat(body):
-                ev = _frame_to_event(frame)
-                if ev is not None:
-                    yield ev
-        except Exception as exc:  # noqa: BLE001 — surface as terminal error
-            _log.exception(
-                "community.stream_completion.failed connection_id=%s homelab_id=%s",
-                connection.id, homelab_id,
+
+        async def _run() -> AsyncIterator[ProviderStreamEvent]:
+            try:
+                async for frame in sidecar.rpc_generate_chat(body):
+                    ev = _frame_to_event(frame)
+                    if ev is not None:
+                        yield ev
+            except Exception as exc:  # noqa: BLE001 — surface as terminal error
+                _log.exception(
+                    "community.stream_completion.failed connection_id=%s homelab_id=%s",
+                    connection.id, homelab_id,
+                )
+                yield StreamError(
+                    error_code="provider_unavailable", message=str(exc),
+                )
+
+        # Acquire per-api-key (if applicable) then homelab-wide.
+        if api_key_id is not None:
+            key_sem = get_api_key_semaphore_registry().get(
+                api_key_id, api_key_max_concurrent,
             )
-            yield StreamError(error_code="provider_unavailable", message=str(exc))
+            async with key_sem:
+                async with hw_sem:
+                    async for ev in _run():
+                        yield ev
+        else:
+            async with hw_sem:
+                async for ev in _run():
+                    yield ev
 
     @staticmethod
     def _to_generate_chat_body(
@@ -373,8 +435,9 @@ def _build_adapter_router() -> APIRouter:
         c: ResolvedConnection = Depends(resolve_connection_for_user),
     ) -> dict:
         homelab_id = (c.config.get("homelab_id") or "").strip()
+        is_host_self = bool(c.config.get("is_host_self"))
         api_key = (c.config.get("api_key") or "").strip()
-        if not homelab_id or not api_key:
+        if not homelab_id or (not is_host_self and not api_key):
             return {
                 "valid": False,
                 "error": "Homelab-ID or API-Key is missing.",
@@ -394,17 +457,19 @@ def _build_adapter_router() -> APIRouter:
             }
 
         svc = _homelab_service()
-        key_doc = await svc.validate_consumer_access_key(
-            homelab_id=homelab_id, api_key_plaintext=api_key,
-        )
-        if key_doc is None:
-            return {
-                "valid": False,
-                "error": "API-Key is invalid or revoked.",
-                "latency_ms": 0,
-                "model_count": 0,
-                "total_models_on_homelab": 0,
-            }
+        key_doc: dict | None = None
+        if not is_host_self:
+            key_doc = await svc.validate_consumer_access_key(
+                homelab_id=homelab_id, api_key_plaintext=api_key,
+            )
+            if key_doc is None:
+                return {
+                    "valid": False,
+                    "error": "API-Key is invalid or revoked.",
+                    "latency_ms": 0,
+                    "model_count": 0,
+                    "total_models_on_homelab": 0,
+                }
 
         t0 = monotonic()
         try:
@@ -418,8 +483,11 @@ def _build_adapter_router() -> APIRouter:
                 "total_models_on_homelab": 0,
             }
         latency_ms = int((monotonic() - t0) * 1000)
-        allow = set(key_doc.get("allowed_model_slugs", []))
-        visible = [m for m in models if m.get("slug") in allow]
+        if is_host_self:
+            visible = models
+        else:
+            allow = set((key_doc or {}).get("allowed_model_slugs", []))
+            visible = [m for m in models if m.get("slug") in allow]
         return {
             "valid": True,
             "latency_ms": latency_ms,
