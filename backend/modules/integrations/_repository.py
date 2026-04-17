@@ -143,7 +143,7 @@ class IntegrationRepository:
             "Upserted integration config: user=%s integration=%s enabled=%s",
             user_id, integration_id, enabled,
         )
-        return doc
+        return self._redact_doc(doc)
 
     async def get_decrypted_secret(
         self, user_id: str, integration_id: str, field: str,
@@ -154,7 +154,7 @@ class IntegrationRepository:
         )
         if not doc:
             return None
-        enc = doc.get("config_encrypted", {})
+        enc = doc.get("config_encrypted") or {}
         if field not in enc:
             return None
         return _decrypt(enc[field])
