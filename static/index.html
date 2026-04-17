@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatsune — Your AI, Your Rules</title>
+  <style>
+    /* ─── Design Tokens ───────────────────────────────────────────── */
+    :root {
+      --bg-void:              #0a0a0a;
+      --surface-base:         rgba(255,255,255,0.025);
+      --surface-raised:       rgba(255,255,255,0.04);
+      --surface-hover:        rgba(255,255,255,0.06);
+      --gold:                 #c9a84c;
+      --gold-subtle:          rgba(201,168,76,0.06);
+      --gold-border:          rgba(201,168,76,0.15);
+      --gold-border-active:   rgba(201,168,76,0.35);
+      --gold-glow:            rgba(201,168,76,0.08);
+      --text-primary:         #f0e8d8;
+      --text-secondary:       #e8e0d0;
+      --text-muted:           rgba(232,224,208,0.4);
+      --text-ghost:           rgba(232,224,208,0.2);
+      --sage:                 #74c69d;
+      --coral:                #f87171;
+      --periwinkle:           #7c9ede;
+      --lavender:             #a78bfa;
+      --divider-gold:         rgba(201,168,76,0.08);
+      --border-neutral:       rgba(255,255,255,0.08);
+      --radius-card:          14px;
+      --radius-control:       10px;
+    }
+
+    /* ─── Reset & Base ────────────────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-void);
+      color: var(--text-secondary);
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar       { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.2); border-radius: 3px; }
+
+    /* ─── Top Bar ─────────────────────────────────────────────────── */
+    .top-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 32px;
+      background: rgba(10,10,10,0.95);
+      border-bottom: 1px solid var(--divider-gold);
+      backdrop-filter: blur(20px);
+    }
+
+    .logo {
+      font-family: Georgia, serif;
+      font-size: 18px;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .logo .star { color: var(--gold); font-size: 14px; }
+
+    .slide-counter {
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* ─── Slide Stage ─────────────────────────────────────────────── */
+    .stage {
+      position: fixed;
+      top: 56px; bottom: 60px; left: 0; right: 0;
+      overflow: hidden;
+    }
+
+    /* ─── Individual Slides ───────────────────────────────────────── */
+    .slide {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 32px 24px;
+      overflow-y: auto;
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.45s ease, transform 0.45s ease;
+      pointer-events: none;
+    }
+    .slide.active  { opacity: 1; transform: translateY(0); pointer-events: all; }
+    .slide.exiting { opacity: 0; transform: translateY(-18px); }
+
+    .slide-inner {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    /* ─── Typography ──────────────────────────────────────────────── */
+    .eyebrow {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      opacity: 0.65;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: Georgia, serif;
+      font-size: clamp(40px, 7vw, 64px);
+      font-weight: 400;
+      letter-spacing: -1.5px;
+      line-height: 1.05;
+      color: var(--text-primary);
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      font-family: Georgia, serif;
+      font-size: clamp(26px, 4.5vw, 40px);
+      font-weight: 400;
+      letter-spacing: -0.5px;
+      line-height: 1.15;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+
+    .lead {
+      font-size: clamp(15px, 2vw, 18px);
+      line-height: 1.7;
+      color: rgba(232,224,208,0.65);
+      max-width: 620px;
+      margin-bottom: 28px;
+    }
+
+    p {
+      font-size: 14px;
+      line-height: 1.75;
+      color: var(--text-secondary);
+    }
+
+    strong { color: var(--text-primary); font-weight: 600; }
+    em     { color: var(--text-primary); font-style: italic; }
+
+    .gold-text      { color: var(--gold); }
+    .sage-text      { color: var(--sage); }
+    .coral-text     { color: var(--coral); }
+    .periwinkle-text{ color: var(--periwinkle); }
+    .muted          { color: var(--text-muted); }
+
+    /* ─── Tags ────────────────────────────────────────────────────── */
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 28px; }
+    .tag {
+      font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+      padding: 5px 13px; border-radius: 5px;
+      background: var(--surface-base);
+      border: 1px solid var(--border-neutral);
+      color: var(--text-muted);
+    }
+    .tag.gold {
+      background: var(--gold-subtle);
+      border-color: var(--gold-border);
+      color: var(--gold);
+    }
+    .tag.sage {
+      background: rgba(116,198,157,0.06);
+      border-color: rgba(116,198,157,0.2);
+      color: var(--sage);
+    }
+
+    /* ─── Cards ───────────────────────────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+    .two-col{ display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 24px; align-items: start; }
+
+    .card {
+      background: var(--surface-base);
+      border: 1px solid var(--gold-border);
+      border-radius: var(--radius-card);
+      padding: 18px 20px;
+      transition: background 0.25s, border-color 0.25s;
+    }
+    .card:hover {
+      background: var(--gold-subtle);
+      border-color: rgba(201,168,76,0.28);
+    }
+    .card-label {
+      font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
+      color: var(--gold); opacity: 0.55; margin-bottom: 7px;
+    }
+    .card h3 {
+      font-family: Georgia, serif;
+      font-size: 16px; font-weight: 400;
+      color: var(--text-primary); margin-bottom: 8px;
+    }
+    .card p { font-size: 13px; color: var(--text-muted); line-height: 1.65; }
+    .card .icon { font-size: 20px; color: var(--gold); opacity: 0.6; margin-bottom: 10px; }
+
+    /* ─── Feature List ────────────────────────────────────────────── */
+    .feature-list { list-style: none; }
+    .feature-list li {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--divider-gold);
+      font-size: 14px; color: var(--text-secondary);
+    }
+    .feature-list li:last-child { border-bottom: none; }
+    .feature-list .glyph {
+      color: var(--gold); opacity: 0.55;
+      min-width: 18px; font-size: 13px; margin-top: 1px;
+    }
+
+    /* ─── Comparison Table ────────────────────────────────────────── */
+    .compare-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 12px; margin-top: 24px;
+    }
+    .compare-table th {
+      padding: 9px 13px; text-align: left;
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--divider-gold);
+    }
+    .compare-table th.hl { color: var(--gold); opacity: 0.8; }
+    .compare-table td {
+      padding: 9px 13px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      color: var(--text-muted);
+    }
+    .compare-table td:first-child { color: var(--text-secondary); }
+    .compare-table .hl-col { background: rgba(201,168,76,0.03); }
+    .compare-table tr:hover td { background: rgba(255,255,255,0.015); }
+    .yes { color: var(--sage); }
+    .no  { color: var(--coral); opacity: 0.7; }
+    .par { color: var(--gold); opacity: 0.8; }
+
+    /* ─── Code Block ──────────────────────────────────────────────── */
+    .code-block {
+      background: rgba(0,0,0,0.45);
+      border: 1px solid var(--gold-border);
+      border-radius: var(--radius-control);
+      padding: 14px 18px;
+      font-family: 'Courier New', monospace; font-size: 12px;
+      color: var(--text-secondary); margin-top: 18px;
+      line-height: 1.8;
+    }
+    .code-block .cmt  { color: var(--text-ghost); }
+    .code-block .cmd  { color: var(--gold); }
+    .code-block .flag { color: var(--periwinkle); }
+
+    /* ─── Status Dot ──────────────────────────────────────────────── */
+    .dot {
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; margin-right: 7px; vertical-align: middle;
+    }
+    .dot.sage { background: var(--sage); box-shadow: 0 0 6px rgba(116,198,157,0.5); }
+    .dot.gold { background: var(--gold); box-shadow: 0 0 6px rgba(201,168,76,0.5); }
+
+    /* ─── GPL Badge ───────────────────────────────────────────────── */
+    .gpl-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 7px 16px; margin-top: 24px;
+      background: rgba(116,198,157,0.06);
+      border: 1px solid rgba(116,198,157,0.2);
+      border-radius: 7px;
+      font-size: 11px; letter-spacing: 0.8px;
+      color: var(--sage);
+    }
+
+    /* ─── Diagram ─────────────────────────────────────────────────── */
+    .diagram {
+      background: var(--surface-base);
+      border: 1px solid var(--gold-border);
+      border-radius: var(--radius-card);
+      padding: 24px 20px; margin-top: 20px;
+    }
+    .diagram-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0; flex-wrap: wrap; row-gap: 12px;
+    }
+    .d-node {
+      display: inline-block; padding: 9px 18px;
+      border-radius: 8px; font-size: 12px; letter-spacing: 0.3px;
+    }
+    .d-node.cloud  { background: rgba(124,158,222,0.08); border: 1px solid rgba(124,158,222,0.2); color: var(--periwinkle); }
+    .d-node.sidecar{ background: var(--gold-subtle); border: 1px solid var(--gold-border); color: var(--gold); }
+    .d-node.home   { background: rgba(116,198,157,0.07); border: 1px solid rgba(116,198,157,0.2); color: var(--sage); }
+    .d-arrow { padding: 0 14px; color: var(--text-ghost); font-size: 18px; }
+    .diagram-label {
+      display: block; text-align: center; margin-top: 16px;
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-ghost);
+    }
+
+    /* ─── Stats ───────────────────────────────────────────────────── */
+    .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-top: 24px; }
+    .stat {
+      text-align: center; padding: 18px 12px;
+      background: var(--surface-base);
+      border: 1px solid var(--gold-border); border-radius: var(--radius-card);
+    }
+    .stat .val {
+      font-family: Georgia, serif; font-size: 34px;
+      color: var(--gold); display: block; margin-bottom: 5px;
+    }
+    .stat .lbl {
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    /* ─── Bottom Navigation ───────────────────────────────────────── */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+      background: rgba(10,10,10,0.95);
+      border-top: 1px solid var(--divider-gold);
+      backdrop-filter: blur(20px);
+    }
+
+    .nav-btn {
+      font-family: system-ui, sans-serif;
+      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--text-muted); background: none;
+      border: 1px solid var(--border-neutral); border-radius: 8px;
+      padding: 7px 16px; cursor: pointer;
+      transition: color 0.2s, border-color 0.2s, background 0.2s;
+      display: flex; align-items: center; gap: 7px;
+    }
+    .nav-btn:hover:not(:disabled) {
+      color: var(--text-primary);
+      border-color: var(--gold-border);
+      background: var(--gold-subtle);
+    }
+    .nav-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+
+    .prog-dots { display: flex; gap: 6px; align-items: center; }
+    .prog-dot  {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--text-ghost);
+      cursor: pointer; transition: all 0.3s;
+    }
+    .prog-dot.active {
+      background: var(--gold); width: 20px; border-radius: 3px;
+      box-shadow: 0 0 8px rgba(201,168,76,0.45);
+    }
+
+    /* ─── Ambient Glows ───────────────────────────────────────────── */
+    .ambient {
+      position: fixed; pointer-events: none; z-index: 0;
+    }
+
+    /* ─── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      .grid-2, .grid-3, .two-col, .stats-row { grid-template-columns: 1fr; }
+      .compare-table { font-size: 11px; }
+      .compare-table td, .compare-table th { padding: 7px 8px; }
+      h1 { font-size: 38px; }
+      h2 { font-size: 26px; }
+      .top-bar { padding: 0 16px; }
+      .bottom-nav { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ─── Ambient Glows ──────────────────────────────────────────── -->
+  <div class="ambient" style="top:5%;left:25%;width:700px;height:600px;background:radial-gradient(ellipse,rgba(201,168,76,0.04) 0%,transparent 65%);"></div>
+  <div class="ambient" style="bottom:10%;right:5%;width:500px;height:400px;background:radial-gradient(ellipse,rgba(124,158,222,0.025) 0%,transparent 65%);"></div>
+
+  <!-- ─── Top Bar ────────────────────────────────────────────────── -->
+  <header class="top-bar">
+    <div class="logo"><span class="star">✦</span> Chatsune</div>
+    <div class="slide-counter" id="counter">01 / 13</div>
+  </header>
+
+  <!-- ─── Slides ─────────────────────────────────────────────────── -->
+  <div class="stage" id="stage">
+
+    <!-- 01 · Hero ────────────────────────────────────────────────── -->
+    <div class="slide active" data-index="1">
+      <div class="slide-inner">
+        <div class="eyebrow">Privacy-first · Self-hosted · Open Source</div>
+        <h1>Your AI companion.<br>On your hardware.<br>Under your control.</h1>
+        <p class="lead">A self-hosted, multi-user AI companion platform for people who take privacy seriously — not as a selling point, but as a minimum requirement.</p>
+        <div class="tags">
+          <span class="tag gold">GPLv3</span>
+          <span class="tag sage">Self-hosted</span>
+          <span class="tag">Multi-user</span>
+          <span class="tag">Ollama-compatible</span>
+          <span class="tag">BYOK</span>
+          <span class="tag">Docker Compose</span>
+          <span class="tag">No telemetry</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 02 · The Problem ─────────────────────────────────────────── -->
+    <div class="slide" data-index="2">
+      <div class="slide-inner">
+        <div class="eyebrow">The landscape</div>
+        <h2>AI is remarkable.<br>The status quo is not.</h2>
+        <div class="two-col">
+          <div>
+            <p style="margin-bottom:14px;">Most AI chat platforms ask you to hand over your conversations, your prompts, and your trust to a corporate pipeline — in exchange for convenience.</p>
+            <p style="margin-bottom:14px;">Shared API keys mean your queries sit alongside everyone else's. Privacy policies change. Your data might leave the building, silently.</p>
+            <p>Lock-in is dressed up as simplicity. That is a trade you should never have to make.</p>
+          </div>
+          <ul class="feature-list">
+            <li><span class="glyph coral-text">✗</span>Conversations used as training data</li>
+            <li><span class="glyph coral-text">✗</span>Shared credentials — your prompts, everyone's risk</li>
+            <li><span class="glyph coral-text">✗</span>Corporate oversight on every message</li>
+            <li><span class="glyph coral-text">✗</span>No ownership of your AI's memory</li>
+            <li><span class="glyph coral-text">✗</span>Vendor lock-in disguised as UX</li>
+            <li><span class="glyph coral-text">✗</span>Privacy as a premium tier, never a default</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 · What is Chatsune ────────────────────────────────────── -->
+    <div class="slide" data-index="3">
+      <div class="slide-inner">
+        <div class="eyebrow">Platform overview</div>
+        <h2>What Chatsune is.</h2>
+        <p class="lead" style="margin-bottom:0;">A privacy-first, self-hosted, multi-user AI companion platform. All inference runs on hardware you choose. Deployed in minutes via Docker Compose. GPLv3 throughout — no vendor lock-in, no telemetry, no surprises.</p>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-label">Architecture</div>
+            <h3>Modular Monolith</h3>
+            <p>One FastAPI process with strictly enforced module boundaries. Event-driven throughout. Scales simply — no Kubernetes required.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Inference</div>
+            <h3>Ollama-Compatible</h3>
+            <p>Works with self-hosted Ollama, Ollama Cloud, or any compatible endpoint. BYOK is not an optional feature — it is the only mode.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Storage</div>
+            <h3>MongoDB + Redis</h3>
+            <p>MongoDB with local vector search. Redis Streams for real-time events. No external vector database — everything stays on your machine.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Real-time</div>
+            <h3>Event-First WebSocket</h3>
+            <p>One persistent WebSocket connection per user. No polling, ever. Every state change is an event, replayed on reconnect via Redis Streams.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 04 · BYOK ────────────────────────────────────────────────── -->
+    <div class="slide" data-index="4">
+      <div class="slide-inner">
+        <div class="eyebrow">Credentials &amp; access</div>
+        <h2>Bring Your Own Keys.<br>Every user. No exceptions.</h2>
+        <div class="two-col">
+          <div>
+            <p style="margin-bottom:14px;">Each user manages their own LLM connections — named, encrypted, personal. The administrator sees nothing of your API keys. Nobody else's credentials share a namespace with yours.</p>
+            <p style="margin-bottom:14px;">Keys are encrypted with Fernet symmetric encryption, stored per-user in the database. Multiple providers, multiple models, one clean interface.</p>
+            <p>Your data. Your credentials. Your inference.</p>
+          </div>
+          <div>
+            <div class="card" style="margin-bottom:12px;">
+              <div class="card-label">Encryption</div>
+              <h3>Fernet symmetric encryption</h3>
+              <p>Keys are never stored in plaintext. The admin has no visibility into user credentials — by design, not by policy.</p>
+            </div>
+            <div class="card">
+              <div class="card-label">Multi-provider</div>
+              <h3>Ollama · Cloud · Custom</h3>
+              <p>Connect any Ollama-compatible endpoint. Self-hosted at home, Ollama Cloud, or a custom backend — the same interface throughout.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 05 · Homelab ─────────────────────────────────────────────── -->
+    <div class="slide" data-index="5">
+      <div class="slide-inner">
+        <div class="eyebrow">Homelab integration</div>
+        <h2>Your GPU is at home.<br>That should not stop you.</h2>
+        <p style="margin-bottom:4px;">Most people with a home GPU face the same wall: dynamic IP, CGNAT, no port-forwarding. The machine sits idle unless you are physically on the local network.</p>
+        <div class="diagram">
+          <div class="diagram-row">
+            <span class="d-node cloud">☁ Chatsune</span>
+            <span class="d-arrow">⟵ ⟶</span>
+            <span class="d-node sidecar">✦ Sidecar</span>
+            <span class="d-arrow">⟶</span>
+            <span class="d-node home">⬡ Ollama (home GPU)</span>
+          </div>
+          <span class="diagram-label">Reverse WebSocket · No port-forwarding · Works through CGNAT and dynamic IPs</span>
+        </div>
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <div class="card-label">How it works</div>
+            <p>A small sidecar container runs beside your home Ollama. It opens a <strong>reverse outbound WebSocket</strong> to your Chatsune instance — no inbound ports required. The connection tunnels inference traffic both ways.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Security</div>
+            <p>One-time pairing keys, shown once at creation, hashed as <strong>argon2id</strong>. Instantly revocable. Reverse-only transport eliminates spoofing risk. Each pairing gets its own isolated namespace.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 06 · Homelab Sharing ─────────────────────────────────────── -->
+    <div class="slide" data-index="6">
+      <div class="slide-inner">
+        <div class="eyebrow">Community compute</div>
+        <h2>Share your GPU<br>with people you trust.</h2>
+        <p style="margin-bottom:0;">The homelab system is not just for solo use. Hosts can provision compute capacity to invited users — directly, without a marketplace, without a platform intermediary cutting in.</p>
+        <div class="grid-3">
+          <div class="card">
+            <div class="icon">⬡</div>
+            <div class="card-label">Host</div>
+            <h3>Provision your compute</h3>
+            <p>Create a pairing, define a model allowlist, set concurrency limits. Your hardware, your rules — down to the model level.</p>
+          </div>
+          <div class="card">
+            <div class="icon">↗</div>
+            <div class="card-label">Invitation</div>
+            <h3>Invite, not publish</h3>
+            <p>No public marketplace. You invite a specific, trusted user. Revoke at any time. Zero intermediaries. No billing surprises.</p>
+          </div>
+          <div class="card">
+            <div class="icon">◈</div>
+            <div class="card-label">Multi-engine</div>
+            <h3>Ollama, LM Studio, vLLM</h3>
+            <p>The sidecar protocol is engine-agnostic. Connect whatever runtime is running on the box — the abstraction handles translation.</p>
+          </div>
+        </div>
+        <p style="margin-top:20px;font-size:13px;" class="muted">The friend-to-friend compute model. Hardware shared between people who know each other — no cloud middleman required.</p>
+      </div>
+    </div>
+
+    <!-- 07 · Memory ──────────────────────────────────────────────── -->
+    <div class="slide" data-index="7">
+      <div class="slide-inner">
+        <div class="eyebrow">Memory system</div>
+        <h2>Memory that<br>actually accumulates.</h2>
+        <div class="two-col">
+          <div>
+            <p style="margin-bottom:14px;">Most AI platforms stuff recent chat history into the context window and call it memory. That is not memory — it is short-term recall with an expiry date.</p>
+            <p style="margin-bottom:14px;">Chatsune runs background consolidation jobs — <em>dreaming</em> — that synthesise episodic journal entries into persistent prose memory. Long-term, versioned, recoverable on failure.</p>
+            <p>Each persona has its own memory body. It grows over time. It survives sessions, restarts, and upgrades.</p>
+          </div>
+          <ul class="feature-list">
+            <li>
+              <span class="glyph">✦</span>
+              <div><strong>Journal extraction</strong><br><span class="muted" style="font-size:12px;">Conversations scanned in the background for significant statements and events.</span></div>
+            </li>
+            <li>
+              <span class="glyph">✦</span>
+              <div><strong>Dreaming (consolidation)</strong><br><span class="muted" style="font-size:12px;">Episodic entries synthesised into coherent prose by a scheduled background job.</span></div>
+            </li>
+            <li>
+              <span class="glyph">✦</span>
+              <div><strong>Two-tier retrieval</strong><br><span class="muted" style="font-size:12px;">Fresh episodic entries plus consolidated long-term memory injected at inference time.</span></div>
+            </li>
+            <li>
+              <span class="glyph">✦</span>
+              <div><strong>Versioned with rollback</strong><br><span class="muted" style="font-size:12px;">Memory body is versioned. Consolidation failures roll back cleanly — no data loss.</span></div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 08 · Personas & Knowledge ───────────────────────────────── -->
+    <div class="slide" data-index="8">
+      <div class="slide-inner">
+        <div class="eyebrow">Personas &amp; knowledge</div>
+        <h2>Companions with<br>real persistence.</h2>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-label">Persona System</div>
+            <h3>Distinct personalities</h3>
+            <p>Named companions with avatars and a three-layer system prompt hierarchy — global guardrails, user additions, persona specifics. Persistent relationships, not throwaway chat sessions.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Knowledge Bases</div>
+            <h3>Per-persona document libraries</h3>
+            <p>Upload documents to a persona's private knowledge base. Semantic retrieval via MongoDB Vector Search — your documents stay where they are.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Local Embeddings</div>
+            <h3>Arctic Embed M v2.0</h3>
+            <p>768-dimensional embeddings generated on CPU via ONNX Runtime. No OpenAI embedding calls. No Cohere. No external API. Zero data leaves your server.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Projects</div>
+            <h3>Organised context</h3>
+            <p>Group conversations and knowledge by project. Switch context cleanly. Sanitised Mode keeps sensitive personas out of the main view when needed.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 09 · Tools & Artefacts ──────────────────────────────────── -->
+    <div class="slide" data-index="9">
+      <div class="slide-inner">
+        <div class="eyebrow">Tools &amp; outputs</div>
+        <h2>Tools that<br>actually do things.</h2>
+        <div class="two-col">
+          <ul class="feature-list">
+            <li>
+              <span class="glyph">◈</span>
+              <div><strong>Web search</strong><br><span class="muted" style="font-size:12px;">Pluggable adapters, per-user BYOK credentials. No shared search keys.</span></div>
+            </li>
+            <li>
+              <span class="glyph">◈</span>
+              <div><strong>Knowledge retrieval</strong><br><span class="muted" style="font-size:12px;">Semantic search across a persona's document library, inline in conversation.</span></div>
+            </li>
+            <li>
+              <span class="glyph">◈</span>
+              <div><strong>Client-side JS sandbox</strong><br><span class="muted" style="font-size:12px;">Arbitrary calculation executed in an isolated Web Worker. No DOM access, no network.</span></div>
+            </li>
+            <li>
+              <span class="glyph">◈</span>
+              <div><strong>Vision fallback</strong><br><span class="muted" style="font-size:12px;">Non-vision models auto-delegate image tasks to a capable model — transparently.</span></div>
+            </li>
+            <li>
+              <span class="glyph">◈</span>
+              <div><strong>Artefacts</strong><br><span class="muted" style="font-size:12px;">Code, Mermaid diagrams, HTML, SVG — captured, versioned, browsable after the fact.</span></div>
+            </li>
+          </ul>
+          <div>
+            <div class="card" style="margin-bottom:12px;">
+              <div class="card-label">Tool execution loop</div>
+              <h3>Up to 5 iterations</h3>
+              <p>Multi-step tool use with refusal detection. Server orchestrates, browser executes sandboxed code, results returned in the same WebSocket stream.</p>
+            </div>
+            <div class="card">
+              <div class="card-label">Soft chain-of-thought</div>
+              <h3>Auto-injected reasoning</h3>
+              <p>When a model lacks native CoT, Chatsune injects an analytical reasoning block. Better outputs from any model — no manual prompt engineering.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 · Comparison ─────────────────────────────────────────── -->
+    <div class="slide" data-index="10">
+      <div class="slide-inner">
+        <div class="eyebrow">Competitive landscape</div>
+        <h2>How we compare.</h2>
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th class="hl">Chatsune</th>
+              <th>Open WebUI</th>
+              <th>SillyTavern</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>BYOK enforced per user</td>
+              <td class="hl-col"><span class="yes">✓ Always</span></td>
+              <td><span class="par">~ Admin-shared common</span></td>
+              <td><span class="par">~ Varies by setup</span></td>
+            </tr>
+            <tr>
+              <td>Homelab reverse sidecar (CGNAT-safe)</td>
+              <td class="hl-col"><span class="yes">✓ Native</span></td>
+              <td><span class="no">✗</span></td>
+              <td><span class="no">✗</span></td>
+            </tr>
+            <tr>
+              <td>GPU sharing between trusted users</td>
+              <td class="hl-col"><span class="yes">✓ Invitation-based</span></td>
+              <td><span class="no">✗</span></td>
+              <td><span class="no">✗</span></td>
+            </tr>
+            <tr>
+              <td>Background memory consolidation</td>
+              <td class="hl-col"><span class="yes">✓ "Dreaming" system</span></td>
+              <td><span class="no">✗</span></td>
+              <td><span class="par">~ Character cards only</span></td>
+            </tr>
+            <tr>
+              <td>Local CPU embeddings (no external API)</td>
+              <td class="hl-col"><span class="yes">✓ Arctic Embed ONNX</span></td>
+              <td><span class="par">~ Ext. API or vector DB</span></td>
+              <td><span class="no">✗</span></td>
+            </tr>
+            <tr>
+              <td>Client-side JS tool sandbox</td>
+              <td class="hl-col"><span class="yes">✓ Isolated Web Worker</span></td>
+              <td><span class="no">✗</span></td>
+              <td><span class="no">✗</span></td>
+            </tr>
+            <tr>
+              <td>Vision fallback (auto-delegate)</td>
+              <td class="hl-col"><span class="yes">✓ Automatic</span></td>
+              <td><span class="no">✗ Manual model selection</span></td>
+              <td><span class="no">✗ Manual</span></td>
+            </tr>
+            <tr>
+              <td>Soft chain-of-thought injection</td>
+              <td class="hl-col"><span class="yes">✓ Auto for all models</span></td>
+              <td><span class="no">✗</span></td>
+              <td><span class="no">✗</span></td>
+            </tr>
+            <tr>
+              <td>Event-driven real-time (no polling)</td>
+              <td class="hl-col"><span class="yes">✓ Redis Streams</span></td>
+              <td><span class="par">~ REST-heavy</span></td>
+              <td><span class="par">~ Varies</span></td>
+            </tr>
+            <tr>
+              <td>Copyleft licence</td>
+              <td class="hl-col"><span class="yes">✓ GPLv3</span></td>
+              <td><span class="par">Apache 2.0</span></td>
+              <td><span class="yes">✓ AGPL-3.0</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 11 · Tech Stack ─────────────────────────────────────────── -->
+    <div class="slide" data-index="11">
+      <div class="slide-inner">
+        <div class="eyebrow">Technology</div>
+        <h2>Built on solid ground.</h2>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-label">Frontend</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">React 19 + TypeScript</p>
+            <p>Vite 8 · Tailwind CSS 4 · Zustand 5 · pnpm</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Backend</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">Python 3.12 + FastAPI</p>
+            <p>Pydantic v2 · uv · fully async throughout</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Database</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">MongoDB 7.0 (RS0)</p>
+            <p>Local Vector Search included · Single-node replica set</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Cache &amp; Events</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">Redis 7</p>
+            <p>Streams · LRU cache · Session store · Event replay</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Embeddings</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">Arctic Embed M v2.0</p>
+            <p>ONNX Runtime · CPU-only · 768-dimensional vectors</p>
+          </div>
+          <div class="card">
+            <div class="card-label">Deployment</div>
+            <p style="color:var(--text-secondary);margin-bottom:6px;font-size:13px;">Docker Compose</p>
+            <p>MongoDB Atlas Local · Redis Alpine · Single command</p>
+          </div>
+        </div>
+        <div class="code-block">
+          <span class="cmt"># Deploy Chatsune — everything included</span><br>
+          <span class="cmd">docker compose up -d</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmt"># MongoDB + Redis</span><br>
+          <span class="cmd">uv run uvicorn backend.main:app</span>&nbsp;&nbsp;<span class="cmt"># FastAPI backend</span><br>
+          <span class="cmd">cd frontend &amp;&amp; pnpm dev</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmt"># React frontend</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 12 · Philosophy ─────────────────────────────────────────── -->
+    <div class="slide" data-index="12">
+      <div class="slide-inner">
+        <div class="eyebrow">Why we built this</div>
+        <h2>Privacy. Autonomy.<br>Self-determination.</h2>
+        <div class="two-col">
+          <div>
+            <p style="margin-bottom:14px;">We did not build Chatsune to compete with commercial AI platforms. We built it because we believe your relationship with an AI companion should belong to you — not to a company, not to a data pipeline, not to a terms-of-service agreement nobody reads.</p>
+            <p style="margin-bottom:14px;">The homelab concept is not a technical curiosity. It is a statement: your hardware should work for you, wherever you are. Convenience should never require surrendering control.</p>
+            <p style="margin-bottom:6px;">GPLv3. Not open-washing. Copyleft by conviction — freedom preserved all the way down the chain.</p>
+            <div class="gpl-badge"><span class="dot sage"></span>GPLv3 — your freedom, not ours to revoke</div>
+          </div>
+          <ul class="feature-list">
+            <li><span class="glyph">✦</span>Your conversations are not training data.</li>
+            <li><span class="glyph">✦</span>Your keys are not the platform's business.</li>
+            <li><span class="glyph">✦</span>Your GPU earns its keep, wherever you are.</li>
+            <li><span class="glyph">✦</span>Your AI's memory belongs to you.</li>
+            <li><span class="glyph">✦</span>No telemetry. No subscription. No lock-in.</li>
+            <li><span class="glyph">✦</span>The source code is the product.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- 13 · Get Started ────────────────────────────────────────── -->
+    <div class="slide" data-index="13">
+      <div class="slide-inner">
+        <div class="eyebrow">Get started</div>
+        <h2>Your instance.<br>Your community.</h2>
+        <div class="two-col">
+          <div>
+            <p style="margin-bottom:14px;">Chatsune deploys with a single <code style="color:var(--gold);font-size:12px;">docker compose up -d</code>. MongoDB, Redis, and the backend come up together. Add users, connect your first Ollama instance, and you are running.</p>
+            <p style="margin-bottom:14px;">Self-host for yourself, or run a private instance for a small group of people who trust each other with shared compute.</p>
+            <p>The homelab sidecar is a separate, lightweight container — bring your own GPU to the party from anywhere in the world.</p>
+            <div class="tags" style="margin-top:20px;">
+              <span class="tag gold">Source on GitHub</span>
+              <span class="tag">Issues welcome</span>
+              <span class="tag">PRs considered</span>
+            </div>
+          </div>
+          <div>
+            <div class="stats-row" style="margin-top:0;grid-template-columns:1fr 1fr;">
+              <div class="stat"><span class="val">113</span><span class="lbl">Event topics</span></div>
+              <div class="stat"><span class="val">768d</span><span class="lbl">Local vectors</span></div>
+              <div class="stat"><span class="val">v3</span><span class="lbl">GPL licence</span></div>
+              <div class="stat"><span class="val">0</span><span class="lbl">Telemetry calls</span></div>
+            </div>
+            <div class="code-block" style="margin-top:14px;">
+              <span class="cmt"># That's all it takes</span><br>
+              <span class="cmd">git clone</span> <span class="flag">https://github.com/tidesson/chatsune</span><br>
+              <span class="cmd">docker compose up -d</span><br>
+              <span class="cmt"># Visit http://localhost:5173</span>
+            </div>
+          </div>
+        </div>
+        <p style="margin-top:24px;text-align:center;font-family:Georgia,serif;font-size:13px;color:var(--text-muted);letter-spacing:0.3px;">
+          ✦ &nbsp; Built by <span style="color:var(--text-secondary);">Tidesson Communications</span> &nbsp;·&nbsp; GPLv3 &nbsp;·&nbsp; No surveillance. No compromise.
+        </p>
+      </div>
+    </div>
+
+  </div><!-- /stage -->
+
+  <!-- ─── Bottom Navigation ──────────────────────────────────────── -->
+  <nav class="bottom-nav">
+    <button class="nav-btn" id="prevBtn" onclick="nav(-1)" disabled>← Prev</button>
+    <div class="prog-dots" id="dots"></div>
+    <button class="nav-btn" id="nextBtn" onclick="nav(1)">Next →</button>
+  </nav>
+
+  <!-- ─── Script ────────────────────────────────────────────────── -->
+  <script>
+    const TOTAL = 13;
+    let current = 1;
+
+    const slides  = document.querySelectorAll('.slide');
+    const dotsEl  = document.getElementById('dots');
+    const counter = document.getElementById('counter');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    // Build progress dots
+    for (let i = 1; i <= TOTAL; i++) {
+      const d = document.createElement('div');
+      d.className = 'prog-dot' + (i === 1 ? ' active' : '');
+      d.onclick = () => goTo(i);
+      dotsEl.appendChild(d);
+    }
+
+    function pad(n) { return String(n).padStart(2,'0'); }
+
+    function render() {
+      slides.forEach((s, idx) => {
+        const n = idx + 1;
+        s.classList.remove('active', 'exiting');
+        if (n === current) s.classList.add('active');
+        else if (n < current) s.classList.add('exiting');
+      });
+      dotsEl.querySelectorAll('.prog-dot').forEach((d, i) => {
+        d.classList.toggle('active', i + 1 === current);
+      });
+      counter.textContent = pad(current) + ' / ' + pad(TOTAL);
+      prevBtn.disabled = (current === 1);
+      nextBtn.disabled = (current === TOTAL);
+    }
+
+    function goTo(n) {
+      if (n >= 1 && n <= TOTAL) { current = n; render(); }
+    }
+    function nav(dir) { goTo(current + dir); }
+
+    // Keyboard
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); nav(1); }
+      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                    { e.preventDefault(); nav(-1); }
+    });
+
+    // Touch / swipe
+    let tx = 0;
+    document.addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+    document.addEventListener('touchend', e => {
+      const dx = e.changedTouches[0].clientX - tx;
+      if (Math.abs(dx) > 48) nav(dx < 0 ? 1 : -1);
+    });
+  </script>
+
+</body>
+</html>
