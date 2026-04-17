@@ -120,6 +120,8 @@ export const Topics = {
   INTEGRATION_CONFIG_UPDATED: "integration.config.updated",
   INTEGRATION_ACTION_EXECUTED: "integration.action.executed",
   INTEGRATION_EMERGENCY_STOP: "integration.emergency_stop",
+  INTEGRATION_SECRETS_HYDRATED: "integration.secrets.hydrated",
+  INTEGRATION_SECRETS_CLEARED: "integration.secrets.cleared",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]
