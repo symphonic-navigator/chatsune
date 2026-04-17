@@ -89,7 +89,16 @@ async def emit_integration_secrets_for_user(
         from backend.database import get_db
         db = get_db()
     repo = IntegrationRepository(db)
-    for integration_id, secrets in await repo.list_enabled_with_secrets(user_id):
+    items = await repo.list_enabled_with_secrets(user_id)
+    _log.info(
+        "emit_integration_secrets_for_user user=%s count=%d ids=%s",
+        user_id, len(items), [iid for iid, _ in items],
+    )
+    for integration_id, secrets in items:
+        _log.info(
+            "  emitting integration.secrets.hydrated user=%s integration=%s secret_keys=%s",
+            user_id, integration_id, sorted(secrets.keys()),
+        )
         event = IntegrationSecretsHydratedEvent(
             integration_id=integration_id,
             secrets=secrets,
