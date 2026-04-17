@@ -1,4 +1,5 @@
 import type { NarratorMode, SpeechSegment } from '../types'
+import { splitSentences } from './sentenceSplitter'
 
 function preprocess(text: string): string {
   let s = text
@@ -13,14 +14,18 @@ function preprocess(text: string): string {
   s = s.replace(/^[-*+]\s+/gm, '')                // unordered list markers
   s = s.replace(/^\d+\.\s+/gm, '')                // ordered list markers
   s = s.replace(/^>\s?/gm, '')                    // blockquotes
+  s = s.replace(/\.{2,}/g, '.')                   // collapse '..', '...', '....'
+  s = s.replace(/\u2026/g, '.')                   // collapse Unicode ellipsis
   s = s.replace(/\n{2,}/g, '\n')                  // collapse blank lines
   return s.trim()
 }
 
-// In 'play' mode: "..." → voice, *...* → narration, else → narration.
-// In 'narrate' mode: "..." → voice, everything else (including *...*) → narration.
-function splitSegments(text: string, mode: 'play' | 'narrate'): SpeechSegment[] {
-  const segments: SpeechSegment[] = []
+// Pattern for the 'play' and 'narrate' mode splits. In 'play' mode: "..." and
+// smart-quote variants become voice, *...* becomes narration, else narration.
+// In 'narrate' mode: "..." / smart-quote variants become voice, everything
+// else (including *...*) stays as narration verbatim.
+function splitSegments(text: string, mode: 'play' | 'narrate'): Array<{ type: 'voice' | 'narration'; text: string }> {
+  const segments: Array<{ type: 'voice' | 'narration'; text: string }> = []
   const pattern = mode === 'play'
     ? /"([^"]+)"|\u201c([^\u201d]+)\u201d|\*([^*]+)\*/g
     : /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
@@ -43,9 +48,24 @@ function splitSegments(text: string, mode: 'play' | 'narrate'): SpeechSegment[] 
   return segments
 }
 
+// Expand a coarse segment into one-per-sentence segments of the same type.
+function expandToSentences(segment: { type: 'voice' | 'narration'; text: string }): SpeechSegment[] {
+  const sentences = splitSentences(segment.text)
+  return sentences.map((text) => ({ type: segment.type, text }))
+}
+
 export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[] {
   const cleaned = preprocess(text)
   if (!cleaned) return []
-  if (mode === 'off') return [{ type: 'voice', text: cleaned }]
-  return splitSegments(cleaned, mode)
+  if (mode === 'off') {
+    return splitSentences(cleaned).map((s) => ({ type: 'voice' as const, text: s }))
+  }
+  const coarse = splitSegments(cleaned, mode)
+  const result: SpeechSegment[] = []
+  for (const seg of coarse) {
+    for (const expanded of expandToSentences(seg)) {
+      result.push(expanded)
+    }
+  }
+  return result
 }
