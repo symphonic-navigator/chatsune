@@ -223,7 +223,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {TABS
             .filter((tab) => {
               if (isCreating && tab.id !== 'edit') return false
-              if (tab.id === 'voice' && !voiceEnabled) return false
+              if (tab.id === 'voice' && !voiceEnabled && activeTab !== 'voice') return false
               return true
             })
             .map((tab) => {
