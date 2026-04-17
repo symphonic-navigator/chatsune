@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
@@ -194,6 +195,12 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   const integrationUserConfig = activeTTS ? configs?.[activeTTS.id]?.config : undefined
   const gapMs = resolveGapMs(integrationUserConfig)
 
+  const outlet = useOutletContext<{
+    openPersonaOverlay: (personaId: string | null, tab?: string) => void
+  }>()
+
+  const personaId = persona?.id ?? null
+
   const handleClick = useCallback(async () => {
     if (isActive && state !== 'idle') {
       audioPlayback.stopAll()
@@ -223,7 +230,25 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs)
   }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs])
 
-  if (!ttsReady || !voiceId) return null
+  if (!ttsReady || !voiceId) {
+    if (!personaId) return null
+    return (
+      <button
+        type="button"
+        onClick={() => outlet.openPersonaOverlay(personaId, 'voice')}
+        title="Configure voice"
+        aria-label="Configure voice"
+        className="flex items-center gap-1 text-[11px] text-white/20 transition-colors hover:text-white/45"
+      >
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+          <path d="M2 5.5V8.5H4.5L7.5 11V3L4.5 5.5H2Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+          <path d="M9.5 4.5C10.3 5.3 10.3 8.7 9.5 9.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+          <path d="M11 3C12.5 4.5 12.5 9.5 11 11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        </svg>
+        Configure voice
+      </button>
+    )
+  }
 
   const displayState = isActive ? state : 'idle'
   const label = displayState === 'synthesising' ? 'Preparing...' : displayState === 'playing' ? 'Stop' : 'Read'

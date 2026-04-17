@@ -137,7 +137,7 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
                   {isBookmarked ? 'Bookmarked' : 'Bookmark'}
                 </button>
               )}
-              {voiceEnabled && messageId && (
+              {messageId && (
                 <ReadAloudButton messageId={messageId} content={effectiveContent} persona={persona} />
               )}
               {canRegenerate && onRegenerate && (
