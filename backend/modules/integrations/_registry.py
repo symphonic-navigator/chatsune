@@ -7,7 +7,7 @@ and system prompt template. Plugins are registered at import time.
 import logging
 from backend.modules.integrations._models import IntegrationDefinition
 from shared.dtos.inference import ToolDefinition
-from shared.dtos.integrations import IntegrationCapability
+from shared.dtos.integrations import IntegrationCapability, OptionsSource
 
 _log = logging.getLogger(__name__)
 
@@ -162,6 +162,39 @@ def _register_builtins() -> None:
             ),
         ],
         tool_side="client",
+    ))
+
+    register(IntegrationDefinition(
+        id="mistral_voice",
+        display_name="Mistral Voice",
+        description="Speech-to-text and text-to-speech via Mistral AI. Bring your own API key.",
+        icon="mistral",
+        execution_mode="hybrid",
+        capabilities=[
+            IntegrationCapability.TTS_PROVIDER,
+            IntegrationCapability.STT_PROVIDER,
+        ],
+        config_fields=[
+            {
+                "key": "api_key",
+                "label": "Mistral API Key",
+                "field_type": "password",
+                "secret": True,
+                "required": True,
+                "description": "Your personal Mistral AI API key. Encrypted at rest, delivered in memory to your browser.",
+            },
+        ],
+        persona_config_fields=[
+            {
+                "key": "voice_id",
+                "label": "Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": True,
+                "description": "Voice used when this persona speaks.",
+            },
+        ],
+        tool_definitions=[],
     ))
 
 
