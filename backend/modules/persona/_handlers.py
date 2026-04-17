@@ -46,10 +46,10 @@ router = APIRouter(prefix="/api/personas")
 
 def _validate_integration_configs(integration_configs: dict[str, dict]) -> None:
     # Deferred import to avoid circular dependency (integrations._handlers → persona → integrations).
-    from backend.modules.integrations._registry import get as get_integration_definition
+    from backend.modules.integrations import get_integration
 
     for integration_id, values in integration_configs.items():
-        defn = get_integration_definition(integration_id)
+        defn = get_integration(integration_id)
         if defn is None:
             raise ValueError(f"Unknown integration: {integration_id}")
         allowed_keys = {f["key"] for f in defn.persona_config_fields}

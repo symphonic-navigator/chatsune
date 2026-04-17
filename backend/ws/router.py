@@ -23,7 +23,6 @@ from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_m
 from backend.modules.tools._mcp_discovery import register_local_tools
 from backend.modules.tools._namespace import normalise_namespace
 from backend.modules.integrations import emit_integration_secrets_for_user
-from backend.modules.integrations._repository import IntegrationRepository
 from backend.modules.user import decode_access_token
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
@@ -77,10 +76,9 @@ async def websocket_endpoint(
 
     # Hydrate integration secrets so the frontend has decrypted keys immediately
     try:
-        integration_repo = IntegrationRepository(get_db())
         await emit_integration_secrets_for_user(
             user_id=user_id,
-            repo=integration_repo,
+            db=get_db(),
             event_bus=get_event_bus(),
         )
     except Exception:

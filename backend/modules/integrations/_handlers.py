@@ -96,7 +96,7 @@ async def upsert_config(
     if body.enabled and has_secret_fields:
         from backend.modules.integrations import emit_integration_secrets_for_user
         await emit_integration_secrets_for_user(
-            user_id=user["sub"], repo=repo, event_bus=event_bus,
+            user_id=user["sub"], db=get_db(), event_bus=event_bus,
         )
     elif not body.enabled and has_secret_fields:
         from backend.modules.integrations import emit_integration_secrets_cleared

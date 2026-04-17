@@ -81,10 +81,14 @@ async def get_integration_prompt_extensions(
 async def emit_integration_secrets_for_user(
     *,
     user_id: str,
-    repo: IntegrationRepository,
+    db=None,
     event_bus,
 ) -> None:
     """Emit one hydrated event per enabled integration that has secret fields."""
+    if db is None:
+        from backend.database import get_db
+        db = get_db()
+    repo = IntegrationRepository(db)
     for integration_id, secrets in await repo.list_enabled_with_secrets(user_id):
         event = IntegrationSecretsHydratedEvent(
             integration_id=integration_id,
