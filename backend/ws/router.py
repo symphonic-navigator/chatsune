@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
-from backend.database import get_redis
+from backend.database import get_db, get_redis
 from backend.modules.chat import (
     cancel_all_for_user,
     handle_chat_cancel,
@@ -22,7 +22,10 @@ from backend.modules.chat import (
 from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry, eager_discover_mcp
 from backend.modules.tools._mcp_discovery import register_local_tools
 from backend.modules.tools._namespace import normalise_namespace
+from backend.modules.integrations import emit_integration_secrets_for_user
+from backend.modules.integrations._repository import IntegrationRepository
 from backend.modules.user import decode_access_token
+from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 from shared.dtos.mcp import McpToolRegistrationPayload
 from shared.dtos.tools import ClientToolResultDto
@@ -71,6 +74,17 @@ async def websocket_endpoint(
         await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
     except Exception:
         _log.warning("Failed to send ws.hello to user %s", user_id)
+
+    # Hydrate integration secrets so the frontend has decrypted keys immediately
+    try:
+        integration_repo = IntegrationRepository(get_db())
+        await emit_integration_secrets_for_user(
+            user_id=user_id,
+            repo=integration_repo,
+            event_bus=get_event_bus(),
+        )
+    except Exception:
+        _log.exception("Integration secrets hydration failed for user %s", user_id)
 
     # Eagerly discover MCP tools so they are ready before the first message
     async def _eager_mcp() -> None:
