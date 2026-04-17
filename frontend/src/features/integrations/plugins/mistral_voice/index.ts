@@ -4,12 +4,14 @@ import { MistralSTTEngine, MistralTTSEngine } from './engines'
 import { mistralVoices, refreshMistralVoices } from './voices'
 import { useSecretsStore } from '../../secretsStore'
 import { registerPlugin } from '../../registry'
+import { ExtraConfigComponent } from './ExtraConfigComponent'
 
 let sttInstance: MistralSTTEngine | null = null
 let ttsInstance: MistralTTSEngine | null = null
 
 const mistralVoicePlugin: IntegrationPlugin = {
   id: 'mistral_voice',
+  ExtraConfigComponent,
 
   onActivate(): void {
     if (!sttInstance) sttInstance = new MistralSTTEngine()
