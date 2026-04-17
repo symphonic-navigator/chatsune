@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { ThinkingBubble } from '../ThinkingBubble'
 
 describe('ThinkingBubble', () => {
@@ -13,10 +13,9 @@ describe('ThinkingBubble', () => {
     expect(screen.getByText(/thinking\.\.\./)).toBeVisible()
   })
 
-  it('can be collapsed after streaming ends', () => {
-    render(<ThinkingBubble content="done thinking" isStreaming={false} accentColour="#7c5cbf" />)
-    const toggle = screen.getByRole('button')
-    fireEvent.click(toggle)
+  it('auto-collapses when streaming ends', () => {
+    const { rerender } = render(<ThinkingBubble content="thinking" isStreaming={true} accentColour="#7c5cbf" />)
+    rerender(<ThinkingBubble content="done thinking" isStreaming={false} accentColour="#7c5cbf" />)
     const contentDiv = screen.getByTestId('thinking-content')
     expect(contentDiv.style.maxHeight).toBe('0px')
   })
