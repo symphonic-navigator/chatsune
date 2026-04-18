@@ -261,12 +261,17 @@ class AudioPlaybackImpl {
 
       this.currentSource = source
 
+      // Diagnostic log — remove once the "TTS starts only at end of
+      // inference" bug is understood. Track segments through playback.
+      const preview = entry.segment.text.slice(0, 40).replace(/\s+/g, ' ')
+
       source.onended = () => {
         this.currentSource = null
         this.currentEntry = null
         if (modNode) {
           try { modNode.disconnect() } catch { /* ignore */ }
         }
+        console.log(`[TTS-play]  done  "${preview}"`)
         this.emit()
         this.scheduleNext()
       }
@@ -277,6 +282,7 @@ class AudioPlaybackImpl {
       // within buffer, even when skipping the first `offset` seconds.
       this.currentSourceStartSec = this.ctx.currentTime - offset
       source.start(0, offset)
+      console.log(`[TTS-play]  start "${preview}"${offset > 0 ? ` (resume @ ${offset.toFixed(2)}s)` : ''}`)
     } catch (err) {
       console.error('[AudioPlayback] Failed to play segment:', err)
       this.currentSource = null
