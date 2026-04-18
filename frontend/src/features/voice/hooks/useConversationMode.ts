@@ -201,6 +201,12 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // repeat VAD re-trigger during the same user utterance.
   const tentativeRef = useRef(false)
 
+  // Grace window after hold release: if Silero's final speech-end has not
+  // arrived yet (redemption delay ~200 ms), we wait briefly so that chunk
+  // can be merged with the buffered audio. See release useEffect below.
+  const RELEASE_GRACE_MS = 500
+  const releaseFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const clearPendingBarge = useCallback(() => {
     if (pendingBargeRef.current) {
       clearTimeout(pendingBargeRef.current)
@@ -267,6 +273,10 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       // utterance and we'll continue accumulating.
       return
     }
+    if (releaseFallbackRef.current) {
+      clearTimeout(releaseFallbackRef.current)
+      releaseFallbackRef.current = null
+    }
     const merged = flushHeldAudio(audio)
     void transcribeAndSend(merged)
   }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge])
@@ -307,6 +317,10 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   const teardown = useCallback(async (restoreSid: string | null) => {
     try { audioCapture.stopContinuous() } catch { /* not active */ }
     clearPendingBarge()
+    if (releaseFallbackRef.current) {
+      clearTimeout(releaseFallbackRef.current)
+      releaseFallbackRef.current = null
+    }
     // Tentative barges are torn down as if confirmed (conservative): when
     // the user leaves conv-mode or the session is disposed, we do NOT want
     // a muted audio source sitting around waiting for an STT result that
@@ -381,25 +395,25 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     if (active && !available) exitStore()
   }, [active, available, exitStore])
 
-  // Hold-release with no held audio: if the user released the hold and no
-  // VAD speech-end fired in the meantime, there's nothing buffered —
-  // continue listening. If there IS buffered audio, it means the user
-  // held through a quiet pause after an utterance; we dispatch it now so
-  // the assistant doesn't wait forever.
-  //
-  // We only dispatch on release when (a) VAD is not currently tracking
-  // ongoing speech (phase became 'user-speaking' without actively speaking
-  // — but VAD doesn't expose that directly). Keep it simple: if any held
-  // audio exists on release AND the phase is user-speaking, dispatch it.
+  // Hold-release: Silero's speech-end lags real silence by ~200 ms (redemption
+  // frames). If the user releases the hold before that final event fires,
+  // dispatching immediately would split the utterance into two transcripts.
+  // Instead we arm a grace timer; `handleSpeechEnd` cancels it if VAD's
+  // final event lands in time, otherwise the timer flushes whatever is
+  // buffered.
   const prevHoldingRef = useRef(false)
   useEffect(() => {
     const wasHolding = prevHoldingRef.current
     prevHoldingRef.current = isHolding
     if (wasHolding && !isHolding) {
-      if (heldAudioRef.current.length > 0) {
-        const merged = flushHeldAudio(null)
-        void transcribeAndSend(merged)
-      }
+      if (releaseFallbackRef.current) clearTimeout(releaseFallbackRef.current)
+      releaseFallbackRef.current = setTimeout(() => {
+        releaseFallbackRef.current = null
+        if (heldAudioRef.current.length > 0) {
+          const merged = flushHeldAudio(null)
+          void transcribeAndSend(merged)
+        }
+      }, RELEASE_GRACE_MS)
     }
   }, [isHolding, flushHeldAudio, transcribeAndSend])
 
