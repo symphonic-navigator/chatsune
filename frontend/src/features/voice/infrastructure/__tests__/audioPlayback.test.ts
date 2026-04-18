@@ -182,3 +182,104 @@ describe('audioPlayback — modulation', () => {
     expect(connections.some((c) => c.from === 'soundtouch')).toBe(false)
   })
 })
+
+describe('audioPlayback — mute / resumeFromMute', () => {
+  it('mute stops the current source but preserves the queue', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    // First segment is playing; second is in the queue.
+    expect(sources[0].stop).not.toHaveBeenCalled()
+
+    audioPlayback.mute()
+
+    expect(sources[0].stop).toHaveBeenCalledTimes(1)
+    expect(audioPlayback.isMuted()).toBe(true)
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('resumeFromMute replays the muted segment from its start, then continues the queue', async () => {
+    const onSegmentStart = vi.fn()
+    audioPlayback.setCallbacks({ onSegmentStart, onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), { ...SEGMENT, text: 'second' })
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(1, SEGMENT)
+
+    audioPlayback.mute()
+    audioPlayback.resumeFromMute()
+    await Promise.resolve() // playNext is async
+
+    expect(audioPlayback.isMuted()).toBe(false)
+    // The muted segment is played again (from the start).
+    expect(onSegmentStart).toHaveBeenCalledTimes(2)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(2, SEGMENT)
+
+    // When it finishes, the second segment plays.
+    finishPlayback(1)
+    await Promise.resolve()
+    expect(onSegmentStart).toHaveBeenCalledTimes(3)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(3, { ...SEGMENT, text: 'second' })
+  })
+
+  it('resumeFromMute is a no-op when nothing is muted', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    expect(() => audioPlayback.resumeFromMute()).not.toThrow()
+    expect(audioPlayback.isMuted()).toBe(false)
+  })
+
+  it('mute is a no-op when nothing is playing', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.mute()
+    expect(audioPlayback.isMuted()).toBe(false)
+  })
+
+  it('mute does not fire onFinished even if streamClosed is set', () => {
+    const onFinished = vi.fn()
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.closeStream()
+
+    audioPlayback.mute()
+
+    expect(onFinished).not.toHaveBeenCalled()
+  })
+
+  it('stopAll after mute clears the muted entry', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.mute()
+    expect(audioPlayback.isMuted()).toBe(true)
+
+    audioPlayback.stopAll()
+
+    expect(audioPlayback.isMuted()).toBe(false)
+  })
+
+  it('mute cancels a pending gap timer so the next segment does not auto-play', () => {
+    const onSegmentStart = vi.fn()
+    audioPlayback.setCallbacks({ gapMs: 200, onSegmentStart, onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), { ...SEGMENT, text: 'second' })
+    // First segment is playing.
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+
+    // First segment ends → gap timer pending.
+    finishPlayback(0)
+    expect(onSegmentStart).toHaveBeenCalledTimes(1) // gap has not elapsed
+
+    // Mute fires during the gap.
+    audioPlayback.mute()
+    expect(audioPlayback.isMuted()).toBe(true)
+
+    // Advance past the gap — without the fix, playNext would have fired.
+    vi.advanceTimersByTime(500)
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+
+    // Resume — the next queued segment now plays.
+    audioPlayback.resumeFromMute()
+    expect(audioPlayback.isMuted()).toBe(false)
+    expect(onSegmentStart).toHaveBeenCalledTimes(2)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(2, { ...SEGMENT, text: 'second' })
+  })
+})
