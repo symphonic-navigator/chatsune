@@ -1,6 +1,13 @@
 import type { SpeechSegment } from '../types'
 import { ensureSoundTouchReady, createModulationNode } from './soundTouchLoader'
 
+const SAMPLE_RATE = 24_000
+// SoundTouch has internal latency and, when speed > 1, the source ends before
+// the worklet has flushed its buffered output — producing a clipped tail.
+// Pad each modulated buffer with a short silence so the worklet has room to
+// drain. Only applied when modulation is active to avoid gaps at speed = 1.
+const MODULATION_TAIL_SAMPLES = Math.round((SAMPLE_RATE * 80) / 1000) // 80 ms
+
 interface QueueEntry { audio: Float32Array; segment: SpeechSegment }
 
 export interface AudioPlaybackCallbacks {
@@ -86,15 +93,19 @@ class AudioPlaybackImpl {
         await this.ctx.resume()
       }
 
-      const buffer = this.ctx.createBuffer(1, entry.audio.length, 24_000)
+      const speed = entry.segment.speed ?? 1.0
+      const pitch = entry.segment.pitch ?? 0
+      const needsModulation = speed !== 1.0 || pitch !== 0
+
+      const bufferLength = needsModulation
+        ? entry.audio.length + MODULATION_TAIL_SAMPLES
+        : entry.audio.length
+      const buffer = this.ctx.createBuffer(1, bufferLength, SAMPLE_RATE)
+      // createBuffer zeroes the channel data, so the tail is silence already.
       buffer.getChannelData(0).set(entry.audio)
 
       const source = this.ctx.createBufferSource()
       source.buffer = buffer
-
-      const speed = entry.segment.speed ?? 1.0
-      const pitch = entry.segment.pitch ?? 0
-      const needsModulation = speed !== 1.0 || pitch !== 0
 
       let modNode: AudioNode | null = null
       if (needsModulation) {
