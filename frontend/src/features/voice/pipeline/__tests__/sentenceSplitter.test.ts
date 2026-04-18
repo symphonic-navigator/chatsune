@@ -67,4 +67,18 @@ describe('splitSentences', () => {
   it('filters empty fragments from repeated whitespace and blank lines', () => {
     expect(splitSentences('\n\nOne.\n\n\nTwo.\n')).toEqual(['One.', 'Two.'])
   })
+
+  it('splits before an emoji following punctuation with whitespace', () => {
+    expect(splitSentences('That is great! 😀 Let us go.')).toEqual([
+      'That is great!',
+      '😀 Let us go.',
+    ])
+  })
+
+  it('splits directly before an emoji that follows punctuation with no whitespace', () => {
+    expect(splitSentences('That is great!😀 Let us go.')).toEqual([
+      'That is great!',
+      '😀 Let us go.',
+    ])
+  })
 })

@@ -177,6 +177,21 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   }, [flushHeldAudio, transcribeAndSend])
 
   /**
+   * VAD misfire handler. Silero optimistically emits speech-start on any
+   * loud-enough frame, then aborts via onVADMisfire (without ever firing
+   * speech-end) if the burst was too short to qualify as speech. Without
+   * this handler the UI would stay stuck on "user-speaking" and the
+   * "Hold to keep talking" overlay would linger. If the user is actively
+   * holding, keep the overlay visible — a misfire during hold is just
+   * noise between utterances.
+   */
+  const handleMisfire = useCallback(() => {
+    if (!activeRef.current) return
+    if (holdingRef.current) return
+    setPhase('listening')
+  }, [setPhase])
+
+  /**
    * Teardown — stop VAD, stop playback, restore session settings. Safe to
    * call unconditionally; `exit()` on the store short-circuits if we're
    * already idle.
@@ -230,6 +245,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         onSpeechStart: handleSpeechStart,
         onSpeechEnd: handleSpeechEnd,
         onVolumeChange: () => {},
+        onMisfire: handleMisfire,
       }).catch((err: unknown) => {
         console.error('[ConversationMode] Failed to start VAD:', err)
         useNotificationStore.getState().addNotification({
@@ -245,7 +261,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       const sid = sessionIdRef.current
       void teardown(sid)
     }
-  }, [active, sessionId, handleSpeechStart, handleSpeechEnd, exitStore, setPreviousReasoning, teardown])
+  }, [active, sessionId, handleSpeechStart, handleSpeechEnd, handleMisfire, exitStore, setPreviousReasoning, teardown])
 
   // If the caller removes availability while active, or we switch sessions,
   // exit conv-mode cleanly.

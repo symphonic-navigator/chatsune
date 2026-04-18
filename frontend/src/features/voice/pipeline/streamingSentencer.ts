@@ -104,11 +104,13 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         continue
       }
 
-      // Sentence-ending punctuation: only safe if followed by whitespace+EOF,
-      // whitespace+[uppercase], or whitespace+newline — matching the rule in
-      // sentenceSplitter. Otherwise we risk cutting inside a decimal ("3.14")
-      // or an abbreviation ("Dr. Smith") where the next chunk might continue
-      // the same sentence.
+      // Sentence-ending punctuation. Safe to cut when followed by:
+      //   (a) whitespace + (newline | uppercase | emoji/pictograph)
+      //   (b) an emoji/pictograph directly (no whitespace) — LLM decoration
+      //       like "Great!😀" should end the sentence at the punctuation.
+      // Refuse to cut inside decimals ("3.14") or dotted abbreviations
+      // ("Dr.Smith"): a letter or digit immediately after the punctuation
+      // suppresses the cut.
       const nextIdx = i + 1
       if (nextIdx >= text.length) {
         // Mid-stream: refuse to cut exactly at EOF — more text may arrive
@@ -116,7 +118,14 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         continue
       }
       const next = text[nextIdx]
-      if (next !== ' ' && next !== '\t' && next !== '\n') continue
+      const nextIsWhitespace = next === ' ' || next === '\t' || next === '\n'
+      if (!nextIsWhitespace) {
+        // Case (b): only accept pictographic chars directly after punctuation.
+        if (isPictographAt(text, nextIdx)) {
+          lastSafeEnd = nextIdx
+        }
+        continue
+      }
 
       // Walk past the whitespace run.
       let j = nextIdx
@@ -126,7 +135,7 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         continue
       }
       const after = text[j]
-      if (after === '\n' || isUppercaseSentenceStart(after)) {
+      if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j)) {
         lastSafeEnd = nextIdx
       }
     }
@@ -144,6 +153,16 @@ function isWordBoundaryLeft(text: string, i: number): boolean {
 
 function isUppercaseSentenceStart(ch: string): boolean {
   return /[A-Z\u00C4\u00D6\u00DC]/.test(ch)
+}
+
+// Whether the code point at `i` is an emoji / pictograph. Handles surrogate
+// pairs (most emojis live in the supplementary plane). Used to decide whether
+// a char following sentence-end punctuation is decoration (like 😀) rather
+// than a word-continuation such as "3.14" or "Dr.Smith".
+function isPictographAt(text: string, i: number): boolean {
+  const cp = text.codePointAt(i)
+  if (cp === undefined) return false
+  return /\p{Extended_Pictographic}/u.test(String.fromCodePoint(cp))
 }
 
 class StreamingSentencerImpl implements StreamingSentencer {

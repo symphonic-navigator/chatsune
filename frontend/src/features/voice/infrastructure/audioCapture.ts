@@ -4,6 +4,13 @@ export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
   onSpeechEnd: (audio: Float32Array) => void
   onVolumeChange: (level: number) => void
+  /**
+   * Continuous/VAD mode only: fired when a speech-start was a false positive
+   * (noise burst too short to count as speech). Silero does NOT fire
+   * onSpeechEnd in this case, so callers that optimistically transitioned to
+   * "user-speaking" on speech-start need this to revert their state.
+   */
+  onMisfire?: () => void
 }
 
 // vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
@@ -143,6 +150,9 @@ class AudioCaptureImpl {
       },
       onSpeechEnd: (audio: Float32Array) => {
         this.callbacks?.onSpeechEnd(audio)
+      },
+      onVADMisfire: () => {
+        this.callbacks?.onMisfire?.()
       },
     })
 

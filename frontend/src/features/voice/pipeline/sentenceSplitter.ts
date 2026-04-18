@@ -4,10 +4,12 @@ function normaliseEllipses(text: string): string {
   return text.replace(/\.{2,}/g, '.').replace(/\u2026/g, '.')
 }
 
-// Split one line at sentence-ending punctuation followed by whitespace and an
-// uppercase letter. The lookbehind/lookahead matches only the whitespace gap,
+// Split after sentence-ending punctuation in two shapes:
+//   (a) whitespace followed by an uppercase letter or an emoji/pictograph
+//   (b) an emoji/pictograph directly (no whitespace) — e.g. "Great!😀 Next"
+// The match consumes only the whitespace gap in (a) and is zero-width in (b),
 // so the terminal punctuation stays attached to the preceding sentence.
-const SENTENCE_BOUNDARY = /(?<=[.!?])\s+(?=[A-Z\u00C4\u00D6\u00DC])/
+const SENTENCE_BOUNDARY = /(?<=[.!?])(?:\s+(?=[A-Z\u00C4\u00D6\u00DC]|\p{Extended_Pictographic})|(?=\p{Extended_Pictographic}))/u
 
 function splitLine(line: string): string[] {
   const parts = line.split(SENTENCE_BOUNDARY)

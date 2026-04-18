@@ -158,4 +158,20 @@ describe('createStreamingSentencer', () => {
       expect(s.flush()).toEqual([])
     })
   })
+
+  describe('emoji boundary handling', () => {
+    it('commits a sentence when an emoji follows punctuation with whitespace', () => {
+      const s = createStreamingSentencer('off')
+      // Emoji past the whitespace run is a valid sentence-start marker and
+      // unlocks the cut at the punctuation immediately.
+      expect(s.push('That is great! 😀 Let')).toEqual([{ type: 'voice', text: 'That is great!' }])
+    })
+
+    it('commits a sentence when an emoji directly follows punctuation (no space)', () => {
+      const s = createStreamingSentencer('off')
+      // Emoji right after "!" is a valid cut point without any whitespace,
+      // matching LLM decoration patterns like "Great!😀".
+      expect(s.push('That is great!😀 Let')).toEqual([{ type: 'voice', text: 'That is great!' }])
+    })
+  })
 })

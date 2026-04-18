@@ -813,12 +813,21 @@ export function ChatView({ persona }: ChatViewProps) {
       if (!session) return
       const remaining = session.sentencer.flush()
       if (remaining.length > 0) queueSynth(session, remaining)
+      // Keep the session ref live until the chain has fully drained. If we
+      // null it synchronously, a barge during the drain period calls
+      // cancelStreamingAutoRead but finds no session — so it cannot set
+      // `cancelled`, and any in-flight synth promises go on enqueuing audio
+      // after stopAll was called, causing the queue to keep playing through
+      // an interruption. Clearing on .finally() keeps the barge path able
+      // to cancel pending synth even after the stream has ended.
       session.chain = session.chain.then(() => {
         if (session.cancelled) return
         audioPlayback.closeStream()
-      }).catch(() => {})
-      // Clear the ref but keep playback running — remaining audio still plays.
-      setActiveStreamingAutoRead(null)
+      }).catch(() => {}).finally(() => {
+        if (getActiveStreamingAutoRead() === session) {
+          setActiveStreamingAutoRead(null)
+        }
+      })
     }
   }, [isStreaming, correlationId, resolveAutoReadSession, feedStreamingAutoRead, queueSynth])
 
