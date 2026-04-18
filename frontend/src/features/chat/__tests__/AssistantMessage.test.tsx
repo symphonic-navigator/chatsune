@@ -1,6 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { AssistantMessage } from '../AssistantMessage'
+
+// Shared render counter for the mocked ReactMarkdown. Exposed as a global so
+// the memoisation tests can assert on how often AssistantMessage actually
+// re-entered its render body.
+const markdownRenderSpy = vi.fn()
+
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children?: ReactNode }) => {
+    markdownRenderSpy()
+    return <div data-testid="markdown">{children}</div>
+  },
+}))
 
 describe('AssistantMessage — refusal', () => {
   const baseProps = {
@@ -74,5 +87,41 @@ describe('AssistantMessage — refusal', () => {
       />
     )
     expect(screen.getByText(/interrupted/i)).toBeInTheDocument()
+  })
+})
+
+describe('AssistantMessage — memoisation', () => {
+  const baseProps = {
+    thinking: null,
+    isStreaming: false,
+    accentColour: '#000',
+    highlighter: null,
+    isBookmarked: false,
+    canRegenerate: false,
+  } as const
+
+  it('re-renders when content changes', () => {
+    const onBookmark = vi.fn()
+    markdownRenderSpy.mockClear()
+    const { rerender } = render(
+      <AssistantMessage {...baseProps} content="first" onBookmark={onBookmark} />
+    )
+    const before = markdownRenderSpy.mock.calls.length
+    rerender(<AssistantMessage {...baseProps} content="second" onBookmark={onBookmark} />)
+    expect(markdownRenderSpy.mock.calls.length).toBeGreaterThan(before)
+  })
+
+  it('does NOT re-render when only the onBookmark callback identity changes', () => {
+    markdownRenderSpy.mockClear()
+    const { rerender } = render(
+      <AssistantMessage {...baseProps} content="stable content" onBookmark={vi.fn()} />
+    )
+    const before = markdownRenderSpy.mock.calls.length
+    rerender(
+      <AssistantMessage {...baseProps} content="stable content" onBookmark={vi.fn()} />
+    )
+    // With memo + equality that ignores function props, AssistantMessage must be
+    // skipped entirely, so the markdown child is not re-rendered.
+    expect(markdownRenderSpy.mock.calls.length).toBe(before)
   })
 })

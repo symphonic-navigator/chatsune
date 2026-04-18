@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { AttachmentRefDto, VisionDescriptionSnapshot } from '../../core/api/chat'
 import type { LiveVisionDescription } from '../../core/store/chatStore'
 import { AttachmentChip } from './AttachmentChip'
@@ -15,7 +15,29 @@ interface UserBubbleProps {
   onBookmark?: () => void
 }
 
-export function UserBubble({ content, attachments, visionDescriptionsUsed, liveVisionDescriptions, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
+/**
+ * Custom equality for UserBubble's React.memo wrapper.
+ *
+ * Deliberately ignores the function props (`onEdit`, `onBookmark`). MessageList
+ * passes fresh inline closures for these every render; the closures capture
+ * only stable data (e.g. the message id) from the parent, so same-id closures
+ * are behaviourally equivalent. Comparing them by identity would defeat the
+ * memoisation entirely. `attachments`, `visionDescriptionsUsed`, and
+ * `liveVisionDescriptions` are compared by reference: the parent constructs a
+ * new object only when the underlying data genuinely changes.
+ */
+function areEqual(prev: UserBubbleProps, next: UserBubbleProps): boolean {
+  return (
+    prev.content === next.content &&
+    prev.isEditable === next.isEditable &&
+    prev.isBookmarked === next.isBookmarked &&
+    prev.attachments === next.attachments &&
+    prev.visionDescriptionsUsed === next.visionDescriptionsUsed &&
+    prev.liveVisionDescriptions === next.liveVisionDescriptions
+  )
+}
+
+function UserBubbleBase({ content, attachments, visionDescriptionsUsed, liveVisionDescriptions, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -127,3 +149,5 @@ export function UserBubble({ content, attachments, visionDescriptionsUsed, liveV
     </div>
   )
 }
+
+export const UserBubble = memo(UserBubbleBase, areEqual)
