@@ -108,6 +108,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       if (tentativeRef.current) {
         tentativeRef.current = false
         audioPlayback.resumeFromMute()
+        setPhase('speaking')
       } else {
         setPhase('listening')
       }
@@ -146,6 +147,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         if (tentativeRef.current) {
           tentativeRef.current = false
           audioPlayback.resumeFromMute()
+          setPhase('speaking')
         } else {
           setPhase('listening')
         }
@@ -221,7 +223,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     const current = phaseRef.current
     if (current === 'thinking' || current === 'speaking') {
       audioPlayback.mute()
-      tentativeRef.current = audioPlayback.isMuted()
+      tentativeRef.current = true
     }
     setPhase('user-speaking')
   }, [setPhase])
@@ -291,6 +293,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     if (tentativeRef.current) {
       tentativeRef.current = false
       audioPlayback.resumeFromMute()
+      setPhase('speaking')
       return
     }
     setPhase('listening')
@@ -311,7 +314,6 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     tentativeRef.current = false
     bargeIdRef.current += 1
     cancelStreamingAutoRead()
-    audioPlayback.stopAll()
 
     const prev = useConversationModeStore.getState().previousReasoningOverride
     if (restoreSid) {
