@@ -137,16 +137,25 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
   }, [setPhase, exitStore])
 
-  /**
-   * VAD speech-start handler. If the user speaks while the LLM is thinking
-   * or a reply is playing, this is a BARGE: stop playback, drop any
-   * in-flight TTS synthesis, and switch to "user-speaking". The server-side
-   * cancel happens automatically once the new utterance is sent (the chat
-   * handler invokes `cancel_all_for_user`). We do the client-side half
-   * immediately so audio stops before transcription completes.
-   */
-  const handleSpeechStart = useCallback(() => {
-    if (!activeRef.current) return
+  // Silero fires onSpeechStart on any loud-enough frame — including brief
+  // non-speech noise (chair creaks, keyboard clicks) that later turns out to
+  // be a misfire. Reacting immediately would cut off playback for those
+  // bursts. Instead we defer the barge by BARGE_DELAY_MS; if a misfire
+  // arrives inside that window, the pending barge is cancelled and playback
+  // continues untouched. Real speech typically lasts longer than this, so
+  // the barge still fires for genuine interruptions with only a small delay.
+  const BARGE_DELAY_MS = 150
+  const pendingBargeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearPendingBarge = useCallback(() => {
+    if (pendingBargeRef.current) {
+      clearTimeout(pendingBargeRef.current)
+      pendingBargeRef.current = null
+    }
+  }, [])
+
+  const executeBarge = useCallback(() => {
+    pendingBargeRef.current = null
     const current = phaseRef.current
     if (current === 'thinking' || current === 'speaking') {
       cancelStreamingAutoRead()
@@ -157,15 +166,38 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   }, [setPhase])
 
   /**
+   * VAD speech-start handler. If the user speaks while the LLM is thinking
+   * or a reply is playing, this is a BARGE: stop playback, drop any
+   * in-flight TTS synthesis, and switch to "user-speaking". The server-side
+   * cancel happens automatically once the new utterance is sent (the chat
+   * handler invokes `cancel_all_for_user`). We defer by BARGE_DELAY_MS so
+   * noise bursts that Silero later retracts via onVADMisfire don't cut
+   * playback off.
+   */
+  const handleSpeechStart = useCallback(() => {
+    if (!activeRef.current) return
+    clearPendingBarge()
+    pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
+  }, [executeBarge, clearPendingBarge])
+
+  /**
    * VAD speech-end handler. Two cases:
    *   (a) user is holding — we buffer the audio and stay in "user-speaking"
    *       so the UI keeps showing the hold button. Next speech-start is
    *       treated as a continuation of the same utterance.
    *   (b) user is NOT holding — concatenate any previously-held chunks with
    *       the final chunk and ship it off to STT.
+   *
+   * If a deferred barge is still pending (short but real speech that ended
+   * inside the delay window), fire it now before handling the utterance so
+   * playback stops before we transition to "transcribing".
    */
   const handleSpeechEnd = useCallback((audio: Float32Array) => {
     if (!activeRef.current) return
+    if (pendingBargeRef.current) {
+      clearPendingBarge()
+      executeBarge()
+    }
     if (holdingRef.current) {
       if (audio.length > 0) heldAudioRef.current.push(audio)
       // Stay in user-speaking; VAD will re-fire speech-start on the next
@@ -174,22 +206,27 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
     const merged = flushHeldAudio(audio)
     void transcribeAndSend(merged)
-  }, [flushHeldAudio, transcribeAndSend])
+  }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge])
 
   /**
    * VAD misfire handler. Silero optimistically emits speech-start on any
    * loud-enough frame, then aborts via onVADMisfire (without ever firing
-   * speech-end) if the burst was too short to qualify as speech. Without
-   * this handler the UI would stay stuck on "user-speaking" and the
-   * "Hold to keep talking" overlay would linger. If the user is actively
+   * speech-end) if the burst was too short to qualify as speech. If the
+   * deferred barge is still pending, drop it — the noise burst never
+   * became real speech. Otherwise fall back to the listening phase so the
+   * "Hold to keep talking" overlay doesn't linger. If the user is actively
    * holding, keep the overlay visible — a misfire during hold is just
    * noise between utterances.
    */
   const handleMisfire = useCallback(() => {
+    if (pendingBargeRef.current) {
+      clearPendingBarge()
+      return
+    }
     if (!activeRef.current) return
     if (holdingRef.current) return
     setPhase('listening')
-  }, [setPhase])
+  }, [setPhase, clearPendingBarge])
 
   /**
    * Teardown — stop VAD, stop playback, restore session settings. Safe to
@@ -198,6 +235,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    */
   const teardown = useCallback(async (restoreSid: string | null) => {
     try { audioCapture.stopContinuous() } catch { /* not active */ }
+    clearPendingBarge()
     cancelStreamingAutoRead()
     audioPlayback.stopAll()
 
@@ -214,7 +252,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     useChatStore.getState().setReasoningOverride(prev)
 
     heldAudioRef.current = []
-  }, [])
+  }, [clearPendingBarge])
 
   // Entry effect: when `active` flips on, snapshot reasoning, force it off,
   // and start the VAD. When it flips off, tear everything down.

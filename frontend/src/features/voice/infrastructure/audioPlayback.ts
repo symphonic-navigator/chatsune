@@ -6,7 +6,7 @@ const SAMPLE_RATE = 24_000
 // the worklet has flushed its buffered output — producing a clipped tail.
 // Pad each modulated buffer with a short silence so the worklet has room to
 // drain. Only applied when modulation is active to avoid gaps at speed = 1.
-const MODULATION_TAIL_SAMPLES = Math.round((SAMPLE_RATE * 80) / 1000) // 80 ms
+const MODULATION_TAIL_SAMPLES = Math.round((SAMPLE_RATE * 150) / 1000) // 150 ms
 
 interface QueueEntry { audio: Float32Array; segment: SpeechSegment }
 
