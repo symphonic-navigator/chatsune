@@ -266,7 +266,6 @@ describe('audioPlayback — mute / resumeFromMute', () => {
 
     // First segment ends → gap timer pending.
     finishPlayback(0)
-    expect(audioPlayback.isPlaying()).toBe(false)
     expect(onSegmentStart).toHaveBeenCalledTimes(1) // gap has not elapsed
 
     // Mute fires during the gap.

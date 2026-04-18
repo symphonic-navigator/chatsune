@@ -86,11 +86,14 @@ class AudioPlaybackImpl {
       this.muted = true
       return
     }
-    // Nothing playing right now. Still mark as muted if the queue has an
-    // upcoming entry — that means a segment was about to start (either via
-    // a gap timer we just cancelled, or via enqueue auto-start) and we must
-    // block it. If both the source and the queue are empty, mute is a no-op.
+    // Nothing playing right now. Still mark as muted if a gap timer was
+    // pending — that means a segment was about to start and we must block
+    // it. If neither a source NOR a gap timer was active, mute is a no-op.
+    // We detect "gap timer was pending" by whether the queue is non-empty
+    // (the gap timer would have been scheduled only because playNext was
+    // going to dequeue the next entry).
     if (this.queue.length > 0) {
+      this.playing = false
       this.muted = true
     }
   }
@@ -194,7 +197,6 @@ class AudioPlaybackImpl {
       source.onended = () => {
         this.currentSource = null
         this.currentEntry = null
-        this.playing = false // gap timer, if any, is not active playback
         if (modNode) {
           try { modNode.disconnect() } catch { /* ignore */ }
         }
