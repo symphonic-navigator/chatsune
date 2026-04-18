@@ -6,15 +6,14 @@
 import { SoundTouchNode } from '@soundtouchjs/audio-worklet'
 // Vite resolves ?url imports to a URL string at build time. The processor
 // script is shipped as a separate file so the worklet can load it.
-import processorUrl from '@soundtouchjs/audio-worklet/dist/soundtouch-processor.js?url'
+import processorUrl from '@soundtouchjs/audio-worklet/processor?url'
 
 interface LoaderState {
   initialised: boolean
   available: boolean
-  error: string | null
 }
 
-const state: LoaderState = { initialised: false, available: false, error: null }
+const state: LoaderState = { initialised: false, available: false }
 let currentContext: AudioContext | null = null
 
 export async function ensureSoundTouchReady(ctx: AudioContext): Promise<boolean> {
@@ -29,11 +28,9 @@ export async function ensureSoundTouchReady(ctx: AudioContext): Promise<boolean>
   try {
     await SoundTouchNode.register(ctx, processorUrl)
     state.available = true
-    state.error = null
   } catch (err) {
     state.available = false
-    state.error = err instanceof Error ? err.message : String(err)
-    console.warn('[SoundTouch] Worklet registration failed, modulation disabled:', err)
+    console.warn('[SoundTouch] Worklet registration failed (processorUrl=%s), modulation disabled:', processorUrl, err)
   } finally {
     state.initialised = true
   }
