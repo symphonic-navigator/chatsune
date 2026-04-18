@@ -9,6 +9,7 @@ import { chatApi } from '../../../core/api/chat'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { setActiveReader } from '../components/ReadAloudButton'
 import { sttRegistry } from '../engines/registry'
+import { decideSttOutcome } from './bargeDecision'
 
 interface UseConversationModeOptions {
   /**
@@ -98,10 +99,21 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // (release or normal VAD speech-end while not holding).
   const transcribeAndSend = useCallback(async (audio: Float32Array): Promise<void> => {
     if (!activeRef.current) return
+    const sttBargeId = bargeIdRef.current
+
     if (audio.length === 0) {
-      setPhase('listening')
+      // No audio captured (e.g. held-release with nothing buffered). Treat
+      // as "no barge confirmed" — resume if we're muted, otherwise just
+      // return to listening.
+      if (tentativeRef.current) {
+        tentativeRef.current = false
+        audioPlayback.resumeFromMute()
+      } else {
+        setPhase('listening')
+      }
       return
     }
+
     setPhase('transcribing')
     const stt = sttRegistry.active()
     if (!stt) {
@@ -116,16 +128,38 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     try {
       const result = await stt.transcribe(audio)
       if (!activeRef.current) return
-      const text = result.text.trim()
-      if (!text) {
-        setPhase('listening')
+
+      const outcome = decideSttOutcome({
+        transcript: result.text,
+        sttBargeId,
+        currentBargeId: bargeIdRef.current,
+      })
+
+      if (outcome === 'stale') {
+        // A newer barge has taken over while STT was running. Do nothing:
+        // that newer cycle will run its own STT and decide.
         return
       }
-      // Defensive: flip phase to "thinking" immediately so the UI reflects
-      // the handoff. The store-observer effect below will keep it in sync
-      // as the actual stream starts.
+
+      if (outcome === 'resume') {
+        // No text → the noise was not a real barge. Resume playback.
+        if (tentativeRef.current) {
+          tentativeRef.current = false
+          audioPlayback.resumeFromMute()
+        } else {
+          setPhase('listening')
+        }
+        return
+      }
+
+      // outcome === 'confirm' — commit to the barge.
+      if (tentativeRef.current) {
+        tentativeRef.current = false
+        cancelStreamingAutoRead()   // kills sentencer session + stopAll internally
+        setActiveReader(null, 'idle')
+      }
       setPhase('thinking')
-      onSendRef.current(text)
+      onSendRef.current(result.text.trim())
     } catch (err) {
       console.error('[ConversationMode] Transcription failed:', err)
       useNotificationStore.getState().addNotification({
@@ -133,7 +167,16 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         title: 'Transcription failed',
         message: "Couldn't transcribe audio — check the console for details.",
       })
-      if (activeRef.current) setPhase('listening')
+      if (activeRef.current) {
+        // On STT failure, err on the destructive side: tear down so the
+        // user isn't left with muted playback forever.
+        if (tentativeRef.current) {
+          tentativeRef.current = false
+          cancelStreamingAutoRead()
+          setActiveReader(null, 'idle')
+        }
+        setPhase('listening')
+      }
     }
   }, [setPhase, exitStore])
 
@@ -146,6 +189,15 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // the barge still fires for genuine interruptions with only a small delay.
   const BARGE_DELAY_MS = 150
   const pendingBargeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Monotonic counter that identifies the current barge cycle. Incremented
+  // every time a new speech-start is accepted (past the 150 ms misfire
+  // window). Any async result (STT promise) that carries a stale bargeId is
+  // ignored. This is the serialisation primitive for Tentative Barge.
+  const bargeIdRef = useRef(0)
+  // True while we are in TENTATIVE_BARGE — i.e. audio is muted but not yet
+  // torn down. Used by handleSpeechStart to tell a "fresh" barge from a
+  // repeat VAD re-trigger during the same user utterance.
+  const tentativeRef = useRef(false)
 
   const clearPendingBarge = useCallback(() => {
     if (pendingBargeRef.current) {
@@ -154,25 +206,34 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
   }, [])
 
+  /**
+   * Enter TENTATIVE_BARGE: mute playback instantly, but leave the TTS
+   * synthesis pipeline, the sentence queue, and the LLM stream alone.
+   * The fate of the barge is decided once STT returns.
+   *
+   * If we are already in TENTATIVE_BARGE (user re-triggered VAD mid-
+   * utterance), we only bump bargeId so any in-flight STT becomes stale;
+   * the earliest mute/anchor is kept (audioPlayback.mute is idempotent).
+   */
   const executeBarge = useCallback(() => {
     pendingBargeRef.current = null
+    bargeIdRef.current += 1
     const current = phaseRef.current
     if (current === 'thinking' || current === 'speaking') {
-      cancelStreamingAutoRead()
-      audioPlayback.stopAll()
-      setActiveReader(null, 'idle')
+      audioPlayback.mute()
+      tentativeRef.current = true
     }
     setPhase('user-speaking')
   }, [setPhase])
 
   /**
    * VAD speech-start handler. If the user speaks while the LLM is thinking
-   * or a reply is playing, this is a BARGE: stop playback, drop any
-   * in-flight TTS synthesis, and switch to "user-speaking". The server-side
-   * cancel happens automatically once the new utterance is sent (the chat
-   * handler invokes `cancel_all_for_user`). We defer by BARGE_DELAY_MS so
-   * noise bursts that Silero later retracts via onVADMisfire don't cut
-   * playback off.
+   * or a reply is playing, this schedules a Tentative Barge after
+   * BARGE_DELAY_MS (the 150 ms misfire window). On fire, `executeBarge`
+   * mutes playback without tearing down synthesis or the LLM stream; the
+   * tear-down only happens once STT confirms a non-empty transcript (see
+   * `transcribeAndSend`). If Silero retracts via `onVADMisfire` inside the
+   * window, the pending barge is cancelled and nothing is muted.
    */
   const handleSpeechStart = useCallback(() => {
     if (!activeRef.current) return
@@ -236,11 +297,15 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   const teardown = useCallback(async (restoreSid: string | null) => {
     try { audioCapture.stopContinuous() } catch { /* not active */ }
     clearPendingBarge()
+    // Tentative barges are torn down as if confirmed (conservative): when
+    // the user leaves conv-mode or the session is disposed, we do NOT want
+    // a muted audio source sitting around waiting for an STT result that
+    // may never land.
+    tentativeRef.current = false
+    bargeIdRef.current += 1
     cancelStreamingAutoRead()
     audioPlayback.stopAll()
 
-    // Restore reasoning override. If we ever captured one on entry we
-    // persist it back to the session; otherwise nothing to do.
     const prev = useConversationModeStore.getState().previousReasoningOverride
     if (restoreSid) {
       try {
