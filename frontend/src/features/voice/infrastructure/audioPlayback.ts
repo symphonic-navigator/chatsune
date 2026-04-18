@@ -27,6 +27,17 @@ class AudioPlaybackImpl {
   private playing = false
   private streamClosed = false
   private pendingGapTimer: ReturnType<typeof setTimeout> | null = null
+  // ctx.currentTime recorded when the current source's start(when, offset)
+  // was scheduled, adjusted for offset so
+  //   ctx.currentTime - currentSourceStartSec
+  // gives elapsed playback within the *buffer* (not since the call).
+  private currentSourceStartSec = 0
+  // Position within mutedEntry.audio at which mute() captured the pause.
+  // Consumed once on the next resumeFromMute() and then cleared.
+  private mutedOffsetSec = 0
+  // One-shot flag: if non-null, the next playNext() starts its source at this
+  // offset (seconds into the buffer). Cleared as soon as it's consumed.
+  private pendingResumeOffsetSec: number | null = null
   // Listeners observing playing-state changes. Used by the React hook so
   // components can reflect live browser audio state without polling.
   private listeners = new Set<() => void>()
@@ -64,6 +75,8 @@ class AudioPlaybackImpl {
     this.streamClosed = false
     this.mutedEntry = null
     this.muted = false
+    this.mutedOffsetSec = 0
+    this.pendingResumeOffsetSec = null
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null
@@ -80,10 +93,11 @@ class AudioPlaybackImpl {
 
   /**
    * Non-destructive pause used by Tentative Barge. Stops the current source
-   * (if any) and remembers its entry so resumeFromMute() can replay it from
-   * the start. Also cancels any pending gap timer so a mute that arrives
-   * between segments still inhibits playback. The queue and streamClosed
-   * flag are preserved. Idempotent.
+   * (if any), captures the elapsed playback position, and remembers the entry
+   * so resumeFromMute() can continue from that exact offset rather than
+   * restarting the segment. Also cancels any pending gap timer so a mute that
+   * arrives between segments still inhibits playback. The queue and
+   * streamClosed flag are preserved. Idempotent.
    */
   mute(): void {
     if (this.muted) return // already muted
@@ -95,6 +109,12 @@ class AudioPlaybackImpl {
       this.pendingGapTimer = null
     }
     if (this.currentSource && this.currentEntry) {
+      // Record the position within the current buffer so resumeFromMute() can
+      // continue from there. Cap just under the segment's effective audio
+      // length to avoid resuming inside the modulation tail padding.
+      const elapsed = Math.max(0, (this.ctx?.currentTime ?? 0) - this.currentSourceStartSec)
+      const segmentDur = this.currentEntry.audio.length / SAMPLE_RATE
+      this.mutedOffsetSec = Math.min(elapsed, Math.max(0, segmentDur - 0.01))
       this.mutedEntry = this.currentEntry
       this.currentSource.onended = null // don't advance the queue
       try { this.currentSource.stop() } catch { /* already stopped */ }
@@ -120,17 +140,22 @@ class AudioPlaybackImpl {
 
   /**
    * Resume after a mute(). Re-queues the muted entry at the head of the
-   * queue and kicks playback. If there is no mutedEntry (mute was called
-   * between segments), simply restart playNext so the next queued entry
-   * plays. No-op if not muted.
+   * queue and kicks playback, continuing from the exact offset captured by
+   * the preceding mute() rather than replaying the segment from the start.
+   * If there is no mutedEntry (mute was called between segments), simply
+   * restart playNext so the next queued entry plays from its own start.
+   * No-op if not muted.
    */
   resumeFromMute(): void {
     if (!this.muted) return
     const entry = this.mutedEntry
+    const offsetSec = this.mutedOffsetSec
     this.mutedEntry = null
+    this.mutedOffsetSec = 0
     this.muted = false
     if (entry !== null) {
       this.queue.unshift(entry)
+      this.pendingResumeOffsetSec = offsetSec
     }
     if (!this.playing && this.pendingGapTimer === null) this.playNext()
     this.emit()
@@ -139,13 +164,15 @@ class AudioPlaybackImpl {
   /**
    * Skip-past-muted escape hatch for the tentative-barge feedback-loop
    * guard. Drops the muted entry without replaying it and lets the queue
-   * continue. Unlike resumeFromMute() (which replays from the start) and
-   * stopAll() (which cancels the whole session), this preserves the rest
-   * of the queue and the streamClosed flag.
+   * continue. Unlike resumeFromMute() (which continues from the captured
+   * offset) and stopAll() (which cancels the whole session), this preserves
+   * the rest of the queue and the streamClosed flag.
    */
   discardMuted(): void {
     if (!this.muted) return
     this.mutedEntry = null
+    this.mutedOffsetSec = 0
+    this.pendingResumeOffsetSec = null
     this.muted = false
     if (this.queue.length > 0 && !this.playing && this.pendingGapTimer === null) {
       this.playNext()
@@ -244,7 +271,12 @@ class AudioPlaybackImpl {
         this.scheduleNext()
       }
 
-      source.start()
+      const offset = this.pendingResumeOffsetSec ?? 0
+      this.pendingResumeOffsetSec = null
+      // Keep the invariant ctx.currentTime - currentSourceStartSec == elapsed
+      // within buffer, even when skipping the first `offset` seconds.
+      this.currentSourceStartSec = this.ctx.currentTime - offset
+      source.start(0, offset)
     } catch (err) {
       console.error('[AudioPlayback] Failed to play segment:', err)
       this.currentSource = null
