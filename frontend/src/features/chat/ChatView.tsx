@@ -50,8 +50,18 @@ import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 import { ttsRegistry } from '../voice/engines/registry'
 import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
 import { useSecretsStore } from '../integrations/secretsStore'
-import { createStreamingSentencer, type StreamingSentencer } from '../voice/pipeline/streamingSentencer'
-import type { NarratorMode, SpeechSegment, TTSEngine, VoicePreset } from '../voice/types'
+import { createStreamingSentencer } from '../voice/pipeline/streamingSentencer'
+import {
+  cancelStreamingAutoRead,
+  getActiveStreamingAutoRead,
+  setActiveStreamingAutoRead,
+  type StreamingAutoReadSession,
+} from '../voice/pipeline/streamingAutoReadControl'
+import type { NarratorMode, SpeechSegment } from '../voice/types'
+import { useConversationModeStore } from '../voice/stores/conversationModeStore'
+import { useConversationMode } from '../voice/hooks/useConversationMode'
+import { ConversationModeButton } from '../voice/components/ConversationModeButton'
+import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -609,6 +619,11 @@ export function ChatView({ persona }: ChatViewProps) {
     voicePipeline.setCallbacks({
       onStateChange: setPipelineState,
       onTranscription: (text) => {
+        // In conversational mode we never surface the transcription overlay
+        // and always auto-send — the dedicated VAD path (useConversationMode)
+        // owns the send, so PTT's onTranscription should not double-fire.
+        // This branch handles only the PTT pipeline.
+        if (useConversationModeStore.getState().active) return
         setTranscription(text)
         if (autoSendTranscription && text.trim()) {
           // Auto-send mode: briefly show the transcription, then send.
@@ -624,7 +639,7 @@ export function ChatView({ persona }: ChatViewProps) {
       },
     })
     return () => voicePipeline.dispose()
-  }, [autoSendTranscription, setPipelineState])
+  }, [autoSendTranscription, setPipelineState, handleSend])
 
   // Streaming auto-read: as ChatContentDelta events accumulate into
   // streamingContent, we incrementally cut sentence-safe prefixes with
@@ -639,39 +654,25 @@ export function ChatView({ persona }: ChatViewProps) {
   // when the user barges (mic press / voice toggle handlers). In-flight
   // synth promises check the flag before enqueueing, so stale audio never
   // reaches audioPlayback.
-  interface StreamingAutoReadSession {
-    tts: TTSEngine
-    voice: VoicePreset
-    narratorVoice: VoicePreset
-    mode: NarratorMode
-    gapMs: number
-    messageId: string
-    sentencer: StreamingSentencer
-    lastTextLength: number
-    chain: Promise<void>
-    cancelled: boolean
-  }
-
-  const autoReadSessionRef = useRef<StreamingAutoReadSession | null>(null)
   const prevIsStreamingRef = useRef(false)
 
-  // Cancel any active streaming auto-read. Called on barge (mic press etc)
-  // and on unmount. Idempotent.
-  const cancelStreamingAutoRead = useCallback(() => {
-    const session = autoReadSessionRef.current
-    if (!session) return
-    session.cancelled = true
-    autoReadSessionRef.current = null
-    setActiveReader(null, 'idle')
-    audioPlayback.stopAll()
-  }, [])
+  // Conversation-mode active state — read once here so we can override
+  // auto_read while the user is in a live conversation.
+  const conversationActive = useConversationModeStore((s) => s.active)
+  const conversationPhase = useConversationModeStore((s) => s.phase)
+  const conversationIsHolding = useConversationModeStore((s) => s.isHolding)
+  const setConversationHolding = useConversationModeStore((s) => s.setHolding)
+  const enterConversationMode = useConversationModeStore((s) => s.enter)
+  const exitConversationMode = useConversationModeStore((s) => s.exit)
 
   // Resolve everything we need to start a streaming auto-read session.
   // Returns null if auto-read is disabled or any dependency is missing.
   const resolveAutoReadSession = useCallback(async (
     messageId: string,
   ): Promise<StreamingAutoReadSession | null> => {
-    const autoRead = !!persona?.voice_config?.auto_read
+    // Conversational mode implicitly forces auto-read on; outside of it,
+    // honour the persona's stored preference.
+    const autoRead = !!persona?.voice_config?.auto_read || conversationActive
     if (!autoRead) return null
 
     const tts = ttsRegistry.active()
@@ -720,7 +721,7 @@ export function ChatView({ persona }: ChatViewProps) {
       chain: Promise.resolve(),
       cancelled: false,
     }
-  }, [persona, intDefinitions, intConfigs])
+  }, [persona, intDefinitions, intConfigs, conversationActive])
 
   // Enqueue synthesis of new segments onto the session's promise chain.
   // Serialises the async synths so audio is enqueued in arrival order, even
@@ -754,7 +755,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [])
 
   const feedStreamingAutoRead = useCallback((newText: string) => {
-    const session = autoReadSessionRef.current
+    const session = getActiveStreamingAutoRead()
     if (!session) return
     if (newText.length <= session.lastTextLength) return
     const delta = newText.slice(session.lastTextLength)
@@ -780,17 +781,17 @@ export function ChatView({ persona }: ChatViewProps) {
         audioPlayback.setCallbacks({
           gapMs: session.gapMs,
           onSegmentStart: () => {
-            if (autoReadSessionRef.current?.messageId === messageId) {
+            if (getActiveStreamingAutoRead()?.messageId === messageId) {
               setActiveReader(messageId, 'playing')
             }
           },
           onFinished: () => {
-            if (autoReadSessionRef.current?.messageId === messageId) {
+            if (getActiveStreamingAutoRead()?.messageId === messageId) {
               setActiveReader(null, 'idle')
             }
           },
         })
-        autoReadSessionRef.current = session
+        setActiveStreamingAutoRead(session)
         setActiveReader(messageId, 'synthesising')
         const initial = useChatStore.getState().streamingContent
         if (initial) feedStreamingAutoRead(initial)
@@ -798,7 +799,7 @@ export function ChatView({ persona }: ChatViewProps) {
     }
 
     if (!isStreaming && wasStreaming) {
-      const session = autoReadSessionRef.current
+      const session = getActiveStreamingAutoRead()
       if (!session) return
       const remaining = session.sentencer.flush()
       if (remaining.length > 0) queueSynth(session, remaining)
@@ -807,9 +808,9 @@ export function ChatView({ persona }: ChatViewProps) {
         audioPlayback.closeStream()
       }).catch(() => {})
       // Clear the ref but keep playback running — remaining audio still plays.
-      autoReadSessionRef.current = null
+      setActiveStreamingAutoRead(null)
     }
-  }, [isStreaming, correlationId, cancelStreamingAutoRead, resolveAutoReadSession, feedStreamingAutoRead, queueSynth])
+  }, [isStreaming, correlationId, resolveAutoReadSession, feedStreamingAutoRead, queueSynth])
 
   // Mid-stream: each streamingContent update pushes its delta through the
   // sentencer and queues any emitted segments for synthesis.
@@ -821,7 +822,7 @@ export function ChatView({ persona }: ChatViewProps) {
   // Cleanup on unmount.
   useEffect(() => {
     return () => { cancelStreamingAutoRead() }
-  }, [cancelStreamingAutoRead])
+  }, [])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
@@ -832,7 +833,7 @@ export function ChatView({ persona }: ChatViewProps) {
     setActiveReader(null, 'idle')
     audioPlayback.stopAll()
     voicePipeline.startRecording('push-to-talk')
-  }, [cancelStreamingAutoRead])
+  }, [])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -852,15 +853,48 @@ export function ChatView({ persona }: ChatViewProps) {
       audioPlayback.stopAll()
       voicePipeline.startRecording('push-to-talk')
     }
-  }, [pipelineState.phase, cancelStreamingAutoRead])
+  }, [pipelineState.phase])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({
-    enabled: sttEnabled,
+    enabled: sttEnabled && !conversationActive,
     onHoldStart: handleMicPress,
     onHoldEnd: handleMicRelease,
     onTap: handleVoiceToggle,
   })
+
+  // Conversational-mode availability: requires a ready STT engine AND a
+  // persona with an enabled TTS integration + a resolved voice id.
+  const ttsConfigured = (() => {
+    if (!persona) return false
+    const tts = ttsRegistry.active()
+    if (!tts || !tts.isReady()) return false
+    const activeTTS = intDefinitions.find(
+      (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,
+    )
+    if (!activeTTS) return false
+    const voiceId = persona.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
+    return !!voiceId
+  })()
+  const conversationAvailable = sttEnabled && ttsConfigured
+
+  // Conv-mode controller: owns VAD + auto-send + barge on speech-start.
+  useConversationMode({
+    sessionId: effectiveSessionId ?? null,
+    available: conversationAvailable,
+    onSend: handleSend,
+  })
+
+  const handleToggleConversation = useCallback(() => {
+    if (conversationActive) {
+      exitConversationMode()
+      return
+    }
+    if (!conversationAvailable) return
+    // Stop any PTT recording before grabbing the mic for VAD.
+    try { voicePipeline.stopRecording() } catch { /* not active */ }
+    enterConversationMode()
+  }, [conversationActive, conversationAvailable, enterConversationMode, exitConversationMode])
 
   if (connectionCount === 0) {
     return (
@@ -979,6 +1013,12 @@ export function ChatView({ persona }: ChatViewProps) {
               />
             )}
           </div>
+          <ConversationModeButton
+            active={conversationActive}
+            available={conversationAvailable}
+            phase={conversationPhase}
+            onToggle={handleToggleConversation}
+          />
           <div className="relative">
             <button
               type="button"
@@ -1187,6 +1227,13 @@ export function ChatView({ persona }: ChatViewProps) {
           )}
 
           {transcription && <TranscriptionOverlay text={transcription} autoSend={autoSendTranscription} />}
+          {conversationActive && (conversationPhase === 'user-speaking' || conversationPhase === 'held') && (
+            <HoldToKeepTalking
+              isHolding={conversationIsHolding}
+              onHoldStart={() => setConversationHolding(true)}
+              onHoldEnd={() => setConversationHolding(false)}
+            />
+          )}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
@@ -1214,6 +1261,7 @@ export function ChatView({ persona }: ChatViewProps) {
                     personaReasoningDefault={personaReasoningDefault}
                     onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
                     filteredMcpToolCount={mcpToolCount}
+                    reasoningLocked={conversationActive}
                   />
                 </div>
                 <div className="hidden lg:block">

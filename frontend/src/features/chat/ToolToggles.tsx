@@ -14,12 +14,18 @@ interface ToolTogglesProps {
   personaReasoningDefault: boolean
   onReasoningToggle: (override: boolean | null) => void
   filteredMcpToolCount?: number
+  /**
+   * When true, the reasoning toggle is disabled regardless of other state.
+   * Used by conversational voice mode, which forces thinking off while
+   * active.
+   */
+  reasoningLocked?: boolean
 }
 
 export function ToolToggles({
   sessionId, disabledToolGroups, onToggle, disabled, modelSupportsTools,
   modelSupportsReasoning, reasoningOverride, personaReasoningDefault, onReasoningToggle,
-  filteredMcpToolCount,
+  filteredMcpToolCount, reasoningLocked,
 }: ToolTogglesProps) {
   const [groups, setGroups] = useState<ToolGroupDto[]>([])
 
@@ -53,13 +59,13 @@ export function ToolToggles({
   const reasoningEnabled = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
 
   const handleReasoningToggle = useCallback(() => {
-    if (disabled || !modelSupportsReasoning) return
+    if (disabled || !modelSupportsReasoning || reasoningLocked) return
     const newValue = !reasoningEnabled
     // If toggling back to persona default, clear the override
     const override = newValue === personaReasoningDefault ? null : newValue
     onReasoningToggle(override)
     chatApi.updateSessionReasoning(sessionId, override).catch(() => {})
-  }, [sessionId, disabled, modelSupportsReasoning, reasoningEnabled, personaReasoningDefault, onReasoningToggle])
+  }, [sessionId, disabled, modelSupportsReasoning, reasoningEnabled, personaReasoningDefault, onReasoningToggle, reasoningLocked])
 
   if (toggleableGroups.length === 0 && !modelSupportsReasoning) return null
 
@@ -69,13 +75,17 @@ export function ToolToggles({
         <button
           type="button"
           onClick={handleReasoningToggle}
-          disabled={disabled}
+          disabled={disabled || reasoningLocked}
           className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
           style={{
-            color: reasoningEnabled ? 'rgba(249,226,175,0.9)' : 'rgba(255,255,255,0.35)',
+            color: reasoningEnabled && !reasoningLocked ? 'rgba(249,226,175,0.9)' : 'rgba(255,255,255,0.35)',
             fontFamily: "'Courier New', monospace",
           }}
-          title={reasoningEnabled ? 'Disable reasoning for this session' : 'Enable reasoning for this session'}
+          title={
+            reasoningLocked
+              ? 'Thinking is disabled in conversational mode'
+              : reasoningEnabled ? 'Disable reasoning for this session' : 'Enable reasoning for this session'
+          }
         >
           <span
             className="inline-block h-1.5 w-1.5 rounded-full"
