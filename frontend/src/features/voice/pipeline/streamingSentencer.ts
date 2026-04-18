@@ -1,0 +1,183 @@
+import type { NarratorMode, SpeechSegment } from '../types'
+import { parseForSpeech } from './audioParser'
+
+export interface StreamingSentencer {
+  push(delta: string): SpeechSegment[]
+  flush(): SpeechSegment[]
+  reset(): void
+}
+
+const SENTENCE_END = /[.!?\n]/
+
+// Scan `text` up to `limit` and return the index of the last position that is
+// simultaneously (a) a sentence boundary the downstream splitter will honour
+// and (b) not inside any unterminated markdown / OOC / quote construct. Returns
+// -1 if no such position exists in the window. The invariant that matters: we
+// must never hand a chunk to `parseForSpeech` that would strip an unterminated
+// fence (```…) or OOC marker ((…)) and thereby mangle the text on the next
+// push — so we require each tracked construct to be balanced at the cut point.
+function findSafeCutPoint(text: string, start: number, mode: NarratorMode): number {
+  let fenceOpen = false
+  let inlineTickOpen = false
+  let oocDepth = 0
+  let doubleQuoteOpen = false
+  let smartQuoteOpen = false
+  let singleQuoteOpen = false
+  let asteriskOpen = false
+  let lineStart = 0
+
+  let lastSafeEnd = -1
+
+  const trackQuotes = mode === 'play' || mode === 'narrate'
+  const trackAsterisk = mode === 'play'
+
+  for (let i = 0; i < text.length; i++) {
+    // Fenced code block: ``` toggles; everything inside is opaque to the
+    // other scanners, so we `continue` after toggling.
+    if (text[i] === '`' && text[i + 1] === '`' && text[i + 2] === '`') {
+      fenceOpen = !fenceOpen
+      i += 2
+      continue
+    }
+    if (fenceOpen) continue
+
+    const ch = text[i]
+
+    if (ch === '\n') {
+      // Newlines close inline-tick and single-quote state: those constructs
+      // are line-scoped in practice.
+      inlineTickOpen = false
+      singleQuoteOpen = false
+      lineStart = i + 1
+    }
+
+    if (ch === '`') {
+      inlineTickOpen = !inlineTickOpen
+      continue
+    }
+    if (inlineTickOpen) continue
+
+    if (ch === '(' && text[i + 1] === '(') {
+      oocDepth++
+      i += 1
+      continue
+    }
+    if (ch === ')' && text[i + 1] === ')' && oocDepth > 0) {
+      oocDepth--
+      i += 1
+      continue
+    }
+    if (oocDepth > 0) continue
+
+    if (trackQuotes) {
+      if (ch === '"') {
+        doubleQuoteOpen = !doubleQuoteOpen
+      } else if (ch === '\u201c') {
+        smartQuoteOpen = true
+      } else if (ch === '\u201d') {
+        smartQuoteOpen = false
+      } else if (ch === "'" && !singleQuoteOpen && isWordBoundaryLeft(text, i)) {
+        // Only open a single-quote pair at a word boundary, so that
+        // apostrophes inside words ("it's", "don't") don't flip the state.
+        singleQuoteOpen = true
+      } else if (ch === "'" && singleQuoteOpen) {
+        singleQuoteOpen = false
+      }
+    }
+
+    if (trackAsterisk && ch === '*') {
+      asteriskOpen = !asteriskOpen
+    }
+
+    if (i >= start && SENTENCE_END.test(ch)) {
+      const allBalanced =
+        !fenceOpen &&
+        !inlineTickOpen &&
+        oocDepth === 0 &&
+        (!trackQuotes || (!doubleQuoteOpen && !smartQuoteOpen && !singleQuoteOpen)) &&
+        (!trackAsterisk || !asteriskOpen)
+      if (!allBalanced) continue
+
+      if (ch === '\n') {
+        // Hard line break — sentenceSplitter treats newlines as boundaries.
+        lastSafeEnd = i + 1
+        continue
+      }
+
+      // Sentence-ending punctuation: only safe if followed by whitespace+EOF,
+      // whitespace+[uppercase], or whitespace+newline — matching the rule in
+      // sentenceSplitter. Otherwise we risk cutting inside a decimal ("3.14")
+      // or an abbreviation ("Dr. Smith") where the next chunk might continue
+      // the same sentence.
+      const nextIdx = i + 1
+      if (nextIdx >= text.length) {
+        // Mid-stream: refuse to cut exactly at EOF — more text may arrive
+        // that extends the sentence.
+        continue
+      }
+      const next = text[nextIdx]
+      if (next !== ' ' && next !== '\t' && next !== '\n') continue
+
+      // Walk past the whitespace run.
+      let j = nextIdx
+      while (j < text.length && (text[j] === ' ' || text[j] === '\t')) j++
+      if (j >= text.length) {
+        // Trailing whitespace only — wait for more text.
+        continue
+      }
+      const after = text[j]
+      if (after === '\n' || isUppercaseSentenceStart(after)) {
+        lastSafeEnd = nextIdx
+      }
+    }
+  }
+
+  void lineStart
+  return lastSafeEnd
+}
+
+function isWordBoundaryLeft(text: string, i: number): boolean {
+  if (i === 0) return true
+  const prev = text[i - 1]
+  return !/[A-Za-z0-9\u00C0-\u024F]/.test(prev)
+}
+
+function isUppercaseSentenceStart(ch: string): boolean {
+  return /[A-Z\u00C4\u00D6\u00DC]/.test(ch)
+}
+
+class StreamingSentencerImpl implements StreamingSentencer {
+  private buffer = ''
+  private committedIndex = 0
+  private readonly mode: NarratorMode
+
+  constructor(mode: NarratorMode) {
+    this.mode = mode
+  }
+
+  push(delta: string): SpeechSegment[] {
+    if (!delta) return []
+    this.buffer += delta
+    const safeEnd = findSafeCutPoint(this.buffer, this.committedIndex, this.mode)
+    if (safeEnd <= this.committedIndex) return []
+    const chunk = this.buffer.slice(this.committedIndex, safeEnd)
+    this.committedIndex = safeEnd
+    return parseForSpeech(chunk, this.mode)
+  }
+
+  flush(): SpeechSegment[] {
+    if (this.committedIndex >= this.buffer.length) return []
+    const rest = this.buffer.slice(this.committedIndex)
+    this.committedIndex = this.buffer.length
+    return parseForSpeech(rest, this.mode)
+  }
+
+  reset(): void {
+    this.buffer = ''
+    this.committedIndex = 0
+  }
+}
+
+export function createStreamingSentencer(mode: NarratorMode): StreamingSentencer {
+  return new StreamingSentencerImpl(mode)
+}

@@ -45,11 +45,13 @@ import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
-import { setActiveReader, triggerReadAloud } from '../voice/components/ReadAloudButton'
+import { setActiveReader } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 import { ttsRegistry } from '../voice/engines/registry'
 import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
 import { useSecretsStore } from '../integrations/secretsStore'
+import { createStreamingSentencer, type StreamingSentencer } from '../voice/pipeline/streamingSentencer'
+import type { NarratorMode, SpeechSegment, TTSEngine, VoicePreset } from '../voice/types'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -624,76 +626,213 @@ export function ChatView({ persona }: ChatViewProps) {
     return () => voicePipeline.dispose()
   }, [autoSendTranscription, setPipelineState])
 
-  // Auto-read: when streaming ends, speak the last assistant reply if the
-  // persona has auto_read enabled, a TTS engine is ready, and a voice_id is
-  // configured for the active TTS integration.
+  // Streaming auto-read: as ChatContentDelta events accumulate into
+  // streamingContent, we incrementally cut sentence-safe prefixes with
+  // StreamingSentencer, synthesise each via the active TTS integration,
+  // and enqueue the resulting audio in order. This avoids the audible
+  // wait-for-stream-end a non-streaming implementation would have.
+  //
+  // Ordering: synthesis is async, but audio must play in arrival order.
+  // We serialise via a promise chain so audio N+1 only enqueues after N.
+  //
+  // Cancellation: each session carries a `cancelled` flag that is flipped
+  // when the user barges (mic press / voice toggle handlers). In-flight
+  // synth promises check the flag before enqueueing, so stale audio never
+  // reaches audioPlayback.
+  interface StreamingAutoReadSession {
+    tts: TTSEngine
+    voice: VoicePreset
+    narratorVoice: VoicePreset
+    mode: NarratorMode
+    gapMs: number
+    messageId: string
+    sentencer: StreamingSentencer
+    lastTextLength: number
+    chain: Promise<void>
+    cancelled: boolean
+  }
+
+  const autoReadSessionRef = useRef<StreamingAutoReadSession | null>(null)
   const prevIsStreamingRef = useRef(false)
-  useEffect(() => {
-    const wasStreaming = prevIsStreamingRef.current
-    prevIsStreamingRef.current = isStreaming
 
-    if (!wasStreaming || isStreaming) return // only fire on streaming → done transition
+  // Cancel any active streaming auto-read. Called on barge (mic press etc)
+  // and on unmount. Idempotent.
+  const cancelStreamingAutoRead = useCallback(() => {
+    const session = autoReadSessionRef.current
+    if (!session) return
+    session.cancelled = true
+    autoReadSessionRef.current = null
+    setActiveReader(null, 'idle')
+    audioPlayback.stopAll()
+  }, [])
 
+  // Resolve everything we need to start a streaming auto-read session.
+  // Returns null if auto-read is disabled or any dependency is missing.
+  const resolveAutoReadSession = useCallback(async (
+    messageId: string,
+  ): Promise<StreamingAutoReadSession | null> => {
     const autoRead = !!persona?.voice_config?.auto_read
-    if (!autoRead) return
+    if (!autoRead) return null
 
     const tts = ttsRegistry.active()
-    const ttsReady = tts?.isReady() === true
-    if (!ttsReady) return
+    if (!tts || !tts.isReady()) return null
 
     const activeTTS = intDefinitions.find(
       (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,
     )
-    if (!activeTTS) return
+    if (!activeTTS) return null
 
     const voiceId = persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
-    if (!voiceId) return
+    if (!voiceId) return null
 
-    void (async () => {
-      // If the Mistral engine's voice list hasn't loaded yet, wait for it.
-      if (tts!.voices.length === 0) {
-        const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-        if (apiKey) await refreshMistralVoices(apiKey)
-      }
-      const voice = tts!.voices.find((v) => v.id === voiceId)
-      if (!voice) return
+    if (tts.voices.length === 0) {
+      const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
+      if (apiKey) await refreshMistralVoices(apiKey)
+    }
+    const voice = tts.voices.find((v) => v.id === voiceId)
+    if (!voice) return null
 
-      const msgs = useChatStore.getState().messages
-      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (!lastAssistant || !lastAssistant.content) return
+    const narratorMode: NarratorMode = persona?.voice_config?.narrator_mode ?? 'off'
+    const rawNarratorVoiceId = persona?.integration_configs?.[activeTTS.id]?.narrator_voice_id as string | null | undefined
+    const narratorVoiceId = rawNarratorVoiceId ?? null
+    const narratorVoice = narratorVoiceId
+      ? (tts.voices.find((v) => v.id === narratorVoiceId) ?? voice)
+      : voice
 
-      const narratorMode = persona?.voice_config?.narrator_mode ?? 'off'
-      const ttsDefn = intDefinitions.find((d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled)
-      const narratorVoiceId = ttsDefn
-        ? ((persona?.integration_configs?.[ttsDefn.id]?.narrator_voice_id as string | null | undefined) ?? null)
-        : null
-      const narratorVoice = narratorVoiceId
-        ? (tts?.voices.find((v) => v.id === narratorVoiceId) ?? voice)
-        : voice
+    const gapRaw = intConfigs?.[activeTTS.id]?.config?.playback_gap_ms
+    let gapMs = 500
+    if (typeof gapRaw === 'string') {
+      const parsed = Number.parseInt(gapRaw, 10)
+      if (Number.isFinite(parsed) && parsed >= 0) gapMs = parsed
+    } else if (typeof gapRaw === 'number' && Number.isFinite(gapRaw) && gapRaw >= 0) {
+      gapMs = gapRaw
+    }
 
-      // Mirror resolveGapMs() from ReadAloudButton: accept string or number,
-      // fall back to 100 ms. One-off inline helper — shared module not worth
-      // the indirection for a single call-site.
-      const gapRaw = ttsDefn ? intConfigs?.[ttsDefn.id]?.config?.playback_gap_ms : undefined
-      let gapMs = 500
-      if (typeof gapRaw === 'string') {
-        const parsed = Number.parseInt(gapRaw, 10)
-        if (Number.isFinite(parsed) && parsed >= 0) gapMs = parsed
-      } else if (typeof gapRaw === 'number' && Number.isFinite(gapRaw) && gapRaw >= 0) {
-        gapMs = gapRaw
-      }
+    return {
+      tts,
+      voice,
+      narratorVoice,
+      mode: narratorMode,
+      gapMs,
+      messageId,
+      sentencer: createStreamingSentencer(narratorMode),
+      lastTextLength: 0,
+      chain: Promise.resolve(),
+      cancelled: false,
+    }
+  }, [persona, intDefinitions, intConfigs])
 
-      void triggerReadAloud(lastAssistant.id, lastAssistant.content, voice, narratorVoice, narratorVoiceId, narratorMode, gapMs)
-    })()
-  }, [isStreaming, persona, intDefinitions, intConfigs])
+  // Enqueue synthesis of new segments onto the session's promise chain.
+  // Serialises the async synths so audio is enqueued in arrival order, even
+  // when a later synth finishes faster than an earlier one.
+  const queueSynth = useCallback((session: StreamingAutoReadSession, segments: SpeechSegment[]) => {
+    for (const segment of segments) {
+      session.chain = session.chain.then(async () => {
+        if (session.cancelled) return
+        try {
+          const targetVoice = segment.type === 'voice' ? session.voice : session.narratorVoice
+          const audio = await session.tts.synthesise(segment.text, targetVoice)
+          if (session.cancelled) return
+          audioPlayback.enqueue(audio, segment)
+        } catch (err) {
+          if (session.cancelled) return
+          console.error('[ChatView] Streaming TTS synthesis failed:', err)
+          const isAuthError = err instanceof Error && (err.message.includes('401') || err.message.includes('Unauthorized'))
+          useNotificationStore.getState().addNotification({
+            level: 'error',
+            title: 'Read aloud failed',
+            message: isAuthError
+              ? "Couldn't read reply aloud — check your TTS API key."
+              : "Couldn't read reply aloud — check the console for details.",
+          })
+          session.cancelled = true
+          audioPlayback.stopAll()
+          setActiveReader(null, 'idle')
+        }
+      }).catch(() => {})
+    }
+  }, [])
+
+  const feedStreamingAutoRead = useCallback((newText: string) => {
+    const session = autoReadSessionRef.current
+    if (!session) return
+    if (newText.length <= session.lastTextLength) return
+    const delta = newText.slice(session.lastTextLength)
+    session.lastTextLength = newText.length
+    const segments = session.sentencer.push(delta)
+    if (segments.length > 0) queueSynth(session, segments)
+  }, [queueSynth])
+
+  // Start- and end-of-stream transitions. Opens a fresh session on start,
+  // flushes and closes it on end.
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current
+    prevIsStreamingRef.current = isStreaming
+
+    if (isStreaming && !wasStreaming) {
+      cancelStreamingAutoRead()
+      const messageId = correlationId ?? `stream-${Date.now()}`
+      void (async () => {
+        const session = await resolveAutoReadSession(messageId)
+        if (!session) return
+        // Stream may have ended while we were resolving (short replies).
+        if (!useChatStore.getState().isStreaming) return
+        audioPlayback.setCallbacks({
+          gapMs: session.gapMs,
+          onSegmentStart: () => {
+            if (autoReadSessionRef.current?.messageId === messageId) {
+              setActiveReader(messageId, 'playing')
+            }
+          },
+          onFinished: () => {
+            if (autoReadSessionRef.current?.messageId === messageId) {
+              setActiveReader(null, 'idle')
+            }
+          },
+        })
+        autoReadSessionRef.current = session
+        setActiveReader(messageId, 'synthesising')
+        const initial = useChatStore.getState().streamingContent
+        if (initial) feedStreamingAutoRead(initial)
+      })()
+    }
+
+    if (!isStreaming && wasStreaming) {
+      const session = autoReadSessionRef.current
+      if (!session) return
+      const remaining = session.sentencer.flush()
+      if (remaining.length > 0) queueSynth(session, remaining)
+      session.chain = session.chain.then(() => {
+        if (session.cancelled) return
+        audioPlayback.closeStream()
+      }).catch(() => {})
+      // Clear the ref but keep playback running — remaining audio still plays.
+      autoReadSessionRef.current = null
+    }
+  }, [isStreaming, correlationId, cancelStreamingAutoRead, resolveAutoReadSession, feedStreamingAutoRead, queueSynth])
+
+  // Mid-stream: each streamingContent update pushes its delta through the
+  // sentencer and queues any emitted segments for synthesis.
+  useEffect(() => {
+    if (!isStreaming) return
+    feedStreamingAutoRead(streamingContent)
+  }, [streamingContent, isStreaming, feedStreamingAutoRead])
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => { cancelStreamingAutoRead() }
+  }, [cancelStreamingAutoRead])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
-    // Cancel any active Read Aloud (stop playback + discard pending synthesis)
+    // Cancel any active Read Aloud (stop playback + discard pending synthesis,
+    // including the streaming auto-read path so its in-flight synth promises
+    // are dropped before they reach audioPlayback).
+    cancelStreamingAutoRead()
     setActiveReader(null, 'idle')
     audioPlayback.stopAll()
     voicePipeline.startRecording('push-to-talk')
-  }, [])
+  }, [cancelStreamingAutoRead])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -708,11 +847,12 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
+      cancelStreamingAutoRead()
       setActiveReader(null, 'idle')
       audioPlayback.stopAll()
       voicePipeline.startRecording('push-to-talk')
     }
-  }, [pipelineState.phase])
+  }, [pipelineState.phase, cancelStreamingAutoRead])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({
