@@ -2,6 +2,7 @@ import { audioPlayback } from '../infrastructure/audioPlayback'
 import { setActiveReader } from '../components/ReadAloudButton'
 import type { StreamingSentencer } from './streamingSentencer'
 import type { NarratorMode, TTSEngine, VoicePreset } from '../types'
+import type { VoiceModulation } from './applyModulation'
 
 /**
  * Streaming auto-read session object shared between the chat view's
@@ -19,6 +20,7 @@ export interface StreamingAutoReadSession {
   lastTextLength: number
   chain: Promise<void>
   cancelled: boolean
+  modulation: VoiceModulation
 }
 
 // Module-level slot holding the active session. Kept here (not in ChatView

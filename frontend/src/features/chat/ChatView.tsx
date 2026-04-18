@@ -57,6 +57,7 @@ import {
   setActiveStreamingAutoRead,
   type StreamingAutoReadSession,
 } from '../voice/pipeline/streamingAutoReadControl'
+import { applyModulation, resolveModulation } from '../voice/pipeline/applyModulation'
 import type { NarratorMode, SpeechSegment } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
@@ -719,6 +720,8 @@ export function ChatView({ persona }: ChatViewProps) {
       gapMs = gapRaw
     }
 
+    const modulation = resolveModulation(persona?.voice_config)
+
     return {
       tts,
       voice,
@@ -730,6 +733,7 @@ export function ChatView({ persona }: ChatViewProps) {
       lastTextLength: 0,
       chain: Promise.resolve(),
       cancelled: false,
+      modulation,
     }
   }, [persona, intDefinitions, intConfigs, conversationActive])
 
@@ -744,7 +748,7 @@ export function ChatView({ persona }: ChatViewProps) {
           const targetVoice = segment.type === 'voice' ? session.voice : session.narratorVoice
           const audio = await session.tts.synthesise(segment.text, targetVoice)
           if (session.cancelled) return
-          audioPlayback.enqueue(audio, segment)
+          audioPlayback.enqueue(audio, applyModulation(segment, session.modulation))
         } catch (err) {
           if (session.cancelled) return
           console.error('[ChatView] Streaming TTS synthesis failed:', err)

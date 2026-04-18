@@ -9,6 +9,7 @@ import { useSecretsStore } from '../../integrations/secretsStore'
 import { useIntegrationsStore } from '../../integrations/store'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useNotificationStore } from '../../../core/store/notificationStore'
+import { applyModulation, resolveModulation, type VoiceModulation } from '../pipeline/applyModulation'
 
 interface ReadAloudButtonProps {
   messageId: string
@@ -101,6 +102,7 @@ async function runReadAloud(
   narratorVoiceId: string | null,
   mode: NarratorMode,
   gapMs: number,
+  modulation: VoiceModulation,
 ): Promise<void> {
   const tts = ttsRegistry.active()
   if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
@@ -117,7 +119,7 @@ async function runReadAloud(
   if (cached) {
     setActiveReader(messageId, 'playing')
     for (const { audio, segment } of cached.segments) {
-      audioPlayback.enqueue(audio, segment)
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation))
     }
     audioPlayback.closeStream()
     return
@@ -136,7 +138,7 @@ async function runReadAloud(
       const audio = await tts.synthesise(segment.text, voice)
       if (activeMessageId !== messageId) return
       results.push({ audio, segment })
-      audioPlayback.enqueue(audio, segment)
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation))
     }
     cachePut(cacheKey, { segments: results })
     audioPlayback.closeStream()
@@ -169,10 +171,11 @@ export async function triggerReadAloud(
   narratorVoiceId: string | null,
   mode: NarratorMode,
   gapMs: number,
+  modulation: VoiceModulation,
 ): Promise<void> {
   audioPlayback.stopAll()
   setActiveReader(messageId, 'synthesising')
-  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs)
+  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs, modulation)
 }
 
 // ── Component ──
@@ -226,9 +229,11 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     const personaNarrator = narratorVoiceId ? tts.voices.find((v) => v.id === narratorVoiceId) : undefined
     const narrator: VoicePreset = narratorVoice ?? personaNarrator ?? primary
 
+    const modulation = resolveModulation(persona?.voice_config)
+
     setActiveReader(messageId, 'synthesising')
-    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs)
-  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs])
+    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation)
+  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs, persona])
 
   if (!ttsReady || !voiceId) {
     if (!personaId) return null
