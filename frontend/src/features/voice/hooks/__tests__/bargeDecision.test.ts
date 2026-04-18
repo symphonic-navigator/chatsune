@@ -23,4 +23,14 @@ describe('decideSttOutcome', () => {
     expect(decideSttOutcome({ transcript: '', sttBargeId: 1, currentBargeId: 2 }))
       .toBe('stale')
   })
+
+  it('returns "stale" when sttBargeId is ahead of currentBargeId', () => {
+    expect(decideSttOutcome({ transcript: 'hi', sttBargeId: 5, currentBargeId: 3 }))
+      .toBe('stale')
+  })
+
+  it('returns "confirm" when transcript has surrounding whitespace but is not empty', () => {
+    expect(decideSttOutcome({ transcript: '  hello  ', sttBargeId: 1, currentBargeId: 1 }))
+      .toBe('confirm')
+  })
 })
