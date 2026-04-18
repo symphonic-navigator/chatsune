@@ -614,7 +614,17 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [effectiveSessionId, isIncognito, personaId])
 
-  // Voice pipeline callbacks — always registered; the pipeline itself guards against missing engines
+  // Voice pipeline callbacks — registered once on mount. handleSend and
+  // autoSendTranscription are read through refs so that re-renders (which
+  // happen e.g. every time `attachments` produces a new object reference) do
+  // NOT cause the effect to re-run; a re-run would fire the cleanup which
+  // calls voicePipeline.dispose(), which in turn cancels any in-flight
+  // getUserMedia and leaves the mic spinner stuck.
+  const handleSendRef = useRef(handleSend)
+  useEffect(() => { handleSendRef.current = handleSend }, [handleSend])
+  const autoSendTranscriptionRef = useRef(autoSendTranscription)
+  useEffect(() => { autoSendTranscriptionRef.current = autoSendTranscription }, [autoSendTranscription])
+
   useEffect(() => {
     voicePipeline.setCallbacks({
       onStateChange: setPipelineState,
@@ -625,10 +635,10 @@ export function ChatView({ persona }: ChatViewProps) {
         // This branch handles only the PTT pipeline.
         if (useConversationModeStore.getState().active) return
         setTranscription(text)
-        if (autoSendTranscription && text.trim()) {
+        if (autoSendTranscriptionRef.current && text.trim()) {
           // Auto-send mode: briefly show the transcription, then send.
           setTimeout(() => {
-            handleSend(text)
+            handleSendRef.current(text)
             setTranscription('')
           }, 800)
         } else {
@@ -639,7 +649,7 @@ export function ChatView({ persona }: ChatViewProps) {
       },
     })
     return () => voicePipeline.dispose()
-  }, [autoSendTranscription, setPipelineState, handleSend])
+  }, [setPipelineState])
 
   // Streaming auto-read: as ChatContentDelta events accumulate into
   // streamingContent, we incrementally cut sentence-safe prefixes with
