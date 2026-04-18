@@ -53,8 +53,15 @@ export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): P
     stream: false,
   }
 
+  // Diagnostic logs — remove once "TTS starts only at end of inference" bug
+  // is pinned down. Brackets the raw SDK/HTTP call so we can tell if the
+  // latency is network (H1) or JS event-loop starvation (H2).
+  const preview = text.slice(0, 40).replace(/\s+/g, ' ')
+  const httpStart = performance.now()
+  console.log(`[TTS-http]  request "${preview}"`)
   // SpeechResponse carries base64-encoded audio data
   const result = await client(apiKey).audio.speech.complete(request) as SpeechResponse
+  console.log(`[TTS-http]  response "${preview}" ${Math.round(performance.now() - httpStart)}ms`)
   const binary = atob(result.audioData)
   const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0))
   return new Blob([bytes], { type: 'audio/mpeg' })

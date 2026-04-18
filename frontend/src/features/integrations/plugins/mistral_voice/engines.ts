@@ -103,6 +103,11 @@ export class MistralTTSEngine implements TTSEngine {
     if (!key) throw new Error('Mistral API key not configured')
 
     const blob = await apiSynthesise({ apiKey: key, text, voiceId: voice.id })
-    return blobToFloat32(blob)
+    // Diagnostic log — pair with [TTS-http] lines in api.ts. Remove with them.
+    const preview = text.slice(0, 40).replace(/\s+/g, ' ')
+    const decodeStart = performance.now()
+    const pcm = await blobToFloat32(blob)
+    console.log(`[TTS-decode] done "${preview}" ${Math.round(performance.now() - decodeStart)}ms`)
+    return pcm
   }
 }
