@@ -880,6 +880,33 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [isStreaming, isWaitingForResponse])
 
+  // Diagnostic — long-task observer. Reports every synchronous block on the
+  // main thread longer than 50 ms while the LLM stream runs. A cluster of
+  // these during streaming is the smoking gun for the "TTS hangs until LLM
+  // ends" bug: main-thread starvation blocks await resolution. Remove once
+  // the render-cost hotspot is fixed.
+  useEffect(() => {
+    if (!isStreaming && !isWaitingForResponse) return
+    if (typeof PerformanceObserver === 'undefined') return
+    let total = 0
+    let count = 0
+    const LONGTASK_FLOOR_MS = 100 // only log tasks over this many ms, to cut noise
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        total += entry.duration
+        count++
+        if (entry.duration >= LONGTASK_FLOOR_MS) {
+          console.log(`[longtask] ${Math.round(entry.duration)}ms`)
+        }
+      }
+    })
+    try { observer.observe({ entryTypes: ['longtask'] }) } catch { /* not supported */ }
+    return () => {
+      observer.disconnect()
+      console.log(`[longtask] summary: ${count} tasks totalling ${Math.round(total)}ms over this stream`)
+    }
+  }, [isStreaming, isWaitingForResponse])
+
   // Mid-stream: each streamingContent update pushes its delta through the
   // sentencer and queues any emitted segments for synthesis.
   useEffect(() => {
