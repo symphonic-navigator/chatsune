@@ -221,7 +221,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     const current = phaseRef.current
     if (current === 'thinking' || current === 'speaking') {
       audioPlayback.mute()
-      tentativeRef.current = true
+      tentativeRef.current = audioPlayback.isMuted()
     }
     setPhase('user-speaking')
   }, [setPhase])
@@ -286,6 +286,13 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
     if (!activeRef.current) return
     if (holdingRef.current) return
+    // If executeBarge already fired (150 ms elapsed before Silero retracted),
+    // undo the tentative mute so audio resumes instead of staying silent.
+    if (tentativeRef.current) {
+      tentativeRef.current = false
+      audioPlayback.resumeFromMute()
+      return
+    }
     setPhase('listening')
   }, [setPhase, clearPendingBarge])
 
