@@ -301,7 +301,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {activeTab === 'mcp' && !isCreating && <McpTab persona={resolved} chakra={chakra} />}
           {activeTab === 'integrations' && !isCreating && <PersonaIntegrationsTab persona={resolved} onSave={onSave} />}
           {activeTab === 'voice' && !isCreating && (
-            <PersonaVoiceConfig persona={resolved} chakra={chakra} onSave={onSave} />
+            <PersonaVoiceConfig key={resolved.id} persona={resolved} chakra={chakra} onSave={onSave} />
           )}
         </div>
       </div>

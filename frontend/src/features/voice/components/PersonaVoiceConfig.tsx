@@ -51,6 +51,18 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   )
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Refs mirror the live state so `persistVoiceConfig` can stay stable across
+  // re-renders. Without this the debounced `scheduleModulationSave` captures a
+  // stale `persistVoiceConfig` whose closure holds OLD autoRead / narratorMode
+  // / modulation values — when the timer fires after an intervening toggle
+  // change, the stale snapshot silently reverts the toggle.
+  const autoReadRef = useRef(autoRead)
+  const narratorModeRef = useRef(narratorMode)
+  const modulationRef = useRef(modulation)
+  useEffect(() => { autoReadRef.current = autoRead }, [autoRead])
+  useEffect(() => { narratorModeRef.current = narratorMode }, [narratorMode])
+  useEffect(() => { modulationRef.current = modulation }, [modulation])
+
   const activeTTS = definitions.find(
     (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.enabled,
   )
@@ -75,16 +87,17 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     }>) => {
       setSaving(true)
       try {
+        const mod = modulationRef.current
         await onSave(persona.id, {
           voice_config: {
             dialogue_voice: persona.voice_config?.dialogue_voice ?? null,
             narrator_voice: persona.voice_config?.narrator_voice ?? null,
-            auto_read: autoRead,
-            narrator_mode: narratorMode,
-            dialogue_speed: modulation.dialogue_speed,
-            dialogue_pitch: modulation.dialogue_pitch,
-            narrator_speed: modulation.narrator_speed,
-            narrator_pitch: modulation.narrator_pitch,
+            auto_read: autoReadRef.current,
+            narrator_mode: narratorModeRef.current,
+            dialogue_speed: mod.dialogue_speed,
+            dialogue_pitch: mod.dialogue_pitch,
+            narrator_speed: mod.narrator_speed,
+            narrator_pitch: mod.narrator_pitch,
             ...patch,
           },
         })
@@ -92,7 +105,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
         setSaving(false)
       }
     },
-    [persona.id, persona.voice_config, onSave, autoRead, narratorMode, modulation],
+    [persona.id, persona.voice_config, onSave],
   )
 
   const scheduleModulationSave = useCallback((next: VoiceModulation) => {
@@ -280,6 +293,7 @@ function VoiceFormWithPreview({
       <div className="flex flex-col gap-3 pt-2 border-t border-white/10">
         <label className={LABEL}>Voice Modulation</label>
 
+        {/* Snap to the 0.05 / 1-semitone grid — guards against FP drift from the range input. */}
         <div className="flex flex-col gap-3">
           <div className="text-[11px] text-white/55 font-mono">Primary voice</div>
           <ModulationSlider
