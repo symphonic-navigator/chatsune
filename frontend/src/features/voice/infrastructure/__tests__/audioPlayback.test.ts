@@ -284,6 +284,59 @@ describe('audioPlayback — mute / resumeFromMute', () => {
   })
 })
 
+describe('audioPlayback — discardMuted', () => {
+  it('discardMuted clears the muted entry and resumes the rest of the queue', async () => {
+    const onSegmentStart = vi.fn()
+    audioPlayback.setCallbacks({ onSegmentStart, onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), { ...SEGMENT, text: 'second' })
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(1, SEGMENT)
+
+    audioPlayback.mute()
+    expect(audioPlayback.isMuted()).toBe(true)
+
+    const listener = vi.fn()
+    audioPlayback.subscribe(listener)
+
+    audioPlayback.discardMuted()
+    await Promise.resolve()
+
+    expect(audioPlayback.isMuted()).toBe(false)
+    expect(listener).toHaveBeenCalled()
+    // The muted first segment is NOT replayed; the second segment plays.
+    expect(onSegmentStart).toHaveBeenCalledTimes(2)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(2, { ...SEGMENT, text: 'second' })
+  })
+
+  it('discardMuted is a no-op when not muted', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    const listener = vi.fn()
+    audioPlayback.subscribe(listener)
+    expect(() => audioPlayback.discardMuted()).not.toThrow()
+    expect(audioPlayback.isMuted()).toBe(false)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('discardMuted preserves streamClosed so onFinished still fires later', async () => {
+    const onFinished = vi.fn()
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), { ...SEGMENT, text: 'second' })
+    // First segment playing, second queued.
+    audioPlayback.mute()
+    audioPlayback.closeStream()
+    expect(onFinished).not.toHaveBeenCalled()
+
+    audioPlayback.discardMuted()
+    await Promise.resolve()
+
+    // Second segment is now playing (index 1); finish it to drain the queue.
+    finishPlayback(1)
+    expect(onFinished).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('audioPlayback — subscribe API', () => {
   it('subscribe returns an unsubscribe fn; unsubscribed listeners are not called', () => {
     audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
