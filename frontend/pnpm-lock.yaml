@@ -23,6 +23,9 @@ importers:
       '@ricky0123/vad-web':
         specifier: ^0.0.30
         version: 0.0.30
+      '@soundtouchjs/audio-worklet':
+        specifier: ^1.0.10
+        version: 1.0.10
       katex:
         specifier: ^0.16.45
         version: 0.16.45
@@ -1068,6 +1071,12 @@ packages:
 
   '@shikijs/vscode-textmate@10.0.2':
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
+
+  '@soundtouchjs/audio-worklet@1.0.10':
+    resolution: {integrity: sha512-MfMOhcCss1f0L+6MV38AAD3OFF1S8dNGqr1JhjCnt71osCE1saeU0YfF2EpXgjF0wNGeAS2ekNxiZ3UUPq54Dw==}
+
+  '@soundtouchjs/core@1.0.10':
+    resolution: {integrity: sha512-KeifMox5hFxc4hzdHCG96/84JJbZC6wuNiE33FChHcuM/BjFqDcD6Uli5v2K1cw3mchH5K7rIGXJiQSvHvJkWQ==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -4860,6 +4869,12 @@ snapshots:
       '@types/hast': 3.0.4
 
   '@shikijs/vscode-textmate@10.0.2': {}
+
+  '@soundtouchjs/audio-worklet@1.0.10':
+    dependencies:
+      '@soundtouchjs/core': 1.0.10
+
+  '@soundtouchjs/core@1.0.10': {}
 
   '@standard-schema/spec@1.1.0': {}
 
