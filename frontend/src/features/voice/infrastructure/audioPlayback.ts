@@ -105,6 +105,11 @@ class AudioPlaybackImpl {
       }
 
       if (modNode) {
+        // Drive tempo via the source's playbackRate; SoundTouch's playbackRate
+        // param tells the processor about that rate so it can compensate the
+        // resulting pitch change. stNode.tempo alone produces stuttering at
+        // 128-sample worklet quanta (see soundTouchLoader comment).
+        source.playbackRate.value = speed
         source.connect(modNode)
         modNode.connect(this.ctx.destination)
       } else {

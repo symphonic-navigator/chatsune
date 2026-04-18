@@ -9,6 +9,7 @@ let audioPlayback: typeof import('../audioPlayback').audioPlayback
 class FakeSource {
   buffer: unknown = null
   onended: (() => void) | null = null
+  playbackRate = { value: 1 }
   start = vi.fn()
   stop = vi.fn()
   connect = vi.fn()

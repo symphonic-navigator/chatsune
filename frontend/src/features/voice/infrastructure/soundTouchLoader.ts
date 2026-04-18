@@ -41,6 +41,13 @@ export async function ensureSoundTouchReady(ctx: AudioContext): Promise<boolean>
  * Create a SoundTouchNode configured for the given speed and pitch. Returns
  * null if the worklet is not registered — caller must fall back to direct
  * routing.
+ *
+ * Note: tempo is driven through the source's playbackRate (the caller sets it
+ * on its BufferSource), not through stNode.tempo. SoundTouch's time-stretcher
+ * can't produce enough output samples per 128-frame AudioWorklet block at
+ * non-unit tempo, which causes audible stuttering. Instead we let the source
+ * run faster/slower and tell the node about it via playbackRate so it
+ * compensates the resulting pitch change. See the package README.
  */
 export function createModulationNode(
   ctx: AudioContext,
@@ -49,7 +56,7 @@ export function createModulationNode(
 ): SoundTouchNode | null {
   if (!state.initialised || !state.available) return null
   const node = new SoundTouchNode(ctx)
-  node.tempo.value = speed
+  node.playbackRate.value = speed
   node.pitchSemitones.value = pitchSemitones
   return node
 }
