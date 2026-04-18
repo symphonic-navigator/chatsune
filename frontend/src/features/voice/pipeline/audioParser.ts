@@ -54,17 +54,28 @@ function expandToSentences(segment: { type: 'voice' | 'narration'; text: string 
   return sentences.map((text) => ({ type: segment.type, text }))
 }
 
+// A segment has speakable content iff it contains at least one Unicode letter
+// or digit. Punctuation- or emoji-only segments (e.g. the "😄" produced when
+// a sentence boundary cuts before a decorative emoji) are rejected by TTS
+// providers after their own sanitisation, so filtering them at the source
+// avoids needless 400s and keeps the synth chain healthy.
+function hasSpeakableContent(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test(text)
+}
+
 export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[] {
   const cleaned = preprocess(text)
   if (!cleaned) return []
   if (mode === 'off') {
-    return splitSentences(cleaned).map((s) => ({ type: 'voice' as const, text: s }))
+    return splitSentences(cleaned)
+      .filter(hasSpeakableContent)
+      .map((s) => ({ type: 'voice' as const, text: s }))
   }
   const coarse = splitSegments(cleaned, mode)
   const result: SpeechSegment[] = []
   for (const seg of coarse) {
     for (const expanded of expandToSentences(seg)) {
-      result.push(expanded)
+      if (hasSpeakableContent(expanded.text)) result.push(expanded)
     }
   }
   return result

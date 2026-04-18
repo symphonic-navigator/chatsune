@@ -173,5 +173,14 @@ describe('createStreamingSentencer', () => {
       // matching LLM decoration patterns like "Great!😀".
       expect(s.push('That is great!😀 Let')).toEqual([{ type: 'voice', text: 'That is great!' }])
     })
+
+    it('drops emoji-only segments on flush', () => {
+      const s = createStreamingSentencer('off')
+      // End-of-stream case: "Hello!" commits on the emoji cut, leaving "😄"
+      // as the buffer tail. flush must not emit a speech-less segment —
+      // TTS providers sanitise them to empty and reject the request.
+      expect(s.push('Hello!😄')).toEqual([{ type: 'voice', text: 'Hello!' }])
+      expect(s.flush()).toEqual([])
+    })
   })
 })
