@@ -22,6 +22,7 @@ class AudioPlaybackImpl {
   private currentSource: AudioBufferSourceNode | null = null
   private currentEntry: QueueEntry | null = null
   private mutedEntry: QueueEntry | null = null
+  private muted = false
   private callbacks: AudioPlaybackCallbacks | null = null
   private playing = false
   private streamClosed = false
@@ -31,12 +32,12 @@ class AudioPlaybackImpl {
 
   enqueue(audio: Float32Array, segment: SpeechSegment): void {
     this.queue.push({ audio, segment })
-    if (!this.playing && this.pendingGapTimer === null && this.mutedEntry === null) this.playNext()
+    if (!this.playing && this.pendingGapTimer === null && !this.muted) this.playNext()
   }
 
   closeStream(): void {
     this.streamClosed = true
-    if (!this.playing && this.queue.length === 0 && this.pendingGapTimer === null && this.mutedEntry === null) {
+    if (!this.playing && this.queue.length === 0 && this.pendingGapTimer === null && !this.muted) {
       this.callbacks?.onFinished()
     }
   }
@@ -45,6 +46,7 @@ class AudioPlaybackImpl {
     this.queue = []
     this.streamClosed = false
     this.mutedEntry = null
+    this.muted = false
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null
@@ -60,37 +62,57 @@ class AudioPlaybackImpl {
 
   /**
    * Non-destructive pause used by Tentative Barge. Stops the current source
-   * and remembers its entry so resumeFromMute() can replay it from the
-   * start. The queue and streamClosed flag are preserved. Idempotent.
+   * (if any) and remembers its entry so resumeFromMute() can replay it from
+   * the start. Also cancels any pending gap timer so a mute that arrives
+   * between segments still inhibits playback. The queue and streamClosed
+   * flag are preserved. Idempotent.
    */
   mute(): void {
-    if (this.mutedEntry !== null) return // already muted
-    if (!this.currentSource || !this.currentEntry) return // nothing to mute
-    this.mutedEntry = this.currentEntry
-    this.currentSource.onended = null // don't advance the queue
-    try { this.currentSource.stop() } catch { /* already stopped */ }
-    this.currentSource = null
-    this.currentEntry = null
-    this.playing = false
+    if (this.muted) return // already muted
+    // Cancel any scheduled next-segment play first — it runs independently
+    // of currentSource and would otherwise bypass the mute when no source
+    // is currently playing (between-segments case).
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null
+    }
+    if (this.currentSource && this.currentEntry) {
+      this.mutedEntry = this.currentEntry
+      this.currentSource.onended = null // don't advance the queue
+      try { this.currentSource.stop() } catch { /* already stopped */ }
+      this.currentSource = null
+      this.currentEntry = null
+      this.playing = false
+      this.muted = true
+      return
+    }
+    // Nothing playing right now. Still mark as muted if the queue has an
+    // upcoming entry — that means a segment was about to start (either via
+    // a gap timer we just cancelled, or via enqueue auto-start) and we must
+    // block it. If both the source and the queue are empty, mute is a no-op.
+    if (this.queue.length > 0) {
+      this.muted = true
     }
   }
 
   /**
    * Resume after a mute(). Re-queues the muted entry at the head of the
-   * queue and kicks playback. No-op if nothing is muted.
+   * queue and kicks playback. If there is no mutedEntry (mute was called
+   * between segments), simply restart playNext so the next queued entry
+   * plays. No-op if not muted.
    */
   resumeFromMute(): void {
+    if (!this.muted) return
     const entry = this.mutedEntry
-    if (!entry) return
     this.mutedEntry = null
-    this.queue.unshift(entry)
+    this.muted = false
+    if (entry !== null) {
+      this.queue.unshift(entry)
+    }
     if (!this.playing && this.pendingGapTimer === null) this.playNext()
   }
 
-  isMuted(): boolean { return this.mutedEntry !== null }
+  isMuted(): boolean { return this.muted }
 
   skipCurrent(): void {
     if (this.currentSource) {
@@ -172,6 +194,7 @@ class AudioPlaybackImpl {
       source.onended = () => {
         this.currentSource = null
         this.currentEntry = null
+        this.playing = false // gap timer, if any, is not active playback
         if (modNode) {
           try { modNode.disconnect() } catch { /* ignore */ }
         }

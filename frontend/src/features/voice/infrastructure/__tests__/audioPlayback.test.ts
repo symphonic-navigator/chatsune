@@ -255,4 +255,32 @@ describe('audioPlayback — mute / resumeFromMute', () => {
 
     expect(audioPlayback.isMuted()).toBe(false)
   })
+
+  it('mute cancels a pending gap timer so the next segment does not auto-play', () => {
+    const onSegmentStart = vi.fn()
+    audioPlayback.setCallbacks({ gapMs: 200, onSegmentStart, onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(10), { ...SEGMENT, text: 'second' })
+    // First segment is playing.
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+
+    // First segment ends → gap timer pending.
+    finishPlayback(0)
+    expect(audioPlayback.isPlaying()).toBe(false)
+    expect(onSegmentStart).toHaveBeenCalledTimes(1) // gap has not elapsed
+
+    // Mute fires during the gap.
+    audioPlayback.mute()
+    expect(audioPlayback.isMuted()).toBe(true)
+
+    // Advance past the gap — without the fix, playNext would have fired.
+    vi.advanceTimersByTime(500)
+    expect(onSegmentStart).toHaveBeenCalledTimes(1)
+
+    // Resume — the next queued segment now plays.
+    audioPlayback.resumeFromMute()
+    expect(audioPlayback.isMuted()).toBe(false)
+    expect(onSegmentStart).toHaveBeenCalledTimes(2)
+    expect(onSegmentStart).toHaveBeenNthCalledWith(2, { ...SEGMENT, text: 'second' })
+  })
 })
