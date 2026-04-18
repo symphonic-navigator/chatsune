@@ -103,7 +103,7 @@ async function flushMicrotasks() {
   await Promise.resolve()
 }
 
-describe('useConversationMode — hold-release grace timer', () => {
+describe('useConversationMode — hold-release VAD-state gating', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     captured = null
@@ -130,7 +130,7 @@ describe('useConversationMode — hold-release grace timer', () => {
     expect(captured).not.toBeNull()
 
     // User starts speaking. Advance past the 150 ms barge window so speech
-    // is "accepted".
+    // is "accepted". VAD is now actively tracking an utterance.
     act(() => { captured!.onSpeechStart() })
     await act(async () => { vi.advanceTimersByTime(200) })
 
@@ -138,17 +138,22 @@ describe('useConversationMode — hold-release grace timer', () => {
     act(() => { useConversationModeStore.getState().setHolding(true) })
 
     // First utterance ends while holding — audio is buffered, nothing sent.
+    // This speech-end marks VAD as idle again.
     const audio1 = new Float32Array(16_000) // 1 s @ 16 kHz
     audio1.fill(0.1)
     act(() => { captured!.onSpeechEnd(audio1) })
     expect(transcribeMock).not.toHaveBeenCalled()
 
-    // User releases the hold BEFORE Silero has emitted the final
-    // speech-end. This is the race: without a grace window, the release
-    // effect dispatches audio1 alone right now.
+    // User resumes speaking while still holding — VAD active again.
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+
+    // User releases the hold WHILE VAD is still tracking the second utterance.
+    // The release effect must now wait for the next speech-end rather than
+    // dispatching the buffered chunk immediately.
     act(() => { useConversationModeStore.getState().setHolding(false) })
 
-    // ~100 ms later (still well under the 500 ms grace window) Silero
+    // ~100 ms later (still well under the old 500 ms grace window) Silero
     // finally fires the redemption speech-end with the trailing chunk.
     await act(async () => { vi.advanceTimersByTime(100) })
     const audio2 = new Float32Array(8_000) // 0.5 s @ 16 kHz
@@ -159,13 +164,13 @@ describe('useConversationMode — hold-release grace timer', () => {
     await act(async () => { vi.advanceTimersByTime(1_000) })
     await act(async () => { await flushMicrotasks() })
 
-    // The fix: exactly ONE STT call, with the concatenated audio length.
+    // Exactly ONE STT call, with the concatenated audio length.
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
     expect(sent.length).toBe(audio1.length + audio2.length)
   })
 
-  it('falls back to dispatching the buffered audio when the grace window elapses without a follow-up speech-end', async () => {
+  it('dispatches buffered audio immediately when VAD is idle at release time', async () => {
     renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
 
     await act(async () => {
@@ -181,17 +186,117 @@ describe('useConversationMode — hold-release grace timer', () => {
 
     const audio1 = new Float32Array(12_000)
     audio1.fill(0.3)
+    // speech-end BEFORE release → VAD is idle at release time.
     act(() => { captured!.onSpeechEnd(audio1) })
     expect(transcribeMock).not.toHaveBeenCalled()
 
-    // Release during inter-utterance silence — no further VAD event is coming.
+    // Release during inter-utterance silence. VAD is idle, so we dispatch
+    // synchronously — no timer advance needed.
     act(() => { useConversationModeStore.getState().setHolding(false) })
+    await act(async () => { await flushMicrotasks() })
 
-    // Immediately after release, no dispatch yet: we defer.
+    expect(transcribeMock).toHaveBeenCalledTimes(1)
+    const sent = transcribeMock.mock.calls[0][0]
+    expect(sent.length).toBe(audio1.length)
+  })
+
+  it('release with VAD idle (all speech-ends already fired) dispatches synchronously, no timer', async () => {
+    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+
+    await act(async () => {
+      useConversationModeStore.getState().enter()
+      await flushMicrotasks()
+    })
+    expect(captured).not.toBeNull()
+
+    // Speech-start then speech-end while holding; VAD returns to idle.
+    act(() => { useConversationModeStore.getState().setHolding(true) })
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    const audio = new Float32Array(5_000)
+    audio.fill(0.4)
+    act(() => { captured!.onSpeechEnd(audio) })
+
+    // Release → immediate dispatch. No timers advanced.
+    act(() => { useConversationModeStore.getState().setHolding(false) })
+    await act(async () => { await flushMicrotasks() })
+
+    expect(transcribeMock).toHaveBeenCalledTimes(1)
+    expect(transcribeMock.mock.calls[0][0].length).toBe(audio.length)
+  })
+
+  it('release mid-utterance merges with late speech-end beyond the original 500 ms window', async () => {
+    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+
+    await act(async () => {
+      useConversationModeStore.getState().enter()
+      await flushMicrotasks()
+    })
+    expect(captured).not.toBeNull()
+
+    // Four held speech-end events buffered.
+    act(() => { useConversationModeStore.getState().setHolding(true) })
+
+    const seg1 = new Float32Array(4_000); seg1.fill(0.1)
+    const seg2 = new Float32Array(4_000); seg2.fill(0.2)
+    const seg3 = new Float32Array(4_000); seg3.fill(0.3)
+    const seg4 = new Float32Array(4_000); seg4.fill(0.4)
+
+    for (const seg of [seg1, seg2, seg3, seg4]) {
+      act(() => { captured!.onSpeechStart() })
+      await act(async () => { vi.advanceTimersByTime(200) })
+      act(() => { captured!.onSpeechEnd(seg) })
+    }
     expect(transcribeMock).not.toHaveBeenCalled()
 
-    // Advance past the grace window.
-    await act(async () => { vi.advanceTimersByTime(600) })
+    // User resumes speaking — VAD active again.
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+
+    // User releases mid-utterance.
+    act(() => { useConversationModeStore.getState().setHolding(false) })
+
+    // Advance 800 ms — longer than old 500 ms grace, shorter than 3 s safety.
+    await act(async () => { vi.advanceTimersByTime(800) })
+    // No dispatch yet: we're waiting for the speech-end.
+    expect(transcribeMock).not.toHaveBeenCalled()
+
+    // Final chunk finally arrives.
+    const seg5 = new Float32Array(4_000); seg5.fill(0.5)
+    act(() => { captured!.onSpeechEnd(seg5) })
+    await act(async () => { await flushMicrotasks() })
+
+    expect(transcribeMock).toHaveBeenCalledTimes(1)
+    const sent = transcribeMock.mock.calls[0][0]
+    expect(sent.length).toBe(seg1.length + seg2.length + seg3.length + seg4.length + seg5.length)
+  })
+
+  it('safety fallback dispatches buffer if no speech-end arrives within 3 s', async () => {
+    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+
+    await act(async () => {
+      useConversationModeStore.getState().enter()
+      await flushMicrotasks()
+    })
+    expect(captured).not.toBeNull()
+
+    act(() => { useConversationModeStore.getState().setHolding(true) })
+
+    // One buffered speech-end.
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    const audio1 = new Float32Array(6_000); audio1.fill(0.5)
+    act(() => { captured!.onSpeechEnd(audio1) })
+
+    // User resumes speaking — VAD active again; no speech-end will arrive.
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+
+    // Release while VAD is active.
+    act(() => { useConversationModeStore.getState().setHolding(false) })
+
+    // Advance past safety fallback (3 s).
+    await act(async () => { vi.advanceTimersByTime(3_100) })
     await act(async () => { await flushMicrotasks() })
 
     expect(transcribeMock).toHaveBeenCalledTimes(1)

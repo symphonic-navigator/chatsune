@@ -201,10 +201,16 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // repeat VAD re-trigger during the same user utterance.
   const tentativeRef = useRef(false)
 
-  // Grace window after hold release: if Silero's final speech-end has not
-  // arrived yet (redemption delay ~200 ms), we wait briefly so that chunk
-  // can be merged with the buffered audio. See release useEffect below.
-  const RELEASE_GRACE_MS = 500
+  // True while Silero is tracking an utterance (between speech-start and the
+  // matching speech-end / misfire). Read by the release useEffect to decide
+  // whether to dispatch immediately or wait for the final speech-end.
+  const vadActiveRef = useRef(false)
+
+  // Safety fallback after hold release when VAD is still active: if Silero
+  // never delivers its final speech-end (shouldn't happen, but guards against
+  // a stuck VAD state), this timer flushes whatever is buffered so the user
+  // isn't left waiting forever. See release useEffect below.
+  const RELEASE_SAFETY_MS = 3000
   const releaseFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearPendingBarge = useCallback(() => {
@@ -244,6 +250,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * window, the pending barge is cancelled and nothing is muted.
    */
   const handleSpeechStart = useCallback(() => {
+    vadActiveRef.current = true
     if (!activeRef.current) return
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
@@ -262,6 +269,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * playback stops before we transition to "transcribing".
    */
   const handleSpeechEnd = useCallback((audio: Float32Array) => {
+    vadActiveRef.current = false
     if (!activeRef.current) return
     if (pendingBargeRef.current) {
       clearPendingBarge()
@@ -292,6 +300,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * noise between utterances.
    */
   const handleMisfire = useCallback(() => {
+    vadActiveRef.current = false
     if (pendingBargeRef.current) {
       clearPendingBarge()
       return
@@ -395,25 +404,38 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     if (active && !available) exitStore()
   }, [active, available, exitStore])
 
-  // Hold-release: Silero's speech-end lags real silence by ~200 ms (redemption
-  // frames). If the user releases the hold before that final event fires,
-  // dispatching immediately would split the utterance into two transcripts.
-  // Instead we arm a grace timer; `handleSpeechEnd` cancels it if VAD's
-  // final event lands in time, otherwise the timer flushes whatever is
-  // buffered.
+  // Hold-release: on release we check VAD's tracking state. If idle, dispatch
+  // immediately. If active (user released mid-utterance), wait for the next
+  // speech-end event which will merge the buffered chunks with the final one.
+  // A longer safety fallback guards against VAD never delivering speech-end.
   const prevHoldingRef = useRef(false)
   useEffect(() => {
     const wasHolding = prevHoldingRef.current
     prevHoldingRef.current = isHolding
     if (wasHolding && !isHolding) {
-      if (releaseFallbackRef.current) clearTimeout(releaseFallbackRef.current)
+      if (releaseFallbackRef.current) {
+        clearTimeout(releaseFallbackRef.current)
+        releaseFallbackRef.current = null
+      }
+      if (!vadActiveRef.current) {
+        // VAD idle — the last speech-end has already landed. Dispatch whatever
+        // we have buffered right away.
+        if (heldAudioRef.current.length > 0) {
+          const merged = flushHeldAudio(null)
+          void transcribeAndSend(merged)
+        }
+        return
+      }
+      // VAD still tracking an utterance — wait for its speech-end, which will
+      // merge the buffered chunks with the final one. The safety timer only
+      // fires if that never happens.
       releaseFallbackRef.current = setTimeout(() => {
         releaseFallbackRef.current = null
         if (heldAudioRef.current.length > 0) {
           const merged = flushHeldAudio(null)
           void transcribeAndSend(merged)
         }
-      }, RELEASE_GRACE_MS)
+      }, RELEASE_SAFETY_MS)
     }
   }, [isHolding, flushHeldAudio, transcribeAndSend])
 
