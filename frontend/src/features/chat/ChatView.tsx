@@ -672,6 +672,12 @@ export function ChatView({ persona }: ChatViewProps) {
   // reaches audioPlayback.
   const prevIsStreamingRef = useRef(false)
 
+  // Diagnostic refs — pair with the [LLM-infer] / [TTS-infer] / [TTS-play]
+  // logs. Remove once the "TTS starts only at end of inference" bug is
+  // understood.
+  const prevIsWaitingRef = useRef(false)
+  const llmStartTsRef = useRef<number | null>(null)
+
   // Conversation-mode active state — read once here so we can override
   // auto_read while the user is in a live conversation.
   const conversationActive = useConversationModeStore((s) => s.active)
@@ -846,6 +852,33 @@ export function ChatView({ persona }: ChatViewProps) {
       })
     }
   }, [isStreaming, correlationId, resolveAutoReadSession, feedStreamingAutoRead, queueSynth])
+
+  // Diagnostic log for the LLM side of the pipeline. Pairs with
+  // [TTS-infer] / [TTS-play]. Remove once bug understood.
+  //   start       — request sent, waiting for first token
+  //   first-token — first content token arrived (isStreaming flipped true)
+  //   end         — stream finished
+  useEffect(() => {
+    const wasWaiting = prevIsWaitingRef.current
+    const wasStreaming = prevIsStreamingRef.current
+    prevIsWaitingRef.current = isWaitingForResponse
+
+    if (isWaitingForResponse && !wasWaiting) {
+      llmStartTsRef.current = performance.now()
+      console.log('[LLM-infer] start')
+    }
+    if (isStreaming && !wasStreaming) {
+      const start = llmStartTsRef.current
+      const ttft = start !== null ? ` ttft=${Math.round(performance.now() - start)}ms` : ''
+      console.log(`[LLM-infer] first-token${ttft}`)
+    }
+    if (!isStreaming && wasStreaming) {
+      const start = llmStartTsRef.current
+      const total = start !== null ? ` total=${Math.round(performance.now() - start)}ms` : ''
+      console.log(`[LLM-infer] end${total}`)
+      llmStartTsRef.current = null
+    }
+  }, [isStreaming, isWaitingForResponse])
 
   // Mid-stream: each streamingContent update pushes its delta through the
   // sentencer and queues any emitted segments for synthesis.
