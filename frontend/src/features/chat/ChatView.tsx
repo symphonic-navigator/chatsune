@@ -780,6 +780,11 @@ export function ChatView({ persona }: ChatViewProps) {
     const delta = newText.slice(session.lastTextLength)
     session.lastTextLength = newText.length
     const segments = session.sentencer.push(delta)
+    // Diagnostic log — if the sentencer is buffering without emitting during a
+    // stream, expect many "delta=N emitted=0" lines followed by a big flush at
+    // stream-end. Remove once the "TTS starts only at end of inference" bug is
+    // understood.
+    console.log(`[TTS-stream] delta=${delta.length} emitted=${segments.length} totalPushed=${session.lastTextLength}`)
     if (segments.length > 0) queueSynth(session, segments)
   }, [queueSynth])
 
@@ -821,6 +826,10 @@ export function ChatView({ persona }: ChatViewProps) {
       const session = getActiveStreamingAutoRead()
       if (!session) return
       const remaining = session.sentencer.flush()
+      // Diagnostic log — a large `flush=N` here means the sentencer held back
+      // until stream end (blocked cut points). Pair with the per-delta log
+      // above. Remove once root cause is pinned down.
+      console.log(`[TTS-stream] stream-end flush=${remaining.length}`)
       if (remaining.length > 0) queueSynth(session, remaining)
       // Keep the session ref live until the chain has fully drained. If we
       // null it synchronously, a barge during the drain period calls
