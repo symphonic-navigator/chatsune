@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from './markdownComponents'
 import { ThinkingBubble } from './ThinkingBubble'
@@ -27,7 +27,40 @@ interface AssistantMessageProps {
   persona?: PersonaDto | null;
 }
 
-export function AssistantMessage({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
+/**
+ * Custom equality for AssistantMessage's React.memo wrapper.
+ *
+ * Deliberately ignores the function props (`onBookmark`, `onRegenerate`).
+ * MessageList passes fresh inline closures for these every render; including
+ * them would defeat memoisation entirely and keep re-running ReactMarkdown /
+ * remark / rehype / Shiki for every historical message on every streaming
+ * token. The closures only capture `messageId` from the parent scope, so as
+ * long as that id is unchanged the callbacks are behaviourally equivalent.
+ */
+function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boolean {
+  return (
+    prev.content === next.content &&
+    prev.thinking === next.thinking &&
+    prev.isStreaming === next.isStreaming &&
+    prev.accentColour === next.accentColour &&
+    prev.highlighter === next.highlighter &&
+    prev.isBookmarked === next.isBookmarked &&
+    prev.canRegenerate === next.canRegenerate &&
+    prev.status === next.status &&
+    prev.refusalText === next.refusalText &&
+    prev.timeToFirstTokenMs === next.timeToFirstTokenMs &&
+    prev.tokensPerSecond === next.tokensPerSecond &&
+    prev.generationDurationMs === next.generationDurationMs &&
+    prev.outputTokens === next.outputTokens &&
+    prev.providerName === next.providerName &&
+    prev.modelName === next.modelName &&
+    prev.sttEnabled === next.sttEnabled &&
+    prev.messageId === next.messageId &&
+    prev.persona === next.persona
+  )
+}
+
+function AssistantMessageBase({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -166,3 +199,5 @@ export function AssistantMessage({ content, thinking, isStreaming, accentColour,
     </div>
   )
 }
+
+export const AssistantMessage = memo(AssistantMessageBase, areEqual)
