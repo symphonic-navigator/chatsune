@@ -3,6 +3,7 @@ import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { sttRegistry, ttsRegistry } from '../engines/registry'
 import { parseForSpeech } from './audioParser'
+import { applyModulation, type VoiceModulation } from './applyModulation'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 
 export interface VoicePipelineCallbacks {
@@ -105,7 +106,11 @@ class VoicePipelineImpl {
   }
 
   async speakResponse(
-    text: string, dialogueVoice: VoicePreset, narratorVoice: VoicePreset, mode: NarratorMode,
+    text: string,
+    dialogueVoice: VoicePreset,
+    narratorVoice: VoicePreset,
+    mode: NarratorMode,
+    modulation: VoiceModulation,
   ): Promise<void> {
     const tts = ttsRegistry.active()
     if (!tts) return
@@ -114,7 +119,7 @@ class VoicePipelineImpl {
     this.setState({ phase: 'speaking', segment: 0, total: segments.length })
     audioPlayback.setCallbacks({
       onSegmentStart: (seg) => {
-        const idx = segments.findIndex((s) => s === seg)
+        const idx = segments.findIndex((s) => s.text === seg.text && s.type === seg.type)
         this.setState({ phase: 'speaking', segment: idx, total: segments.length })
       },
       onFinished: () => {
@@ -125,7 +130,7 @@ class VoicePipelineImpl {
     for (const segment of segments) {
       const voice = segment.type === 'voice' ? dialogueVoice : narratorVoice
       const audio = await tts.synthesise(segment.text, voice)
-      audioPlayback.enqueue(audio, segment)
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation))
     }
   }
 
