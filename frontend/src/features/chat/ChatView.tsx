@@ -542,6 +542,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleCancel = useCallback(() => {
     if (!correlationId) return
     sendMessage({ type: 'chat.cancel', correlation_id: correlationId })
+    // Stopping inference must also kill in-flight TTS synthesis and any
+    // audio already queued, otherwise the user hears the tail of content
+    // that was never shown on screen.
+    cancelStreamingAutoRead()
+    setActiveReader(null, 'idle')
     setPartialSavedNotice(true)
     setTimeout(() => setPartialSavedNotice(false), 6000)
   }, [correlationId])

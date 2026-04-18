@@ -27,12 +27,29 @@ class AudioPlaybackImpl {
   private playing = false
   private streamClosed = false
   private pendingGapTimer: ReturnType<typeof setTimeout> | null = null
+  // Listeners observing playing-state changes. Used by the React hook so
+  // components can reflect live browser audio state without polling.
+  private listeners = new Set<() => void>()
 
   setCallbacks(callbacks: AudioPlaybackCallbacks): void { this.callbacks = callbacks }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => { this.listeners.delete(listener) }
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) {
+      try { listener() } catch (err) {
+        console.error('[AudioPlayback] Listener threw:', err)
+      }
+    }
+  }
 
   enqueue(audio: Float32Array, segment: SpeechSegment): void {
     this.queue.push({ audio, segment })
     if (!this.playing && this.pendingGapTimer === null && !this.muted) this.playNext()
+    this.emit()
   }
 
   closeStream(): void {
@@ -58,6 +75,7 @@ class AudioPlaybackImpl {
     }
     this.currentEntry = null
     this.playing = false
+    this.emit()
   }
 
   /**
@@ -84,6 +102,7 @@ class AudioPlaybackImpl {
       this.currentEntry = null
       this.playing = false
       this.muted = true
+      this.emit()
       return
     }
     // Nothing playing right now. Still mark as muted if a gap timer was
@@ -95,6 +114,7 @@ class AudioPlaybackImpl {
     if (this.queue.length > 0) {
       this.playing = false
       this.muted = true
+      this.emit()
     }
   }
 
@@ -113,6 +133,7 @@ class AudioPlaybackImpl {
       this.queue.unshift(entry)
     }
     if (!this.playing && this.pendingGapTimer === null) this.playNext()
+    this.emit()
   }
 
   isMuted(): boolean { return this.muted }
@@ -143,12 +164,14 @@ class AudioPlaybackImpl {
       this.playing = false
       this.currentEntry = null
       if (this.streamClosed) this.callbacks?.onFinished()
+      this.emit()
       return
     }
 
     this.playing = true
     this.currentEntry = entry
     this.callbacks?.onSegmentStart(entry.segment)
+    this.emit()
 
     try {
       if (!this.ctx || this.ctx.state === 'closed') {
@@ -200,6 +223,7 @@ class AudioPlaybackImpl {
         if (modNode) {
           try { modNode.disconnect() } catch { /* ignore */ }
         }
+        this.emit()
         this.scheduleNext()
       }
 

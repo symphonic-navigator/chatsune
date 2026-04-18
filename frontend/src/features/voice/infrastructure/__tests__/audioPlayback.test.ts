@@ -283,3 +283,55 @@ describe('audioPlayback — mute / resumeFromMute', () => {
     expect(onSegmentStart).toHaveBeenNthCalledWith(2, { ...SEGMENT, text: 'second' })
   })
 })
+
+describe('audioPlayback — subscribe API', () => {
+  it('subscribe returns an unsubscribe fn; unsubscribed listeners are not called', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    const listener = vi.fn()
+    const unsubscribe = audioPlayback.subscribe(listener)
+
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    expect(listener).toHaveBeenCalled()
+
+    listener.mockClear()
+    unsubscribe()
+    audioPlayback.stopAll()
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('listeners fire on enqueue / stopAll / mute / resumeFromMute', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    const listener = vi.fn()
+    audioPlayback.subscribe(listener)
+
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    expect(listener).toHaveBeenCalled()
+
+    listener.mockClear()
+    audioPlayback.mute()
+    expect(listener).toHaveBeenCalled()
+
+    listener.mockClear()
+    audioPlayback.resumeFromMute()
+    expect(listener).toHaveBeenCalled()
+
+    listener.mockClear()
+    audioPlayback.stopAll()
+    expect(listener).toHaveBeenCalled()
+  })
+
+  it('isPlaying reflects the transition observed via subscribe', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    const observed: boolean[] = []
+    audioPlayback.subscribe(() => { observed.push(audioPlayback.isPlaying()) })
+
+    expect(audioPlayback.isPlaying()).toBe(false)
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT)
+    expect(audioPlayback.isPlaying()).toBe(true)
+    expect(observed.some((v) => v === true)).toBe(true)
+
+    audioPlayback.stopAll()
+    expect(audioPlayback.isPlaying()).toBe(false)
+    expect(observed[observed.length - 1]).toBe(false)
+  })
+})
