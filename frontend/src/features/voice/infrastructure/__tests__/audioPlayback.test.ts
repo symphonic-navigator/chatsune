@@ -132,3 +132,52 @@ describe('audioPlayback — gap timer', () => {
     expect(onSegmentStart).toHaveBeenCalledTimes(1) // second segment never started
   })
 })
+
+// ── Modulation routing ──
+
+// Track how audio graph nodes were connected per segment
+const connections: Array<{ from: string; to: string }> = []
+
+class FakeModulationNode {
+  _name = 'soundtouch'
+  tempo = { value: 1 }
+  pitchSemitones = { value: 0 }
+  connect = vi.fn((dest: unknown) => {
+    const name = (dest as { _name?: string })._name ?? 'destination'
+    connections.push({ from: 'soundtouch', to: name })
+  })
+  disconnect = vi.fn()
+}
+
+vi.mock('../soundTouchLoader', () => ({
+  ensureSoundTouchReady: vi.fn().mockResolvedValue(true),
+  createModulationNode: vi.fn((_ctx: unknown, speed: number, pitch: number) => {
+    const node = new FakeModulationNode()
+    node.tempo.value = speed
+    node.pitchSemitones.value = pitch
+    return node
+  }),
+}))
+
+describe('audioPlayback — modulation', () => {
+  beforeEach(() => {
+    connections.length = 0
+  })
+
+  it('routes segment audio through a modulation node when speed or pitch set', async () => {
+    const seg: SpeechSegment = { type: 'voice', text: 'x', speed: 0.9, pitch: 2 }
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), seg)
+    // Let the async playNext settle through microtasks.
+    await vi.waitFor(() => expect(sources.length).toBe(1))
+    expect(connections.some((c) => c.from === 'soundtouch')).toBe(true)
+  })
+
+  it('skips the modulation node when speed and pitch are both neutral', async () => {
+    const seg: SpeechSegment = { type: 'voice', text: 'x' } // no speed/pitch
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), seg)
+    await vi.waitFor(() => expect(sources.length).toBe(1))
+    expect(connections.some((c) => c.from === 'soundtouch')).toBe(false)
+  })
+})

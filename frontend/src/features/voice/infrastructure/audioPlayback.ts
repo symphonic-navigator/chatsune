@@ -1,4 +1,5 @@
 import type { SpeechSegment } from '../types'
+import { ensureSoundTouchReady, createModulationNode } from './soundTouchLoader'
 
 interface QueueEntry { audio: Float32Array; segment: SpeechSegment }
 
@@ -90,11 +91,33 @@ class AudioPlaybackImpl {
 
       const source = this.ctx.createBufferSource()
       source.buffer = buffer
-      source.connect(this.ctx.destination)
+
+      const speed = entry.segment.speed ?? 1.0
+      const pitch = entry.segment.pitch ?? 0
+      const needsModulation = speed !== 1.0 || pitch !== 0
+
+      let modNode: AudioNode | null = null
+      if (needsModulation) {
+        const ready = await ensureSoundTouchReady(this.ctx)
+        if (ready) {
+          modNode = createModulationNode(this.ctx, speed, pitch)
+        }
+      }
+
+      if (modNode) {
+        source.connect(modNode)
+        modNode.connect(this.ctx.destination)
+      } else {
+        source.connect(this.ctx.destination)
+      }
+
       this.currentSource = source
 
       source.onended = () => {
         this.currentSource = null
+        if (modNode) {
+          try { modNode.disconnect() } catch { /* ignore */ }
+        }
         this.scheduleNext()
       }
 
