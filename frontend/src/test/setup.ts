@@ -31,6 +31,16 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// AudioWorkletNode is not implemented in jsdom. SoundTouchNode from
+// @soundtouchjs/audio-worklet extends it at module-load time, so any test that
+// transitively imports audioPlayback hits a ReferenceError without this stub.
+// Tests that exercise playback mock the loader directly; this stub just lets
+// the module graph resolve.
+if (typeof globalThis.AudioWorkletNode === "undefined") {
+  // @ts-expect-error — minimal stub for jsdom
+  globalThis.AudioWorkletNode = class AudioWorkletNode {}
+}
+
 beforeEach(() => {
   localStorage.clear()
   // Clear module cache to reset module-level state between tests
