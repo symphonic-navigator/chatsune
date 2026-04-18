@@ -41,6 +41,10 @@ export interface PersonaDto {
     narrator_voice: string | null
     auto_read: boolean
     narrator_mode: 'off' | 'play' | 'narrate'
+    dialogue_speed: number
+    dialogue_pitch: number
+    narrator_speed: number
+    narrator_pitch: number
   } | null;
   integration_configs?: Record<string, Record<string, unknown>>;
   created_at: string;
