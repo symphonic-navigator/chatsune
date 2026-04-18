@@ -23,6 +23,11 @@ class VoiceConfigDto(BaseModel):
     narrator_voice: str | None = None
     auto_read: bool = False
     narrator_mode: Literal["off", "play", "narrate"] = "off"
+    # Post-synthesis modulation applied client-side via SoundTouch.
+    dialogue_speed: float = Field(default=1.0, ge=0.75, le=1.5)
+    dialogue_pitch: int = Field(default=0, ge=-6, le=6)
+    narrator_speed: float = Field(default=1.0, ge=0.75, le=1.5)
+    narrator_pitch: int = Field(default=0, ge=-6, le=6)
 
     @model_validator(mode="before")
     @classmethod
