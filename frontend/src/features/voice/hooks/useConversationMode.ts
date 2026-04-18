@@ -10,6 +10,7 @@ import { useNotificationStore } from '../../../core/store/notificationStore'
 import { setActiveReader } from '../components/ReadAloudButton'
 import { sttRegistry } from '../engines/registry'
 import { decideSttOutcome } from './bargeDecision'
+import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 
 interface UseConversationModeOptions {
   /**
@@ -80,6 +81,13 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
 
   const sessionIdRef = useRef(sessionId)
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+
+  // Snapshot the user's VAD sensitivity preference into a ref so the entry
+  // effect can read it without re-triggering when the setting changes
+  // mid-session. Changes only take effect on the next entry into conv-mode.
+  const voiceActivationThreshold = useVoiceSettingsStore((s) => s.voiceActivationThreshold)
+  const voiceActivationThresholdRef = useRef(voiceActivationThreshold)
+  useEffect(() => { voiceActivationThresholdRef.current = voiceActivationThreshold }, [voiceActivationThreshold])
 
   // Concatenate held+current chunks into a single Float32Array for STT.
   const flushHeldAudio = useCallback((finalChunk: Float32Array | null): Float32Array => {
@@ -421,7 +429,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         onSpeechEnd: handleSpeechEnd,
         onVolumeChange: () => {},
         onMisfire: handleMisfire,
-      }).catch((err: unknown) => {
+      }, voiceActivationThresholdRef.current).catch((err: unknown) => {
         console.error('[ConversationMode] Failed to start VAD:', err)
         useNotificationStore.getState().addNotification({
           level: 'error',

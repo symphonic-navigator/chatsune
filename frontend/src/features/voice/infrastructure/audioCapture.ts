@@ -1,4 +1,6 @@
 import { MicVAD } from '@ricky0123/vad-web'
+import type { VoiceActivationThreshold } from '../stores/voiceSettingsStore'
+import { VAD_PRESETS } from './vadPresets'
 
 export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
@@ -125,7 +127,10 @@ class AudioCaptureImpl {
    * Continuous mode: use VAD to detect speech start/end automatically.
    * Call stopContinuous() to tear down.
    */
-  async startContinuous(callbacks: AudioCaptureCallbacks): Promise<void> {
+  async startContinuous(
+    callbacks: AudioCaptureCallbacks,
+    threshold: VoiceActivationThreshold = 'medium',
+  ): Promise<void> {
     this.callbacks = callbacks
 
     let capturedStream: MediaStream | null = null
@@ -141,10 +146,21 @@ class AudioCaptureImpl {
       return stream
     }
 
+    // vad-web 0.0.30 exposes redemption / min-speech durations as *Ms, not
+    // *Frames, on its public API. The presets are authored in frames for
+    // readability; convert here. Default Silero model is "legacy" → 1536
+    // samples per frame at 16 kHz ⇒ 96 ms per frame.
+    const preset = VAD_PRESETS[threshold]
+    const MS_PER_FRAME = 96
+
     this.vad = await MicVAD.new({
       getStream,
       onnxWASMBasePath: ORT_CDN,
       baseAssetPath: VAD_CDN,
+      positiveSpeechThreshold: preset.positiveSpeechThreshold,
+      negativeSpeechThreshold: preset.negativeSpeechThreshold,
+      minSpeechMs: preset.minSpeechFrames * MS_PER_FRAME,
+      redemptionMs: preset.redemptionFrames * MS_PER_FRAME,
       onSpeechStart: () => {
         this.callbacks?.onSpeechStart()
       },
