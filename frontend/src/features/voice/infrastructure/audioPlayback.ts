@@ -20,6 +20,8 @@ class AudioPlaybackImpl {
   private queue: QueueEntry[] = []
   private ctx: AudioContext | null = null
   private currentSource: AudioBufferSourceNode | null = null
+  private currentEntry: QueueEntry | null = null
+  private mutedEntry: QueueEntry | null = null
   private callbacks: AudioPlaybackCallbacks | null = null
   private playing = false
   private streamClosed = false
@@ -29,12 +31,12 @@ class AudioPlaybackImpl {
 
   enqueue(audio: Float32Array, segment: SpeechSegment): void {
     this.queue.push({ audio, segment })
-    if (!this.playing && this.pendingGapTimer === null) this.playNext()
+    if (!this.playing && this.pendingGapTimer === null && this.mutedEntry === null) this.playNext()
   }
 
   closeStream(): void {
     this.streamClosed = true
-    if (!this.playing && this.queue.length === 0 && this.pendingGapTimer === null) {
+    if (!this.playing && this.queue.length === 0 && this.pendingGapTimer === null && this.mutedEntry === null) {
       this.callbacks?.onFinished()
     }
   }
@@ -42,6 +44,7 @@ class AudioPlaybackImpl {
   stopAll(): void {
     this.queue = []
     this.streamClosed = false
+    this.mutedEntry = null
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null
@@ -51,8 +54,43 @@ class AudioPlaybackImpl {
       try { this.currentSource.stop() } catch { /* already stopped */ }
       this.currentSource = null
     }
+    this.currentEntry = null
     this.playing = false
   }
+
+  /**
+   * Non-destructive pause used by Tentative Barge. Stops the current source
+   * and remembers its entry so resumeFromMute() can replay it from the
+   * start. The queue and streamClosed flag are preserved. Idempotent.
+   */
+  mute(): void {
+    if (this.mutedEntry !== null) return // already muted
+    if (!this.currentSource || !this.currentEntry) return // nothing to mute
+    this.mutedEntry = this.currentEntry
+    this.currentSource.onended = null // don't advance the queue
+    try { this.currentSource.stop() } catch { /* already stopped */ }
+    this.currentSource = null
+    this.currentEntry = null
+    this.playing = false
+    if (this.pendingGapTimer !== null) {
+      clearTimeout(this.pendingGapTimer)
+      this.pendingGapTimer = null
+    }
+  }
+
+  /**
+   * Resume after a mute(). Re-queues the muted entry at the head of the
+   * queue and kicks playback. No-op if nothing is muted.
+   */
+  resumeFromMute(): void {
+    const entry = this.mutedEntry
+    if (!entry) return
+    this.mutedEntry = null
+    this.queue.unshift(entry)
+    if (!this.playing && this.pendingGapTimer === null) this.playNext()
+  }
+
+  isMuted(): boolean { return this.mutedEntry !== null }
 
   skipCurrent(): void {
     if (this.currentSource) {
@@ -78,11 +116,13 @@ class AudioPlaybackImpl {
     const entry = this.queue.shift()
     if (!entry) {
       this.playing = false
+      this.currentEntry = null
       if (this.streamClosed) this.callbacks?.onFinished()
       return
     }
 
     this.playing = true
+    this.currentEntry = entry
     this.callbacks?.onSegmentStart(entry.segment)
 
     try {
@@ -131,6 +171,7 @@ class AudioPlaybackImpl {
 
       source.onended = () => {
         this.currentSource = null
+        this.currentEntry = null
         if (modNode) {
           try { modNode.disconnect() } catch { /* ignore */ }
         }
@@ -141,6 +182,7 @@ class AudioPlaybackImpl {
     } catch (err) {
       console.error('[AudioPlayback] Failed to play segment:', err)
       this.currentSource = null
+      this.currentEntry = null
       this.scheduleNext()
     }
   }
