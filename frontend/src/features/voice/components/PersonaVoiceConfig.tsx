@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PersonaDto } from '../../../core/types/persona'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import { useIntegrationsStore } from '../../integrations/store'
@@ -8,7 +8,9 @@ import { GenericConfigForm } from '../../integrations/components/GenericConfigFo
 import { ttsRegistry } from '../engines/registry'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { setActiveReader } from './ReadAloudButton'
-import type { NarratorMode } from '../types'
+import { ModulationSlider } from './ModulationSlider'
+import { resolveModulation, type VoiceModulation } from '../pipeline/applyModulation'
+import type { NarratorMode, SpeechSegment } from '../types'
 import type { IntegrationDefinition, Option } from '../../integrations/types'
 
 interface Props {
@@ -43,6 +45,11 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     persona.voice_config?.narrator_mode ?? 'off',
   )
   const [saving, setSaving] = useState(false)
+  const [testPhrase, setTestPhrase] = useState(PREVIEW_PHRASE)
+  const [modulation, setModulation] = useState<VoiceModulation>(() =>
+    resolveModulation(persona.voice_config),
+  )
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const activeTTS = definitions.find(
     (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.enabled,
@@ -58,7 +65,14 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   )
 
   const persistVoiceConfig = useCallback(
-    async (patch: Partial<{ auto_read: boolean; narrator_mode: NarratorMode }>) => {
+    async (patch: Partial<{
+      auto_read: boolean
+      narrator_mode: NarratorMode
+      dialogue_speed: number
+      dialogue_pitch: number
+      narrator_speed: number
+      narrator_pitch: number
+    }>) => {
       setSaving(true)
       try {
         await onSave(persona.id, {
@@ -67,6 +81,10 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             narrator_voice: persona.voice_config?.narrator_voice ?? null,
             auto_read: autoRead,
             narrator_mode: narratorMode,
+            dialogue_speed: modulation.dialogue_speed,
+            dialogue_pitch: modulation.dialogue_pitch,
+            narrator_speed: modulation.narrator_speed,
+            narrator_pitch: modulation.narrator_pitch,
             ...patch,
           },
         })
@@ -74,8 +92,20 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
         setSaving(false)
       }
     },
-    [persona.id, persona.voice_config, onSave, autoRead, narratorMode],
+    [persona.id, persona.voice_config, onSave, autoRead, narratorMode, modulation],
   )
+
+  const scheduleModulationSave = useCallback((next: VoiceModulation) => {
+    setModulation(next)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      void persistVoiceConfig(next)
+    }, 400)
+  }, [persistVoiceConfig])
+
+  useEffect(() => {
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
+  }, [])
 
   const handleAutoReadChange = useCallback(
     async (value: boolean) => {
@@ -93,10 +123,10 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     [persistVoiceConfig],
   )
 
-  // Preview: synthesises PREVIEW_PHRASE with the selected voice. Does not
+  // Preview: synthesises testPhrase with the selected voice. Does not
   // participate in activeMessageId tracking; stopAll is always called first,
   // which cancels any ongoing read-aloud or earlier preview.
-  const playPreview = useCallback(async (voiceId: string) => {
+  const playPreview = useCallback(async (voiceId: string, isNarrator: boolean) => {
     const tts = ttsRegistry.active()
     if (!tts?.isReady()) return
     const voice = tts.voices.find((v) => v.id === voiceId)
@@ -104,13 +134,20 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     audioPlayback.stopAll()
     setActiveReader(null, 'idle')
     try {
-      const audio = await tts.synthesise(PREVIEW_PHRASE, voice)
+      const audio = await tts.synthesise(testPhrase, voice)
       audioPlayback.setCallbacks({ onSegmentStart: () => {}, onFinished: () => {} })
-      audioPlayback.enqueue(audio, { type: 'voice', text: PREVIEW_PHRASE })
+      const speed = isNarrator ? modulation.narrator_speed : modulation.dialogue_speed
+      const pitch = isNarrator ? modulation.narrator_pitch : modulation.dialogue_pitch
+      const segType = isNarrator ? 'narration' : 'voice'
+      const segment: SpeechSegment =
+        speed === 1.0 && pitch === 0
+          ? { type: segType, text: testPhrase }
+          : { type: segType, text: testPhrase, speed, pitch }
+      audioPlayback.enqueue(audio, segment)
     } catch (err) {
       console.error('[PersonaVoiceConfig] Preview failed:', err)
     }
-  }, [])
+  }, [testPhrase, modulation])
 
   const showNarratorField = narratorMode !== 'off'
 
@@ -179,6 +216,11 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             onSave={onSave}
             playPreview={playPreview}
             showNarratorField={showNarratorField}
+            modulation={modulation}
+            onModulationChange={scheduleModulationSave}
+            chakra={chakra}
+            testPhrase={testPhrase}
+            onTestPhraseChange={setTestPhrase}
           />
         )}
       </div>
@@ -188,13 +230,19 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
 
 function VoiceFormWithPreview({
   activeTTS, persona, optionsProvider, onSave, playPreview, showNarratorField,
+  modulation, onModulationChange, chakra, testPhrase, onTestPhraseChange,
 }: {
   activeTTS: IntegrationDefinition
   persona: PersonaDto
   optionsProvider: (fieldKey: string) => Option[] | Promise<Option[]>
   onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
-  playPreview: (voiceId: string) => Promise<void>
+  playPreview: (voiceId: string, isNarrator: boolean) => Promise<void>
   showNarratorField: boolean
+  modulation: VoiceModulation
+  onModulationChange: (next: VoiceModulation) => void
+  chakra: ChakraPaletteEntry
+  testPhrase: string
+  onTestPhraseChange: (s: string) => void
 }) {
   const initial = (persona.integration_configs?.[activeTTS.id] ?? {}) as Record<string, unknown>
   const primaryId = initial.voice_id as string | undefined
@@ -204,15 +252,15 @@ function VoiceFormWithPreview({
     (f) => f.key !== 'narrator_voice_id' || showNarratorField,
   )
 
+  const fmtSpeed = (v: number) => `${v.toFixed(2)}×`
+  const fmtPitch = (v: number) => (v === 0 ? '0 st' : `${v > 0 ? '+' : ''}${v} st`)
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-4">
       <GenericConfigForm
         fields={fields}
         initialValues={initial}
         onSubmit={async (values) => {
-          // GenericConfigForm emits '' for the Inherit option (whose source
-          // value is null). Coerce it back to null before persisting so the
-          // stored document honours the null = inherit contract.
           const normalised: Record<string, unknown> = { ...values }
           if ('narrator_voice_id' in normalised && normalised.narrator_voice_id === '') {
             normalised.narrator_voice_id = null
@@ -228,12 +276,54 @@ function VoiceFormWithPreview({
         submitLabel="Save voice"
         autoSubmit
       />
-      <div className="flex flex-col gap-2 mt-1">
+
+      <div className="flex flex-col gap-3 pt-2 border-t border-white/10">
+        <label className={LABEL}>Voice Modulation</label>
+
+        <div className="flex flex-col gap-3">
+          <div className="text-[11px] text-white/55 font-mono">Primary voice</div>
+          <ModulationSlider
+            label="Speed" value={modulation.dialogue_speed} min={0.75} max={1.5} step={0.05}
+            format={fmtSpeed} chakra={chakra}
+            onChange={(v) => onModulationChange({ ...modulation, dialogue_speed: Math.round(v * 20) / 20 })}
+          />
+          <ModulationSlider
+            label="Pitch" value={modulation.dialogue_pitch} min={-6} max={6} step={1}
+            format={fmtPitch} chakra={chakra}
+            onChange={(v) => onModulationChange({ ...modulation, dialogue_pitch: Math.round(v) })}
+          />
+        </div>
+
+        {showNarratorField && (
+          <div className="flex flex-col gap-3 mt-2">
+            <div className="text-[11px] text-white/55 font-mono">Narrator voice</div>
+            <ModulationSlider
+              label="Speed" value={modulation.narrator_speed} min={0.75} max={1.5} step={0.05}
+              format={fmtSpeed} chakra={chakra}
+              onChange={(v) => onModulationChange({ ...modulation, narrator_speed: Math.round(v * 20) / 20 })}
+            />
+            <ModulationSlider
+              label="Pitch" value={modulation.narrator_pitch} min={-6} max={6} step={1}
+              format={fmtPitch} chakra={chakra}
+              onChange={(v) => onModulationChange({ ...modulation, narrator_pitch: Math.round(v) })}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+        <label className={LABEL}>Test phrase</label>
+        <input
+          type="text"
+          value={testPhrase}
+          onChange={(e) => onTestPhraseChange(e.target.value)}
+          className="bg-white/5 text-[12px] font-mono text-white/80 rounded px-2 py-1.5 border border-white/10 focus:border-white/30 focus:outline-none"
+        />
         {primaryId && (
-          <PreviewButton label="Preview primary voice" onClick={() => playPreview(primaryId)} />
+          <PreviewButton label="Preview primary voice" onClick={() => playPreview(primaryId, false)} />
         )}
         {showNarratorField && narratorId && (
-          <PreviewButton label="Preview narrator voice" onClick={() => playPreview(narratorId)} />
+          <PreviewButton label="Preview narrator voice" onClick={() => playPreview(narratorId, true)} />
         )}
       </div>
     </div>
