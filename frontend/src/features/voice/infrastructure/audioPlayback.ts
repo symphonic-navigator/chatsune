@@ -136,6 +136,23 @@ class AudioPlaybackImpl {
     this.emit()
   }
 
+  /**
+   * Skip-past-muted escape hatch for the tentative-barge feedback-loop
+   * guard. Drops the muted entry without replaying it and lets the queue
+   * continue. Unlike resumeFromMute() (which replays from the start) and
+   * stopAll() (which cancels the whole session), this preserves the rest
+   * of the queue and the streamClosed flag.
+   */
+  discardMuted(): void {
+    if (!this.muted) return
+    this.mutedEntry = null
+    this.muted = false
+    if (this.queue.length > 0 && !this.playing && this.pendingGapTimer === null) {
+      this.playNext()
+    }
+    this.emit()
+  }
+
   isMuted(): boolean { return this.muted }
 
   skipCurrent(): void {

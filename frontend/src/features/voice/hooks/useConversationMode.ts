@@ -143,10 +143,25 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       }
 
       if (outcome === 'resume') {
-        // No text → the noise was not a real barge. Resume playback.
+        // No text → the noise was not a real barge. Resume playback, unless
+        // we've hit the consecutive-resume cap (feedback-loop guard).
         if (tentativeRef.current) {
           tentativeRef.current = false
-          audioPlayback.resumeFromMute()
+          consecutiveResumeRef.current += 1
+          if (consecutiveResumeRef.current >= MAX_CONSECUTIVE_RESUMES) {
+            // Likely TTS-bleed feedback loop — skip past the muted segment
+            // instead of replaying it yet again.
+            audioPlayback.discardMuted()
+            consecutiveResumeRef.current = 0
+            clearResumeReset()
+          } else {
+            audioPlayback.resumeFromMute()
+            clearResumeReset()
+            resumeResetTimerRef.current = setTimeout(() => {
+              resumeResetTimerRef.current = null
+              consecutiveResumeRef.current = 0
+            }, RESUME_RESET_MS)
+          }
           setPhase('speaking')
         } else {
           setPhase('listening')
@@ -155,6 +170,8 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       }
 
       // outcome === 'confirm' — commit to the barge.
+      consecutiveResumeRef.current = 0
+      clearResumeReset()
       if (tentativeRef.current) {
         tentativeRef.current = false
         cancelStreamingAutoRead()   // kills sentencer session + stopAll internally
@@ -177,6 +194,8 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
           cancelStreamingAutoRead()
           setActiveReader(null, 'idle')
         }
+        consecutiveResumeRef.current = 0
+        clearResumeReset()
         setPhase('listening')
       }
     }
@@ -200,6 +219,25 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // torn down. Used by handleSpeechStart to tell a "fresh" barge from a
   // repeat VAD re-trigger during the same user utterance.
   const tentativeRef = useRef(false)
+
+  // Feedback-loop guard for tentative barges. When TTS audio bleeds through
+  // the speakers into the mic, VAD may false-trigger on our own playback; STT
+  // then returns empty ('resume'), we replay the muted segment from the
+  // start, the same bleed re-triggers VAD, and we loop. After
+  // MAX_CONSECUTIVE_RESUMES consecutive resume outcomes we instead DISCARD
+  // the muted segment and let the queue carry on. A confirmed barge or a
+  // quiet window of RESUME_RESET_MS resets the counter.
+  const MAX_CONSECUTIVE_RESUMES = 3
+  const RESUME_RESET_MS = 5000
+  const consecutiveResumeRef = useRef(0)
+  const resumeResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearResumeReset = () => {
+    if (resumeResetTimerRef.current) {
+      clearTimeout(resumeResetTimerRef.current)
+      resumeResetTimerRef.current = null
+    }
+  }
 
   // True while Silero is tracking an utterance (between speech-start and the
   // matching speech-end / misfire). Read by the release useEffect to decide
@@ -330,6 +368,8 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       clearTimeout(releaseFallbackRef.current)
       releaseFallbackRef.current = null
     }
+    clearResumeReset()
+    consecutiveResumeRef.current = 0
     // Tentative barges are torn down as if confirmed (conservative): when
     // the user leaves conv-mode or the session is disposed, we do NOT want
     // a muted audio source sitting around waiting for an STT result that
