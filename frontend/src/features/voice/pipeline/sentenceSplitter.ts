@@ -1,5 +1,5 @@
-// Normalise typed and typographic ellipses to a single period. Applied first
-// so subsequent sentence-boundary logic sees a canonical form.
+// Normalise the Unicode ellipsis (U+2026) to three ASCII dots so subsequent
+// sentence-boundary logic sees a canonical form.
 function normaliseEllipses(text: string): string {
   return text.replace(/\u2026/g, '...')
 }
