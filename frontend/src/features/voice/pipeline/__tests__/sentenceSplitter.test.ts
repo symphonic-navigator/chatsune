@@ -34,22 +34,21 @@ describe('splitSentences', () => {
     expect(splitSentences('One. Two.\nThree. Four.')).toEqual(['One.', 'Two.', 'Three.', 'Four.'])
   })
 
-  it('normalises doubled-up full stops to a single period (no split inside)', () => {
+  it('keeps a three-dot ellipsis intact and does not split inside it', () => {
     expect(splitSentences('Ich dachte... vielleicht sollte ich...')).toEqual([
-      'Ich dachte. vielleicht sollte ich.',
+      'Ich dachte... vielleicht sollte ich...',
     ])
   })
 
-  it('normalises typographic Unicode ellipsis', () => {
+  it('normalises Unicode ellipsis to three dots and keeps it intact', () => {
     expect(splitSentences('Ich dachte\u2026 vielleicht\u2026')).toEqual([
-      'Ich dachte. vielleicht.',
+      'Ich dachte... vielleicht...',
     ])
   })
 
-  it('splits after an ellipsis that is followed by an uppercase word', () => {
+  it('does not split after an ellipsis even when an uppercase word follows', () => {
     expect(splitSentences('Ich weiss nicht... Aber egal.')).toEqual([
-      'Ich weiss nicht.',
-      'Aber egal.',
+      'Ich weiss nicht... Aber egal.',
     ])
   })
 

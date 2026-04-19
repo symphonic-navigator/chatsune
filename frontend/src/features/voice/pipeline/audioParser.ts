@@ -14,8 +14,7 @@ function preprocess(text: string): string {
   s = s.replace(/^[-*+]\s+/gm, '')                // unordered list markers
   s = s.replace(/^\d+\.\s+/gm, '')                // ordered list markers
   s = s.replace(/^>\s?/gm, '')                    // blockquotes
-  s = s.replace(/\.{2,}/g, '.')                   // collapse '..', '...', '....'
-  s = s.replace(/\u2026/g, '.')                   // collapse Unicode ellipsis
+  s = s.replace(/\u2026/g, '...')                 // normalise Unicode ellipsis to three dots
   s = s.replace(/\n{2,}/g, '\n')                  // collapse blank lines
   return s.trim()
 }

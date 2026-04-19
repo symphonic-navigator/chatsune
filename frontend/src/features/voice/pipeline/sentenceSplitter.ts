@@ -1,7 +1,7 @@
 // Normalise typed and typographic ellipses to a single period. Applied first
 // so subsequent sentence-boundary logic sees a canonical form.
 function normaliseEllipses(text: string): string {
-  return text.replace(/\.{2,}/g, '.').replace(/\u2026/g, '.')
+  return text.replace(/\u2026/g, '...')
 }
 
 // Split after sentence-ending punctuation in two shapes:
@@ -9,7 +9,7 @@ function normaliseEllipses(text: string): string {
 //   (b) an emoji/pictograph directly (no whitespace) — e.g. "Great!😀 Next"
 // The match consumes only the whitespace gap in (a) and is zero-width in (b),
 // so the terminal punctuation stays attached to the preceding sentence.
-const SENTENCE_BOUNDARY = /(?<=[.!?])(?:\s+(?=[A-Z\u00C4\u00D6\u00DC]|\p{Extended_Pictographic})|(?=\p{Extended_Pictographic}))/u
+const SENTENCE_BOUNDARY = /(?<![.][.])(?<=[.!?])(?:\s+(?=[A-Z\u00C4\u00D6\u00DC]|\p{Extended_Pictographic})|(?=\p{Extended_Pictographic}))/u
 
 function splitLine(line: string): string[] {
   const parts = line.split(SENTENCE_BOUNDARY)

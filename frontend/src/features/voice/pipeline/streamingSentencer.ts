@@ -90,6 +90,7 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
     }
 
     if (i >= start && SENTENCE_END.test(ch)) {
+      if (ch === '.' && text[i - 1] === '.') continue
       const allBalanced =
         !fenceOpen &&
         !inlineTickOpen &&

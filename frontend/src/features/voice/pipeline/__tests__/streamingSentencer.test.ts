@@ -159,6 +159,25 @@ describe('createStreamingSentencer', () => {
     })
   })
 
+  describe('ellipsis handling', () => {
+    it('does not commit on any dot inside a "..." run', () => {
+      const s = createStreamingSentencer('off')
+      expect(s.push('Ich dachte... ')).toEqual([])
+      expect(s.push('vielleicht... ')).toEqual([])
+      expect(s.push('ja. Next')).toEqual([
+        { type: 'voice', text: 'Ich dachte... vielleicht... ja.' },
+      ])
+    })
+
+    it('commits past an ellipsis once a real sentence terminator follows', () => {
+      const s = createStreamingSentencer('off')
+      expect(s.push('Warte... kurz mal. ')).toEqual([])
+      expect(s.push('Next')).toEqual([
+        { type: 'voice', text: 'Warte... kurz mal.' },
+      ])
+    })
+  })
+
   describe('emoji boundary handling', () => {
     it('commits a sentence when an emoji follows punctuation with whitespace', () => {
       const s = createStreamingSentencer('off')

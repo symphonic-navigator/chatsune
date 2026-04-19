@@ -63,15 +63,20 @@ describe('parseForSpeech', () => {
     })
   })
 
-  describe('ellipsis normalisation', () => {
-    it("collapses '...' and does not split mid-thought", () => {
+  describe('ellipsis preservation', () => {
+    it('keeps a three-dot ellipsis verbatim and treats the surrounding text as one sentence', () => {
       expect(parseForSpeech('Ich dachte... vielleicht...', 'off')).toEqual([
-        { type: 'voice', text: 'Ich dachte. vielleicht.' },
+        { type: 'voice', text: 'Ich dachte... vielleicht...' },
       ])
     })
-    it('collapses Unicode ellipsis', () => {
+    it('normalises Unicode ellipsis to three dots and keeps it intact', () => {
       expect(parseForSpeech('Ich dachte\u2026 vielleicht\u2026', 'off')).toEqual([
-        { type: 'voice', text: 'Ich dachte. vielleicht.' },
+        { type: 'voice', text: 'Ich dachte... vielleicht...' },
+      ])
+    })
+    it('does not split at an ellipsis even when an uppercase word follows', () => {
+      expect(parseForSpeech('Ich weiss nicht... Aber egal.', 'off')).toEqual([
+        { type: 'voice', text: 'Ich weiss nicht... Aber egal.' },
       ])
     })
   })
