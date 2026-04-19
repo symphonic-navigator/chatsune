@@ -17,6 +17,7 @@ class IntegrationDefinition:
     execution_mode: Literal["frontend", "backend", "hybrid"]
     config_fields: list[dict]
     capabilities: list[IntegrationCapability] = field(default_factory=list)
+    hydrate_secrets: bool = True
     persona_config_fields: list[dict] = field(default_factory=list)
     system_prompt_template: str = ""
     response_tag_prefix: str = ""
