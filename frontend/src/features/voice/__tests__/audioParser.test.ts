@@ -146,6 +146,40 @@ describe('parseForSpeech', () => {
     })
   })
 
+  describe('emoji stripping', () => {
+    it('removes a trailing standalone emoji', () => {
+      expect(parseForSpeech('Hi there 😀', 'off')).toEqual([
+        { type: 'voice', text: 'Hi there' },
+      ])
+    })
+    it('removes inline emojis in the middle of a sentence', () => {
+      expect(parseForSpeech('I love 🍕 pizza.', 'off')).toEqual([
+        { type: 'voice', text: 'I love  pizza.' },
+      ])
+    })
+    it('removes regional-indicator flag pairs', () => {
+      expect(parseForSpeech('Hallo aus \u{1F1E9}\u{1F1EA}!', 'off')).toEqual([
+        { type: 'voice', text: 'Hallo aus !' },
+      ])
+    })
+    it('removes ZWJ-joined emoji sequences', () => {
+      // Family emoji (man + ZWJ + woman + ZWJ + girl + ZWJ + boy).
+      expect(parseForSpeech('Family: \u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466} here', 'off')).toEqual([
+        { type: 'voice', text: 'Family:  here' },
+      ])
+    })
+    it('removes skin-tone-modified emojis', () => {
+      expect(parseForSpeech('Wave \u{1F44B}\u{1F3FD} hello', 'off')).toEqual([
+        { type: 'voice', text: 'Wave  hello' },
+      ])
+    })
+    it('removes emojis in narrate-mode voice segments', () => {
+      expect(parseForSpeech('"Hi 😀 there"', 'narrate')).toEqual([
+        { type: 'voice', text: 'Hi  there' },
+      ])
+    })
+  })
+
   describe('markdown and quote decoration stripping', () => {
     describe("mode 'off'", () => {
       it('strips single asterisks, keeping the inner content', () => {
