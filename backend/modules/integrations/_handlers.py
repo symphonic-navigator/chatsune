@@ -127,25 +127,7 @@ async def load_api_key_for(user_id: str, integration_id: str) -> str | None:
     pairs = await repo.list_enabled_with_secrets(user_id)
     for iid, secrets in pairs:
         if iid == integration_id:
-            key = secrets.get("api_key")
-            if key is not None:
-                # Diagnostic — debugging xAI auth rejection. Logs only a short
-                # prefix + length, never the full key. Remove once the xAI
-                # auth flow is confirmed stable.
-                masked = f"{key[:4]}…{key[-2:]}" if len(key) > 8 else "(short)"
-                # Any non-ASCII or non-printable chars anywhere in the key?
-                non_ascii = [
-                    (i, hex(ord(c)))
-                    for i, c in enumerate(key)
-                    if ord(c) < 0x20 or ord(c) > 0x7e
-                ]
-                _log.info(
-                    "voice.load_api_key integration=%s len=%d prefix/suffix=%s "
-                    "non_ascii_positions=%s",
-                    integration_id, len(key), masked,
-                    non_ascii if non_ascii else "none",
-                )
-            return key
+            return secrets.get("api_key")
     return None
 
 
