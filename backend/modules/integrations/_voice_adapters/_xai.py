@@ -55,7 +55,21 @@ class XaiVoiceAdapter(VoiceAdapter):
     async def transcribe(
         self, audio: bytes, content_type: str, api_key: str, language: str | None,
     ) -> str:
-        raise NotImplementedError  # implemented in a later task
+        url = f"{self.BASE_URL}/audio/transcriptions"
+        ext = "wav" if "wav" in content_type else "webm"
+        files = {"file": (f"audio.{ext}", audio, content_type)}
+        data: dict[str, str] = {"model": self.STT_MODEL}
+        if language is not None:
+            data["language"] = language
+        try:
+            resp = await self._http.post(
+                url, headers=self._auth(api_key), files=files, data=data,
+            )
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            raise VoiceUnavailableError(str(e)) from e
+        self._raise_for_status(resp)
+        body = resp.json()
+        return body["text"]
 
     async def synthesise(
         self, text: str, voice_id: str, api_key: str,

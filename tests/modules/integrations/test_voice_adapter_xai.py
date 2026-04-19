@@ -67,3 +67,47 @@ async def test_list_voices_timeout():
     adapter = XaiVoiceAdapter(_client_with(handler))
     with pytest.raises(VoiceUnavailableError):
         await adapter.list_voices("KEY")
+
+
+@pytest.mark.asyncio
+async def test_transcribe_ok_with_language():
+    captured = {}
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/audio/transcriptions"
+        assert request.headers["authorization"] == "Bearer KEY"
+        captured["body"] = bytes(request.content)
+        return httpx.Response(200, json={"text": "hello world"})
+
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    text = await adapter.transcribe(
+        audio=b"RIFFfakewavdata", content_type="audio/wav", api_key="KEY", language="en",
+    )
+    assert text == "hello world"
+    # model + language fields must be present in the multipart body
+    assert b"grok-stt-1" in captured["body"]
+    assert b'name="language"' in captured["body"]
+
+
+@pytest.mark.asyncio
+async def test_transcribe_ok_no_language():
+    def handler(request: httpx.Request) -> httpx.Response:
+        # language field must be absent when None
+        assert b'name="language"' not in request.content
+        return httpx.Response(200, json={"text": "ok"})
+
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    text = await adapter.transcribe(
+        audio=b"data", content_type="audio/wav", api_key="KEY", language=None,
+    )
+    assert text == "ok"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_rate_limit():
+    def handler(_req): return httpx.Response(429, json={"error": "slow down"})
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    with pytest.raises(VoiceRateLimitError):
+        await adapter.transcribe(
+            audio=b"d", content_type="audio/wav", api_key="KEY", language=None,
+        )
