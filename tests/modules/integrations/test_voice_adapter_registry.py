@@ -31,8 +31,12 @@ def test_unknown_returns_none():
     assert get_adapter("nope") is None
 
 
-def test_duplicate_raises():
+def test_duplicate_replaces():
+    # Re-registering the same id is idempotent — the new instance wins.
+    # This is required because the app lifespan may run multiple times in tests.
     _reset()
-    register_adapter("x", _DummyAdapter())
-    with pytest.raises(ValueError):
-        register_adapter("x", _DummyAdapter())
+    a1 = _DummyAdapter()
+    a2 = _DummyAdapter()
+    register_adapter("x", a1)
+    register_adapter("x", a2)
+    assert get_adapter("x") is a2

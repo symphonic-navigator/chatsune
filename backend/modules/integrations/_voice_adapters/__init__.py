@@ -18,8 +18,8 @@ _registry: dict[str, VoiceAdapter] = {}
 
 
 def register_adapter(integration_id: str, adapter: VoiceAdapter) -> None:
-    if integration_id in _registry:
-        raise ValueError(f"Voice adapter '{integration_id}' already registered")
+    # Idempotent: re-registering with the same id is allowed (e.g. test lifespan
+    # restarts). The new instance replaces the old one.
     _registry[integration_id] = adapter
 
 

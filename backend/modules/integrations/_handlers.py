@@ -4,11 +4,16 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.dependencies import require_active_session
 from backend.modules.integrations._registry import get_all, get as get_definition
 from backend.modules.integrations._repository import IntegrationRepository
+from backend.modules.integrations._voice_adapters import (
+    get_adapter,
+    VoiceAdapterError,
+)
 # Deferred at call site to break the __init__ → _handlers → __init__ circular import.
 from backend.database import get_db
 from backend.ws.event_bus import get_event_bus
@@ -107,3 +112,40 @@ async def upsert_config(
         )
 
     return UserIntegrationConfigDto(**doc)
+
+
+async def load_api_key_for(user_id: str, integration_id: str) -> str | None:
+    """Return the decrypted API key for (user, integration), or None if the
+    integration is not configured or not enabled for this user."""
+    repo = _repo()
+    pairs = await repo.list_enabled_with_secrets(user_id)
+    for iid, secrets in pairs:
+        if iid == integration_id:
+            return secrets.get("api_key")
+    return None
+
+
+def _voice_error_response(exc: VoiceAdapterError) -> JSONResponse:
+    code = type(exc).__name__.removesuffix("Error").removeprefix("Voice").lower() or "error"
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"error_code": f"voice_{code}", "message": exc.user_message},
+    )
+
+
+@router.get("/{integration_id}/voice/voices")
+async def voice_list_voices(
+    integration_id: str,
+    user: dict = Depends(require_active_session),
+):
+    api_key = await load_api_key_for(user["sub"], integration_id)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="Integration not enabled")
+    adapter = get_adapter(integration_id)
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    try:
+        voices = await adapter.list_voices(api_key)
+    except VoiceAdapterError as e:
+        return _voice_error_response(e)
+    return {"voices": [v.model_dump() for v in voices]}
