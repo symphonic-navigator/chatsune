@@ -9,9 +9,11 @@ interface VoiceSettingsState {
   inputMode: InputMode
   autoSendTranscription: boolean
   voiceActivationThreshold: VoiceActivationThreshold
+  stt_provider_id: string | undefined
   setInputMode(mode: InputMode): void
   setAutoSendTranscription(value: boolean): void
   setVoiceActivationThreshold(value: VoiceActivationThreshold): void
+  setSttProviderId(value: string | undefined): void
 }
 
 export const useVoiceSettingsStore = create<VoiceSettingsState>()(
@@ -20,9 +22,11 @@ export const useVoiceSettingsStore = create<VoiceSettingsState>()(
       inputMode: 'push-to-talk',
       autoSendTranscription: false,
       voiceActivationThreshold: 'medium',
+      stt_provider_id: undefined,
       setInputMode: (inputMode) => set({ inputMode }),
       setAutoSendTranscription: (autoSendTranscription) => set({ autoSendTranscription }),
       setVoiceActivationThreshold: (voiceActivationThreshold) => set({ voiceActivationThreshold }),
+      setSttProviderId: (stt_provider_id) => set({ stt_provider_id }),
     }),
     {
       name: 'voice-settings',

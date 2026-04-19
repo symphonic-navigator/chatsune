@@ -29,4 +29,14 @@ describe('voiceSettingsStore', () => {
     expect(useVoiceSettingsStore.getState().inputMode).toBe('push-to-talk')
     expect(useVoiceSettingsStore.getState().autoSendTranscription).toBe(true)
   })
+
+  it('defaults stt_provider_id to undefined and persists the value', async () => {
+    const { useVoiceSettingsStore } = await import('./voiceSettingsStore')
+    expect(useVoiceSettingsStore.getState().stt_provider_id).toBeUndefined()
+    useVoiceSettingsStore.getState().setSttProviderId('xai_voice')
+    expect(useVoiceSettingsStore.getState().stt_provider_id).toBe('xai_voice')
+    // Persist check via localStorage (the store uses persist middleware)
+    const raw = window.localStorage.getItem('voice-settings')!
+    expect(JSON.parse(raw).state.stt_provider_id).toBe('xai_voice')
+  })
 })
