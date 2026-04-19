@@ -10,7 +10,7 @@ const THRESHOLD_OPTIONS: { value: VoiceActivationThreshold; label: string }[] = 
   { value: 'high', label: 'High' },
 ]
 
-const STT_PROVIDER = 'STT_PROVIDER'
+const STT_PROVIDER = 'stt_provider'
 
 const OPTION_STYLE: CSSProperties = {
   background: '#0f0d16',

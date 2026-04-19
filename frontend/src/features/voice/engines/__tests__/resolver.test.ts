@@ -6,8 +6,8 @@ vi.mock('../../../integrations/store', () => ({
   useIntegrationsStore: {
     getState: vi.fn(() => ({
       definitions: [
-        { id: 'mistral_voice', capabilities: ['TTS_PROVIDER', 'STT_PROVIDER'] },
-        { id: 'xai_voice', capabilities: ['TTS_PROVIDER', 'STT_PROVIDER'] },
+        { id: 'mistral_voice', capabilities: ['tts_provider', 'stt_provider'] },
+        { id: 'xai_voice', capabilities: ['tts_provider', 'stt_provider'] },
       ],
       configs: {
         mistral_voice: { enabled: true },
