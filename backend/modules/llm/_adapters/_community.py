@@ -9,6 +9,7 @@ into the backend.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter
@@ -29,6 +30,10 @@ from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+# Opt-in payload tracing for cache-miss debugging. Enable via
+# LLM_TRACE_PAYLOADS=1; shows the GenerateChatBody handed to the sidecar.
+_TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 
 
 def _homelab_service():
@@ -305,6 +310,11 @@ class CommunityAdapter(BaseAdapter):
 
         hw_sem = get_homelab_semaphore_registry().get(homelab_id, hw_cap)
         body = self._to_generate_chat_body(model_slug, request)
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=community-out homelab_id=%s body=%s",
+                homelab_id, body.model_dump_json(exclude_none=True),
+            )
 
         async def _run() -> AsyncIterator[ProviderStreamEvent]:
             try:

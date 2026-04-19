@@ -42,6 +42,10 @@ _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 _PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
+# Opt-in payload tracing for cache-miss debugging. Enable via
+# LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
+_TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
+
 GUTTER_SLOW_SECONDS: float = 30.0
 GUTTER_ABORT_SECONDS: float = float(os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"))
 
@@ -289,6 +293,11 @@ class OllamaHttpAdapter(BaseAdapter):
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
         payload = _build_chat_payload(request)
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=direct url=%s payload=%s",
+                url, json.dumps(payload, default=str, sort_keys=True),
+            )
         seen_done = False
         pending_next: asyncio.Task | None = None
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
