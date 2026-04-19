@@ -93,6 +93,12 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
       setSaving(true)
       try {
         const mod = modulationRef.current
+        // Every persisted voice_config must include every field the DTO
+        // knows about — VoiceConfigDto has defaults for missing keys, so
+        // omitting a field here silently resets it on the next round-trip.
+        // tts_provider_id in particular was jumping back to the fallback
+        // (Mistral) every time a modulation slider fired a debounced save.
+        const prior = persona.voice_config as Record<string, unknown> | null | undefined
         await onSave(persona.id, {
           voice_config: {
             dialogue_voice: persona.voice_config?.dialogue_voice ?? null,
@@ -103,6 +109,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             dialogue_pitch: mod.dialogue_pitch,
             narrator_speed: mod.narrator_speed,
             narrator_pitch: mod.narrator_pitch,
+            tts_provider_id: (prior?.tts_provider_id as string | undefined) ?? null,
             ...patch,
           },
         })
