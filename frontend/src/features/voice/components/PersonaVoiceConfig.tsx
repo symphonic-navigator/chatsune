@@ -68,7 +68,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   )
   const selectedProviderId =
     (persona.voice_config as { tts_provider_id?: string } | undefined)?.tts_provider_id
-  const activeTTS = (selectedProviderId && ttsProviders.find((d) => d.id === selectedProviderId))
+  const activeTTS = (selectedProviderId ? ttsProviders.find((d) => d.id === selectedProviderId) : undefined)
     ?? ttsProviders[0]
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
   const secrets = useSecretsStore((s) => s.secrets)

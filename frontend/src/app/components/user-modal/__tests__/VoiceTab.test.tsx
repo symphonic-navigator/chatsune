@@ -3,12 +3,21 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { VoiceTab } from '../VoiceTab'
 import { useVoiceSettingsStore } from '../../../../features/voice/stores/voiceSettingsStore'
+import { useIntegrationsStore } from '../../../../features/integrations/store'
 
 describe('VoiceTab', () => {
   beforeEach(() => {
     useVoiceSettingsStore.setState({
       autoSendTranscription: false,
       voiceActivationThreshold: 'medium',
+      stt_provider_id: undefined,
+    })
+    useIntegrationsStore.setState({
+      definitions: [],
+      configs: {},
+      healthStatus: {},
+      loaded: true,
+      loading: false,
     })
   })
 
