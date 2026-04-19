@@ -25,15 +25,12 @@ function preprocess(text: string, mode: NarratorMode): string {
   return s.trim()
 }
 
-// Pattern for the 'play' and 'narrate' mode splits. In 'play' mode: "..." and
-// smart-quote variants become voice, *...* becomes narration, else narration.
-// In 'narrate' mode: "..." / smart-quote variants become voice, everything
-// else (including *...*) stays as narration verbatim.
-function splitSegments(text: string, mode: 'play' | 'narrate'): Array<{ type: 'voice' | 'narration'; text: string }> {
+// Split text into voice (quoted) and narration (everything else). Asterisk
+// and underscore italics are stripped upstream in `preprocess`, so this stage
+// only needs to recognise quote-delimited voice spans.
+function splitSegments(text: string): Array<{ type: 'voice' | 'narration'; text: string }> {
   const segments: Array<{ type: 'voice' | 'narration'; text: string }> = []
-  const pattern = mode === 'play'
-    ? /"([^"]+)"|\u201c([^\u201d]+)\u201d|\*([^*]+)\*/g
-    : /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
+  const pattern = /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
   let lastIndex = 0
   for (const match of text.matchAll(pattern)) {
     const idx = match.index as number
@@ -43,7 +40,6 @@ function splitSegments(text: string, mode: 'play' | 'narrate'): Array<{ type: 'v
     }
     if (match[1] !== undefined) segments.push({ type: 'voice', text: match[1] })
     else if (match[2] !== undefined) segments.push({ type: 'voice', text: match[2] })
-    else if (match[3] !== undefined) segments.push({ type: 'narration', text: match[3] })
     lastIndex = idx + match[0].length
   }
   if (lastIndex < text.length) {
@@ -76,7 +72,7 @@ export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[
       .filter(hasSpeakableContent)
       .map((s) => ({ type: 'voice' as const, text: s }))
   }
-  const coarse = splitSegments(cleaned, mode)
+  const coarse = splitSegments(cleaned)
   const result: SpeechSegment[] = []
   for (const seg of coarse) {
     for (const expanded of expandToSentences(seg)) {
