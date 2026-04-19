@@ -29,7 +29,11 @@ function shouldBeActive(integrationId: string): boolean {
   const defn = definitions.find((d) => d.id === integrationId)
   const hasSecretFields = (defn?.config_fields ?? []).some((f: IntegrationConfigField) => Boolean(f.secret))
 
-  if (hasSecretFields && !useSecretsStore.getState().hasSecrets(integrationId)) {
+  // Backend-proxied integrations (hydrate_secrets === false) keep their
+  // API key on the server; no hydration event will ever arrive in the
+  // browser, so we must not gate activation on secret presence.
+  const requiresHydration = hasSecretFields && defn?.hydrate_secrets !== false
+  if (requiresHydration && !useSecretsStore.getState().hasSecrets(integrationId)) {
     return false
   }
   return true

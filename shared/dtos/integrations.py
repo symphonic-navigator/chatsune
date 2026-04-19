@@ -40,6 +40,10 @@ class IntegrationDefinitionDto(BaseModel):
     has_prompt_extension: bool = False
     capabilities: list[str] = []
     persona_config_fields: list[IntegrationConfigFieldDto] = []
+    # ``False`` means the integration is backend-proxied: secrets stay on
+    # the server, no hydration event is emitted, and the plugin lifecycle
+    # must not block activation on browser-side secret presence.
+    hydrate_secrets: bool = True
 
 
 class UserIntegrationConfigDto(BaseModel):

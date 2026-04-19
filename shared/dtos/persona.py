@@ -28,6 +28,11 @@ class VoiceConfigDto(BaseModel):
     dialogue_pitch: int = Field(default=0, ge=-6, le=6)
     narrator_speed: float = Field(default=1.0, ge=0.75, le=1.5)
     narrator_pitch: int = Field(default=0, ge=-6, le=6)
+    # Which TTS integration should speak for this persona. ``None`` means
+    # "use the first enabled TTS provider" — the resolver applies the
+    # fallback. Stored as a loose key so existing documents without this
+    # field deserialise unchanged.
+    tts_provider_id: str | None = None
 
     @model_validator(mode="before")
     @classmethod

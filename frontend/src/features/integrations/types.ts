@@ -32,6 +32,13 @@ export interface IntegrationDefinition {
   has_prompt_extension: boolean
   capabilities: string[]
   persona_config_fields: IntegrationConfigField[]
+  /**
+   * `false` means the integration is backend-proxied: secrets stay on the
+   * server and the plugin must activate without waiting for browser-side
+   * secret hydration. Defaults to `true` to preserve Mistral-style
+   * browser-direct behaviour for integrations that don't set it.
+   */
+  hydrate_secrets?: boolean
 }
 
 /** Mirrors UserIntegrationConfigDto from the backend. */
