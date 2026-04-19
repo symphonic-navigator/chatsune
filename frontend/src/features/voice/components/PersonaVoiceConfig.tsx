@@ -5,7 +5,7 @@ import { useIntegrationsStore } from '../../integrations/store'
 import { useSecretsStore } from '../../integrations/secretsStore'
 import { getPlugin } from '../../integrations/registry'
 import { GenericConfigForm } from '../../integrations/components/GenericConfigForm'
-import { ttsRegistry } from '../engines/registry'
+import { resolveTTSEngine } from '../engines/resolver'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { setActiveReader } from './ReadAloudButton'
 import { ModulationSlider } from './ModulationSlider'
@@ -140,7 +140,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   // participate in activeMessageId tracking; stopAll is always called first,
   // which cancels any ongoing read-aloud or earlier preview.
   const playPreview = useCallback(async (voiceId: string, isNarrator: boolean) => {
-    const tts = ttsRegistry.active()
+    const tts = resolveTTSEngine(persona)
     if (!tts?.isReady()) return
     const voice = tts.voices.find((v) => v.id === voiceId)
     if (!voice) return

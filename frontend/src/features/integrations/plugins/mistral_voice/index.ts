@@ -25,18 +25,8 @@ const mistralVoicePlugin: IntegrationPlugin = {
   },
 
   onDeactivate(): void {
-    // If the active engine belongs to this plugin, clear it so active()
-    // doesn't return a stale/disposed instance after deactivation.
-    if (sttInstance && sttRegistry.active()?.id === sttInstance.id) {
-      sttRegistry.clearActive()
-    }
-    if (ttsInstance && ttsRegistry.active()?.id === ttsInstance.id) {
-      ttsRegistry.clearActive()
-    }
     sttInstance = null
     ttsInstance = null
-    // Bump generation and clear list so any in-flight refresh from a prior
-    // activate becomes a no-op and the stale voices don't linger.
     invalidateVoicesCache()
   },
 

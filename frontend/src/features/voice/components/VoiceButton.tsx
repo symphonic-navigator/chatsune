@@ -1,5 +1,5 @@
 import { useSecretsStore } from '../../integrations/secretsStore'
-import { sttRegistry } from '../engines/registry'
+import { resolveSTTEngine } from '../engines/resolver'
 import type { PipelinePhase } from '../types'
 
 interface VoiceButtonProps {
@@ -31,7 +31,7 @@ export function VoiceButton({
 }: VoiceButtonProps) {
   // Re-render whenever secrets change so the mic gate reflects current STT readiness.
   useSecretsStore((s) => s.secrets)
-  const sttReady = sttRegistry.active()?.isReady() === true
+  const sttReady = resolveSTTEngine()?.isReady() === true
 
   const baseClass = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors'
 

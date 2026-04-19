@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { ttsRegistry } from '../engines/registry'
+import { resolveTTSEngine } from '../engines/resolver'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
 import { readAloudCacheKey } from '../pipeline/readAloudCacheKey'
@@ -103,8 +103,9 @@ async function runReadAloud(
   mode: NarratorMode,
   gapMs: number,
   modulation: VoiceModulation,
+  persona: PersonaDto | null | undefined,
 ): Promise<void> {
-  const tts = ttsRegistry.active()
+  const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
   if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
 
   const cacheKey = readAloudCacheKey(messageId, primary.id, narratorVoiceId, mode)
@@ -172,10 +173,11 @@ export async function triggerReadAloud(
   mode: NarratorMode,
   gapMs: number,
   modulation: VoiceModulation,
+  persona?: PersonaDto | null,
 ): Promise<void> {
   audioPlayback.stopAll()
   setActiveReader(messageId, 'synthesising')
-  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs, modulation)
+  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs, modulation, persona)
 }
 
 // ── Component ──
@@ -190,7 +192,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   const activeTTS = definitions.find(
     (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
   )
-  const ttsReady = ttsRegistry.active()?.isReady() === true
+  const ttsReady = resolveTTSEngine(persona ?? ({} as PersonaDto))?.isReady() === true
   const integrationCfg = activeTTS ? persona?.integration_configs?.[activeTTS.id] : undefined
   const voiceId = (integrationCfg?.voice_id as string | undefined) ?? undefined
   const narratorVoiceId = (integrationCfg?.narrator_voice_id as string | null | undefined) ?? null
@@ -213,9 +215,9 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
 
     audioPlayback.stopAll()
 
-    const tts = ttsRegistry.active()
+    const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
     if (!tts) {
-      console.warn('[ReadAloud] No TTS engine active')
+      console.warn('[ReadAloud] No TTS engine available')
       return
     }
 
@@ -232,7 +234,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     const modulation = resolveModulation(persona?.voice_config)
 
     setActiveReader(messageId, 'synthesising')
-    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation)
+    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation, persona)
   }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs, persona])
 
   if (!ttsReady || !voiceId) {

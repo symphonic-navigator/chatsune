@@ -8,7 +8,7 @@ import { useChatStore } from '../../../core/store/chatStore'
 import { chatApi } from '../../../core/api/chat'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { setActiveReader } from '../components/ReadAloudButton'
-import { sttRegistry } from '../engines/registry'
+import { resolveSTTEngine } from '../engines/resolver'
 import { decideSttOutcome } from './bargeDecision'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 
@@ -124,7 +124,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
 
     setPhase('transcribing')
-    const stt = sttRegistry.active()
+    const stt = resolveSTTEngine()
     if (!stt) {
       useNotificationStore.getState().addNotification({
         level: 'error',

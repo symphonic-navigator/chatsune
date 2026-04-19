@@ -40,14 +40,13 @@ import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettingsStore } from '../voice/stores/voiceSettingsStore'
-import { sttRegistry } from '../voice/engines/registry'
+import { resolveSTTEngine, resolveTTSEngine } from '../voice/engines/resolver'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
 import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
 import { setActiveReader } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
-import { ttsRegistry } from '../voice/engines/registry'
 import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
 import { useSecretsStore } from '../integrations/secretsStore'
 import { createStreamingSentencer } from '../voice/pipeline/streamingSentencer'
@@ -119,7 +118,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
-  const sttEnabled = !!sttRegistry.active()?.isReady()
+  const sttEnabled = !!resolveSTTEngine()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
   const [transcription, setTranscription] = useState('')
@@ -697,7 +696,7 @@ export function ChatView({ persona }: ChatViewProps) {
     const autoRead = !!persona?.voice_config?.auto_read || conversationActive
     if (!autoRead) return null
 
-    const tts = ttsRegistry.active()
+    const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
     if (!tts || !tts.isReady()) return null
 
     const activeTTS = intDefinitions.find(
@@ -962,7 +961,7 @@ export function ChatView({ persona }: ChatViewProps) {
   // persona with an enabled TTS integration + a resolved voice id.
   const ttsConfigured = (() => {
     if (!persona) return false
-    const tts = ttsRegistry.active()
+    const tts = resolveTTSEngine(persona)
     if (!tts || !tts.isReady()) return false
     const activeTTS = intDefinitions.find(
       (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,

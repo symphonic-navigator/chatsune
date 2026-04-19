@@ -47,19 +47,18 @@ vi.mock('../../components/ReadAloudButton', () => ({
 }))
 
 const transcribeMock = vi.fn<(audio: Float32Array) => Promise<{ text: string }>>()
-vi.mock('../../engines/registry', () => ({
-  sttRegistry: {
-    active: () => ({
-      id: 'fake-stt',
-      name: 'Fake',
-      modelSize: 0,
-      languages: ['en'],
-      init: vi.fn(),
-      dispose: vi.fn(),
-      isReady: () => true,
-      transcribe: transcribeMock,
-    }),
-  },
+vi.mock('../../engines/resolver', () => ({
+  resolveSTTEngine: () => ({
+    id: 'fake-stt',
+    name: 'Fake',
+    modelSize: 0,
+    languages: ['en'],
+    init: vi.fn(),
+    dispose: vi.fn(),
+    isReady: () => true,
+    transcribe: transcribeMock,
+  }),
+  resolveTTSEngine: () => undefined,
 }))
 
 vi.mock('../../../../core/api/chat', () => ({

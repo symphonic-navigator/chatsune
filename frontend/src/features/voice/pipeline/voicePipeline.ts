@@ -1,7 +1,8 @@
 import type { NarratorMode, PipelineState, VoicePreset } from '../types'
+import type { PersonaDto } from '../../../core/types/persona'
 import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
-import { sttRegistry, ttsRegistry } from '../engines/registry'
+import { resolveSTTEngine, resolveTTSEngine } from '../engines/resolver'
 import { parseForSpeech } from './audioParser'
 import { applyModulation, type VoiceModulation } from './applyModulation'
 import { useNotificationStore } from '../../../core/store/notificationStore'
@@ -79,7 +80,7 @@ class VoicePipelineImpl {
       if (gen === this.generation) this.setState({ phase: 'idle' })
       return
     }
-    const stt = sttRegistry.active()
+    const stt = resolveSTTEngine()
     if (!stt) { this.setState({ phase: 'idle' }); return }
     try {
       const result = await stt.transcribe(audio)
@@ -111,8 +112,9 @@ class VoicePipelineImpl {
     narratorVoice: VoicePreset,
     mode: NarratorMode,
     modulation: VoiceModulation,
+    persona?: PersonaDto | null,
   ): Promise<void> {
-    const tts = ttsRegistry.active()
+    const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
     if (!tts) return
     const segments = parseForSpeech(text, mode)
     if (segments.length === 0) return
