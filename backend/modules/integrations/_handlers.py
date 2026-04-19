@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -149,3 +149,28 @@ async def voice_list_voices(
     except VoiceAdapterError as e:
         return _voice_error_response(e)
     return {"voices": [v.model_dump() for v in voices]}
+
+
+@router.post("/{integration_id}/voice/stt")
+async def voice_stt(
+    integration_id: str,
+    audio: UploadFile = File(...),
+    language: str | None = Form(None),
+    user: dict = Depends(require_active_session),
+):
+    api_key = await load_api_key_for(user["sub"], integration_id)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="Integration not enabled")
+    adapter = get_adapter(integration_id)
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    audio_bytes = await audio.read()
+    content_type = audio.content_type or "audio/wav"
+    try:
+        text = await adapter.transcribe(
+            audio=audio_bytes, content_type=content_type,
+            api_key=api_key, language=language,
+        )
+    except VoiceAdapterError as e:
+        return _voice_error_response(e)
+    return {"text": text}
