@@ -63,9 +63,13 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   useEffect(() => { narratorModeRef.current = narratorMode }, [narratorMode])
   useEffect(() => { modulationRef.current = modulation }, [modulation])
 
-  const activeTTS = definitions.find(
+  const ttsProviders = definitions.filter(
     (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.enabled,
   )
+  const selectedProviderId =
+    (persona.voice_config as { tts_provider_id?: string } | undefined)?.tts_provider_id
+  const activeTTS = (selectedProviderId && ttsProviders.find((d) => d.id === selectedProviderId))
+    ?? ttsProviders[0]
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
   const secrets = useSecretsStore((s) => s.secrets)
 
@@ -73,7 +77,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     (fieldKey: string) =>
       ttsPlugin?.getPersonaConfigOptions?.(fieldKey) ?? Promise.resolve([]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ttsPlugin, secrets],
+    [ttsPlugin, secrets, activeTTS?.id],
   )
 
   const persistVoiceConfig = useCallback(
@@ -84,6 +88,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
       dialogue_pitch: number
       narrator_speed: number
       narrator_pitch: number
+      tts_provider_id: string | undefined
     }>) => {
       setSaving(true)
       try {
@@ -215,6 +220,25 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
       </div>
 
       <div>
+        {ttsProviders.length > 0 && (
+          <div className="mb-4">
+            <label className={LABEL}>TTS Provider</label>
+            <select
+              value={selectedProviderId ?? ''}
+              onChange={(e) => {
+                const newId = e.target.value || undefined
+                void persistVoiceConfig({ tts_provider_id: newId })
+              }}
+              className="bg-white/5 text-[12px] font-mono text-white/80 rounded px-2 py-1 border border-white/10 focus:border-white/30 focus:outline-none w-full"
+            >
+              {ttsProviders.map((d) => (
+                <option key={d.id} value={d.id} style={OPTION_STYLE}>
+                  {d.display_name}{!selectedProviderId && d.id === ttsProviders[0]?.id ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <label className={LABEL}>Voice</label>
         {!activeTTS && (
           <p className="text-[11px] text-white/40 font-mono leading-relaxed">
