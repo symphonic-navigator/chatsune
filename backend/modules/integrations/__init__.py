@@ -91,6 +91,9 @@ async def emit_integration_secrets_for_user(
     repo = IntegrationRepository(db)
     items = await repo.list_enabled_with_secrets(user_id)
     for integration_id, secrets in items:
+        defn = get_integration(integration_id)
+        if defn is None or not defn.hydrate_secrets:
+            continue
         event = IntegrationSecretsHydratedEvent(
             integration_id=integration_id,
             secrets=secrets,
