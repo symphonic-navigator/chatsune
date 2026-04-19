@@ -66,6 +66,9 @@ from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
 )
+from backend.modules.integrations._voice_adapters._client import (
+    init_voice_http_client, close_voice_http_client,
+)
 
 
 @asynccontextmanager
@@ -105,6 +108,9 @@ async def lifespan(app: FastAPI):
     embedding_model_dir = os.environ.get("EMBEDDING_MODEL_DIR", "./data/models")
     embedding_batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "8"))
     await embedding_startup(event_bus, embedding_model_dir, embedding_batch_size)
+
+    # Initialise shared httpx client for voice adapters
+    init_voice_http_client()
 
     # Subscribe knowledge module to embedding completion events
     from shared.topics import Topics
@@ -517,6 +523,7 @@ async def lifespan(app: FastAPI):
     _lifecycle_log.info("all background tasks stopped")
 
     await embedding_shutdown()
+    await close_voice_http_client()
     await disconnect_db()
 
 
