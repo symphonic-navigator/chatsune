@@ -6,7 +6,7 @@ from starlette.testclient import TestClient
 from backend.main import app
 from backend.modules.user._auth import create_access_token, generate_session_id
 from backend.modules.integrations._voice_adapters._base import (
-    VoiceAuthError, VoiceInfo, VoiceRateLimitError,
+    VoiceAuthError, VoiceInfo, VoiceRateLimitError, VoiceBadRequestError,
 )
 
 
@@ -143,3 +143,45 @@ def test_stt_rate_limit_maps_to_429(monkeypatch, client):
         headers=_authed_headers(),
     )
     assert r.status_code == 429
+
+
+def test_tts_dispatches_and_streams_bytes(monkeypatch, client):
+    fake = AsyncMock()
+    fake.synthesise.return_value = (b"\xff\xfbAUDIO", "audio/mpeg")
+    monkeypatch.setattr(
+        "backend.modules.integrations._handlers.get_adapter", lambda _id: fake,
+    )
+    monkeypatch.setattr(
+        "backend.modules.integrations._handlers.load_api_key_for",
+        AsyncMock(return_value="KEY"),
+    )
+    r = client.post(
+        "/api/integrations/xai_voice/voice/tts",
+        json={"text": "Hi", "voice_id": "v1"},
+        headers=_authed_headers(),
+    )
+    assert r.status_code == 200, r.text
+    assert r.content == b"\xff\xfbAUDIO"
+    assert r.headers["content-type"].startswith("audio/mpeg")
+    fake.synthesise.assert_awaited_once_with(
+        text="Hi", voice_id="v1", api_key="KEY",
+    )
+
+
+def test_tts_bad_request_400(monkeypatch, client):
+    fake = AsyncMock()
+    fake.synthesise.side_effect = VoiceBadRequestError("unknown voice_id")
+    monkeypatch.setattr(
+        "backend.modules.integrations._handlers.get_adapter", lambda _id: fake,
+    )
+    monkeypatch.setattr(
+        "backend.modules.integrations._handlers.load_api_key_for",
+        AsyncMock(return_value="KEY"),
+    )
+    r = client.post(
+        "/api/integrations/xai_voice/voice/tts",
+        json={"text": "Hi", "voice_id": "bad"},
+        headers=_authed_headers(),
+    )
+    assert r.status_code == 400
+    assert "unknown voice_id" in r.json()["message"]

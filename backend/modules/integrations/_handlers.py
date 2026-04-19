@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -67,6 +67,11 @@ async def list_user_configs(
 class _UpsertBody(BaseModel):
     enabled: bool
     config: dict = {}
+
+
+class _VoiceTtsBody(BaseModel):
+    text: str
+    voice_id: str
 
 
 @router.put("/configs/{integration_id}")
@@ -174,3 +179,24 @@ async def voice_stt(
     except VoiceAdapterError as e:
         return _voice_error_response(e)
     return {"text": text}
+
+
+@router.post("/{integration_id}/voice/tts")
+async def voice_tts(
+    integration_id: str,
+    body: _VoiceTtsBody,
+    user: dict = Depends(require_active_session),
+):
+    api_key = await load_api_key_for(user["sub"], integration_id)
+    if api_key is None:
+        raise HTTPException(status_code=404, detail="Integration not enabled")
+    adapter = get_adapter(integration_id)
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    try:
+        audio_bytes, content_type = await adapter.synthesise(
+            text=body.text, voice_id=body.voice_id, api_key=api_key,
+        )
+    except VoiceAdapterError as e:
+        return _voice_error_response(e)
+    return Response(content=audio_bytes, media_type=content_type)
