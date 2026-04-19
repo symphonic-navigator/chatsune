@@ -40,7 +40,7 @@ import { artefactApi } from '../../core/api/artefact'
 import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettingsStore } from '../voice/stores/voiceSettingsStore'
-import { resolveSTTEngine, resolveTTSEngine } from '../voice/engines/resolver'
+import { resolveSTTEngine, resolveTTSEngine, resolveTTSIntegrationId } from '../voice/engines/resolver'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
@@ -696,12 +696,17 @@ export function ChatView({ persona }: ChatViewProps) {
     const autoRead = !!persona?.voice_config?.auto_read || conversationActive
     if (!autoRead) return null
 
-    const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
+    const tts = resolveTTSEngine(persona)
     if (!tts || !tts.isReady()) return null
 
-    const activeTTS = intDefinitions.find(
-      (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,
-    )
+    // Resolve the integration ID the same way the engine is resolved so the
+    // voice_id lookup reads from the matching persona.integration_configs
+    // sub-dict (xAI's voice_id lives under integration_configs.xai_voice, not
+    // under whichever integration happens to be first enabled).
+    const ttsIntegrationId = resolveTTSIntegrationId(persona)
+    const activeTTS = ttsIntegrationId
+      ? intDefinitions.find((d) => d.id === ttsIntegrationId)
+      : undefined
     if (!activeTTS) return null
 
     const voiceId = persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
@@ -963,9 +968,10 @@ export function ChatView({ persona }: ChatViewProps) {
     if (!persona) return false
     const tts = resolveTTSEngine(persona)
     if (!tts || !tts.isReady()) return false
-    const activeTTS = intDefinitions.find(
-      (d) => d.capabilities?.includes('tts_provider') && intConfigs?.[d.id]?.enabled,
-    )
+    const ttsIntegrationId = resolveTTSIntegrationId(persona)
+    const activeTTS = ttsIntegrationId
+      ? intDefinitions.find((d) => d.id === ttsIntegrationId)
+      : undefined
     if (!activeTTS) return false
     const voiceId = persona.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
     return !!voiceId

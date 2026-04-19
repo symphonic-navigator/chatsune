@@ -30,21 +30,27 @@ function firstEnabledIntegrationId(cap: string): string | undefined {
  * `tts_provider_id` is not part of the current `PersonaDto.voice_config` shape —
  * it is stored as a loose extra key and read via a type cast.
  */
-export function resolveTTSEngine(persona: PersonaDto): TTSEngine | undefined {
-  const requested = (persona.voice_config as Record<string, unknown> | null | undefined)?.['tts_provider_id'] as string | undefined
-
+/**
+ * Resolve the TTS integration ID for a persona — same priority rules as
+ * `resolveTTSEngine` but returns the integration ID so callers can look
+ * up persona.integration_configs[<id>] (voice_id, narrator_voice_id,
+ * modulation, etc.).
+ */
+export function resolveTTSIntegrationId(persona: PersonaDto | null | undefined): string | undefined {
+  const requested = (persona?.voice_config as Record<string, unknown> | null | undefined)?.['tts_provider_id'] as string | undefined
   if (requested) {
     const engineId = providerToEngineId(requested, 'tts')
     const engine = engineId ? ttsRegistry.get(engineId) : undefined
-    if (engine?.isReady()) return engine
-    // eslint-disable-next-line no-console
-    console.warn('[voice.resolver] TTS fallback: requested=%s not ready', requested)
+    if (engine?.isReady()) return requested
   }
+  return firstEnabledIntegrationId(TTS_CAP)
+}
 
-  const fallbackIntegration = firstEnabledIntegrationId(TTS_CAP)
-  if (!fallbackIntegration) return undefined
-  const fallbackEngineId = providerToEngineId(fallbackIntegration, 'tts')
-  return fallbackEngineId ? ttsRegistry.get(fallbackEngineId) : undefined
+export function resolveTTSEngine(persona: PersonaDto | null | undefined): TTSEngine | undefined {
+  const integrationId = resolveTTSIntegrationId(persona)
+  if (!integrationId) return undefined
+  const engineId = providerToEngineId(integrationId, 'tts')
+  return engineId ? ttsRegistry.get(engineId) : undefined
 }
 
 /**

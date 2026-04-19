@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { resolveTTSEngine } from '../engines/resolver'
+import { resolveTTSEngine, resolveTTSIntegrationId } from '../engines/resolver'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
 import { readAloudCacheKey } from '../pipeline/readAloudCacheKey'
@@ -105,7 +105,7 @@ async function runReadAloud(
   modulation: VoiceModulation,
   persona: PersonaDto | null | undefined,
 ): Promise<void> {
-  const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
+  const tts = resolveTTSEngine(persona)
   if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
 
   const cacheKey = readAloudCacheKey(messageId, primary.id, narratorVoiceId, mode)
@@ -189,10 +189,16 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
 
   const { isActive, state } = useActiveReader(messageId)
 
-  const activeTTS = definitions.find(
-    (d) => d.capabilities?.includes('tts_provider') && configs?.[d.id]?.enabled,
-  )
-  const ttsReady = resolveTTSEngine(persona ?? ({} as PersonaDto))?.isReady() === true
+  // Resolve the active TTS integration the same way the engine is resolved —
+  // honour persona.voice_config.tts_provider_id first, then fall back. If we
+  // looked up "first enabled" here instead, persona.integration_configs for
+  // xAI would be read from Mistral's config dict and voice_id would come
+  // back undefined even though a voice is configured.
+  const ttsIntegrationId = resolveTTSIntegrationId(persona)
+  const activeTTS = ttsIntegrationId
+    ? definitions.find((d) => d.id === ttsIntegrationId)
+    : undefined
+  const ttsReady = resolveTTSEngine(persona)?.isReady() === true
   const integrationCfg = activeTTS ? persona?.integration_configs?.[activeTTS.id] : undefined
   const voiceId = (integrationCfg?.voice_id as string | undefined) ?? undefined
   const narratorVoiceId = (integrationCfg?.narrator_voice_id as string | null | undefined) ?? null
@@ -215,7 +221,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
 
     audioPlayback.stopAll()
 
-    const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
+    const tts = resolveTTSEngine(persona)
     if (!tts) {
       console.warn('[ReadAloud] No TTS engine available')
       return
