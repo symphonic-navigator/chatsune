@@ -113,6 +113,10 @@ async def lifespan(app: FastAPI):
     # Initialise shared httpx client for voice adapters
     init_voice_http_client()
     _register_builtin_voice_adapters()
+    from backend.modules.integrations._voice_adapters import _registry as _voice_adapter_registry
+    logging.getLogger("chatsune.lifecycle").info(
+        "voice adapters registered: %s", sorted(_voice_adapter_registry.keys())
+    )
 
     # Subscribe knowledge module to embedding completion events
     from shared.topics import Topics
