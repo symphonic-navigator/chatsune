@@ -285,6 +285,26 @@ For voice, this means:
 This is a deliberate **Bring-Your-Own-Key** design. Each user pays for
 their own voice calls; Chatsune does not proxy.
 
+### Backend-proxied integrations
+
+Some voice providers (currently xAI) do not send CORS headers, so the
+browser cannot call them directly. For these integrations, the backend
+acts as a thin proxy: `POST /api/integrations/{id}/voice/{stt|tts}` and
+`GET /api/integrations/{id}/voice/voices`. The API key stays in the
+backend; no hydration event is sent.
+
+Each integration declares which mode it uses via
+`IntegrationDefinition.hydrate_secrets`:
+
+- `hydrate_secrets=True` (default) — browser-direct, key hydrated over WS
+  (Mistral, Lovense).
+- `hydrate_secrets=False` — backend-proxied, key never leaves the backend
+  (xAI voice).
+
+Backend-proxied voice integrations register a `VoiceAdapter`
+(`transcribe`, `synthesise`, `list_voices`) at startup. The proxy route
+looks up the adapter by integration id.
+
 ---
 
 ## 6. Data flow: a conversational turn, end to end
@@ -495,8 +515,12 @@ refs). Keeping it in one place makes the transitions readable.
 | Active-session slot | [`frontend/src/features/voice/pipeline/streamingAutoReadControl.ts`](frontend/src/features/voice/pipeline/streamingAutoReadControl.ts) |
 | Engine interfaces | [`frontend/src/features/voice/types.ts`](frontend/src/features/voice/types.ts) |
 | Engine registry | [`frontend/src/features/voice/engines/registry.ts`](frontend/src/features/voice/engines/registry.ts) |
+| Engine resolver | [`frontend/src/features/voice/engines/resolver.ts`](frontend/src/features/voice/engines/resolver.ts) |
 | Mistral voice plugin | [`frontend/src/features/integrations/plugins/mistral_voice/`](frontend/src/features/integrations/plugins/mistral_voice/) |
+| xAI voice plugin (frontend) | [`frontend/src/features/integrations/plugins/xai_voice/`](frontend/src/features/integrations/plugins/xai_voice/) |
 | Backend integrations | [`backend/modules/integrations/`](backend/modules/integrations/) |
+| xAI voice adapter (backend) | [`backend/modules/integrations/_voice_adapters/_xai.py`](backend/modules/integrations/_voice_adapters/_xai.py) |
+| Voice proxy routes | [`backend/modules/integrations/_handlers.py`](backend/modules/integrations/_handlers.py) |
 
 ### Relevant design specs
 
@@ -506,3 +530,4 @@ refs). Keeping it in one place makes the transitions readable.
 - [`2026-04-17-voice-sentence-streaming-design.md`](devdocs/superpowers/specs/2026-04-17-voice-sentence-streaming-design.md) — sentence-level TTS streaming with configurable gap.
 - [`2026-04-18-soundtouch-voice-modulation-design.md`](devdocs/superpowers/specs/2026-04-18-soundtouch-voice-modulation-design.md) — independent time-pitch modulation.
 - [`2026-04-18-tentative-barge-design.md`](devdocs/superpowers/specs/2026-04-18-tentative-barge-design.md) — two-stage commit for barge-in.
+- [`2026-04-19-xai-voice-integration-design.md`](devdocs/superpowers/specs/2026-04-19-xai-voice-integration-design.md) — xAI as a second voice provider; backend-proxied integrations.
