@@ -50,7 +50,7 @@ function ModelPill({ modelUniqueId }: { modelUniqueId: string }) {
       onMouseLeave={() => setOpen(false)}
     >
       <span className="rounded-full border border-gold/20 bg-gold/5 px-2.5 py-0.5 font-mono text-[11px] text-gold cursor-default">
-        {slug}
+        {connectionId ? `${connectionId}/${slug}` : slug}
       </span>
       {open && model && (
         <div
