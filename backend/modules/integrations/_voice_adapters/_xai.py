@@ -3,6 +3,10 @@
 See docs:
   https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
   https://docs.x.ai/developers/model-capabilities/audio/speech-to-text
+
+xAI publishes its own audio endpoints (``/v1/tts`` and ``/v1/stt``) —
+they are NOT OpenAI-compatible. The payload shapes differ from OpenAI's
+audio API and no ``model`` field is accepted.
 """
 
 from __future__ import annotations
@@ -23,13 +27,14 @@ from backend.modules.integrations._voice_adapters._base import (
 
 _log = logging.getLogger(__name__)
 
+# When the caller does not specify a language, xAI accepts "auto" and
+# runs its own language detection. Explicit codes like "en" / "de" are
+# also valid and slightly speed up synthesis and transcription.
+_DEFAULT_LANGUAGE = "auto"
+
 
 class XaiVoiceAdapter(VoiceAdapter):
     BASE_URL = "https://api.x.ai/v1"
-    # Model identifiers are fixed by xAI — one model per capability.
-    # Update here if / when xAI releases new model generations.
-    TTS_MODEL = "grok-tts-1"
-    STT_MODEL = "grok-stt-1"
 
     def __init__(self, http: httpx.AsyncClient) -> None:
         self._http = http
@@ -55,12 +60,17 @@ class XaiVoiceAdapter(VoiceAdapter):
     async def transcribe(
         self, audio: bytes, content_type: str, api_key: str, language: str | None,
     ) -> str:
-        url = f"{self.BASE_URL}/audio/transcriptions"
+        # POST /v1/stt, multipart/form-data — NOT /v1/audio/transcriptions.
+        # Fields: file (required), language (optional), format (optional;
+        # enables text normalisation, needs a concrete language code so
+        # we only set it when one was provided).
+        url = f"{self.BASE_URL}/stt"
         ext = "wav" if "wav" in content_type else "webm"
         files = {"file": (f"audio.{ext}", audio, content_type)}
-        data: dict[str, str] = {"model": self.STT_MODEL}
-        if language is not None:
+        data: dict[str, str] = {}
+        if language is not None and language != _DEFAULT_LANGUAGE:
             data["language"] = language
+            data["format"] = "true"
         try:
             resp = await self._http.post(
                 url, headers=self._auth(api_key), files=files, data=data,
@@ -74,11 +84,14 @@ class XaiVoiceAdapter(VoiceAdapter):
     async def synthesise(
         self, text: str, voice_id: str, api_key: str,
     ) -> tuple[bytes, str]:
-        url = f"{self.BASE_URL}/audio/speech"
-        payload = {
-            "model": self.TTS_MODEL,
+        # POST /v1/tts, JSON — NOT /v1/audio/speech. xAI does not accept
+        # a ``model`` field; the provider chooses the current TTS model
+        # internally. Response is mp3 bytes.
+        url = f"{self.BASE_URL}/tts"
+        payload: dict[str, str] = {
+            "text": text,
             "voice_id": voice_id,
-            "input": text,
+            "language": _DEFAULT_LANGUAGE,
         }
         try:
             resp = await self._http.post(

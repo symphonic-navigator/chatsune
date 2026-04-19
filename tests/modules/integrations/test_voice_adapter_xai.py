@@ -75,7 +75,7 @@ async def test_transcribe_ok_with_language():
     captured = {}
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
-        assert request.url.path == "/v1/audio/transcriptions"
+        assert request.url.path == "/v1/stt"
         assert request.headers["authorization"] == "Bearer KEY"
         captured["body"] = bytes(request.content)
         return httpx.Response(200, json={"text": "hello world"})
@@ -85,21 +85,39 @@ async def test_transcribe_ok_with_language():
         audio=b"RIFFfakewavdata", content_type="audio/wav", api_key="KEY", language="en",
     )
     assert text == "hello world"
-    # model + language fields must be present in the multipart body
-    assert b"grok-stt-1" in captured["body"]
+    # language + format fields must be present in the multipart body.
+    # xAI does NOT accept a ``model`` field on this endpoint.
     assert b'name="language"' in captured["body"]
+    assert b'name="format"' in captured["body"]
+    assert b"grok-stt-1" not in captured["body"]
 
 
 @pytest.mark.asyncio
 async def test_transcribe_ok_no_language():
     def handler(request: httpx.Request) -> httpx.Response:
-        # language field must be absent when None
+        # language + format omitted when None (auto-detect on xAI side)
         assert b'name="language"' not in request.content
+        assert b'name="format"' not in request.content
         return httpx.Response(200, json={"text": "ok"})
 
     adapter = XaiVoiceAdapter(_client_with(handler))
     text = await adapter.transcribe(
         audio=b"data", content_type="audio/wav", api_key="KEY", language=None,
+    )
+    assert text == "ok"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_auto_language_omits_fields():
+    """language='auto' is treated like None — no language/format on the request."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert b'name="language"' not in request.content
+        assert b'name="format"' not in request.content
+        return httpx.Response(200, json={"text": "ok"})
+
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    text = await adapter.transcribe(
+        audio=b"data", content_type="audio/wav", api_key="KEY", language="auto",
     )
     assert text == "ok"
 
@@ -118,13 +136,15 @@ async def test_transcribe_rate_limit():
 async def test_synthesise_ok():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"
-        assert request.url.path == "/v1/audio/speech"
+        assert request.url.path == "/v1/tts"
         import json
         body = request.read()
         parsed = json.loads(body)
-        assert parsed["model"] == "grok-tts-1"
+        # xAI's /v1/tts takes {text, voice_id, language} — NO model field.
+        assert "model" not in parsed
+        assert parsed["text"] == "Hello!"
         assert parsed["voice_id"] == "v1"
-        assert parsed["input"] == "Hello!"
+        assert parsed["language"] == "auto"
         return httpx.Response(
             200, content=b"\xff\xfbMP3DATA", headers={"content-type": "audio/mpeg"},
         )
