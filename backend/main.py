@@ -69,6 +69,7 @@ from backend.modules.llm._migration_connections_refactor import (
 from backend.modules.integrations._voice_adapters._client import (
     init_voice_http_client, close_voice_http_client,
 )
+from backend.modules.integrations._registry import _register_builtin_voice_adapters
 
 
 @asynccontextmanager
@@ -111,6 +112,7 @@ async def lifespan(app: FastAPI):
 
     # Initialise shared httpx client for voice adapters
     init_voice_http_client()
+    _register_builtin_voice_adapters()
 
     # Subscribe knowledge module to embedding completion events
     from shared.topics import Topics

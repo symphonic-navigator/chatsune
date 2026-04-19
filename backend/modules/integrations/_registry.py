@@ -222,5 +222,84 @@ def _register_builtins() -> None:
         tool_definitions=[],
     ))
 
+    register(IntegrationDefinition(
+        id="xai_voice",
+        display_name="xAI Voice",
+        description="Speech-to-text and text-to-speech via xAI. Bring your own API key.",
+        icon="xai",
+        execution_mode="hybrid",
+        hydrate_secrets=False,
+        capabilities=[
+            IntegrationCapability.TTS_PROVIDER,
+            IntegrationCapability.STT_PROVIDER,
+        ],
+        config_fields=[
+            {
+                "key": "api_key",
+                "label": "xAI API Key",
+                "field_type": "password",
+                "secret": True,
+                "required": True,
+                "description": (
+                    "Your personal xAI API key. Encrypted at rest; never "
+                    "leaves the backend."
+                ),
+            },
+            {
+                "key": "playback_gap_ms",
+                "label": "Pause between chunks",
+                "field_type": "select",
+                "required": False,
+                "description": (
+                    "Gap inserted between sentences and speaker switches."
+                ),
+                "options": [
+                    {"value": "100", "label": "100 ms"},
+                    {"value": "200", "label": "200 ms"},
+                    {"value": "300", "label": "300 ms"},
+                    {"value": "400", "label": "400 ms"},
+                    {"value": "500", "label": "500 ms (default)"},
+                    {"value": "600", "label": "600 ms"},
+                    {"value": "700", "label": "700 ms"},
+                    {"value": "800", "label": "800 ms"},
+                ],
+            },
+        ],
+        persona_config_fields=[
+            {
+                "key": "voice_id",
+                "label": "Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": True,
+                "description": "Voice used when this persona speaks.",
+            },
+            {
+                "key": "narrator_voice_id",
+                "label": "Narrator Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": False,
+                "description": (
+                    "Voice used for narration / prose when narrator mode "
+                    "is active. Leave at 'Inherit' to use the primary voice."
+                ),
+            },
+        ],
+        tool_definitions=[],
+    ))
+
 
 _register_builtins()
+
+
+def _register_builtin_voice_adapters() -> None:
+    """Register voice adapters for backend-proxied integrations.
+
+    Must be called AFTER the voice HTTP client is initialised (see
+    backend/modules/integrations/_voice_adapters/_client.py).
+    """
+    from backend.modules.integrations._voice_adapters import register_adapter
+    from backend.modules.integrations._voice_adapters._client import get_voice_http_client
+    from backend.modules.integrations._voice_adapters._xai import XaiVoiceAdapter
+    register_adapter("xai_voice", XaiVoiceAdapter(get_voice_http_client()))
