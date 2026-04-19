@@ -9,6 +9,7 @@ import { registerSecretsEventHandler } from "./features/integrations/secretsEven
 import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import './features/integrations/plugins/mistral_voice'
+import './features/integrations/plugins/xai_voice'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"
