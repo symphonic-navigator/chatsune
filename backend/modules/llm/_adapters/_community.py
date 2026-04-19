@@ -8,6 +8,7 @@ into the backend.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -313,7 +314,7 @@ class CommunityAdapter(BaseAdapter):
         if _TRACE_PAYLOADS:
             _log.info(
                 "LLM_TRACE path=community-out homelab_id=%s body=%s",
-                homelab_id, body.model_dump_json(exclude_none=True),
+                homelab_id, json.dumps(body, default=str, sort_keys=True),
             )
 
         async def _run() -> AsyncIterator[ProviderStreamEvent]:
