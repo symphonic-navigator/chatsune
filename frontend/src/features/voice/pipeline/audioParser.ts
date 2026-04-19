@@ -1,7 +1,7 @@
 import type { NarratorMode, SpeechSegment } from '../types'
 import { splitSentences } from './sentenceSplitter'
 
-function preprocess(text: string): string {
+function preprocess(text: string, mode: NarratorMode): string {
   let s = text
   s = s.replace(/```[\s\S]*?```/g, '')           // fenced code blocks
   s = s.replace(/`[^`]+`/g, '')                   // inline code
@@ -11,6 +11,12 @@ function preprocess(text: string): string {
   s = s.replace(/^#{1,6}\s+/gm, '')               // headings
   s = s.replace(/\*\*(.+?)\*\*/g, '$1')           // bold
   s = s.replace(/__(.+?)__/g, '$1')               // underline bold
+  s = s.replace(/\*([^*\n]+)\*/g, '$1')           // single asterisk italics
+  s = s.replace(/_([^_\n]+)_/g, '$1')             // single underscore italics
+  if (mode === 'off') {
+    s = s.replace(/"([^"\n]+)"/g, '$1')                       // straight double quotes
+    s = s.replace(/\u201c([^\u201d\n]+)\u201d/g, '$1')        // curly double quotes
+  }
   s = s.replace(/^[-*+]\s+/gm, '')                // unordered list markers
   s = s.replace(/^\d+\.\s+/gm, '')                // ordered list markers
   s = s.replace(/^>\s?/gm, '')                    // blockquotes
@@ -63,7 +69,7 @@ function hasSpeakableContent(text: string): boolean {
 }
 
 export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[] {
-  const cleaned = preprocess(text)
+  const cleaned = preprocess(text, mode)
   if (!cleaned) return []
   if (mode === 'off') {
     return splitSentences(cleaned)

@@ -112,13 +112,11 @@ describe('createStreamingSentencer', () => {
       // Asterisks must be balanced before we commit anything post-asterisk.
       expect(s.push('Before. *walks. ')).toEqual([])
       expect(s.push('smiles* After it all ends')).toEqual([])
-      // splitSegments groups everything inside a matching */…/* pair into
-      // one narration block, so "*walks. smiles*" becomes a single segment
-      // (then sentence-split into two on the internal period).
+      // preprocess strips `*walks. smiles*` to `walks. smiles` before
+      // segmentation; the resulting plain prose is a single narration segment
+      // because none of the internal periods are followed by an uppercase word.
       expect(s.push('. Next')).toEqual([
-        { type: 'narration', text: 'Before.' },
-        { type: 'narration', text: 'walks. smiles' },
-        { type: 'narration', text: 'After it all ends.' },
+        { type: 'narration', text: 'Before. walks. smiles After it all ends.' },
       ])
     })
 

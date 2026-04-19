@@ -45,13 +45,13 @@ describe('parseForSpeech', () => {
   })
 
   describe("mode 'narrate' (narration narrated, only dialogue spoken)", () => {
-    it('swaps roles and sentence-splits inside quotes', () => {
+    it('strips decorative asterisks in narration and sentence-splits inside quotes', () => {
       const result = parseForSpeech('*walks over* "Hello there! How are you?" *waves*', 'narrate')
       expect(result).toEqual([
-        { type: 'narration', text: '*walks over*' },
+        { type: 'narration', text: 'walks over' },
         { type: 'voice', text: 'Hello there!' },
         { type: 'voice', text: 'How are you?' },
-        { type: 'narration', text: '*waves*' },
+        { type: 'narration', text: 'waves' },
       ])
     })
     it('sentence-splits narration between quotes', () => {
@@ -143,6 +143,64 @@ describe('parseForSpeech', () => {
     })
     it('returns empty array for code-only input', () => {
       expect(parseForSpeech('```js\ncode\n```', 'off')).toEqual([])
+    })
+  })
+
+  describe('markdown and quote decoration stripping', () => {
+    describe("mode 'off'", () => {
+      it('strips single asterisks, keeping the inner content', () => {
+        expect(parseForSpeech('She *whispered* softly.', 'off')).toEqual([
+          { type: 'voice', text: 'She whispered softly.' },
+        ])
+      })
+      it('strips single underscores, keeping the inner content', () => {
+        expect(parseForSpeech('This is _emphasised_ text.', 'off')).toEqual([
+          { type: 'voice', text: 'This is emphasised text.' },
+        ])
+      })
+      it('strips straight double quotes, keeping the inner content', () => {
+        expect(parseForSpeech('He said "hello" to me.', 'off')).toEqual([
+          { type: 'voice', text: 'He said hello to me.' },
+        ])
+      })
+      it('strips curly double quotes, keeping the inner content', () => {
+        expect(parseForSpeech('He said \u201chello\u201d to me.', 'off')).toEqual([
+          { type: 'voice', text: 'He said hello to me.' },
+        ])
+      })
+    })
+
+    describe("mode 'play'", () => {
+      it('strips single underscores from narration', () => {
+        expect(parseForSpeech('Then _slowly_ she turned.', 'play')).toEqual([
+          { type: 'narration', text: 'Then slowly she turned.' },
+        ])
+      })
+      it('keeps the play-mode voice/narration split when asterisks are stripped pre-segmentation', () => {
+        // `*he smiled*` becomes implicit narration (no marker needed) because
+        // in play mode everything outside quotes is narration anyway.
+        expect(parseForSpeech('"Hello" *he smiled*', 'play')).toEqual([
+          { type: 'voice', text: 'Hello' },
+          { type: 'narration', text: 'he smiled' },
+        ])
+      })
+    })
+
+    describe("mode 'narrate'", () => {
+      it('strips single asterisks from narration', () => {
+        expect(parseForSpeech('*walks over* "Hi" *waves*', 'narrate')).toEqual([
+          { type: 'narration', text: 'walks over' },
+          { type: 'voice', text: 'Hi' },
+          { type: 'narration', text: 'waves' },
+        ])
+      })
+      it('preserves straight quotes as voice-segment markers', () => {
+        expect(parseForSpeech('He said "hello" quietly.', 'narrate')).toEqual([
+          { type: 'narration', text: 'He said' },
+          { type: 'voice', text: 'hello' },
+          { type: 'narration', text: 'quietly.' },
+        ])
+      })
     })
   })
 })
