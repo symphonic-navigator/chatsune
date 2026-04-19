@@ -4,6 +4,7 @@ import httpx
 
 from backend.modules.integrations._voice_adapters._base import (
     VoiceAuthError,
+    VoiceBadRequestError,
     VoiceRateLimitError,
     VoiceUnavailableError,
 )
@@ -111,3 +112,35 @@ async def test_transcribe_rate_limit():
         await adapter.transcribe(
             audio=b"d", content_type="audio/wav", api_key="KEY", language=None,
         )
+
+
+@pytest.mark.asyncio
+async def test_synthesise_ok():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/v1/audio/speech"
+        import json
+        body = request.read()
+        parsed = json.loads(body)
+        assert parsed["model"] == "grok-tts-1"
+        assert parsed["voice_id"] == "v1"
+        assert parsed["input"] == "Hello!"
+        return httpx.Response(
+            200, content=b"\xff\xfbMP3DATA", headers={"content-type": "audio/mpeg"},
+        )
+
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    audio, ctype = await adapter.synthesise("Hello!", "v1", "KEY")
+    assert audio == b"\xff\xfbMP3DATA"
+    assert ctype == "audio/mpeg"
+
+
+@pytest.mark.asyncio
+async def test_synthesise_bad_voice():
+    def handler(_req):
+        return httpx.Response(400, json={"error": "unknown voice_id"})
+
+    adapter = XaiVoiceAdapter(_client_with(handler))
+    with pytest.raises(VoiceBadRequestError) as ei:
+        await adapter.synthesise("hi", "nope", "KEY")
+    assert "unknown voice_id" in ei.value.user_message

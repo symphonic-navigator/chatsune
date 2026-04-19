@@ -74,7 +74,21 @@ class XaiVoiceAdapter(VoiceAdapter):
     async def synthesise(
         self, text: str, voice_id: str, api_key: str,
     ) -> tuple[bytes, str]:
-        raise NotImplementedError  # implemented in a later task
+        url = f"{self.BASE_URL}/audio/speech"
+        payload = {
+            "model": self.TTS_MODEL,
+            "voice_id": voice_id,
+            "input": text,
+        }
+        try:
+            resp = await self._http.post(
+                url, headers=self._auth(api_key), json=payload,
+            )
+        except (httpx.TimeoutException, httpx.TransportError) as e:
+            raise VoiceUnavailableError(str(e)) from e
+        self._raise_for_status(resp)
+        content_type = resp.headers.get("content-type", "audio/mpeg").split(";")[0].strip()
+        return resp.content, content_type
 
     def _auth(self, api_key: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {api_key}"}
