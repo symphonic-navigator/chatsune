@@ -1,8 +1,10 @@
 import type { IntegrationPlugin, Option } from '../../types'
-import { sttRegistry, ttsRegistry } from '../../../voice/engines/registry'
+import { sttRegistry, ttsRegistry, declareProviderEngines } from '../../../voice/engines/registry'
 import { XaiSTTEngine, XaiTTSEngine } from './engines'
 import { xaiVoices, refreshXaiVoices, invalidateXaiVoicesCache } from './voices'
 import { registerPlugin } from '../../registry'
+
+declareProviderEngines('xai_voice', { stt: 'xai_stt', tts: 'xai_tts' })
 
 let sttInstance: XaiSTTEngine | null = null
 let ttsInstance: XaiTTSEngine | null = null

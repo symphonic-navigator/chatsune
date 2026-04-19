@@ -1,10 +1,12 @@
 import type { IntegrationPlugin, Option } from '../../types'
-import { sttRegistry, ttsRegistry } from '../../../voice/engines/registry'
+import { sttRegistry, ttsRegistry, declareProviderEngines } from '../../../voice/engines/registry'
 import { MistralSTTEngine, MistralTTSEngine } from './engines'
 import { mistralVoices, refreshMistralVoices, invalidateVoicesCache } from './voices'
 import { useSecretsStore } from '../../secretsStore'
 import { registerPlugin } from '../../registry'
 import { ExtraConfigComponent } from './ExtraConfigComponent'
+
+declareProviderEngines('mistral_voice', { stt: 'mistral_stt', tts: 'mistral_tts' })
 
 let sttInstance: MistralSTTEngine | null = null
 let ttsInstance: MistralTTSEngine | null = null
