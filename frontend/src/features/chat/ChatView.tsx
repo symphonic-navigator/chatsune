@@ -41,6 +41,7 @@ import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettingsStore } from '../voice/stores/voiceSettingsStore'
 import { resolveSTTEngine, resolveTTSEngine, resolveTTSIntegrationId } from '../voice/engines/resolver'
+import { resolveGapMs as resolveTtsGapMs } from '../voice/engines/defaults'
 import { useVoicePipeline } from '../voice/stores/voicePipelineStore'
 import { useCtrlSpace } from '../voice/hooks/useCtrlSpace'
 import { voicePipeline } from '../voice/pipeline/voicePipeline'
@@ -726,14 +727,10 @@ export function ChatView({ persona }: ChatViewProps) {
       ? (tts.voices.find((v) => v.id === narratorVoiceId) ?? voice)
       : voice
 
-    const gapRaw = intConfigs?.[activeTTS.id]?.config?.playback_gap_ms
-    let gapMs = 500
-    if (typeof gapRaw === 'string') {
-      const parsed = Number.parseInt(gapRaw, 10)
-      if (Number.isFinite(parsed) && parsed >= 0) gapMs = parsed
-    } else if (typeof gapRaw === 'number' && Number.isFinite(gapRaw) && gapRaw >= 0) {
-      gapMs = gapRaw
-    }
+    const gapMs = resolveTtsGapMs(
+      activeTTS.id,
+      intConfigs?.[activeTTS.id]?.config as Record<string, unknown> | undefined,
+    )
 
     const modulation = resolveModulation(persona?.voice_config)
 
@@ -1365,7 +1362,7 @@ export function ChatView({ persona }: ChatViewProps) {
                   />
                 </div>
                 <div className="hidden lg:block">
-                  <ChatIntegrationsPanel />
+                  <ChatIntegrationsPanel persona={persona} />
                 </div>
                 {/* Mobile: icon-only button row + collapsible tool toggles. */}
                 <div className="lg:hidden">
@@ -1422,7 +1419,7 @@ export function ChatView({ persona }: ChatViewProps) {
                       </svg>
                     </button>
                   </div>
-                  <ChatIntegrationsPanel />
+                  <ChatIntegrationsPanel persona={persona} />
                   {mobileToolsOpen && (
                     <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
                       <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-2">

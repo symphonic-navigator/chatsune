@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { resolveTTSEngine, resolveTTSIntegrationId } from '../engines/resolver'
+import { resolveGapMs } from '../engines/defaults'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { parseForSpeech } from '../pipeline/audioParser'
 import { readAloudCacheKey } from '../pipeline/readAloudCacheKey'
@@ -74,22 +75,6 @@ function cachePut(key: string, entry: CachedAudio): void {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
   }
-}
-
-// ── Gap resolution ──
-
-// Reads the playback_gap_ms value from a user's TTS integration config, which
-// is stored as a plain object. Values may be persisted as either string (from
-// the <select>) or number; both are accepted. Defaults to 100 ms when missing
-// or malformed.
-function resolveGapMs(integrationCfg: Record<string, unknown> | undefined): number {
-  const raw = integrationCfg?.playback_gap_ms
-  if (typeof raw === 'string') {
-    const n = Number.parseInt(raw, 10)
-    if (Number.isFinite(n) && n >= 0) return n
-  }
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw
-  return 500
 }
 
 // ── Shared synthesis runner ──
@@ -204,7 +189,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   const narratorVoiceId = (integrationCfg?.narrator_voice_id as string | null | undefined) ?? null
   const resolvedMode: NarratorMode = mode ?? persona?.voice_config?.narrator_mode ?? 'off'
   const integrationUserConfig = activeTTS ? configs?.[activeTTS.id]?.config : undefined
-  const gapMs = resolveGapMs(integrationUserConfig)
+  const gapMs = resolveGapMs(activeTTS?.id, integrationUserConfig)
 
   const outlet = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void

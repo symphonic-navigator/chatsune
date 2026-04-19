@@ -251,14 +251,17 @@ def _register_builtins() -> None:
                 "field_type": "select",
                 "required": False,
                 "description": (
-                    "Gap inserted between sentences and speaker switches."
+                    "Gap inserted between sentences and speaker switches. "
+                    "xAI already leaves a natural silence at sentence ends, "
+                    "so no extra gap is needed by default."
                 ),
                 "options": [
+                    {"value": "0", "label": "0 ms (default)"},
                     {"value": "100", "label": "100 ms"},
                     {"value": "200", "label": "200 ms"},
                     {"value": "300", "label": "300 ms"},
                     {"value": "400", "label": "400 ms"},
-                    {"value": "500", "label": "500 ms (default)"},
+                    {"value": "500", "label": "500 ms"},
                     {"value": "600", "label": "600 ms"},
                     {"value": "700", "label": "700 ms"},
                     {"value": "800", "label": "800 ms"},

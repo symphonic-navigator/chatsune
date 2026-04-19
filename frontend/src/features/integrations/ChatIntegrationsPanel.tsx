@@ -4,19 +4,29 @@ import { getPlugin } from './registry'
 import { useAudioPlaybackActive } from '../voice/infrastructure/useAudioPlaybackActive'
 import { cancelStreamingAutoRead } from '../voice/pipeline/streamingAutoReadControl'
 import { setActiveReader } from '../voice/components/ReadAloudButton'
+import { resolveTTSIntegrationId } from '../voice/engines/resolver'
+import type { PersonaDto } from '../../core/types/persona'
 
 import './plugins/lovense'
 import './plugins/mistral_voice'
+import './plugins/xai_voice'
 
-const MISTRAL_VOICE_ID = 'mistral_voice'
+const TTS_CAPABILITY = 'tts_provider'
+
+interface Props {
+  persona?: PersonaDto | null
+}
 
 /**
  * Compact integration status & controls shown in the chat toolbar.
- * Each chip is a per-integration emergency-stop button. Clicking it calls
- * that plugin's emergencyStop. The Mistral Voice chip additionally cancels
- * in-flight TTS streaming whenever it is clicked while audio is playing.
+ *
+ * Rendering rules:
+ * - Non-TTS integrations (Lovense etc.): one chip each, for emergency stop.
+ * - TTS integrations: only the *active* one (resolved per persona). That
+ *   chip doubles as play-indicator + stop-read-aloud while audio is
+ *   playing, regardless of provider.
  */
-export function ChatIntegrationsPanel() {
+export function ChatIntegrationsPanel({ persona }: Props = {}) {
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
   const healthStatus = useIntegrationsStore((s) => s.healthStatus)
@@ -24,7 +34,21 @@ export function ChatIntegrationsPanel() {
   const audioActive = useAudioPlaybackActive()
   const [pending, setPending] = useState<Record<string, boolean>>({})
 
-  const enabledDefs = definitions.filter((d) => configs[d.id]?.enabled)
+  const activeTTSId = resolveTTSIntegrationId(persona)
+  const ttsProviderIds = new Set(
+    definitions
+      .filter((d) => d.capabilities?.includes(TTS_CAPABILITY))
+      .map((d) => d.id),
+  )
+
+  const enabledDefs = definitions.filter((d) => {
+    if (!configs[d.id]?.enabled) return false
+    if (ttsProviderIds.has(d.id)) {
+      // Only the currently active TTS integration is shown as a chip.
+      return d.id === activeTTSId
+    }
+    return true
+  })
 
   // Run health checks on mount and every 30 seconds
   useEffect(() => {
@@ -48,7 +72,7 @@ export function ChatIntegrationsPanel() {
     checkAll()
     const interval = setInterval(checkAll, 30_000)
     return () => clearInterval(interval)
-  // Only re-run when enabled integration IDs change
+  // Only re-run when the enabled set changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabledDefs.map((d) => d.id).join(',')])
 
@@ -58,10 +82,10 @@ export function ChatIntegrationsPanel() {
     if (pending[integrationId]) return
     setPending((p) => ({ ...p, [integrationId]: true }))
     try {
-      // Mistral Voice also kills any in-flight TTS streaming alongside the
-      // plugin's own emergencyStop — clicking the chip during read-aloud
-      // must cut both synthesis and already-queued audio.
-      if (integrationId === MISTRAL_VOICE_ID) {
+      // Clicking a TTS-provider chip also kills any in-flight TTS streaming
+      // (per-provider: chip is only rendered for the active one, so this
+      // cannot double-cancel someone else's playback).
+      if (ttsProviderIds.has(integrationId)) {
         cancelStreamingAutoRead()
         setActiveReader(null, 'idle')
       }
@@ -91,8 +115,8 @@ export function ChatIntegrationsPanel() {
           : health === 'reachable' ? 'bg-yellow-400'
           : health === 'unreachable' ? 'bg-red-400'
           : 'bg-white/20'
-        const isMistralVoice = d.id === MISTRAL_VOICE_ID
-        const showPlayIndicator = isMistralVoice && audioActive
+        const isTTS = ttsProviderIds.has(d.id)
+        const showPlayIndicator = isTTS && audioActive
         const isPending = !!pending[d.id]
 
         return (
