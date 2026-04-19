@@ -178,6 +178,11 @@ describe('parseForSpeech', () => {
         { type: 'voice', text: 'Hi  there' },
       ])
     })
+    it('preserves legal and commercial symbols that are not decorative emojis', () => {
+      expect(parseForSpeech('Widget\u2122 and Logo\u00AE \u00A9 2026.', 'off')).toEqual([
+        { type: 'voice', text: 'Widget\u2122 and Logo\u00AE \u00A9 2026.' },
+      ])
+    })
   })
 
   describe('markdown and quote decoration stripping', () => {

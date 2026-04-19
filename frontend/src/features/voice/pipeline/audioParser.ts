@@ -21,7 +21,7 @@ function preprocess(text: string, mode: NarratorMode): string {
   s = s.replace(/^\d+\.\s+/gm, '')                // ordered list markers
   s = s.replace(/^>\s?/gm, '')                    // blockquotes
   s = s.replace(/\u2026/g, '...')                 // normalise Unicode ellipsis to three dots
-  s = s.replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}]/gu, '') // emojis / pictographs / skin-tone modifiers
+  s = s.replace(/[\p{Emoji_Presentation}\p{Emoji_Modifier}]/gu, '')             // default-presentation emojis + skin-tone modifiers
   s = s.replace(/\p{Regional_Indicator}/gu, '')             // flag-emoji regional indicators
   s = s.replace(/[\uFE0F\u200D]/g, '')                      // orphan variation selectors / ZWJ
   s = s.replace(/\n{2,}/g, '\n')                  // collapse blank lines
