@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
+import httpx
+
 from backend.modules.llm._adapters._base import BaseAdapter
-from backend.modules.llm._adapters._events import ProviderStreamEvent, StreamError
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    ProviderStreamEvent,
+    StreamAborted,
+    StreamDone,
+    StreamError,
+    StreamRefused,
+    StreamSlow,
+    ThinkingDelta,
+    ToolCallEvent,
+)
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
@@ -18,6 +33,14 @@ from shared.dtos.inference import CompletionMessage, CompletionRequest, ToolDefi
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+GUTTER_SLOW_SECONDS: float = 30.0
+GUTTER_ABORT_SECONDS: float = float(
+    os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"),
+)
+
+_TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
 
@@ -60,6 +83,61 @@ class _ToolCallAccumulator:
                 "arguments": slot["args"] or "{}",
             })
         return calls
+
+
+def _chunk_to_events(
+    chunk: dict,
+    acc: _ToolCallAccumulator,
+) -> list[ProviderStreamEvent]:
+    """Map one parsed SSE chunk into zero or more provider events.
+
+    ``acc`` is mutated in-place for tool-call fragment accumulation.
+    """
+    events: list[ProviderStreamEvent] = []
+    choices = chunk.get("choices") or []
+    usage = chunk.get("usage") or {}
+    if not choices:
+        return events
+    choice = choices[0]
+    delta = choice.get("delta") or {}
+
+    reasoning = delta.get("reasoning_content") or ""
+    if reasoning:
+        events.append(ThinkingDelta(delta=reasoning))
+
+    content = delta.get("content") or ""
+    if content:
+        events.append(ContentDelta(delta=content))
+
+    tool_frags = delta.get("tool_calls") or []
+    if tool_frags:
+        acc.ingest(tool_frags)
+
+    finish = choice.get("finish_reason")
+    if finish is None:
+        return events
+
+    if finish == "tool_calls":
+        for call in acc.finalised():
+            events.append(ToolCallEvent(
+                id=call["id"], name=call["name"],
+                arguments=call["arguments"],
+            ))
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+        ))
+    elif finish in _REFUSAL_REASONS:
+        events.append(StreamRefused(
+            reason=finish,
+            refusal_text=delta.get("refusal") or None,
+        ))
+    else:
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+        ))
+    return events
 
 
 def _parse_sse_line(line: str) -> dict | object | None:
@@ -211,8 +289,112 @@ class XaiHttpAdapter(BaseAdapter):
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        # Stub — real implementation lands in Task 9.
-        yield StreamError(
-            error_code="provider_unavailable",
-            message="xai_http stream_completion not implemented yet",
-        )
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        payload = _build_chat_payload(request)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        if request.cache_hint:
+            headers["x-grok-conv-id"] = request.cache_hint
+
+        acc = _ToolCallAccumulator()
+        seen_done = False
+        pending_next: asyncio.Task | None = None
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            try:
+                async with client.stream(
+                    "POST", f"{url}/chat/completions",
+                    json=payload, headers=headers,
+                ) as resp:
+                    if resp.status_code in (401, 403):
+                        yield StreamError(
+                            error_code="invalid_api_key",
+                            message="xAI rejected the API key",
+                        )
+                        return
+                    if resp.status_code == 429:
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message="xAI rate limit hit",
+                        )
+                        return
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        detail = body.decode("utf-8", errors="replace")[:500]
+                        _log.error("xai_http upstream %d: %s",
+                                   resp.status_code, detail)
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message=f"xAI returned {resp.status_code}: {detail}",
+                        )
+                        return
+
+                    stream_iter = resp.aiter_lines().__aiter__()
+                    line_start = time.monotonic()
+                    slow_fired = False
+
+                    while True:
+                        elapsed = time.monotonic() - line_start
+                        budget = (
+                            GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                            else GUTTER_SLOW_SECONDS - elapsed
+                        )
+                        if budget <= 0:
+                            if not slow_fired:
+                                yield StreamSlow()
+                                slow_fired = True
+                                continue
+                            if pending_next is not None:
+                                pending_next.cancel()
+                            yield StreamAborted(reason="gutter_timeout")
+                            return
+                        if pending_next is None:
+                            pending_next = asyncio.ensure_future(
+                                stream_iter.__anext__(),
+                            )
+                        done, _ = await asyncio.wait(
+                            {pending_next}, timeout=budget,
+                        )
+                        if not done:
+                            continue
+                        task = done.pop()
+                        pending_next = None
+                        try:
+                            line = task.result()
+                        except StopAsyncIteration:
+                            break
+                        line_start = time.monotonic()
+                        slow_fired = False
+
+                        parsed = _parse_sse_line(line)
+                        if parsed is None:
+                            continue
+                        if parsed is _SSE_DONE:
+                            break
+
+                        for event in _chunk_to_events(parsed, acc):
+                            if isinstance(event, StreamDone):
+                                seen_done = True
+                            yield event
+                            if isinstance(event, (StreamDone,
+                                                   StreamRefused,
+                                                   StreamError)):
+                                return
+
+            except asyncio.CancelledError:
+                if pending_next is not None and not pending_next.done():
+                    pending_next.cancel()
+                raise
+            except httpx.ConnectError:
+                yield StreamError(
+                    error_code="provider_unavailable",
+                    message="Cannot connect to xAI",
+                )
+                return
+
+        if not seen_done:
+            yield StreamDone()

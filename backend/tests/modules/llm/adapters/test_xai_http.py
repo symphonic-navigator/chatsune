@@ -260,3 +260,183 @@ def test_accumulator_synthesises_id_when_upstream_omits_it():
     assert calls[0]["id"]
     assert calls[0]["name"] == "calc"
     assert calls[0]["arguments"] == "{}"
+
+
+import httpx
+
+from backend.modules.llm._adapters._events import (
+    ContentDelta, StreamDone, StreamError, ThinkingDelta, ToolCallEvent,
+)
+
+
+def _sse_response(lines: list[str], status: int = 200) -> httpx.Response:
+    body = "\n".join(lines) + "\n"
+    return httpx.Response(
+        status,
+        headers={"content-type": "text/event-stream"},
+        content=body.encode(),
+    )
+
+
+def _install_mock_transport(monkeypatch, handler):
+    """Patch httpx.AsyncClient to use a MockTransport with `handler`."""
+    from backend.modules.llm._adapters import _xai_http
+
+    class _PatchedClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(_xai_http.httpx, "AsyncClient", _PatchedClient)
+
+
+async def _collect(agen):
+    return [e async for e in agen]
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_yields_content_and_done(monkeypatch):
+    def handler(request):
+        assert request.headers["authorization"] == "Bearer xai-test-key"
+        assert "x-grok-conv-id" not in request.headers  # no cache_hint
+        return _sse_response([
+            'data: {"choices":[{"delta":{"content":"he"}}]}',
+            'data: {"choices":[{"delta":{"content":"llo"}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
+            '"usage":{"prompt_tokens":5,"completion_tokens":2}}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+        supports_reasoning=True,
+        reasoning_enabled=False,
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    deltas = [e for e in events if isinstance(e, ContentDelta)]
+    assert [d.delta for d in deltas] == ["he", "llo"]
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    assert len(dones) == 1
+    assert dones[0].input_tokens == 5
+    assert dones[0].output_tokens == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_forwards_cache_hint_header(monkeypatch):
+    seen_headers = {}
+
+    def handler(request):
+        seen_headers.update(dict(request.headers))
+        return _sse_response([
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+        cache_hint="session-abc-123",
+    )
+    await _collect(adapter.stream_completion(_resolved_conn(), req))
+    assert seen_headers.get("x-grok-conv-id") == "session-abc-123"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_thinking_delta_for_reasoning_content(monkeypatch):
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}',
+            'data: {"choices":[{"delta":{"content":"42"}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+        supports_reasoning=True,
+        reasoning_enabled=True,
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    thinking = [e for e in events if isinstance(e, ThinkingDelta)]
+    content = [e for e in events if isinstance(e, ContentDelta)]
+    assert [t.delta for t in thinking] == ["hmm"]
+    assert [c.delta for c in content] == ["42"]
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_accumulates_tool_call_fragments(monkeypatch):
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{"tool_calls":'
+            '[{"index":0,"id":"call_1","type":"function",'
+            '"function":{"name":"web_search"}}]}}]}',
+            'data: {"choices":[{"delta":{"tool_calls":'
+            '[{"index":0,"function":{"arguments":"{\\"q\\":"}}]}}]}',
+            'data: {"choices":[{"delta":{"tool_calls":'
+            '[{"index":0,"function":{"arguments":"\\"grok\\"}"}}]}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].name == "web_search"
+    assert tool_calls[0].arguments == '{"q":"grok"}'
+    assert tool_calls[0].id == "call_1"
+    # Terminal event after tool calls
+    assert any(isinstance(e, StreamDone) for e in events)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_returns_invalid_api_key_on_401(monkeypatch):
+    def handler(request):
+        return httpx.Response(401, json={"error": "unauthorised"})
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    assert len(events) == 1
+    assert isinstance(events[0], StreamError)
+    assert events[0].error_code == "invalid_api_key"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_returns_provider_unavailable_on_500(monkeypatch):
+    def handler(request):
+        return httpx.Response(500, json={"error": "boom"})
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    assert len(events) == 1
+    assert isinstance(events[0], StreamError)
+    assert events[0].error_code == "provider_unavailable"
