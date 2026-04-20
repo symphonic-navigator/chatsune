@@ -66,6 +66,9 @@ from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
 )
+from backend.modules.providers._migration_v1 import (
+    run_if_needed as run_providers_migration,
+)
 from backend.modules.integrations._voice_adapters._client import (
     init_voice_http_client, close_voice_http_client,
 )
@@ -93,6 +96,11 @@ async def lifespan(app: FastAPI):
     await artefact_init_indexes(db)
     await project_init_indexes(db)
     await integrations_init_indexes(db)
+    # Premium Provider migration: imports legacy api_keys into
+    # premium_provider_accounts, rewrites persona model_unique_ids, and
+    # cleans up the now-obsolete xAI / Ollama-Cloud connections. Must run
+    # before the app serves traffic so readers never see a split state.
+    await run_providers_migration(db, redis)
     await PremiumProviderAccountRepository(db).create_indexes()
     manager = ConnectionManager()
     set_manager(manager)
