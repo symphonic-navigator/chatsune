@@ -1,11 +1,11 @@
 from backend.modules.integrations._registry import _registry  # noqa: F401 - force registration
-from backend.modules.integrations import get_integration
-from shared.dtos.integrations import IntegrationCapability
-from backend.modules.integrations._voice_expression_tags import (
-    INLINE_TAGS,
-    WRAPPING_TAGS,
-    build_system_prompt_extension,
+from backend.modules.integrations import (
+    get_integration,
+    VOICE_EXPRESSION_INLINE_TAGS as INLINE_TAGS,
+    VOICE_EXPRESSION_WRAPPING_TAGS as WRAPPING_TAGS,
+    build_voice_expression_prompt_extension as build_system_prompt_extension,
 )
+from shared.dtos.integrations import IntegrationCapability
 
 
 def test_xai_voice_advertises_expressive_markup_capability() -> None:

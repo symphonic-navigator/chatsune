@@ -12,6 +12,11 @@ from backend.modules.integrations._registry import (
     get as get_integration,
     get_all as get_all_integrations,
 )
+from backend.modules.integrations._voice_expression_tags import (
+    INLINE_TAGS as VOICE_EXPRESSION_INLINE_TAGS,
+    WRAPPING_TAGS as VOICE_EXPRESSION_WRAPPING_TAGS,
+    build_system_prompt_extension as build_voice_expression_prompt_extension,
+)
 from backend.modules.integrations._repository import IntegrationRepository
 from shared.dtos.inference import ToolDefinition
 from shared.events.integrations import (
@@ -152,4 +157,7 @@ __all__ = [
     "emit_integration_secrets_for_user",
     "emit_integration_secrets_cleared",
     "delete_all_for_user",
+    "VOICE_EXPRESSION_INLINE_TAGS",
+    "VOICE_EXPRESSION_WRAPPING_TAGS",
+    "build_voice_expression_prompt_extension",
 ]
