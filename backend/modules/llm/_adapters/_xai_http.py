@@ -30,10 +30,14 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
-from shared.dtos.inference import CompletionMessage, CompletionRequest, ToolDefinition
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+# Opt-in payload tracing for cache-miss debugging. Enable via
+# LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
+_TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 
 GUTTER_SLOW_SECONDS: float = 30.0
 GUTTER_ABORT_SECONDS: float = float(
@@ -41,6 +45,7 @@ GUTTER_ABORT_SECONDS: float = float(
 )
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
@@ -321,6 +326,13 @@ class XaiHttpAdapter(BaseAdapter):
         seen_done = False
         pending_next: asyncio.Task | None = None
 
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=xai-out url=%s cache_hint=%s payload=%s",
+                url, request.cache_hint or "",
+                json.dumps(payload, default=str, sort_keys=True),
+            )
+
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             try:
                 async with client.stream(
@@ -362,9 +374,17 @@ class XaiHttpAdapter(BaseAdapter):
                         )
                         if budget <= 0:
                             if not slow_fired:
+                                _log.info(
+                                    "xai_http.gutter_slow model=%s idle=%.1fs",
+                                    payload.get("model"), elapsed,
+                                )
                                 yield StreamSlow()
                                 slow_fired = True
                                 continue
+                            _log.warning(
+                                "xai_http.gutter_abort model=%s idle=%.1fs",
+                                payload.get("model"), elapsed,
+                            )
                             if pending_next is not None:
                                 pending_next.cancel()
                             yield StreamAborted(reason="gutter_timeout")
@@ -451,9 +471,7 @@ def _build_adapter_router() -> APIRouter:
         valid = False
         error: str | None = None
         try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0),
-            ) as client:
+            async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
                 resp = await client.get(
                     f"{url}/models",
                     headers={"Authorization": f"Bearer {api_key}"},

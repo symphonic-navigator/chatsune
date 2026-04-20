@@ -480,6 +480,37 @@ async def test_stream_completion_returns_provider_unavailable_on_500(monkeypatch
     assert events[0].error_code == "provider_unavailable"
 
 
+@pytest.mark.asyncio
+async def test_stream_completion_emits_refusal_on_content_filter(monkeypatch):
+    # xAI signals a content-policy block via finish_reason="content_filter".
+    # We must emit StreamRefused (not StreamDone) and stop the stream cleanly.
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{"content":"I cannot"}}]}',
+            'data: {"choices":[{"delta":{"refusal":"policy"},'
+            '"finish_reason":"content_filter"}]}',
+            'data: [DONE]',
+        ])
+
+    from backend.modules.llm._adapters._events import StreamRefused
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    refusals = [e for e in events if isinstance(e, StreamRefused)]
+    assert len(refusals) == 1
+    assert refusals[0].reason == "content_filter"
+    assert refusals[0].refusal_text == "policy"
+    # No StreamDone should follow the refusal — the stream terminates on it.
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    assert dones == []
+
+
 # ---------------------------------------------------------------------------
 # Sub-router POST /test
 # ---------------------------------------------------------------------------

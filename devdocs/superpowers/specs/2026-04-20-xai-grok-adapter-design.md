@@ -258,15 +258,19 @@ Idle-detection timer mirrors `ollama_http`:
 - 30 s without upstream data → `StreamSlow`
 - A further 120 s → `StreamAborted`
 
-HTTP error mapping:
+HTTP error mapping (implementation-note: the error-code vocabulary below
+was what the spec originally drafted; the actual implementation uses the
+project's established `StreamError` vocabulary — `invalid_api_key` for
+401/403 and `provider_unavailable` for 429 / other 4xx / 5xx / network
+failures, as declared in `backend/modules/llm/_adapters/_events.py`.
+Functional intent is unchanged):
 
 | Status                  | Event                                                      |
 | ----------------------- | ---------------------------------------------------------- |
-| 401                     | `StreamError(error_code="auth_failed", recoverable=False)` |
-| 429                     | `StreamError(error_code="rate_limited", recoverable=True)` |
-| other 4xx               | `StreamError(error_code="bad_request", message=<body>)`    |
-| 5xx                     | `StreamError(error_code="provider_error", recoverable=True)` |
-| network timeout         | Handled by the gutter timer path                           |
+| 401 / 403               | `StreamError(error_code="invalid_api_key")`                |
+| 429                     | `StreamError(error_code="provider_unavailable")`           |
+| other 4xx / 5xx         | `StreamError(error_code="provider_unavailable", message=<body>)` |
+| network failure         | `StreamError(error_code="provider_unavailable")` or gutter-abort |
 
 #### 3.8 Usage tokens
 
