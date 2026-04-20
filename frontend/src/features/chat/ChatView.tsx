@@ -1043,7 +1043,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden">
+    <div className="absolute inset-0 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2">
         <div className="flex items-center gap-2">
           {isIncognito && (
