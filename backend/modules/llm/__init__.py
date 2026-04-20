@@ -53,8 +53,11 @@ from backend.modules.llm._metadata import (
     get_models_for_connection,
     refresh_connection_models,
 )
-from backend.modules.llm._registry import ADAPTER_REGISTRY
-from backend.modules.llm._resolver import resolve_owned_connection_by_slug
+from backend.modules.llm._registry import ADAPTER_REGISTRY, get_adapter_class
+from backend.modules.llm._resolver import (
+    resolve_for_model,
+    resolve_owned_connection_by_slug,
+)
 
 # Convenience alias — callers that split a model_unique_id pass a slug as the
 # second argument; this name is kept for backwards compatibility.
@@ -115,12 +118,18 @@ async def stream_completion(
         LlmConnectionNotFoundError: connection does not exist or is not owned
             by ``user_id``.
     """
-    connection_slug, _ = parse_model_unique_id(model_unique_id)
-    c = await resolve_owned_connection_by_slug(user_id, connection_slug)
-    if c is None:
-        raise LlmConnectionNotFoundError(connection_slug)
+    # Fail-fast format check — resolve_for_model would also raise, but this
+    # preserves the historical LlmInvalidModelUniqueIdError signal that
+    # downstream callers already special-case.
+    parse_model_unique_id(model_unique_id)
+    # Premium-aware resolve: routes reserved prefixes (``xai:``, ``ollama_cloud:``)
+    # through PremiumProviderService and falls back to the user's Connection
+    # repository otherwise.
+    c = await resolve_for_model(user_id, model_unique_id)
 
-    adapter_cls = ADAPTER_REGISTRY[c.adapter_type]
+    adapter_cls = get_adapter_class(c.adapter_type)
+    if adapter_cls is None:
+        raise LlmConnectionNotFoundError(model_unique_id)
     adapter = adapter_cls()
     max_parallel = int(c.config.get("max_parallel") or 1)
     sem = get_semaphore_registry().get(c.id, max_parallel)
@@ -287,11 +296,16 @@ async def get_model_metadata(
     user_id: str, model_unique_id: str,
 ) -> ModelMetaDto | None:
     """Return full metadata for a single model, or ``None`` if not found."""
-    connection_slug, model_slug = parse_model_unique_id(model_unique_id)
-    c = await resolve_owned_connection_by_slug(user_id, connection_slug)
-    if c is None:
+    _, model_slug = parse_model_unique_id(model_unique_id)
+    # Premium-aware resolve so ``xai:grok-3``-style ids hit the Premium
+    # Provider repository. A missing premium account or a missing user
+    # Connection both surface as LlmConnectionNotFoundError; we swallow it
+    # here because the caller contract is "None on not-found".
+    try:
+        c = await resolve_for_model(user_id, model_unique_id)
+    except LlmConnectionNotFoundError:
         return None
-    adapter_cls = ADAPTER_REGISTRY.get(c.adapter_type)
+    adapter_cls = get_adapter_class(c.adapter_type)
     if adapter_cls is None:
         return None
     models = await get_models_for_connection(c, adapter_cls, get_redis())
@@ -457,6 +471,7 @@ __all__ = [
     "ModelMetaDto",
     "ResolvedConnection",
     "resolve_owned_connection",
+    "resolve_for_model",
     "refresh_connection_models",
     "delete_all_for_user",
     "ADAPTER_REGISTRY",

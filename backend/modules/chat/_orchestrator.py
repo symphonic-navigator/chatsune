@@ -32,7 +32,7 @@ from backend.modules.llm import (
     get_effective_context_window,
     get_model_supports_vision,
     get_model_supports_reasoning,
-    resolve_owned_connection,
+    resolve_for_model,
     LlmConnectionNotFoundError,
     LlmInvalidModelUniqueIdError,
 )
@@ -322,7 +322,16 @@ async def run_inference(
         return
 
     llm_connection_slug, model_slug = model_unique_id.split(":", 1)
-    resolved_connection = await resolve_owned_connection(user_id, llm_connection_slug)
+    # Premium-aware resolve: handles reserved slugs (``xai``, ``ollama_cloud``)
+    # by routing through the Premium Provider service, otherwise falls back
+    # to the user's Connection repository. If neither matches we keep the
+    # historical fallback of (slug, "unknown") — inference will then fail
+    # downstream with a proper ``LlmConnectionNotFoundError`` but debug
+    # metadata remains non-None for event emission.
+    try:
+        resolved_connection = await resolve_for_model(user_id, model_unique_id)
+    except LlmConnectionNotFoundError:
+        resolved_connection = None
     connection_display_name = (
         resolved_connection.display_name if resolved_connection is not None else llm_connection_slug
     )
