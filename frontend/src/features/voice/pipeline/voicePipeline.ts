@@ -1,4 +1,4 @@
-import type { NarratorMode, PipelineState, VoicePreset } from '../types'
+import type { CapturedAudio, NarratorMode, PipelineState, VoicePreset } from '../types'
 import type { PersonaDto } from '../../../core/types/persona'
 import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
@@ -42,7 +42,7 @@ class VoicePipelineImpl {
     const gen = this.generation
     const captureCallbacks = {
       onSpeechStart: () => { this.setState({ phase: 'recording' }) },
-      onSpeechEnd: async (audio: Float32Array) => {
+      onSpeechEnd: async (audio: CapturedAudio) => {
         if (gen !== this.generation) return // stale session, discard
         this.setState({ phase: 'transcribing' })
         await this.handleAudio(audio, gen)
@@ -74,9 +74,9 @@ class VoicePipelineImpl {
     }
   }
 
-  private async handleAudio(audio: Float32Array, gen: number): Promise<void> {
+  private async handleAudio(audio: CapturedAudio, gen: number): Promise<void> {
     // Skip empty audio (e.g. stopPTT called before any samples were collected)
-    if (audio.length === 0) {
+    if (audio.pcm.length === 0 && audio.blob.size === 0) {
       if (gen === this.generation) this.setState({ phase: 'idle' })
       return
     }

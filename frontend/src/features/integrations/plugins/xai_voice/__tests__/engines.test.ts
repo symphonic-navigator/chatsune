@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { XaiSTTEngine, XaiTTSEngine } from '../engines'
+import type { CapturedAudio } from '../../../../voice/types'
 
 vi.mock('../api', () => ({
   transcribeXai: vi.fn(),
@@ -19,17 +20,30 @@ vi.mock('../../../store', () => ({
 
 import { transcribeXai, synthesiseXai } from '../api'
 
+function fakeBundle(): CapturedAudio {
+  return {
+    pcm: new Float32Array([0.1, -0.2, 0.3]),
+    blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm;codecs=opus' }),
+    mimeType: 'audio/webm;codecs=opus',
+    sampleRate: 0,
+    durationMs: 500,
+  }
+}
+
 describe('XaiSTTEngine', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('transcribe packs Float32Array into a WAV Blob and returns the text', async () => {
+  it('transcribe forwards the captured blob + mimeType to transcribeXai', async () => {
     ;(transcribeXai as ReturnType<typeof vi.fn>).mockResolvedValueOnce('hello')
     const engine = new XaiSTTEngine()
-    const res = await engine.transcribe(new Float32Array([0.1, -0.2, 0.3]))
+    const res = await engine.transcribe(fakeBundle())
     expect(res.text).toBe('hello')
-    const args = (transcribeXai as ReturnType<typeof vi.fn>).mock.calls[0][0] as { audio: Blob }
+    const args = (transcribeXai as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+      audio: Blob
+      mimeType: string
+    }
     expect(args.audio).toBeInstanceOf(Blob)
-    expect(args.audio.type).toBe('audio/wav')
+    expect(args.mimeType).toBe('audio/webm;codecs=opus')
   })
 
   it('isReady reflects integration store state', () => {

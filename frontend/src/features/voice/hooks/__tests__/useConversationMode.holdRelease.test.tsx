@@ -1,12 +1,13 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CapturedAudio } from '../../types'
 
 // These mocks must be set up BEFORE the hook is imported. We capture the
 // callbacks passed into audioCapture.startContinuous so that each test can
 // synthesise VAD speech-start / speech-end / misfire events at will.
 interface CapturedCallbacks {
   onSpeechStart: () => void
-  onSpeechEnd: (audio: Float32Array) => void
+  onSpeechEnd: (audio: CapturedAudio) => void
   onVolumeChange: (level: number) => void
   onMisfire?: () => void
 }
@@ -20,8 +21,25 @@ vi.mock('../../infrastructure/audioCapture', () => ({
     stopContinuous: vi.fn(() => {
       captured = null
     }),
+    // The hook calls this to decide whether to start its own MediaRecorder.
+    // Returning null forces the Tier-3 WAV fallback path, which is what the
+    // hold-release behaviour tests assert against (the PCM length equality
+    // checks only hold when we build the Tier-3 WAV from the merged PCM).
+    getMediaStream: vi.fn(() => null),
   },
 }))
+
+// Build a CapturedAudio with the given PCM; blob/mimeType reflect the
+// Tier-3 WAV fallback because the tests do not exercise MediaRecorder.
+function captureFromPcm(pcm: Float32Array): CapturedAudio {
+  return {
+    pcm,
+    blob: new Blob([], { type: 'audio/wav' }),
+    mimeType: 'audio/wav',
+    sampleRate: 16_000,
+    durationMs: (pcm.length / 16_000) * 1000,
+  }
+}
 
 vi.mock('../../infrastructure/audioPlayback', () => ({
   audioPlayback: {
@@ -46,7 +64,7 @@ vi.mock('../../components/ReadAloudButton', () => ({
   setActiveReader: vi.fn(),
 }))
 
-const transcribeMock = vi.fn<(audio: Float32Array) => Promise<{ text: string }>>()
+const transcribeMock = vi.fn<(audio: CapturedAudio) => Promise<{ text: string }>>()
 vi.mock('../../engines/resolver', () => ({
   resolveSTTEngine: () => ({
     id: 'fake-stt',
@@ -140,7 +158,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     // This speech-end marks VAD as idle again.
     const audio1 = new Float32Array(16_000) // 1 s @ 16 kHz
     audio1.fill(0.1)
-    act(() => { captured!.onSpeechEnd(audio1) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(audio1)) })
     expect(transcribeMock).not.toHaveBeenCalled()
 
     // User resumes speaking while still holding — VAD active again.
@@ -157,7 +175,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     await act(async () => { vi.advanceTimersByTime(100) })
     const audio2 = new Float32Array(8_000) // 0.5 s @ 16 kHz
     audio2.fill(0.2)
-    act(() => { captured!.onSpeechEnd(audio2) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(audio2)) })
 
     // Drain any remaining timers so nothing fires after assertions.
     await act(async () => { vi.advanceTimersByTime(1_000) })
@@ -166,7 +184,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     // Exactly ONE STT call, with the concatenated audio length.
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
-    expect(sent.length).toBe(audio1.length + audio2.length)
+    expect(sent.pcm.length).toBe(audio1.length + audio2.length)
   })
 
   it('dispatches buffered audio immediately when VAD is idle at release time', async () => {
@@ -186,7 +204,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     const audio1 = new Float32Array(12_000)
     audio1.fill(0.3)
     // speech-end BEFORE release → VAD is idle at release time.
-    act(() => { captured!.onSpeechEnd(audio1) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(audio1)) })
     expect(transcribeMock).not.toHaveBeenCalled()
 
     // Release during inter-utterance silence. VAD is idle, so we dispatch
@@ -196,7 +214,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
 
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
-    expect(sent.length).toBe(audio1.length)
+    expect(sent.pcm.length).toBe(audio1.length)
   })
 
   it('release with VAD idle (all speech-ends already fired) dispatches synchronously, no timer', async () => {
@@ -214,14 +232,14 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     await act(async () => { vi.advanceTimersByTime(200) })
     const audio = new Float32Array(5_000)
     audio.fill(0.4)
-    act(() => { captured!.onSpeechEnd(audio) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(audio)) })
 
     // Release → immediate dispatch. No timers advanced.
     act(() => { useConversationModeStore.getState().setHolding(false) })
     await act(async () => { await flushMicrotasks() })
 
     expect(transcribeMock).toHaveBeenCalledTimes(1)
-    expect(transcribeMock.mock.calls[0][0].length).toBe(audio.length)
+    expect(transcribeMock.mock.calls[0][0].pcm.length).toBe(audio.length)
   })
 
   it('release mid-utterance merges with late speech-end beyond the original 500 ms window', async () => {
@@ -244,7 +262,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     for (const seg of [seg1, seg2, seg3, seg4]) {
       act(() => { captured!.onSpeechStart() })
       await act(async () => { vi.advanceTimersByTime(200) })
-      act(() => { captured!.onSpeechEnd(seg) })
+      act(() => { captured!.onSpeechEnd(captureFromPcm(seg)) })
     }
     expect(transcribeMock).not.toHaveBeenCalled()
 
@@ -262,12 +280,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
 
     // Final chunk finally arrives.
     const seg5 = new Float32Array(4_000); seg5.fill(0.5)
-    act(() => { captured!.onSpeechEnd(seg5) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(seg5)) })
     await act(async () => { await flushMicrotasks() })
 
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
-    expect(sent.length).toBe(seg1.length + seg2.length + seg3.length + seg4.length + seg5.length)
+    expect(sent.pcm.length).toBe(seg1.length + seg2.length + seg3.length + seg4.length + seg5.length)
   })
 
   it('safety fallback dispatches buffer if no speech-end arrives within 3 s', async () => {
@@ -285,7 +303,7 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     act(() => { captured!.onSpeechStart() })
     await act(async () => { vi.advanceTimersByTime(200) })
     const audio1 = new Float32Array(6_000); audio1.fill(0.5)
-    act(() => { captured!.onSpeechEnd(audio1) })
+    act(() => { captured!.onSpeechEnd(captureFromPcm(audio1)) })
 
     // User resumes speaking — VAD active again; no speech-end will arrive.
     act(() => { captured!.onSpeechStart() })
@@ -300,6 +318,6 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
 
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
-    expect(sent.length).toBe(audio1.length)
+    expect(sent.pcm.length).toBe(audio1.length)
   })
 })

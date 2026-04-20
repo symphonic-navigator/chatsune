@@ -23,11 +23,20 @@ async function ensureOk(res: Response): Promise<Response> {
   throw new Error(msg)
 }
 
-export interface TranscribeParams { audio: Blob; language?: string }
+export interface TranscribeParams { audio: Blob; mimeType: string; language?: string }
 
-export async function transcribeXai({ audio, language }: TranscribeParams): Promise<string> {
+function filenameForMime(mimeType: string): string {
+  // Some multipart servers use the filename extension as a fallback hint
+  // when the Content-Type is generic; keep it in sync with the blob MIME.
+  if (mimeType.startsWith('audio/webm')) return 'audio.webm'
+  if (mimeType.startsWith('audio/mp4')) return 'audio.m4a'
+  return 'audio.wav'
+}
+
+export async function transcribeXai({ audio, mimeType, language }: TranscribeParams): Promise<string> {
   const form = new FormData()
-  form.append('audio', audio, 'audio.wav')
+  const file = new File([audio], filenameForMime(mimeType), { type: mimeType })
+  form.append('audio', file, file.name)
   if (language) form.append('language', language)
   const res = await fetch(`${BASE}/stt`, {
     method: 'POST',

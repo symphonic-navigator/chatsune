@@ -19,8 +19,8 @@ describe('xai_voice api', () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ text: 'hi' }), { status: 200 }),
     )
-    const audio = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/wav' })
-    const text = await transcribeXai({ audio, language: 'en' })
+    const audio = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm;codecs=opus' })
+    const text = await transcribeXai({ audio, mimeType: 'audio/webm;codecs=opus', language: 'en' })
     expect(text).toBe('hi')
 
     const [url, init] = fetchMock.mock.calls[0]
@@ -28,6 +28,12 @@ describe('xai_voice api', () => {
     expect(init.method).toBe('POST')
     expect(init.body).toBeInstanceOf(FormData)
     expect(init.headers.Authorization).toBe('Bearer TEST_TOKEN')
+    // multipart filename tracks the MIME extension so servers using the
+    // filename as a content-type hint disambiguate correctly.
+    const form = init.body as FormData
+    const file = form.get('audio') as File
+    expect(file.name).toBe('audio.webm')
+    expect(file.type).toBe('audio/webm;codecs=opus')
   })
 
   it('synthesiseXai posts JSON and returns a Blob', async () => {

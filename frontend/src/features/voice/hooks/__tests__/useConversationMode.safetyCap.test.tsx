@@ -1,11 +1,12 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CapturedAudio } from '../../types'
 
 // Mocks mirror the holdRelease test file: capture the VAD callbacks and
 // pass through a real audioPlayback so spies on its methods are observable.
 interface CapturedCallbacks {
   onSpeechStart: () => void
-  onSpeechEnd: (audio: Float32Array) => void
+  onSpeechEnd: (audio: CapturedAudio) => void
   onVolumeChange: (level: number) => void
   onMisfire?: () => void
 }
@@ -19,8 +20,19 @@ vi.mock('../../infrastructure/audioCapture', () => ({
     stopContinuous: vi.fn(() => {
       captured = null
     }),
+    getMediaStream: vi.fn(() => null),
   },
 }))
+
+function captureFromPcm(pcm: Float32Array): CapturedAudio {
+  return {
+    pcm,
+    blob: new Blob([], { type: 'audio/wav' }),
+    mimeType: 'audio/wav',
+    sampleRate: 16_000,
+    durationMs: (pcm.length / 16_000) * 1000,
+  }
+}
 
 // NOTE: we intentionally do NOT mock the audioPlayback module — the spec
 // requires spying on the real methods via vi.spyOn so the real discardMuted
@@ -40,7 +52,7 @@ vi.mock('../../components/ReadAloudButton', () => ({
   setActiveReader: vi.fn(),
 }))
 
-const transcribeMock = vi.fn<(audio: Float32Array) => Promise<{ text: string }>>()
+const transcribeMock = vi.fn<(audio: CapturedAudio) => Promise<{ text: string }>>()
 vi.mock('../../engines/resolver', () => ({
   resolveSTTEngine: () => ({
     id: 'fake-stt',
@@ -109,7 +121,7 @@ async function driveBargeCycle(transcript: string): Promise<void> {
   await act(async () => { vi.advanceTimersByTime(200) })
   const audio = new Float32Array(4_000)
   audio.fill(0.1)
-  act(() => { captured!.onSpeechEnd(audio) })
+  act(() => { captured!.onSpeechEnd(captureFromPcm(audio)) })
   // STT is async — drain microtasks so the outcome branch runs.
   await act(async () => { await flushMicrotasks() })
 }

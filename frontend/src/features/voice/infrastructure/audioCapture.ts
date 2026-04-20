@@ -1,10 +1,19 @@
 import { MicVAD } from '@ricky0123/vad-web'
 import type { VoiceActivationThreshold } from '../stores/voiceSettingsStore'
 import { VAD_PRESETS } from './vadPresets'
+import type { CapturedAudio } from '../types'
+import { pickRecordingMimeType, createRecorder } from './audioRecording'
+import { float32ToWavBlob } from './wavEncoder'
 
 export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
-  onSpeechEnd: (audio: Float32Array) => void
+  /**
+   * Fired when a captured utterance is ready. `audio.pcm` is the raw 16 kHz
+   * mono Float32 stream from VAD/ScriptProcessor; `audio.blob` is the
+   * upload-ready payload (compressed Opus/AAC when available, WAV when
+   * falling back to Tier 3).
+   */
+  onSpeechEnd: (audio: CapturedAudio) => void
   onVolumeChange: (level: number) => void
   /**
    * Continuous/VAD mode only: fired when a speech-start was a false positive
@@ -13,6 +22,22 @@ export interface AudioCaptureCallbacks {
    * "user-speaking" on speech-start need this to revert their state.
    */
   onMisfire?: () => void
+}
+
+export interface StartContinuousOptions {
+  threshold?: VoiceActivationThreshold
+  /**
+   * When `true`, audioCapture does NOT start its own MediaRecorder around
+   * each VAD segment. The caller takes ownership of recording via
+   * `getMediaStream()` and drives its own lifecycle. `onSpeechEnd` still
+   * fires, but the delivered `CapturedAudio.blob` is the Tier-3 WAV
+   * derived from the PCM — the caller is expected to ignore that blob
+   * and attach its own blob to the utterance before handing it to STT.
+   *
+   * This is used by `useConversationMode`, which runs one MediaRecorder
+   * per hold-cycle spanning multiple VAD sub-segments.
+   */
+  externalRecorder?: boolean
 }
 
 // vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
@@ -28,6 +53,11 @@ export interface AudioCaptureCallbacks {
 const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'
 const VAD_CDN = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/'
 
+// Target sample rate for VAD-path PCM. MediaRecorder records at the
+// browser's native rate (typically 48 kHz), but the PCM we build the
+// Tier-3 WAV from comes from the 16 kHz AudioContext.
+const VAD_SAMPLE_RATE = 16_000
+
 class AudioCaptureImpl {
   // -- shared state --
   private callbacks: AudioCaptureCallbacks | null = null
@@ -39,11 +69,31 @@ class AudioCaptureImpl {
   private pttStream: MediaStream | null = null
   private pttProcessor: ScriptProcessorNode | null = null
   private pttChunks: Float32Array[] = []
+  private pttStartedAt = 0
   private pttSession = 0 // incremented on each start, checked after await
+  private pttRecorder: MediaRecorder | null = null
+  private pttRecorderMime: string | null = null
+  private pttRecorderChunks: Blob[] = []
 
   // -- VAD (continuous) state --
   private vad: MicVAD | null = null
   private vadContext: AudioContext | null = null
+  private vadStream: MediaStream | null = null
+  private vadRecorder: MediaRecorder | null = null
+  private vadRecorderMime: string | null = null
+  private vadRecorderChunks: Blob[] = []
+  private vadSegmentStartedAt = 0
+  private vadExternalRecorder = false
+
+  /**
+   * Returns the active MediaStream (PTT or continuous/VAD), or `null` if
+   * no capture session is running. Used by callers who run their own
+   * MediaRecorder lifecycle (e.g. conversation mode's hold-cycle
+   * recording).
+   */
+  getMediaStream(): MediaStream | null {
+    return this.pttStream ?? this.vadStream ?? null
+  }
 
   /**
    * Push-to-talk: record raw audio from mic. No VAD needed.
@@ -52,6 +102,7 @@ class AudioCaptureImpl {
   async startPTT(callbacks: AudioCaptureCallbacks): Promise<void> {
     this.callbacks = callbacks
     this.pttChunks = []
+    this.pttRecorderChunks = []
     const session = ++this.pttSession
 
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -69,7 +120,7 @@ class AudioCaptureImpl {
     }
 
     this.pttStream = stream
-    this.pttContext = new AudioContext({ sampleRate: 16_000 })
+    this.pttContext = new AudioContext({ sampleRate: VAD_SAMPLE_RATE })
     const source = this.pttContext.createMediaStreamSource(this.pttStream)
 
     // Collect raw PCM samples
@@ -87,6 +138,24 @@ class AudioCaptureImpl {
     source.connect(this.analyser)
     this.startVolumeMeter()
 
+    // Parallel compressed recording. If no supported MIME type, fall
+    // through to Tier-3 WAV at stop() time.
+    this.pttRecorderMime = pickRecordingMimeType()
+    if (this.pttRecorderMime) {
+      try {
+        this.pttRecorder = createRecorder(stream, this.pttRecorderMime)
+        this.pttRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) this.pttRecorderChunks.push(ev.data)
+        }
+        this.pttRecorder.start()
+      } catch (err) {
+        console.warn('[audioCapture] MediaRecorder start failed, falling back to WAV:', err)
+        this.pttRecorder = null
+        this.pttRecorderMime = null
+      }
+    }
+
+    this.pttStartedAt = performance.now()
     callbacks.onSpeechStart()
   }
 
@@ -99,15 +168,23 @@ class AudioCaptureImpl {
     this.stopVolumeMeter()
     const cb = this.callbacks
 
-    // Concatenate recorded chunks
+    // Concatenate recorded PCM chunks
     const totalLength = this.pttChunks.reduce((sum, c) => sum + c.length, 0)
-    const audio = new Float32Array(totalLength)
+    const pcm = new Float32Array(totalLength)
     let offset = 0
     for (const chunk of this.pttChunks) {
-      audio.set(chunk, offset)
+      pcm.set(chunk, offset)
       offset += chunk.length
     }
     this.pttChunks = []
+    const durationMs = Math.max(0, performance.now() - this.pttStartedAt)
+
+    const recorder = this.pttRecorder
+    const mime = this.pttRecorderMime
+    const chunks = this.pttRecorderChunks
+    this.pttRecorder = null
+    this.pttRecorderMime = null
+    this.pttRecorderChunks = []
 
     // Clean up audio nodes
     this.pttProcessor?.disconnect()
@@ -119,19 +196,55 @@ class AudioCaptureImpl {
     this.analyser = null
     this.callbacks = null
 
-    // Always deliver — pipeline handles empty audio gracefully
-    cb?.onSpeechEnd(audio)
+    const deliver = (blob: Blob, mimeType: string, sampleRate: number): void => {
+      cb?.onSpeechEnd({ pcm, blob, mimeType, sampleRate, durationMs })
+    }
+
+    // If a Tier-1/2 recorder was running, wait for its final dataavailable
+    // via onstop before building the bundle. Otherwise derive WAV from PCM.
+    if (recorder && mime) {
+      const finalise = (): void => {
+        const blob = new Blob(chunks, { type: mime })
+        if (blob.size > 0) {
+          // MediaRecorder doesn't reliably expose its actual sample rate;
+          // report 0 to signal "server-negotiated / container-embedded".
+          deliver(blob, mime, 0)
+        } else {
+          // Recorder produced no bytes (very short PTT). Fall back to WAV
+          // so the STT engine still gets something to chew on.
+          deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
+        }
+      }
+      recorder.addEventListener('stop', finalise, { once: true })
+      try {
+        if (recorder.state !== 'inactive') recorder.stop()
+        else finalise()
+      } catch {
+        finalise()
+      }
+    } else {
+      deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
+    }
   }
 
   /**
    * Continuous mode: use VAD to detect speech start/end automatically.
    * Call stopContinuous() to tear down.
+   *
+   * Legacy call-site form (`threshold` only) is still accepted. New callers
+   * should pass an options object so `externalRecorder` can be set.
    */
   async startContinuous(
     callbacks: AudioCaptureCallbacks,
-    threshold: VoiceActivationThreshold = 'medium',
+    thresholdOrOptions: VoiceActivationThreshold | StartContinuousOptions = 'medium',
   ): Promise<void> {
     this.callbacks = callbacks
+
+    const options: StartContinuousOptions = typeof thresholdOrOptions === 'string'
+      ? { threshold: thresholdOrOptions }
+      : thresholdOrOptions
+    const threshold: VoiceActivationThreshold = options.threshold ?? 'medium'
+    this.vadExternalRecorder = options.externalRecorder === true
 
     let capturedStream: MediaStream | null = null
     const getStream = async (): Promise<MediaStream> => {
@@ -162,17 +275,18 @@ class AudioCaptureImpl {
       minSpeechMs: preset.minSpeechFrames * MS_PER_FRAME,
       redemptionMs: preset.redemptionFrames * MS_PER_FRAME,
       onSpeechStart: () => {
-        this.callbacks?.onSpeechStart()
+        this.handleVadSpeechStart()
       },
       onSpeechEnd: (audio: Float32Array) => {
-        this.callbacks?.onSpeechEnd(audio)
+        this.handleVadSpeechEnd(audio)
       },
       onVADMisfire: () => {
-        this.callbacks?.onMisfire?.()
+        this.handleVadMisfire()
       },
     })
 
     if (capturedStream) {
+      this.vadStream = capturedStream
       this.vadContext = new AudioContext()
       const source = this.vadContext.createMediaStreamSource(capturedStream)
       this.analyser = this.vadContext.createAnalyser()
@@ -184,6 +298,86 @@ class AudioCaptureImpl {
     await this.vad.start()
   }
 
+  private handleVadSpeechStart(): void {
+    this.vadSegmentStartedAt = performance.now()
+    // External-recorder mode: caller (e.g. useConversationMode) owns
+    // recording lifecycle. We only forward the VAD edge.
+    if (!this.vadExternalRecorder && this.vadStream) {
+      const mime = pickRecordingMimeType()
+      this.vadRecorderMime = mime
+      this.vadRecorderChunks = []
+      if (mime) {
+        try {
+          this.vadRecorder = createRecorder(this.vadStream, mime)
+          this.vadRecorder.ondataavailable = (ev) => {
+            if (ev.data && ev.data.size > 0) this.vadRecorderChunks.push(ev.data)
+          }
+          this.vadRecorder.start()
+        } catch (err) {
+          console.warn('[audioCapture] VAD MediaRecorder start failed:', err)
+          this.vadRecorder = null
+          this.vadRecorderMime = null
+        }
+      }
+    }
+    this.callbacks?.onSpeechStart()
+  }
+
+  private handleVadSpeechEnd(pcm: Float32Array): void {
+    const cb = this.callbacks
+    const durationMs = Math.max(0, performance.now() - this.vadSegmentStartedAt)
+
+    const deliver = (blob: Blob, mimeType: string, sampleRate: number): void => {
+      cb?.onSpeechEnd({ pcm, blob, mimeType, sampleRate, durationMs })
+    }
+
+    if (this.vadExternalRecorder) {
+      // Caller will attach its own blob. Deliver Tier-3 WAV as a "best-effort"
+      // payload so the bundle is valid if the caller happens to use it.
+      deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
+      return
+    }
+
+    const recorder = this.vadRecorder
+    const mime = this.vadRecorderMime
+    const chunks = this.vadRecorderChunks
+    this.vadRecorder = null
+    this.vadRecorderMime = null
+    this.vadRecorderChunks = []
+
+    if (recorder && mime) {
+      const finalise = (): void => {
+        const blob = new Blob(chunks, { type: mime })
+        if (blob.size > 0) {
+          deliver(blob, mime, 0)
+        } else {
+          deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
+        }
+      }
+      recorder.addEventListener('stop', finalise, { once: true })
+      try {
+        if (recorder.state !== 'inactive') recorder.stop()
+        else finalise()
+      } catch {
+        finalise()
+      }
+    } else {
+      deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
+    }
+  }
+
+  private handleVadMisfire(): void {
+    // Drop the recorder silently — no utterance to deliver.
+    const recorder = this.vadRecorder
+    this.vadRecorder = null
+    this.vadRecorderMime = null
+    this.vadRecorderChunks = []
+    if (recorder && recorder.state !== 'inactive') {
+      try { recorder.stop() } catch { /* already stopped */ }
+    }
+    this.callbacks?.onMisfire?.()
+  }
+
   /**
    * Stop continuous (VAD) recording.
    */
@@ -192,10 +386,21 @@ class AudioCaptureImpl {
     this.vad?.pause()
     this.vad?.destroy()
     this.vad = null
+    // If a VAD segment was mid-recording, abort (not stop) to discard the
+    // in-flight blob — the caller has torn down, nothing will consume it.
+    const recorder = this.vadRecorder
+    this.vadRecorder = null
+    this.vadRecorderMime = null
+    this.vadRecorderChunks = []
+    if (recorder && recorder.state !== 'inactive') {
+      try { recorder.stop() } catch { /* ignore */ }
+    }
+    this.vadStream = null
     this.vadContext?.close()
     this.vadContext = null
     this.analyser = null
     this.callbacks = null
+    this.vadExternalRecorder = false
   }
 
   // -- Volume meter (shared) --

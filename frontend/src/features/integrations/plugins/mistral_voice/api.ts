@@ -21,11 +21,20 @@ function client(apiKey: string): Mistral {
 export interface TranscribeParams {
   apiKey: string
   audio: Blob
+  mimeType: string
   language?: string
 }
 
-export async function transcribe({ apiKey, audio, language }: TranscribeParams): Promise<string> {
-  const file = new File([audio], 'recording.wav', { type: audio.type || 'audio/wav' })
+function filenameForMime(mimeType: string): string {
+  // Mistral's server inspects the filename extension as a fallback when the
+  // Content-Type is missing or generic. Keep the two aligned.
+  if (mimeType.startsWith('audio/webm')) return 'recording.webm'
+  if (mimeType.startsWith('audio/mp4')) return 'recording.m4a'
+  return 'recording.wav'
+}
+
+export async function transcribe({ apiKey, audio, mimeType, language }: TranscribeParams): Promise<string> {
+  const file = new File([audio], filenameForMime(mimeType), { type: mimeType || audio.type || 'audio/wav' })
 
   const request: AudioTranscriptionRequest = {
     model: 'voxtral-mini-latest',

@@ -2,10 +2,31 @@
 export interface STTOptions { language?: string }
 export interface STTResult { text: string; language?: string; segments?: TranscriptSegment[] }
 export interface TranscriptSegment { start: number; end: number; text: string }
+
+/**
+ * A captured audio utterance, ready for hand-off to an STT engine.
+ *
+ * Cloud STT engines upload `blob` directly (saves ~10x bytes over WAV for
+ * webm/opus, ~5x for mp4/aac). Engines that still need raw PCM (future local
+ * STT, debug paths) can fall back to `pcm`.
+ *
+ * `mimeType === 'audio/wav'` indicates the Tier-3 fallback path where no
+ * MediaRecorder was available — the blob was derived from the PCM via
+ * `float32ToWavBlob`. Downstream code should treat all three MIME types as
+ * equivalent uploads; only the bytes-on-the-wire differ.
+ */
+export interface CapturedAudio {
+  pcm: Float32Array
+  blob: Blob
+  mimeType: string
+  sampleRate: number
+  durationMs: number
+}
+
 export interface STTEngine {
   readonly id: string; readonly name: string; readonly modelSize: number; readonly languages: string[]
   init(): Promise<void>
-  transcribe(audio: Float32Array, options?: STTOptions): Promise<STTResult>
+  transcribe(audio: CapturedAudio, options?: STTOptions): Promise<STTResult>
   dispose(): Promise<void>
   isReady(): boolean
 }

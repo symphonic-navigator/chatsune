@@ -11,6 +11,20 @@ import { setActiveReader } from '../components/ReadAloudButton'
 import { resolveSTTEngine } from '../engines/resolver'
 import { decideSttOutcome } from './bargeDecision'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
+import { pickRecordingMimeType, createRecorder } from '../infrastructure/audioRecording'
+import { float32ToWavBlob } from '../infrastructure/wavEncoder'
+import type { CapturedAudio } from '../types'
+
+// One MediaRecorder instance per utterance (non-hold) or per hold-cycle
+// (hold). The hook drives the lifecycle directly because the hold-cycle
+// spans multiple VAD sub-segments and audioCapture's per-segment recorder
+// would produce one blob per segment instead of one per utterance.
+interface UtteranceRecorder {
+  recorder: MediaRecorder
+  mimeType: string
+  chunks: Blob[]
+  startedAt: number
+}
 
 interface UseConversationModeOptions {
   /**
@@ -60,12 +74,23 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   const holdingRef = useRef(false)
   useEffect(() => { holdingRef.current = isHolding }, [isHolding])
 
-  // Buffered audio produced by VAD speech-end events that were swallowed
-  // because the user was holding the "keep talking" button. When the user
-  // releases the hold (or a later speech-end arrives while NOT held), we
-  // concatenate these with the final chunk and dispatch the whole thing to
-  // STT as one utterance.
+  // Buffered PCM from VAD speech-end events. Multiple sub-segments accumulate
+  // while the user holds "keep talking"; on release (or a later non-held
+  // speech-end) the full buffer is concatenated into a single Float32Array
+  // and bundled with the compressed blob for STT.
+  //
+  // PCM is kept alongside the compressed blob so local STT engines and
+  // debug paths still work — only cloud engines read `.blob`.
   const heldAudioRef = useRef<Float32Array[]>([])
+
+  // Current utterance recorder. Starts on the first VAD speech-start OR on
+  // hold-begin (whichever comes first), stops at dispatch time. A single
+  // recorder spans the whole hold-cycle: its ondataavailable fires at
+  // whatever cadence MediaRecorder chooses, and the accumulated Blob is
+  // the one-shot upload payload. Stale-cycle safety comes from the bargeId
+  // check inside transcribeAndSend (the STT call is what triggers side
+  // effects; the bundle itself is cheap to throw away).
+  const utteranceRecorderRef = useRef<UtteranceRecorder | null>(null)
 
   const isStreaming = useChatStore((s) => s.isStreaming)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
@@ -102,14 +127,110 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     return merged
   }, [])
 
-  // Run STT against an already-captured Float32Array and fire onSend on
+  /**
+   * Start an utterance recorder if one isn't already running. Called from:
+   *  - VAD speech-start (first utterance of a non-hold cycle)
+   *  - Hold-begin (cover speech that started before VAD crossed the threshold)
+   *
+   * No-op when a recorder is already running or when MediaRecorder is
+   * unavailable — the Tier-3 WAV fallback is built from buffered PCM at
+   * dispatch time.
+   */
+  const ensureRecorderStarted = useCallback((): void => {
+    if (utteranceRecorderRef.current) return
+    const stream = audioCapture.getMediaStream()
+    if (!stream) return
+    const mime = pickRecordingMimeType()
+    if (!mime) return
+    try {
+      const recorder = createRecorder(stream, mime)
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) chunks.push(ev.data)
+      }
+      recorder.start()
+      utteranceRecorderRef.current = {
+        recorder,
+        mimeType: mime,
+        chunks,
+        startedAt: performance.now(),
+      }
+    } catch (err) {
+      console.warn('[ConversationMode] MediaRecorder start failed:', err)
+      utteranceRecorderRef.current = null
+    }
+  }, [])
+
+  /**
+   * Finalise the current utterance recorder, waiting for its final
+   * `dataavailable` + `onstop`. Resolves with the upload-ready bundle
+   * (compressed if available, WAV fallback otherwise). `pcm` is the
+   * caller-provided Float32 merge — used as the `CapturedAudio.pcm` field
+   * AND as input to the Tier-3 WAV encoder when no recorder ran.
+   */
+  const finaliseRecorderAndBundle = useCallback(
+    (pcm: Float32Array): Promise<CapturedAudio> => {
+      const state = utteranceRecorderRef.current
+      utteranceRecorderRef.current = null
+      const fallback: CapturedAudio = {
+        pcm,
+        blob: float32ToWavBlob(pcm, 16_000),
+        mimeType: 'audio/wav',
+        sampleRate: 16_000,
+        durationMs: pcm.length > 0 ? (pcm.length / 16_000) * 1000 : 0,
+      }
+      if (!state) return Promise.resolve(fallback)
+
+      return new Promise<CapturedAudio>((resolve) => {
+        const finalise = (): void => {
+          const durationMs = Math.max(0, performance.now() - state.startedAt)
+          const blob = new Blob(state.chunks, { type: state.mimeType })
+          if (blob.size === 0) {
+            resolve(fallback)
+            return
+          }
+          resolve({
+            pcm,
+            blob,
+            mimeType: state.mimeType,
+            sampleRate: 0,
+            durationMs,
+          })
+        }
+        state.recorder.addEventListener('stop', finalise, { once: true })
+        try {
+          if (state.recorder.state !== 'inactive') state.recorder.stop()
+          else finalise()
+        } catch {
+          finalise()
+        }
+      })
+    },
+    [],
+  )
+
+  /**
+   * Abort (not stop) the current utterance recorder. Discards any pending
+   * bundle. Used on generation bumps (stale cycle), teardown, or any path
+   * where we know the bundle must not be uploaded.
+   */
+  const abortRecorder = useCallback((): void => {
+    const state = utteranceRecorderRef.current
+    utteranceRecorderRef.current = null
+    if (!state) return
+    try {
+      if (state.recorder.state !== 'inactive') state.recorder.stop()
+    } catch { /* already stopped */ }
+  }, [])
+
+  // Run STT against an already-captured CapturedAudio and fire onSend on
   // any non-empty transcription. Called when the user's utterance ends
   // (release or normal VAD speech-end while not holding).
-  const transcribeAndSend = useCallback(async (audio: Float32Array): Promise<void> => {
+  const transcribeAndSend = useCallback(async (audio: CapturedAudio): Promise<void> => {
     if (!activeRef.current) return
     const sttBargeId = bargeIdRef.current
 
-    if (audio.length === 0) {
+    if (audio.pcm.length === 0 && audio.blob.size === 0) {
       // No audio captured (e.g. held-release with nothing buffered). Treat
       // as "no barge confirmed" — resume if we're muted, otherwise just
       // return to listening.
@@ -300,7 +421,10 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     if (!activeRef.current) return
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
-  }, [executeBarge, clearPendingBarge])
+    // Start the utterance recorder on the first speech-start of a cycle.
+    // If a hold-begin already started it, this is a no-op.
+    ensureRecorderStarted()
+  }, [executeBarge, clearPendingBarge, ensureRecorderStarted])
 
   /**
    * VAD speech-end handler. Two cases:
@@ -314,7 +438,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * inside the delay window), fire it now before handling the utterance so
    * playback stops before we transition to "transcribing".
    */
-  const handleSpeechEnd = useCallback((audio: Float32Array) => {
+  const handleSpeechEnd = useCallback((audio: CapturedAudio) => {
     vadActiveRef.current = false
     if (!activeRef.current) return
     if (pendingBargeRef.current) {
@@ -322,18 +446,22 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       executeBarge()
     }
     if (holdingRef.current) {
-      if (audio.length > 0) heldAudioRef.current.push(audio)
+      if (audio.pcm.length > 0) heldAudioRef.current.push(audio.pcm)
       // Stay in user-speaking; VAD will re-fire speech-start on the next
-      // utterance and we'll continue accumulating.
+      // utterance and we'll continue accumulating. The utterance recorder
+      // keeps running across the gap — one blob per hold-cycle.
       return
     }
     if (releaseFallbackRef.current) {
       clearTimeout(releaseFallbackRef.current)
       releaseFallbackRef.current = null
     }
-    const merged = flushHeldAudio(audio)
-    void transcribeAndSend(merged)
-  }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge])
+    const merged = flushHeldAudio(audio.pcm)
+    // Finalise the hold-cycle/utterance recorder and bundle before handing
+    // to STT. When there was no recorder (no MediaRecorder support), this
+    // falls through to the Tier-3 WAV built from the PCM.
+    void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
+  }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge, finaliseRecorderAndBundle])
 
   /**
    * VAD misfire handler. Silero optimistically emits speech-start on any
@@ -370,6 +498,10 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * already idle.
    */
   const teardown = useCallback(async (restoreSid: string | null) => {
+    // Abort any in-flight utterance recorder BEFORE stopContinuous tears down
+    // the media stream — once the tracks are gone the recorder's final chunk
+    // may arrive empty and we don't want a stale bundle to be dispatched.
+    abortRecorder()
     try { audioCapture.stopContinuous() } catch { /* not active */ }
     clearPendingBarge()
     if (releaseFallbackRef.current) {
@@ -397,7 +529,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     useChatStore.getState().setReasoningOverride(prev)
 
     heldAudioRef.current = []
-  }, [clearPendingBarge])
+  }, [clearPendingBarge, abortRecorder])
 
   // Entry effect: when `active` flips on, snapshot reasoning, force it off,
   // and start the VAD. When it flips off, tear everything down.
@@ -429,7 +561,14 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         onSpeechEnd: handleSpeechEnd,
         onVolumeChange: () => {},
         onMisfire: handleMisfire,
-      }, voiceActivationThresholdRef.current).catch((err: unknown) => {
+      }, {
+        threshold: voiceActivationThresholdRef.current,
+        // We drive our own per-hold-cycle MediaRecorder lifecycle (see
+        // ensureRecorderStarted / finaliseRecorderAndBundle). The blob
+        // delivered by audioCapture in external-recorder mode is the
+        // Tier-3 WAV fallback and is ignored here.
+        externalRecorder: true,
+      }).catch((err: unknown) => {
         console.error('[ConversationMode] Failed to start VAD:', err)
         useNotificationStore.getState().addNotification({
           level: 'error',
@@ -460,6 +599,15 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   useEffect(() => {
     const wasHolding = prevHoldingRef.current
     prevHoldingRef.current = isHolding
+
+    if (!wasHolding && isHolding) {
+      // Hold-begin: make sure a recorder is running so the whole hold-cycle
+      // is captured as one blob. If VAD hasn't fired speech-start yet, this
+      // still grabs the mic stream via audioCapture.getMediaStream().
+      ensureRecorderStarted()
+      return
+    }
+
     if (wasHolding && !isHolding) {
       if (releaseFallbackRef.current) {
         clearTimeout(releaseFallbackRef.current)
@@ -468,9 +616,9 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       if (!vadActiveRef.current) {
         // VAD idle — the last speech-end has already landed. Dispatch whatever
         // we have buffered right away.
-        if (heldAudioRef.current.length > 0) {
+        if (heldAudioRef.current.length > 0 || utteranceRecorderRef.current) {
           const merged = flushHeldAudio(null)
-          void transcribeAndSend(merged)
+          void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
         }
         return
       }
@@ -479,13 +627,13 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       // fires if that never happens.
       releaseFallbackRef.current = setTimeout(() => {
         releaseFallbackRef.current = null
-        if (heldAudioRef.current.length > 0) {
+        if (heldAudioRef.current.length > 0 || utteranceRecorderRef.current) {
           const merged = flushHeldAudio(null)
-          void transcribeAndSend(merged)
+          void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
         }
       }, RELEASE_SAFETY_MS)
     }
-  }, [isHolding, flushHeldAudio, transcribeAndSend])
+  }, [isHolding, flushHeldAudio, transcribeAndSend, finaliseRecorderAndBundle, ensureRecorderStarted])
 
   // Observe chat stream to advance phase. `isWaitingForResponse` (set by
   // handleSend) + `isStreaming` (set when tokens arrive) together map to
