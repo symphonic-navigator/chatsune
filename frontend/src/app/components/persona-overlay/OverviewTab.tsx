@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { personasApi } from '../../../core/api/personas'
-import { llmApi } from '../../../core/api/llm'
 import { ApiError } from '../../../core/api/client'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
+import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { triggerBlobDownload } from '../../../core/utils/download'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
@@ -35,29 +35,14 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const addNotification = useNotificationStore((s) => s.addNotification)
-  // "true" while we don't yet know — prevents a premature banner flash.
-  const [modelResolved, setModelResolved] = useState<boolean>(true)
-
-  useEffect(() => {
-    const uid = persona.model_unique_id
-    if (!uid || !uid.includes(':')) {
-      setModelResolved(false)
-      return
-    }
-    let cancelled = false
-    const connectionId = uid.split(':')[0]
-    const modelSlug = uid.split(':').slice(1).join(':')
-    llmApi.listConnectionModels(connectionId)
-      .then((models) => {
-        if (cancelled) return
-        setModelResolved(models.some((m) => m.model_id === modelSlug))
-      })
-      .catch(() => {
-        if (cancelled) return
-        setModelResolved(false)
-      })
-    return () => { cancelled = true }
-  }, [persona.model_unique_id])
+  // Resolve the persona's model against the unified enriched-models hub so
+  // premium-provider models (e.g. ``xai:grok-4.1-fast``) resolve correctly
+  // — a bare ``listConnectionModels`` lookup would 404 for those.
+  // ``loading`` stands in for the previous ``true`` default and prevents a
+  // premature banner flash while the first fetch is in flight.
+  const { findByUniqueId, loading: modelsLoading } = useEnrichedModels()
+  const modelResolved =
+    modelsLoading || !!(persona.model_unique_id && findByUniqueId(persona.model_unique_id))
 
   const canStartChat = modelResolved
 

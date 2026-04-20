@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
 import { personasApi } from '../../../core/api/personas'
 import { useAvatarSrc } from '../../../core/hooks/useAvatarSrc'
+import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { ChakraColour, ChakraPaletteEntry } from '../../../core/types/chakra'
@@ -41,12 +42,16 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [canUseTools, setCanUseTools] = useState(true)
   const [canSeeImages, setCanSeeImages] = useState(true)
   const [connections, setConnections] = useState<Connection[]>([])
-  const [modelResolved, setModelResolved] = useState<boolean>(true)
 
   const [modelModalOpen, setModelModalOpen] = useState(false)
   const [visionPickerOpen, setVisionPickerOpen] = useState(false)
-  const [visionFallbackDisplayName, setVisionFallbackDisplayName] = useState<string | null>(null)
   const [cropOpen, setCropOpen] = useState(false)
+
+  // Unified hub for connection + premium-provider models. Lets us resolve
+  // ``model_unique_id`` and ``vision_fallback_model`` against a single source
+  // that understands both Connection and premium prefixes, and stays live via
+  // the hook's own event-bus subscriptions.
+  const { findByUniqueId, loading: modelsLoading } = useEnrichedModels()
 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
@@ -66,50 +71,48 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
       .catch(() => setConnections([]))
   }, [])
 
-  // Load actual model capabilities when editing an existing persona
-  useEffect(() => {
-    const uid = persona.model_unique_id
-    if (!uid || !uid.includes(':')) {
-      setModelResolved(!uid) // empty uid is "nothing selected yet" — not broken
-      return
-    }
-    const connectionId = uid.split(':')[0]
-    const modelSlug = uid.split(':').slice(1).join(':')
-    llmApi.listConnectionModels(connectionId)
-      .then((models) => {
-        const model = models.find((m) => m.model_id === modelSlug)
-        setModelResolved(!!model)
-        setCanReason(model?.supports_reasoning ?? false)
-        setCanUseTools(model?.supports_tool_calls ?? false)
-        setCanSeeImages(model?.supports_vision ?? false)
-        if (model && !model.supports_reasoning) {
-          setReasoningEnabled(false)
-        }
-      })
-      .catch(() => {
-        setModelResolved(false)
-        setCanReason(false)
-        setCanUseTools(true)
-        setCanSeeImages(false)
-      })
-  }, [persona.model_unique_id])
+  // Derive model existence + capabilities from the enriched-models hub so
+  // both Connection models and premium-provider models resolve uniformly.
+  // Resolve against the *local* ``modelUniqueId`` state so the banner
+  // disappears immediately when the user picks a new, valid model.
+  const resolvedModel = modelUniqueId ? findByUniqueId(modelUniqueId) : null
+  // ``modelResolved`` stays true while the hub is still loading (same
+  // semantics as the previous useState<boolean>(true) default) to avoid a
+  // premature missing-connection banner flash.
+  const modelResolved = modelsLoading || !!resolvedModel
 
-  // Resolve a friendly display name for the persisted vision fallback model.
+  // Initial capability load for the persisted model. Once the hub settles,
+  // populate capability state; ``handleModelSelect`` does the same thing
+  // synchronously on user picks, so we only need to react to the loaded
+  // hub for the originally persisted ``persona.model_unique_id``.
   useEffect(() => {
-    const uid = persona.vision_fallback_model
-    if (!uid || !uid.includes(":")) {
-      setVisionFallbackDisplayName(null)
-      return
+    if (!persona.model_unique_id) return
+    if (modelsLoading) return
+    const model = findByUniqueId(persona.model_unique_id)
+    if (model) {
+      setCanReason(model.supports_reasoning)
+      setCanUseTools(model.supports_tool_calls)
+      setCanSeeImages(model.supports_vision)
+      if (!model.supports_reasoning) {
+        setReasoningEnabled(false)
+      }
+    } else {
+      setCanReason(false)
+      setCanUseTools(true)
+      setCanSeeImages(false)
     }
-    const connectionId = uid.split(":")[0]
-    const modelSlug = uid.split(":").slice(1).join(":")
-    llmApi.listConnectionModels(connectionId)
-      .then((models) => {
-        const model = models.find((m) => m.model_id === modelSlug)
-        setVisionFallbackDisplayName(model?.display_name ?? modelSlug)
-      })
-      .catch(() => setVisionFallbackDisplayName(modelSlug))
-  }, [persona.vision_fallback_model])
+  }, [persona.model_unique_id, modelsLoading, findByUniqueId])
+
+  // Friendly display name for the persisted vision fallback model — the hub
+  // covers Connection and premium providers; if the model has disappeared
+  // entirely we fall back to the slug portion of the unique id (previous
+  // behaviour).
+  const visionModel = persona.vision_fallback_model
+    ? findByUniqueId(persona.vision_fallback_model)
+    : null
+  const visionFallbackDisplayName =
+    visionModel?.display_name
+    ?? (persona.vision_fallback_model?.split(':').slice(1).join(':') ?? null)
 
   // Soft-CoT is available whenever the persona has opted in and Hard-CoT
   // is not currently active. The toggle is greyed while Hard-CoT takes over.
@@ -168,7 +171,9 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     // lookup below match by ``c.slug`` on both load and select, so the
     // display-name pill stays accurate.
     setModelConnectionId(model.unique_id.split(':')[0])
-    setModelResolved(true)
+    // modelResolved is derived from the enriched-models hub; no manual
+    // override needed — the hub will pick up the new unique_id on its next
+    // settled state (it already contains every model the picker showed).
     setCanReason(model.supports_reasoning)
     setCanUseTools(model.supports_tool_calls)
     setCanSeeImages(model.supports_vision ?? false)
@@ -492,7 +497,6 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
           currentModelId={visionFallbackModel}
           onSelect={(m) => {
             setVisionFallbackModel(m.unique_id)
-            setVisionFallbackDisplayName(m.display_name)
             setVisionPickerOpen(false)
           }}
           onClose={() => setVisionPickerOpen(false)}
