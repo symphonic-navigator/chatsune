@@ -21,6 +21,8 @@ export function LlmProvidersTab() {
   const removePremium = useProvidersStore((s) => s.remove)
   const configuredIds = useProvidersStore((s) => s.configuredIds)
   const coveredCapabilities = useProvidersStore((s) => s.coveredCapabilities)
+  const testAccount = useProvidersStore((s) => s.test)
+  const testingIds = useProvidersStore((s) => s.testingIds)
 
   useEffect(() => {
     void refreshPremium()
@@ -167,12 +169,8 @@ export function LlmProvidersTab() {
                   account={acct}
                   onSave={(cfg) => savePremium(d.id, cfg)}
                   onDelete={() => removePremium(d.id)}
-                  onTest={async () => {
-                    // No dedicated /test endpoint today; a re-save with the
-                    // same config triggers the backend test path once added.
-                    // Placeholder for now — wire when a /test endpoint lands
-                    // in a follow-up.
-                  }}
+                  onTest={() => testAccount(d.id)}
+                  testing={testingIds.has(d.id)}
                 />
               )
             })
