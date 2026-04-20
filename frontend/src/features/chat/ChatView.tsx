@@ -64,6 +64,7 @@ import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
+import { useWakeLock } from '../../core/hooks/useWakeLock'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -983,6 +984,7 @@ export function ChatView({ persona }: ChatViewProps) {
     available: conversationAvailable,
     onSend: handleSend,
   })
+  useWakeLock(conversationActive)
 
   const handleToggleConversation = useCallback(() => {
     if (conversationActive) {
