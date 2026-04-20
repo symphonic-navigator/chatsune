@@ -68,4 +68,49 @@ describe('PremiumAccountCard', () => {
     expect(screen.getByText('Test')).toBeInTheDocument()
     expect(screen.getByText('Remove')).toBeInTheDocument()
   })
+
+  it('shows "Testing…" on a disabled Test button when testing=true', () => {
+    const account: PremiumProviderAccount = {
+      provider_id: 'xai',
+      config: { api_key: { is_set: true } },
+      last_test_status: 'ok',
+      last_test_error: null,
+      last_test_at: null,
+    }
+    render(
+      <PremiumAccountCard
+        definition={definition}
+        account={account}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onTest={vi.fn()}
+        testing
+      />,
+    )
+    const btn = screen.getByRole('button', { name: /Testing/ })
+    expect(btn).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /^Test$/ })).toBeNull()
+  })
+
+  it('keeps Change and Remove enabled while testing', () => {
+    const account: PremiumProviderAccount = {
+      provider_id: 'xai',
+      config: { api_key: { is_set: true } },
+      last_test_status: 'ok',
+      last_test_error: null,
+      last_test_at: null,
+    }
+    render(
+      <PremiumAccountCard
+        definition={definition}
+        account={account}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onTest={vi.fn()}
+        testing
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Change' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove' })).not.toBeDisabled()
+  })
 })

@@ -11,6 +11,7 @@ interface PremiumAccountCardProps {
   onSave: (config: Record<string, unknown>) => Promise<void>
   onDelete: () => Promise<void>
   onTest: () => Promise<void>
+  testing?: boolean
 }
 
 export function PremiumAccountCard({
@@ -19,6 +20,7 @@ export function PremiumAccountCard({
   onSave,
   onDelete,
   onTest,
+  testing = false,
 }: PremiumAccountCardProps) {
   const configured = account !== null
   const status = !configured
@@ -92,9 +94,10 @@ export function PremiumAccountCard({
             onClick={() => {
               void onTest()
             }}
-            className="rounded border border-white/15 px-3 py-1 text-[11px] text-white/80 hover:bg-white/5"
+            disabled={testing}
+            className="rounded border border-white/15 px-3 py-1 text-[11px] text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-wait"
           >
-            Test
+            {testing ? 'Testing\u2026' : 'Test'}
           </button>
           <button
             onClick={() => {
