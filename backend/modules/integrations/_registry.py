@@ -6,6 +6,7 @@ and system prompt template. Plugins are registered at import time.
 
 import logging
 from backend.modules.integrations._models import IntegrationDefinition
+from backend.modules.integrations._voice_expression_tags import build_system_prompt_extension
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.integrations import IntegrationCapability, OptionsSource
 
@@ -229,6 +230,7 @@ def _register_builtins() -> None:
         icon="xai",
         execution_mode="hybrid",
         hydrate_secrets=False,
+        system_prompt_template=build_system_prompt_extension(),
         capabilities=[
             IntegrationCapability.TTS_PROVIDER,
             IntegrationCapability.STT_PROVIDER,
