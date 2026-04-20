@@ -46,6 +46,17 @@ class SlugAlreadyExistsError(ValueError):
         self.suggested = suggested
 
 
+RESERVED_SLUGS: frozenset[str] = frozenset({"xai", "mistral", "ollama_cloud"})
+
+
+class SlugReservedError(ValueError):
+    """Slug is reserved for a Premium Provider and cannot be user-created."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(f"Slug '{slug}' is reserved for a Premium Provider")
+        self.slug = slug
+
+
 class ConnectionNotFoundError(KeyError):
     pass
 
@@ -61,6 +72,8 @@ class ConnectionSystemManagedError(ValueError):
 
 
 def _validate_slug(slug: str) -> None:
+    if slug in RESERVED_SLUGS:
+        raise SlugReservedError(slug)
     if not _SLUG_RE.match(slug):
         raise InvalidSlugError(
             f"Slug '{slug}' must be lowercase alphanumeric with hyphens, 1-63 chars"
