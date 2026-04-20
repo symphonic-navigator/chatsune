@@ -65,8 +65,12 @@ class PremiumProviderService:
         return [self._repo.to_dto(d).model_dump() for d in docs]
 
     async def get(self, user_id: str, provider_id: str) -> dict | None:
+        # Normalised: both "unknown provider" and "no account for known
+        # provider" return None. Callers that need to distinguish should
+        # consult the registry directly via ``get_definition``. ``upsert``
+        # still raises on unknown providers because writes must hard-reject.
         if get_definition(provider_id) is None:
-            raise PremiumProviderNotFoundError(provider_id)
+            return None
         doc = await self._repo.find(user_id, provider_id)
         if doc is None:
             return None
@@ -81,7 +85,10 @@ class PremiumProviderService:
         return self._repo.to_dto(doc).model_dump()
 
     async def delete(self, user_id: str, provider_id: str) -> bool:
-        return await self._repo.delete(user_id, provider_id)
+        deleted = await self._repo.delete(user_id, provider_id)
+        if not deleted:
+            raise PremiumProviderAccountNotFoundError(provider_id)
+        return True
 
     async def get_decrypted_secret(
         self, user_id: str, provider_id: str, field: str,

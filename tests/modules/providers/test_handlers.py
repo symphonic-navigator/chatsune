@@ -76,3 +76,18 @@ async def test_delete_account(client: AsyncClient, auth_headers):
 async def test_requires_auth(client: AsyncClient):
     resp = await client.get("/api/providers/catalogue")
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_unknown_provider(client: AsyncClient, auth_headers):
+    resp = await client.delete("/api/providers/accounts/bogus", headers=auth_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_404_when_no_account_for_known_provider(
+    client: AsyncClient, auth_headers,
+):
+    # Known provider, but no account -> 404 (no-op).
+    resp = await client.delete("/api/providers/accounts/xai", headers=auth_headers)
+    assert resp.status_code == 404

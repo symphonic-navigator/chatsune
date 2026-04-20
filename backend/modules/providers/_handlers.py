@@ -64,5 +64,20 @@ async def delete_account(
     provider_id: str,
     user: dict = Depends(require_active_session),
 ):
-    await _service().delete(user["sub"], provider_id)
+    from backend.modules.providers import (
+        PremiumProviderAccountNotFoundError,
+    )
+    from backend.modules.providers._registry import get as get_definition
+    if get_definition(provider_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown provider",
+        )
+    try:
+        await _service().delete(user["sub"], provider_id)
+    except PremiumProviderAccountNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account configured",
+        )
     return None
