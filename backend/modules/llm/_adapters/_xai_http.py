@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import httpx
+from fastapi import APIRouter, Depends
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -269,6 +270,10 @@ class XaiHttpAdapter(BaseAdapter):
             ),
         ]
 
+    @classmethod
+    def router(cls) -> APIRouter:
+        return _build_adapter_router()
+
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
@@ -398,3 +403,71 @@ class XaiHttpAdapter(BaseAdapter):
 
         if not seen_done:
             yield StreamDone()
+
+
+def _xai_repo_factory():
+    """Default factory — returns a ConnectionRepository backed by the live DB.
+
+    Defined at module level so tests can monkeypatch it:
+        monkeypatch.setattr(_xai_http, "_xai_repo_factory", lambda: _FakeRepo())
+    """
+    from backend.database import get_db
+    from backend.modules.llm._connections import ConnectionRepository
+    return ConnectionRepository(get_db())
+
+
+def _build_adapter_router() -> APIRouter:
+    from datetime import UTC, datetime
+
+    import backend.modules.llm._adapters._xai_http as _self
+    from backend.modules.llm._connections import ConnectionRepository
+    from backend.modules.llm._resolver import resolve_connection_for_user
+    from backend.ws.event_bus import EventBus, get_event_bus
+    from shared.events.llm import LlmConnectionUpdatedEvent
+    from shared.topics import Topics
+
+    router = APIRouter()
+
+    @router.post("/test")
+    async def test_connection(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+        event_bus: EventBus = Depends(get_event_bus),
+        repo=Depends(lambda: _self._xai_repo_factory()),
+    ) -> dict:
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        valid = False
+        error: str | None = None
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0),
+            ) as client:
+                resp = await client.get(
+                    f"{url}/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if resp.status_code in (401, 403):
+                    error = "API key rejected by xAI"
+                elif resp.status_code != 200:
+                    error = f"xAI returned {resp.status_code}"
+                else:
+                    valid = True
+        except Exception as exc:  # noqa: BLE001 — surface to frontend
+            error = str(exc)
+
+        updated = await repo.update_test_status(
+            c.user_id, c.id,
+            status="valid" if valid else "failed",
+            error=error,
+        )
+        if updated is not None:
+            await event_bus.publish(
+                Topics.LLM_CONNECTION_UPDATED,
+                LlmConnectionUpdatedEvent(
+                    connection=ConnectionRepository.to_dto(updated),
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return {"valid": valid, "error": error}
+
+    return router

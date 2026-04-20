@@ -440,3 +440,70 @@ async def test_stream_completion_returns_provider_unavailable_on_500(monkeypatch
     assert len(events) == 1
     assert isinstance(events[0], StreamError)
     assert events[0].error_code == "provider_unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Sub-router POST /test
+# ---------------------------------------------------------------------------
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _app_with_xai_router(monkeypatch, handler) -> TestClient:
+    from backend.modules.llm._adapters import _xai_http
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    class _PatchedClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(_xai_http.httpx, "AsyncClient", _PatchedClient)
+
+    router = XaiHttpAdapter.router()
+    app = FastAPI()
+    app.include_router(router, prefix="/adapter")
+    app.dependency_overrides[resolve_connection_for_user] = lambda: _resolved_conn()
+
+    from backend.modules.llm._connections import ConnectionRepository
+    from backend.ws.event_bus import get_event_bus
+
+    class _FakeRepo:
+        async def update_test_status(self, *a, **kw):
+            return None
+
+    class _FakeBus:
+        async def publish(self, *a, **kw):
+            return None
+
+    monkeypatch.setattr(_xai_http, "_xai_repo_factory", lambda: _FakeRepo(),
+                        raising=False)
+    app.dependency_overrides[get_event_bus] = lambda: _FakeBus()
+    return TestClient(app)
+
+
+def test_post_test_valid_key_returns_true(monkeypatch):
+    def handler(request):
+        assert request.url.path.endswith("/models")
+        assert request.headers["authorization"] == "Bearer xai-test-key"
+        return httpx.Response(200, json={"data": [{"id": "grok-4.1-fast"}]})
+
+    client = _app_with_xai_router(monkeypatch, handler)
+    resp = client.post("/adapter/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["error"] is None
+
+
+def test_post_test_invalid_key_returns_false(monkeypatch):
+    def handler(request):
+        return httpx.Response(401, json={"error": "unauthorised"})
+
+    client = _app_with_xai_router(monkeypatch, handler)
+    resp = client.post("/adapter/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "key" in body["error"].lower() or "401" in body["error"]
