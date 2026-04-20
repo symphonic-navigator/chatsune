@@ -232,6 +232,7 @@ def _register_builtins() -> None:
         capabilities=[
             IntegrationCapability.TTS_PROVIDER,
             IntegrationCapability.STT_PROVIDER,
+            IntegrationCapability.TTS_EXPRESSIVE_MARKUP,
         ],
         config_fields=[
             {

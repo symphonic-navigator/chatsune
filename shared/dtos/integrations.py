@@ -8,6 +8,7 @@ class IntegrationCapability(str, Enum):
     TOOL_PROVIDER = "tool_provider"
     TTS_PROVIDER = "tts_provider"
     STT_PROVIDER = "stt_provider"
+    TTS_EXPRESSIVE_MARKUP = "tts_expressive_markup"
 
 
 class OptionsSource(str, Enum):
