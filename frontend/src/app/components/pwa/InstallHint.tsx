@@ -1,4 +1,5 @@
 import { usePwaInstallStore } from "../../../core/pwa/installPrompt"
+import { useIsPwa } from "../../../core/hooks/useIsPwa"
 
 /**
  * Dezenter Install-Hinweis für die PWA.
@@ -15,7 +16,7 @@ import { usePwaInstallStore } from "../../../core/pwa/installPrompt"
  */
 export function InstallHint() {
   const promptEvent = usePwaInstallStore((s) => s.promptEvent)
-  const isInstalled = usePwaInstallStore((s) => s.isInstalled)
+  const isInstalled = useIsPwa()
   const dismissed = usePwaInstallStore((s) => s.dismissed)
   const visitCount = usePwaInstallStore((s) => s.visitCount)
   const install = usePwaInstallStore((s) => s.install)
