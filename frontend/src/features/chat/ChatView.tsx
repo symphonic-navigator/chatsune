@@ -51,6 +51,7 @@ import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
 import { useSecretsStore } from '../integrations/secretsStore'
 import { createStreamingSentencer } from '../voice/pipeline/streamingSentencer'
+import { providerSupportsExpressiveMarkup } from '../voice/engines/expressiveMarkupCapability'
 import {
   cancelStreamingAutoRead,
   getActiveStreamingAutoRead,
@@ -733,6 +734,7 @@ export function ChatView({ persona }: ChatViewProps) {
     )
 
     const modulation = resolveModulation(persona?.voice_config)
+    const supportsExpressive = providerSupportsExpressiveMarkup(ttsIntegrationId ?? null, intDefinitions)
 
     return {
       tts,
@@ -741,7 +743,7 @@ export function ChatView({ persona }: ChatViewProps) {
       mode: narratorMode,
       gapMs,
       messageId,
-      sentencer: createStreamingSentencer(narratorMode),
+      sentencer: createStreamingSentencer(narratorMode, supportsExpressive),
       lastTextLength: 0,
       chain: Promise.resolve(),
       cancelled: false,

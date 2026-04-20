@@ -113,10 +113,11 @@ class VoicePipelineImpl {
     mode: NarratorMode,
     modulation: VoiceModulation,
     persona?: PersonaDto | null,
+    supportsExpressive: boolean = false,
   ): Promise<void> {
     const tts = resolveTTSEngine(persona ?? ({} as PersonaDto))
     if (!tts) return
-    const segments = parseForSpeech(text, mode)
+    const segments = parseForSpeech(text, mode, supportsExpressive)
     if (segments.length === 0) return
     this.setState({ phase: 'speaking', segment: 0, total: segments.length })
     audioPlayback.setCallbacks({

@@ -11,6 +11,7 @@ import { useIntegrationsStore } from '../../integrations/store'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { applyModulation, resolveModulation, type VoiceModulation } from '../pipeline/applyModulation'
+import { providerSupportsExpressiveMarkup } from '../engines/expressiveMarkupCapability'
 
 interface ReadAloudButtonProps {
   messageId: string
@@ -89,6 +90,7 @@ async function runReadAloud(
   gapMs: number,
   modulation: VoiceModulation,
   persona: PersonaDto | null | undefined,
+  supportsExpressive: boolean,
 ): Promise<void> {
   const tts = resolveTTSEngine(persona)
   if (!tts?.isReady()) { setActiveReader(null, 'idle'); return }
@@ -111,7 +113,7 @@ async function runReadAloud(
     return
   }
 
-  const parsed = parseForSpeech(content, mode)
+  const parsed = parseForSpeech(content, mode, supportsExpressive)
   if (parsed.length === 0) { setActiveReader(null, 'idle'); return }
 
   setActiveReader(messageId, 'synthesising')
@@ -159,10 +161,11 @@ export async function triggerReadAloud(
   gapMs: number,
   modulation: VoiceModulation,
   persona?: PersonaDto | null,
+  supportsExpressive: boolean = false,
 ): Promise<void> {
   audioPlayback.stopAll()
   setActiveReader(messageId, 'synthesising')
-  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs, modulation, persona)
+  await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, mode, gapMs, modulation, persona, supportsExpressive)
 }
 
 // ── Component ──
@@ -223,10 +226,11 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     const narrator: VoicePreset = narratorVoice ?? personaNarrator ?? primary
 
     const modulation = resolveModulation(persona?.voice_config)
+    const supportsExpressive = providerSupportsExpressiveMarkup(ttsIntegrationId, definitions)
 
     setActiveReader(messageId, 'synthesising')
-    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation, persona)
-  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs, persona])
+    await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation, persona, supportsExpressive)
+  }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs, persona, ttsIntegrationId, definitions])
 
   if (!ttsReady || !voiceId) {
     if (!personaId) return null
