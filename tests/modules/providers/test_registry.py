@@ -34,3 +34,21 @@ def test_get_all_returns_three_providers():
 
 def test_unknown_provider_returns_none():
     assert get("bogus") is None
+
+
+def test_xai_probe_is_get_v1_models():
+    defn = get("xai")
+    assert defn.probe_url == "https://api.x.ai/v1/models"
+    assert defn.probe_method == "GET"
+
+
+def test_mistral_probe_is_get_v1_models():
+    defn = get("mistral")
+    assert defn.probe_url == "https://api.mistral.ai/v1/models"
+    assert defn.probe_method == "GET"
+
+
+def test_ollama_cloud_probe_is_post_api_me():
+    defn = get("ollama_cloud")
+    assert defn.probe_url == "https://ollama.com/api/me"
+    assert defn.probe_method == "POST"

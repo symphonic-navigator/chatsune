@@ -45,6 +45,8 @@ def _register_builtins() -> None:
             Capability.TTI, Capability.ITI,
         ],
         config_fields=[_api_key_field("xAI API Key")],
+        probe_url="https://api.x.ai/v1/models",
+        probe_method="GET",
         linked_integrations=["xai_voice"],
     ))
 
@@ -55,6 +57,8 @@ def _register_builtins() -> None:
         base_url="https://api.mistral.ai/v1",
         capabilities=[Capability.TTS, Capability.STT],
         config_fields=[_api_key_field("Mistral API Key")],
+        probe_url="https://api.mistral.ai/v1/models",
+        probe_method="GET",
         linked_integrations=["mistral_voice"],
     ))
 
@@ -65,6 +69,8 @@ def _register_builtins() -> None:
         base_url="https://ollama.com",
         capabilities=[Capability.LLM, Capability.WEBSEARCH],
         config_fields=[_api_key_field("Ollama Cloud API Key")],
+        probe_url="https://ollama.com/api/me",
+        probe_method="POST",
         linked_integrations=[],
     ))
 

@@ -1,6 +1,6 @@
 """Internal domain types for the Premium Provider Accounts module."""
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from shared.dtos.providers import Capability
 
@@ -13,5 +13,7 @@ class PremiumProviderDefinition:
     base_url: str
     capabilities: list[Capability]
     config_fields: list[dict[str, Any]]
+    probe_url: str
+    probe_method: Literal["GET", "POST"] = "GET"
     linked_integrations: list[str] = field(default_factory=list)
     secret_fields: frozenset[str] = frozenset({"api_key"})
