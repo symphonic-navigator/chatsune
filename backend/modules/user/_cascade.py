@@ -148,6 +148,10 @@ async def cascade_delete_user(
         list_persona_ids_for_user,
     )
     from backend.modules.project import delete_all_for_user as del_projects
+    from backend.modules.providers import (
+        PremiumProviderAccountRepository,
+        PremiumProviderService,
+    )
     from backend.modules.websearch import delete_all_for_user as del_websearch
 
     user_repo = UserRepository(get_db())
@@ -266,6 +270,20 @@ async def cascade_delete_user(
         label="integration configs",
         deleted_count=integration_count or 0,
         warnings=integration_warnings,
+    ))
+
+    # Step 6b: premium provider accounts.
+    provider_service = PremiumProviderService(
+        PremiumProviderAccountRepository(get_db()),
+    )
+    provider_count, provider_warnings = await _safe_call(
+        "premium provider account deletion",
+        provider_service.delete_all_for_user(user_id),
+    )
+    steps.append(DeletionStepDto(
+        label="premium provider accounts",
+        deleted_count=provider_count or 0,
+        warnings=provider_warnings,
     ))
 
     # Step 7: audit-log entries (actor OR resource).
