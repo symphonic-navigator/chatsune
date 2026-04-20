@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ConversationPhase } from '../stores/conversationModeStore'
 import { useProvidersStore } from '../../../core/store/providersStore'
 
@@ -32,6 +33,20 @@ function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boole
   // Select the stable `accounts` array rather than the derived Set — the
   // latter is a new object every render and causes a re-render loop.
   const accounts = useProvidersStore((s) => s.accounts)
+  const hydrated = useProvidersStore((s) => s.hydrated)
+  const loading = useProvidersStore((s) => s.loading)
+  const error = useProvidersStore((s) => s.error)
+  const refresh = useProvidersStore((s) => s.refresh)
+
+  // Lazy hydrate: if no consumer has loaded the providers store yet (e.g.
+  // the user hasn't opened the User-Modal since the app booted), the button
+  // would otherwise show as unavailable until the modal is opened. Trigger
+  // a one-off refresh on first mount; the `hydrated` flag prevents retries
+  // when the account list is genuinely empty.
+  useEffect(() => {
+    if (!hydrated && !loading && error === null) void refresh()
+  }, [hydrated, loading, error, refresh])
+
   if (!persona?.tts_provider_id) return false
   const ttsPremium = providerIdForIntegration(persona.tts_provider_id)
   // If the TTS integration is not premium-linked (e.g. a local engine), we

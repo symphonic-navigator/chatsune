@@ -11,6 +11,11 @@ interface ProvidersState {
   accounts: PremiumProviderAccount[]
   loading: boolean
   error: string | null
+  /** True once refresh() has completed successfully at least once. Callers
+   *  use this to decide whether a `[]` in `accounts` means "not loaded yet"
+   *  or "genuinely empty", which matters for lazy-hydrating consumers
+   *  outside the User-Modal (e.g. the ConversationModeButton). */
+  hydrated: boolean
 
   refresh: () => Promise<void>
   save: (providerId: string, config: Record<string, unknown>) => Promise<void>
@@ -36,6 +41,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
   accounts: [],
   loading: false,
   error: null,
+  hydrated: false,
 
   refresh: async () => {
     set({ loading: true, error: null })
@@ -44,7 +50,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
         providersApi.catalogue(),
         providersApi.listAccounts(),
       ])
-      set({ catalogue, accounts, loading: false })
+      set({ catalogue, accounts, loading: false, hydrated: true })
     } catch (e) {
       set({
         loading: false,
