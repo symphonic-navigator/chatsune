@@ -7,6 +7,7 @@ vi.mock('../api/providers', () => ({
     listAccounts: vi.fn(),
     upsertAccount: vi.fn(),
     deleteAccount: vi.fn(),
+    testAccount: vi.fn(),
   },
 }))
 
@@ -17,6 +18,7 @@ describe('providersStore', () => {
       accounts: [],
       loading: false,
       error: null,
+      testingIds: new Set<string>(),
     })
   })
 
@@ -83,5 +85,38 @@ describe('providersStore', () => {
     await useProvidersStore.getState().save('xai', { api_key: 'k' })
     expect(useProvidersStore.getState().accounts).toHaveLength(1)
     expect(useProvidersStore.getState().accounts[0].provider_id).toBe('xai')
+  })
+
+  it('test() flips testingIds on, calls refresh, then flips it off', async () => {
+    const { providersApi } = await import('../api/providers')
+    ;(providersApi.testAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: 'ok',
+      error: null,
+    })
+    // Stub out the refresh() side-effect calls.
+    ;(providersApi.catalogue as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    ;(providersApi.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+
+    const started = useProvidersStore.getState().test('xai')
+    // Synchronously after calling test(), the id must already be in the set.
+    expect(useProvidersStore.getState().testingIds.has('xai')).toBe(true)
+
+    await started
+
+    expect(useProvidersStore.getState().testingIds.has('xai')).toBe(false)
+    expect(providersApi.testAccount).toHaveBeenCalledWith('xai')
+    expect(providersApi.listAccounts).toHaveBeenCalled() // refresh ran
+  })
+
+  it('test() clears testingIds even when the API call throws', async () => {
+    const { providersApi } = await import('../api/providers')
+    ;(providersApi.testAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('network down'),
+    )
+
+    await expect(useProvidersStore.getState().test('xai')).rejects.toThrow(
+      'network down',
+    )
+    expect(useProvidersStore.getState().testingIds.has('xai')).toBe(false)
   })
 })

@@ -16,10 +16,15 @@ interface ProvidersState {
    *  or "genuinely empty", which matters for lazy-hydrating consumers
    *  outside the User-Modal (e.g. the ConversationModeButton). */
   hydrated: boolean
+  /** Provider ids currently being tested. UI uses this to disable the Test
+   *  button and swap its label. A new Set reference is written on every
+   *  mutation so shallow-equality subscribers re-render. */
+  testingIds: Set<string>
 
   refresh: () => Promise<void>
   save: (providerId: string, config: Record<string, unknown>) => Promise<void>
   remove: (providerId: string) => Promise<void>
+  test: (providerId: string) => Promise<void>
 
   configuredIds: () => Set<string>
   coveredCapabilities: () => Set<Capability>
@@ -42,6 +47,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
   loading: false,
   error: null,
   hydrated: false,
+  testingIds: new Set<string>(),
 
   refresh: async () => {
     set({ loading: true, error: null })
@@ -69,6 +75,21 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
     set({
       accounts: get().accounts.filter((a) => a.provider_id !== providerId),
     })
+  },
+
+  test: async (providerId) => {
+    // Synchronous opt-in — UI must see the inflight flag before the await.
+    set({ testingIds: new Set(get().testingIds).add(providerId) })
+    try {
+      await providersApi.testAccount(providerId)
+      // Pull the canonical last_test_* fields from the server — the test
+      // response only carries {status, error}, not last_test_at.
+      await get().refresh()
+    } finally {
+      const next = new Set(get().testingIds)
+      next.delete(providerId)
+      set({ testingIds: next })
+    }
   },
 
   configuredIds: () => new Set(get().accounts.map((a) => a.provider_id)),
