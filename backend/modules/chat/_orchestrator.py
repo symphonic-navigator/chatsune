@@ -532,6 +532,7 @@ async def run_inference(
         reasoning_enabled=reasoning_enabled,
         supports_reasoning=supports_reasoning,
         tools=active_tools,
+        cache_hint=session_id,
     )
 
     # Set session state to streaming

@@ -432,6 +432,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             reasoning_enabled=persona.get("reasoning_enabled", False),
             supports_reasoning=supports_reasoning,
             tools=active_tools,
+            cache_hint=session_id,
         )
 
         correlation_id = str(uuid4())
