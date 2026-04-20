@@ -198,6 +198,7 @@ async def test_account(
     unknown (then 404).
     """
     import httpx
+    from typing import Literal
 
     from backend.modules.providers._registry import get as get_definition
     from backend.modules.providers._repository import (
@@ -229,7 +230,7 @@ async def test_account(
             detail="No API key stored",
         )
 
-    probe_status: str = "error"
+    probe_status: Literal["ok", "error"] = "error"
     probe_error: str | None = None
     timeout = httpx.Timeout(10.0)
     try:
@@ -261,7 +262,7 @@ async def test_account(
         Topics.PREMIUM_PROVIDER_ACCOUNT_TESTED,
         PremiumProviderAccountTestedEvent(
             provider_id=provider_id,
-            status=probe_status,  # type: ignore[arg-type]
+            status=probe_status,
             error=probe_error,
         ),
         target_user_ids=[user["sub"]],
