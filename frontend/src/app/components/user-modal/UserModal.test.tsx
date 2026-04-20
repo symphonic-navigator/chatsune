@@ -11,14 +11,10 @@ vi.mock('./HistoryTab', () => ({ HistoryTab: () => <div>history-content</div> })
 vi.mock('./ProjectsTab', () => ({ ProjectsTab: () => <div>projects-content</div> }))
 vi.mock('./KnowledgeTab', () => ({ KnowledgeTab: () => <div>knowledge-content</div> }))
 vi.mock('./LlmProvidersTab', () => ({ LlmProvidersTab: () => <div>llm-providers-content</div> }))
-vi.mock('./ApiKeysTab', () => ({ ApiKeysTab: () => <div>api-keys-content</div> }))
 
 // Suppress async badge-fetch calls that are not under test here
 vi.mock('../../../core/api/llm', () => ({
   llmApi: { listConnections: vi.fn().mockResolvedValue([]) },
-}))
-vi.mock('../../../core/api/websearch', () => ({
-  webSearchApi: { listWebSearchProviders: vi.fn().mockResolvedValue([]) },
 }))
 vi.mock('../../../core/websocket/eventBus', () => ({
   eventBus: { on: vi.fn().mockReturnValue(() => {}) },
@@ -59,7 +55,7 @@ describe('UserModal', () => {
     renderModal('settings', 'display')
     expect(screen.getByRole('tab', { name: /display/i })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /llm providers/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /api-keys/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^integrations$/i })).toBeInTheDocument()
   })
 
   it('does not render sub-tab pills for leaf-only tops', () => {
@@ -108,7 +104,7 @@ describe('UserModal', () => {
 
   it('clicking a sub-pill calls onTabChange with both top and sub', () => {
     const { onTabChange } = renderModal('settings', 'display')
-    fireEvent.click(screen.getByRole('tab', { name: /api-keys/i }))
-    expect(onTabChange).toHaveBeenCalledWith('settings', 'api-keys')
+    fireEvent.click(screen.getByRole('tab', { name: /^models$/i }))
+    expect(onTabChange).toHaveBeenCalledWith('settings', 'models')
   })
 })

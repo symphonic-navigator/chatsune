@@ -27,7 +27,6 @@ export type SubTabId =
   | 'llm-providers'
   | 'community-provisioning'
   | 'models'
-  | 'api-keys'
   | 'mcp'
   | 'integrations'
   | 'display'
@@ -67,7 +66,6 @@ export const TABS_TREE: TopTab[] = [
       { id: 'llm-providers',          label: 'LLM Providers' },
       { id: 'community-provisioning', label: 'Community Provisioning' },
       { id: 'models',                 label: 'Models' },
-      { id: 'api-keys',               label: 'API-Keys' },
       { id: 'mcp',                    label: 'MCP' },
       { id: 'integrations',           label: 'Integrations' },
       { id: 'display',                label: 'Display' },

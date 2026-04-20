@@ -9,7 +9,6 @@ import { ArtefactsTab } from './ArtefactsTab'
 import { BookmarksTab } from './BookmarksTab'
 import { ModelsTab } from './ModelsTab'
 import { JobLogTab } from './JobLogTab'
-import { ApiKeysTab } from './ApiKeysTab'
 import { PersonasTab } from './PersonasTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab } from './IntegrationsTab'
@@ -17,7 +16,6 @@ import { LlmProvidersTab } from './LlmProvidersTab'
 import { VoiceTab } from './VoiceTab'
 import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
 import { llmApi } from '../../../core/api/llm'
-import { webSearchApi } from '../../../core/api/websearch'
 import { eventBus } from '../../../core/websocket/eventBus'
 import { Topics } from '../../../core/types/events'
 import { TABS_TREE, type TopTabId, type SubTabId } from './userModalTree'
@@ -40,8 +38,9 @@ interface UserModalProps {
   onTabChange: (top: TopTabId, sub?: SubTabId) => void
   displayName: string
   /**
-   * Kept on the prop-surface for callers that still pass it. The badge
-   * source of truth now lives inside this modal (web-search credentials).
+   * Retained on the prop-surface for backwards compatibility with callers
+   * that still pass it. No longer used — web-search credentials are sourced
+   * from the Providers tab now.
    */
   hasApiKeyProblem?: boolean
   /**
@@ -60,7 +59,6 @@ export function UserModal({
   onClose,
   onTabChange,
   displayName,
-  onProvidersChanged,
   onOpenPersonaOverlay,
 }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
@@ -71,12 +69,8 @@ export function UserModal({
   // connections configured.
   const [hasNoLlmConnection, setHasNoLlmConnection] = useState(false)
 
-  // API-key badge: flips to true when any web-search provider is missing its
-  // credential. Propagated to the Settings top-pill.
-  const [hasApiKeyProblem, setHasApiKeyProblem] = useState(false)
-
-  // True when either of the above flags is set — shown on the Settings top-pill.
-  const settingsHasProblem = hasNoLlmConnection || hasApiKeyProblem
+  // Only flag currently feeding the Settings top-pill badge.
+  const settingsHasProblem = hasNoLlmConnection
 
   const refreshConnectionCount = useCallback(async () => {
     try {
@@ -84,15 +78,6 @@ export function UserModal({
       setHasNoLlmConnection(conns.length === 0)
     } catch {
       // Best-effort — silently ignore. The badge defaults to "no problem".
-    }
-  }, [])
-
-  const refreshWebSearchGaps = useCallback(async () => {
-    try {
-      const providers = await webSearchApi.listWebSearchProviders()
-      setHasApiKeyProblem(providers.some((p) => !p.is_configured))
-    } catch {
-      // Best-effort — silently ignore.
     }
   }, [])
 
@@ -105,17 +90,6 @@ export function UserModal({
     const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshConnectionCount() }))
     return () => unsubs.forEach((u) => u())
   }, [refreshConnectionCount])
-
-  useEffect(() => {
-    void refreshWebSearchGaps()
-    const topics = [
-      Topics.WEBSEARCH_CREDENTIAL_SET,
-      Topics.WEBSEARCH_CREDENTIAL_REMOVED,
-      Topics.WEBSEARCH_CREDENTIAL_TESTED,
-    ] as const
-    const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshWebSearchGaps() }))
-    return () => unsubs.forEach((u) => u())
-  }, [refreshWebSearchGaps])
 
   // Focus trap + Escape key
   useEffect(() => {
@@ -243,9 +217,7 @@ export function UserModal({
           <div role="tablist" aria-label={`${activeTopNode?.label ?? ''} sub-sections`} className="flex flex-wrap gap-1 px-4 py-2 border-b border-white/6 bg-white/2 flex-shrink-0">
             {subTabs.map((sub) => {
               const selected = activeSub === sub.id
-              const showSubBadge =
-                (sub.id === 'api-keys' && hasApiKeyProblem) ||
-                (sub.id === 'llm-providers' && hasNoLlmConnection)
+              const showSubBadge = sub.id === 'llm-providers' && hasNoLlmConnection
               return (
                 <button
                   key={sub.id}
@@ -293,7 +265,6 @@ export function UserModal({
           {contentKey === 'job-log' && <JobLogTab />}
           {contentKey === 'display' && <SettingsTab />}
           {contentKey === 'voice' && <VoiceTab />}
-          {contentKey === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
           {contentKey === 'mcp' && <McpTab />}
           {contentKey === 'integrations' && (
             <IntegrationsTab
