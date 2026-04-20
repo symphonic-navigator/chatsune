@@ -1,6 +1,6 @@
 import type { Plugin } from 'unified'
 import type { Root, Element, Text, RootContent, ElementContent } from 'hast'
-import { visit, SKIP } from 'unist-util-visit'
+import { visit } from 'unist-util-visit'
 
 import { ANY_TAG_PATTERN } from '../voice/expressionTags'
 
@@ -8,16 +8,7 @@ import { ANY_TAG_PATTERN } from '../voice/expressionTags'
 // a sequence of text and <span class="voice-tag"> nodes, one span per
 // canonical inline/wrapping tag occurrence.
 const rehypeVoiceTags: Plugin<[], Root> = () => (tree) => {
-  // First pass: mark code/pre subtrees as skipped.
-  // We use visit's return value to short-circuit traversal into code blocks.
-  visit(tree, 'element', (node: Element) => {
-    if (node.tagName === 'code' || node.tagName === 'pre') {
-      return SKIP
-    }
-    return undefined
-  })
-
-  // Second pass: split text nodes that contain canonical tag patterns.
+  // Walk text nodes and split those that contain canonical tag patterns.
   visit(tree, 'text', (node: Text, index, parent) => {
     if (!parent || index === undefined) return
     if ('tagName' in parent) {
