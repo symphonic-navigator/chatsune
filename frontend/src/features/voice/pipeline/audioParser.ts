@@ -1,6 +1,7 @@
 import type { NarratorMode, SpeechSegment } from '../types'
 import { splitSentences } from './sentenceSplitter'
 import { INLINE_TAG_PATTERN, WRAPPING_OPEN_PATTERN, WRAPPING_CLOSE_PATTERN } from '../expressionTags'
+import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
 
 function preprocess(text: string, mode: NarratorMode, supportsExpressiveMarkup: boolean): string {
   let s = text
@@ -37,28 +38,59 @@ function preprocess(text: string, mode: NarratorMode, supportsExpressiveMarkup: 
 // Split text into voice (quoted) and narration (everything else). Asterisk
 // and underscore italics are stripped upstream in `preprocess`, so this stage
 // only needs to recognise quote-delimited voice spans.
+// When supportsExpressiveMarkup is true, wrap markers (e.g. <whisper>…</whisper>)
+// that straddle a quote boundary are re-applied to each sub-segment so that
+// scope is preserved correctly across narration↔voice transitions.
 function splitSegments(
   text: string,
-  _supportsExpressiveMarkup: boolean = false,
+  supportsExpressiveMarkup: boolean = false,
 ): Array<{ type: 'voice' | 'narration'; text: string }> {
   const segments: Array<{ type: 'voice' | 'narration'; text: string }> = []
   const pattern = /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
   let lastIndex = 0
+  let wrapStack: string[] = []
   for (const match of text.matchAll(pattern)) {
     const idx = match.index as number
     if (idx > lastIndex) {
       const unmarked = text.slice(lastIndex, idx).trim()
-      if (unmarked) segments.push({ type: 'narration', text: unmarked })
+      if (unmarked) {
+        pushSegment(segments, 'narration', unmarked, wrapStack, supportsExpressiveMarkup)
+        wrapStack = scanSegment(unmarked, wrapStack)
+      }
     }
-    if (match[1] !== undefined) segments.push({ type: 'voice', text: match[1] })
-    else if (match[2] !== undefined) segments.push({ type: 'voice', text: match[2] })
+    const voiceText = match[1] ?? match[2] ?? ''
+    if (voiceText) {
+      pushSegment(segments, 'voice', voiceText, wrapStack, supportsExpressiveMarkup)
+      wrapStack = scanSegment(voiceText, wrapStack)
+    }
     lastIndex = idx + match[0].length
   }
   if (lastIndex < text.length) {
     const trailing = text.slice(lastIndex).trim()
-    if (trailing) segments.push({ type: 'narration', text: trailing })
+    if (trailing) {
+      pushSegment(segments, 'narration', trailing, wrapStack, supportsExpressiveMarkup)
+    }
   }
   return segments
+}
+
+function pushSegment(
+  out: Array<{ type: 'voice' | 'narration'; text: string }>,
+  type: 'voice' | 'narration',
+  rawText: string,
+  enteringStack: readonly string[],
+  supportsExpressiveMarkup: boolean,
+): void {
+  if (!supportsExpressiveMarkup) {
+    out.push({ type, text: rawText })
+    return
+  }
+  const leaving = scanSegment(rawText, enteringStack)
+  // Keep the raw text (including any interior markers from the LLM) and let
+  // wrapSegmentWithActiveStack add opens/closes at the edges only. Stripping
+  // and re-emitting would discard interior close tags on the last sub-segment.
+  const wrapped = wrapSegmentWithActiveStack(rawText, enteringStack, leaving)
+  out.push({ type, text: wrapped })
 }
 
 // Expand a coarse segment into one-per-sentence segments of the same type.

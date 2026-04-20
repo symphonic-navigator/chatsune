@@ -265,3 +265,44 @@ describe('parseForSpeech — expressive markup stripping', () => {
     expect(out).toEqual([{ type: 'voice', text: 'Hi  there.' }])
   })
 })
+
+describe('splitSegments — wrap-aware', () => {
+  it('propagates a wrap that straddles a dialogue quote in narrate mode', () => {
+    const out = parseForSpeech(
+      '<whisper>Er sagte "hallo welt" gestern.</whisper>',
+      'narrate',
+      true,
+    )
+    expect(out).toEqual([
+      { type: 'narration', text: '<whisper>Er sagte</whisper>' },
+      { type: 'voice', text: '<whisper>hallo welt</whisper>' },
+      { type: 'narration', text: '<whisper>gestern.</whisper>' },
+    ])
+  })
+
+  it('keeps an inside-quote wrap local to the dialogue voice', () => {
+    const out = parseForSpeech(
+      'Er sagte "<whisper>hallo</whisper>" und ging.',
+      'narrate',
+      true,
+    )
+    expect(out).toEqual([
+      { type: 'narration', text: 'Er sagte' },
+      { type: 'voice', text: '<whisper>hallo</whisper>' },
+      { type: 'narration', text: 'und ging.' },
+    ])
+  })
+
+  it('behaves identically to today when expressive markup is off', () => {
+    const out = parseForSpeech(
+      'Er sagte "hallo welt" gestern.',
+      'narrate',
+      false,
+    )
+    expect(out).toEqual([
+      { type: 'narration', text: 'Er sagte' },
+      { type: 'voice', text: 'hallo welt' },
+      { type: 'narration', text: 'gestern.' },
+    ])
+  })
+})
