@@ -72,3 +72,9 @@ def test_xai_voice_registration_uses_prompt_builder() -> None:
     assert defn is not None
     expected = build_system_prompt_extension()
     assert defn.system_prompt_template == expected
+
+
+def test_prompt_extension_mentions_qualifier_syntax() -> None:
+    prompt = build_system_prompt_extension()
+    low = prompt.lower()
+    assert "soft laugh" in low or "qualifier" in low

@@ -78,3 +78,53 @@ describe('isKnownWrappingTag', () => {
     expect(isKnownWrappingTag('br')).toBe(false)
   })
 })
+
+describe('INLINE_TAG_PATTERN — qualifier-tolerant', () => {
+  it('matches plain canonical tags', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('hi [laugh] there'.match(re)).toEqual(['[laugh]'])
+  })
+
+  it('matches a qualifier before the canonical tag', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('she let out a [soft laugh] and smiled'.match(re)).toEqual(['[soft laugh]'])
+  })
+
+  it('matches a qualifier after the canonical tag', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('he [exhale sharply] and stepped forward'.match(re)).toEqual(['[exhale sharply]'])
+  })
+
+  it('matches multi-word qualifier', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('[very soft laugh]'.match(re)).toEqual(['[very soft laugh]'])
+  })
+
+  it('matches hyphenated canonical tags', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('[long-pause] and then [hum-tune]'.match(re)).toEqual(['[long-pause]', '[hum-tune]'])
+  })
+
+  it('matches hyphenated canonical tags with a qualifier', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('[dramatic long-pause]'.match(re)).toEqual(['[dramatic long-pause]'])
+  })
+
+  it('does not match suffix-extended words (laughter, laughing)', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('the [laughter] of friends'.match(re)).toBeNull()
+    expect('[laughing]'.match(re)).toBeNull()
+  })
+
+  it('does not match unknown bracketed tokens', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('see [1] and [note]'.match(re)).toBeNull()
+  })
+
+  it('matches multiple inline tags in prose', () => {
+    const re = new RegExp(INLINE_TAG_PATTERN.source, 'g')
+    expect('[soft laugh] then [breath] then [exhale sharply]'.match(re)).toEqual([
+      '[soft laugh]', '[breath]', '[exhale sharply]',
+    ])
+  })
+})

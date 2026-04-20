@@ -32,7 +32,17 @@ export function isKnownWrappingTag(name: string): name is WrappingTag {
 const inlineAlternation = INLINE_TAGS.map(escapeForRegex).join('|')
 const wrappingAlternation = WRAPPING_TAGS.map(escapeForRegex).join('|')
 
-export const INLINE_TAG_PATTERN = new RegExp(`\\[(?:${inlineAlternation})\\]`)
+// Bracketed inline tag. The content must include at least one canonical
+// inline tag name at word boundaries, but may also include qualifier words:
+// [laugh], [soft laugh], [exhale sharply], [very quick breath] all match;
+// [laughter], [laughing], [1], [note] do not.
+// Note: \b triggers at any word/non-word boundary transition, so a hyphenated
+// tag like \blong-pause\b would also match inside e.g. [long-pause-extra]
+// (the \b after 'e' fires before the '-'). This is harmless in practice as
+// no one writes such tags meaningfully.
+export const INLINE_TAG_PATTERN = new RegExp(
+  `\\[[^\\]]*?\\b(?:${inlineAlternation})\\b[^\\]]*?\\]`,
+)
 export const WRAPPING_OPEN_PATTERN = new RegExp(`<(?:${wrappingAlternation})>`)
 export const WRAPPING_CLOSE_PATTERN = new RegExp(`</(?:${wrappingAlternation})>`)
 export const ANY_TAG_PATTERN = new RegExp(
