@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import type { Connection } from '../types/llm'
 import { OllamaHttpView } from '../../app/components/llm-providers/adapter-views/OllamaHttpView'
 import { CommunityView } from '../../app/components/llm-providers/adapter-views/CommunityView'
+import { XaiHttpView } from '../../app/components/llm-providers/adapter-views/XaiHttpView'
 
 export interface AdapterViewProps {
   connection: Connection
@@ -19,6 +20,7 @@ export interface AdapterViewProps {
 export const ADAPTER_VIEW_REGISTRY: Record<string, ComponentType<AdapterViewProps>> = {
   ollama_http: OllamaHttpView,
   community: CommunityView,
+  xai_http: XaiHttpView,
 }
 
 export function resolveAdapterView(viewId: string): ComponentType<AdapterViewProps> | null {
