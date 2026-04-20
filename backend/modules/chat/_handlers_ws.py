@@ -501,7 +501,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 correlation_id=correlation_id,
                 error_code="connection_not_found",
                 recoverable=False,
-                user_message="Connection not found — bitte in der Persona ein Modell neu auswählen.",
+                user_message="Connection not found — please select a model in the persona again.",
                 timestamp=now,
             ))
             await emit_fn(ChatStreamEndedEvent(

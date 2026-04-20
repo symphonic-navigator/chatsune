@@ -2,7 +2,7 @@ import { usePwaInstallStore } from "../../../core/pwa/installPrompt"
 import { useIsPwa } from "../../../core/hooks/useIsPwa"
 
 /**
- * Dezenter Install-Hinweis für die PWA.
+ * Discreet install hint for the PWA.
  *
  * Shows a small floating banner inviting the user to add Chatsune to
  * their home screen. Deliberately unobtrusive: only appears when
@@ -34,14 +34,14 @@ export function InstallHint() {
         border: "1px solid rgba(124, 92, 191, 0.30)",
       }}
       role="dialog"
-      aria-label="App installieren"
+      aria-label="Install app"
     >
       <div className="min-w-0 flex-1">
         <div className="text-[13px] font-semibold text-white/90">
-          App installieren
+          Install app
         </div>
         <div className="mt-0.5 text-[11px] text-white/50">
-          Chatsune auf den Startbildschirm legen.
+          Add Chatsune to your home screen.
         </div>
       </div>
       <button
@@ -55,12 +55,12 @@ export function InstallHint() {
           void install()
         }}
       >
-        Installieren
+        Install
       </button>
       <button
         className="flex-shrink-0 cursor-pointer text-sm text-white/30 transition-colors hover:text-white/60"
         onClick={dismiss}
-        aria-label="Schliessen"
+        aria-label="Close"
       >
         {"\u00D7"}
       </button>

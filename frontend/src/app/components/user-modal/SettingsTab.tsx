@@ -160,7 +160,7 @@ export function SettingsTab() {
             onClick={() => window.location.reload()}
             className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono transition-all border border-white/8 bg-transparent text-white/60 hover:text-white/90 hover:border-white/20"
           >
-            App neu laden
+            Reload app
           </button>
         </div>
       )}

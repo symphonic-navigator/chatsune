@@ -76,8 +76,8 @@ export function registerPwa(): void {
       onOfflineReady() {
         useNotificationStore.getState().addNotification({
           level: "success",
-          title: "Offline bereit",
-          message: "Chatsune ist jetzt auch offline verfügbar.",
+          title: "Offline ready",
+          message: "Chatsune is now available offline.",
         })
       },
     })

@@ -653,7 +653,7 @@ async def run_inference(
             correlation_id=correlation_id,
             error_code="connection_not_found",
             recoverable=False,
-            user_message="Modell nicht mit einer Verbindung verknüpft — bitte in der Persona neu auswählen.",
+            user_message="Model not linked to a connection — please select it again in the persona.",
             timestamp=now,
         ))
         await emit_fn(ChatStreamEndedEvent(
@@ -671,7 +671,7 @@ async def run_inference(
             correlation_id=correlation_id,
             error_code="invalid_model_unique_id",
             recoverable=False,
-            user_message="Modell-ID ungültig — bitte in der Persona neu auswählen.",
+            user_message="Model ID invalid — please select it again in the persona.",
             timestamp=now,
         ))
         await emit_fn(ChatStreamEndedEvent(

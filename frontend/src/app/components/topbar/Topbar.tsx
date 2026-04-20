@@ -115,7 +115,7 @@ interface TopbarProps {
 function BurgerButton({ hasProblem }: { hasProblem: boolean }) {
   const drawerOpen = useDrawerStore((s) => s.sidebarOpen)
   const toggle = useDrawerStore((s) => s.toggle)
-  const label = drawerOpen ? "Navigation schliessen" : "Navigation öffnen"
+  const label = drawerOpen ? "Close navigation" : "Open navigation"
   return (
     <button
       type="button"
