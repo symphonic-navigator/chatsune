@@ -54,6 +54,8 @@
     "jsdom": "^29.0.1",
     "rehype-parse": "^9.0.1",
     "rehype-stringify": "^10.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
     "tailwindcss": "^4.2.2",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",

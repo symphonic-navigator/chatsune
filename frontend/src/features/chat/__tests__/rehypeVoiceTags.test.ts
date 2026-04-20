@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { unified } from 'unified'
 import rehypeParse from 'rehype-parse'
 import rehypeStringify from 'rehype-stringify'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
+import remarkRehype from 'remark-rehype'
 import rehypeVoiceTags from '../rehypeVoiceTags'
 
 function process(html: string): string {
@@ -47,5 +50,29 @@ describe('rehypeVoiceTags', () => {
   it('handles multiple tags in one text node', () => {
     const out = process('<p>a [laugh] b [pause] c</p>')
     expect(out).toBe('<p>a <span class="voice-tag">[laugh]</span> b <span class="voice-tag">[pause]</span> c</p>')
+  })
+})
+
+function processMarkdown(src: string): string {
+  return unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeVoiceTags)
+    .use(rehypeStringify, { allowDangerousHtml: true })
+    .processSync(src)
+    .toString()
+}
+
+describe('rehypeVoiceTags — via markdown pipeline (reproduction of wrapping-tag bug)', () => {
+  it('pills wrapping markers that arrive as raw HAST nodes from markdown', () => {
+    const out = processMarkdown('hi <whisper>a secret</whisper> there')
+    expect(out).toContain('voice-tag')
+    expect(out).toMatch(/<span class="voice-tag">[^<]*whisper[^<]*<\/span>/)
+  })
+
+  it('inline tags continue to pill as before', () => {
+    const out = processMarkdown('hi [laugh] there')
+    expect(out).toContain('<span class="voice-tag">[laugh]</span>')
   })
 })
