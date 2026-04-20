@@ -219,3 +219,44 @@ def test_parse_sse_line_returns_none_for_non_data_line():
 def test_parse_sse_line_returns_none_for_malformed_json():
     # We log and skip — adapter keeps streaming.
     assert _parse_sse_line("data: {not json}") is None
+
+
+from backend.modules.llm._adapters._xai_http import _ToolCallAccumulator
+
+
+def test_accumulator_collects_single_call_across_fragments():
+    acc = _ToolCallAccumulator()
+    acc.ingest([{"index": 0, "id": "call_1", "type": "function",
+                 "function": {"name": "web_search"}}])
+    acc.ingest([{"index": 0, "function": {"arguments": '{"q":'}}])
+    acc.ingest([{"index": 0, "function": {"arguments": '"grok"}'}}])
+    calls = acc.finalised()
+    assert len(calls) == 1
+    assert calls[0]["id"] == "call_1"
+    assert calls[0]["name"] == "web_search"
+    assert calls[0]["arguments"] == '{"q":"grok"}'
+
+
+def test_accumulator_handles_multiple_parallel_calls():
+    acc = _ToolCallAccumulator()
+    acc.ingest([
+        {"index": 0, "id": "call_a", "type": "function",
+         "function": {"name": "search", "arguments": "{}"}},
+        {"index": 1, "id": "call_b", "type": "function",
+         "function": {"name": "fetch", "arguments": "{}"}},
+    ])
+    calls = acc.finalised()
+    assert {c["id"] for c in calls} == {"call_a", "call_b"}
+
+
+def test_accumulator_synthesises_id_when_upstream_omits_it():
+    # Some providers stream only the name on the first fragment. We fall
+    # back to a synthetic ID so downstream tool dispatch never sees "".
+    acc = _ToolCallAccumulator()
+    acc.ingest([{"index": 0, "function": {"name": "calc"}}])
+    acc.ingest([{"index": 0, "function": {"arguments": "{}"}}])
+    calls = acc.finalised()
+    assert len(calls) == 1
+    assert calls[0]["id"]
+    assert calls[0]["name"] == "calc"
+    assert calls[0]["arguments"] == "{}"

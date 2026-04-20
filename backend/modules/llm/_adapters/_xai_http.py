@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import ProviderStreamEvent, StreamError
@@ -19,6 +20,46 @@ from shared.dtos.llm import ModelMetaDto
 _log = logging.getLogger(__name__)
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
+
+
+class _ToolCallAccumulator:
+    """Gathers OpenAI-style tool_call fragments across SSE chunks.
+
+    Upstream providers stream tool calls in pieces, indexed by
+    ``tool_calls[].index``. Each fragment may carry id, name, or an
+    arguments string fragment. We accumulate by index and finalise once
+    the upstream signals ``finish_reason="tool_calls"``.
+    """
+
+    def __init__(self) -> None:
+        self._by_index: dict[int, dict] = {}
+
+    def ingest(self, fragments: list[dict]) -> None:
+        for frag in fragments:
+            idx = frag.get("index")
+            if idx is None:
+                continue
+            slot = self._by_index.setdefault(idx, {
+                "id": None, "name": "", "args": "",
+            })
+            if frag.get("id"):
+                slot["id"] = frag["id"]
+            fn = frag.get("function") or {}
+            if fn.get("name"):
+                slot["name"] = fn["name"]
+            if fn.get("arguments"):
+                slot["args"] += fn["arguments"]
+
+    def finalised(self) -> list[dict]:
+        """Return accumulated calls as [{id, name, arguments}, ...]."""
+        calls: list[dict] = []
+        for _, slot in sorted(self._by_index.items()):
+            calls.append({
+                "id": slot["id"] or f"call_{uuid4().hex[:12]}",
+                "name": slot["name"],
+                "arguments": slot["args"] or "{}",
+            })
+        return calls
 
 
 def _parse_sse_line(line: str) -> dict | object | None:
