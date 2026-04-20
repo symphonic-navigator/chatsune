@@ -152,7 +152,6 @@ async def cascade_delete_user(
         PremiumProviderAccountRepository,
         PremiumProviderService,
     )
-    from backend.modules.websearch import delete_all_for_user as del_websearch
 
     user_repo = UserRepository(get_db())
     audit_repo = AuditRepository(get_db())
@@ -252,17 +251,10 @@ async def cascade_delete_user(
         warnings=[],
     ))
 
-    # Step 5: web-search credentials.
-    websearch_count, websearch_warnings = await _safe_call(
-        "web-search credential deletion", del_websearch(user_id),
-    )
-    steps.append(DeletionStepDto(
-        label="web-search credentials",
-        deleted_count=websearch_count or 0,
-        warnings=websearch_warnings,
-    ))
-
-    # Step 6: integrations.
+    # Step 5: integrations.
+    # (web-search credentials are no longer a separate store — they were
+    # folded into the premium_provider_accounts collection handled in
+    # Step 6b below.)
     integration_count, integration_warnings = await _safe_call(
         "integration config deletion", del_integrations(user_id),
     )
@@ -272,7 +264,7 @@ async def cascade_delete_user(
         warnings=integration_warnings,
     ))
 
-    # Step 6b: premium provider accounts.
+    # Step 6: premium provider accounts.
     provider_service = PremiumProviderService(
         PremiumProviderAccountRepository(get_db()),
     )

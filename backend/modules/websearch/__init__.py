@@ -1,13 +1,16 @@
-"""Websearch module — pluggable web-search adapters with own credential store.
+"""Websearch module — pluggable web-search adapters.
 
 Public API: import only from this file.
+
+Credentials are not owned by this module; API keys are resolved through
+:class:`backend.modules.providers.PremiumProviderService`. The legacy
+``websearch_user_credentials`` collection and its repository were removed
+in Task 14 of the Premium Provider Accounts refactor.
 """
 
 import logging
 
 from backend.database import get_db
-from backend.modules.websearch._credentials import WebSearchCredentialRepository
-from backend.modules.websearch._handlers import router
 from backend.modules.websearch._registry import (
     SEARCH_ADAPTER_REGISTRY,
     SEARCH_PROVIDER_BASE_URLS,
@@ -73,16 +76,7 @@ def get_tool_definitions() -> list[ToolDefinition]:
 
 
 # ---------------------------------------------------------------------------
-# Index initialisation
-# ---------------------------------------------------------------------------
-
-async def init_indexes(db) -> None:
-    """Create indexes for the websearch credentials collection."""
-    await WebSearchCredentialRepository(db).create_indexes()
-
-
-# ---------------------------------------------------------------------------
-# Key resolution — reads from this module's own credential store
+# Key resolution — delegated to the Premium Provider service
 # ---------------------------------------------------------------------------
 
 async def _resolve_api_key(user_id: str, provider_id: str) -> str:
@@ -161,27 +155,10 @@ async def fetch(
     return await adapter.fetch(api_key, url)
 
 
-async def delete_all_for_user(user_id: str) -> int:
-    """Delete all stored web-search credentials owned by ``user_id``.
-
-    Called by the user self-delete (right-to-be-forgotten) cascade.
-    """
-    repo = WebSearchCredentialRepository(get_db())
-    count = await repo.delete_all_for_user(user_id)
-    logger.info(
-        "websearch.delete_all_for_user user_id=%s deleted=%d",
-        user_id, count,
-    )
-    return count
-
-
 __all__ = [
-    "router",
-    "init_indexes",
     "get_tool_definitions",
     "search",
     "fetch",
-    "delete_all_for_user",
     "WebSearchProviderNotFoundError",
     "WebSearchCredentialNotFoundError",
 ]
