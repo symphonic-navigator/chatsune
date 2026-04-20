@@ -22,6 +22,7 @@ import { useSubtabStore } from "../components/user-modal/userModalSubtabStore"
 import { AdminModal, type AdminModalTab } from "../components/admin-modal/AdminModal"
 import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 import { ToastContainer } from "../components/toast/ToastContainer"
+import { MobileToastContainer } from "../components/toast/MobileToastContainer"
 import { InstallHint } from "../components/pwa/InstallHint"
 import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
@@ -322,6 +323,7 @@ export default function AppLayout() {
         </main>
       </div>
       <ToastContainer />
+      <MobileToastContainer />
       <InstallHint />
     </div>
   )
