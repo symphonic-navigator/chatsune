@@ -1,8 +1,14 @@
 import type { NarratorMode, SpeechSegment } from '../types'
 import { splitSentences } from './sentenceSplitter'
+import { INLINE_TAG_PATTERN, WRAPPING_OPEN_PATTERN, WRAPPING_CLOSE_PATTERN } from '../expressionTags'
 
-function preprocess(text: string, mode: NarratorMode): string {
+function preprocess(text: string, mode: NarratorMode, supportsExpressiveMarkup: boolean): string {
   let s = text
+  if (!supportsExpressiveMarkup) {
+    s = s.replace(new RegExp(INLINE_TAG_PATTERN.source, 'g'), '')
+    s = s.replace(new RegExp(WRAPPING_OPEN_PATTERN.source, 'g'), '')
+    s = s.replace(new RegExp(WRAPPING_CLOSE_PATTERN.source, 'g'), '')
+  }
   s = s.replace(/```[\s\S]*?```/g, '')           // fenced code blocks
   s = s.replace(/`[^`]+`/g, '')                   // inline code
   s = s.replace(/\(\([\s\S]*?\)\)/g, '')          // OOC markers
@@ -31,7 +37,10 @@ function preprocess(text: string, mode: NarratorMode): string {
 // Split text into voice (quoted) and narration (everything else). Asterisk
 // and underscore italics are stripped upstream in `preprocess`, so this stage
 // only needs to recognise quote-delimited voice spans.
-function splitSegments(text: string): Array<{ type: 'voice' | 'narration'; text: string }> {
+function splitSegments(
+  text: string,
+  _supportsExpressiveMarkup: boolean = false,
+): Array<{ type: 'voice' | 'narration'; text: string }> {
   const segments: Array<{ type: 'voice' | 'narration'; text: string }> = []
   const pattern = /"([^"]+)"|\u201c([^\u201d]+)\u201d/g
   let lastIndex = 0
@@ -67,15 +76,19 @@ function hasSpeakableContent(text: string): boolean {
   return /[\p{L}\p{N}]/u.test(text)
 }
 
-export function parseForSpeech(text: string, mode: NarratorMode): SpeechSegment[] {
-  const cleaned = preprocess(text, mode)
+export function parseForSpeech(
+  text: string,
+  mode: NarratorMode,
+  supportsExpressiveMarkup: boolean = false,
+): SpeechSegment[] {
+  const cleaned = preprocess(text, mode, supportsExpressiveMarkup)
   if (!cleaned) return []
   if (mode === 'off') {
     return splitSentences(cleaned)
       .filter(hasSpeakableContent)
       .map((s) => ({ type: 'voice' as const, text: s }))
   }
-  const coarse = splitSegments(cleaned)
+  const coarse = splitSegments(cleaned, supportsExpressiveMarkup)
   const result: SpeechSegment[] = []
   for (const seg of coarse) {
     for (const expanded of expandToSentences(seg)) {

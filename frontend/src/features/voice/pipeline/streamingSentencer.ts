@@ -1,5 +1,6 @@
 import type { NarratorMode, SpeechSegment } from '../types'
 import { parseForSpeech } from './audioParser'
+import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
 
 export interface StreamingSentencer {
   push(delta: string): SpeechSegment[]
@@ -124,6 +125,35 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         // Case (b): only accept pictographic chars directly after punctuation.
         if (isPictographAt(text, nextIdx)) {
           lastSafeEnd = nextIdx
+          continue
+        }
+        // Case (c): one or more closing tags directly after punctuation —
+        // look through them to find the whitespace + sentence-start that
+        // follows. This allows cuts in expressive-markup text like
+        // "hello.</whisper> Next" where the tag is transparent punctuation.
+        let k = nextIdx
+        while (k < text.length && text[k] === '<' && text[k + 1] === '/') {
+          const closeEnd = text.indexOf('>', k)
+          if (closeEnd === -1) break
+          k = closeEnd + 1
+        }
+        if (k > nextIdx) {
+          // We consumed at least one closing tag. Now apply the normal
+          // whitespace + sentence-start check at position k.
+          const afterTags = k
+          while (k < text.length && (text[k] === ' ' || text[k] === '\t')) k++
+          if (k < text.length) {
+            const afterTagChar = text[k]
+            if (
+              afterTagChar === '\n' ||
+              isUppercaseSentenceStart(afterTagChar) ||
+              isPictographAt(text, k) ||
+              isLetter(afterTagChar)
+            ) {
+              // Cut includes the closing tags so the emitted chunk is balanced.
+              lastSafeEnd = afterTags
+            }
+          }
         }
         continue
       }
@@ -136,7 +166,7 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         continue
       }
       const after = text[j]
-      if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j)) {
+      if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j) || isLetter(after)) {
         lastSafeEnd = nextIdx
       }
     }
@@ -156,6 +186,12 @@ function isUppercaseSentenceStart(ch: string): boolean {
   return /[A-Z\u00C4\u00D6\u00DC]/.test(ch)
 }
 
+// Whether `ch` is a Unicode letter — used to allow cuts before lowercase
+// sentence starts (e.g. German articles like "die", "der", "ein").
+function isLetter(ch: string): boolean {
+  return /\p{L}/u.test(ch)
+}
+
 // Whether the code point at `i` is an emoji / pictograph. Handles surrogate
 // pairs (most emojis live in the supplementary plane). Used to decide whether
 // a char following sentence-end punctuation is decoration (like 😀) rather
@@ -170,9 +206,12 @@ class StreamingSentencerImpl implements StreamingSentencer {
   private buffer = ''
   private committedIndex = 0
   private readonly mode: NarratorMode
+  private readonly supportsExpressiveMarkup: boolean
+  private wrapStack: string[] = []
 
-  constructor(mode: NarratorMode) {
+  constructor(mode: NarratorMode, supportsExpressiveMarkup: boolean) {
     this.mode = mode
+    this.supportsExpressiveMarkup = supportsExpressiveMarkup
   }
 
   push(delta: string): SpeechSegment[] {
@@ -182,22 +221,37 @@ class StreamingSentencerImpl implements StreamingSentencer {
     if (safeEnd <= this.committedIndex) return []
     const chunk = this.buffer.slice(this.committedIndex, safeEnd)
     this.committedIndex = safeEnd
-    return parseForSpeech(chunk, this.mode)
+    return this.emitChunk(chunk)
   }
 
   flush(): SpeechSegment[] {
     if (this.committedIndex >= this.buffer.length) return []
     const rest = this.buffer.slice(this.committedIndex)
     this.committedIndex = this.buffer.length
-    return parseForSpeech(rest, this.mode)
+    return this.emitChunk(rest)
   }
 
   reset(): void {
     this.buffer = ''
     this.committedIndex = 0
+    this.wrapStack = []
+  }
+
+  private emitChunk(chunk: string): SpeechSegment[] {
+    if (!this.supportsExpressiveMarkup) {
+      return parseForSpeech(chunk, this.mode, this.supportsExpressiveMarkup)
+    }
+    const entering = [...this.wrapStack]
+    const leaving = scanSegment(chunk, entering)
+    const wrapped = wrapSegmentWithActiveStack(chunk, entering, leaving)
+    this.wrapStack = leaving
+    return parseForSpeech(wrapped, this.mode, this.supportsExpressiveMarkup)
   }
 }
 
-export function createStreamingSentencer(mode: NarratorMode): StreamingSentencer {
-  return new StreamingSentencerImpl(mode)
+export function createStreamingSentencer(
+  mode: NarratorMode,
+  supportsExpressiveMarkup: boolean = false,
+): StreamingSentencer {
+  return new StreamingSentencerImpl(mode, supportsExpressiveMarkup)
 }

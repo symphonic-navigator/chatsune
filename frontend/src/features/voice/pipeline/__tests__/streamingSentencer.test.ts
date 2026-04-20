@@ -201,3 +201,53 @@ describe('createStreamingSentencer', () => {
     })
   })
 })
+
+describe('createStreamingSentencer — expressive markup', () => {
+  it('re-wraps a <whisper> that spans a sentence boundary', () => {
+    const s = createStreamingSentencer('off', true)
+    const out1 = s.push('<whisper>ich verrate dir ein geheimnis. die klingonen ')
+    expect(out1).toEqual([
+      { type: 'voice', text: '<whisper>ich verrate dir ein geheimnis.</whisper>' },
+    ])
+    // " die klingonen " remained in the buffer after the first cut and is
+    // prepended to the next sentence — correct: the wrap-stack re-opens the
+    // active <whisper> so the TTS receives balanced, contiguous markup.
+    const out2 = s.push('planen einen angriff.</whisper> Dann ')
+    expect(out2).toEqual([
+      { type: 'voice', text: '<whisper> die klingonen planen einen angriff.</whisper>' },
+    ])
+  })
+
+  it('re-wraps nested wraps across a cut', () => {
+    const s = createStreamingSentencer('off', true)
+    const out1 = s.push('<soft><emphasis>wichtig.</emphasis> nicht so ')
+    expect(out1).toEqual([
+      { type: 'voice', text: '<soft><emphasis>wichtig.</emphasis></soft>' },
+    ])
+    const out2 = s.push('wichtig.</soft> Danach ')
+    expect(out2).toEqual([
+      { type: 'voice', text: '<soft> nicht so wichtig.</soft>' },
+    ])
+  })
+
+  it('treats unknown tags as plain text', () => {
+    const s = createStreamingSentencer('off', true)
+    const out = s.push('<foo>hi.</foo> Next ')
+    expect(out).toEqual([{ type: 'voice', text: '<foo>hi.</foo>' }])
+  })
+
+  it('flush closes an unterminated open on emit so TTS sees balanced input', () => {
+    const s = createStreamingSentencer('off', true)
+    s.push('<whisper>ich sage noch nichts')   // no sentence-end → buffered
+    const out = s.flush()
+    expect(out).toEqual([{ type: 'voice', text: '<whisper>ich sage noch nichts</whisper>' }])
+  })
+
+  it('strips expression tags and emits plain text when flag is false (default)', () => {
+    // flag=false activates tag-stripping in preprocess; no wrap-stack rewrapping.
+    // The tags are removed and only the inner text is spoken.
+    const s = createStreamingSentencer('off')
+    const out = s.push('<whisper>hello.</whisper> Next ')
+    expect(out).toEqual([{ type: 'voice', text: 'hello.' }])
+  })
+})

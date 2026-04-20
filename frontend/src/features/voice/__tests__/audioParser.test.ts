@@ -243,3 +243,25 @@ describe('parseForSpeech', () => {
     })
   })
 })
+
+describe('parseForSpeech — expressive markup stripping', () => {
+  it('strips inline tags when capability is absent', () => {
+    const out = parseForSpeech('Hi [laugh] there.', 'off', false)
+    expect(out).toEqual([{ type: 'voice', text: 'Hi  there.' }])
+  })
+
+  it('strips wrapping markers but keeps their content when capability is absent', () => {
+    const out = parseForSpeech('I <whisper>whisper</whisper> quietly.', 'off', false)
+    expect(out).toEqual([{ type: 'voice', text: 'I whisper quietly.' }])
+  })
+
+  it('keeps tags intact when capability is present', () => {
+    const out = parseForSpeech('Hi [laugh] there.', 'off', true)
+    expect(out).toEqual([{ type: 'voice', text: 'Hi [laugh] there.' }])
+  })
+
+  it('default (no third argument) behaves as capability absent', () => {
+    const out = parseForSpeech('Hi [laugh] there.', 'off')
+    expect(out).toEqual([{ type: 'voice', text: 'Hi  there.' }])
+  })
+})
