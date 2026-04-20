@@ -1,4 +1,22 @@
-"""Resolve a connection (by _id or slug) + current user into a ResolvedConnection."""
+"""Resolve a connection (by _id or slug) + current user into a ResolvedConnection.
+
+Two public entry points:
+
+* :func:`resolve_connection_for_user` — FastAPI dependency, used by adapter
+  sub-routers (``/api/llm/connections/{connection_id}/...``) that accept the
+  Connection's ``_id`` or ``slug`` in the path.
+
+* :func:`resolve_for_model` — non-HTTP helper that takes a ``model_unique_id``
+  of the form ``<slug>:<model_slug>`` and returns a :class:`ResolvedConnection`
+  ready to hand to an adapter. When the left segment is a reserved Premium
+  Provider id (``xai``, ``mistral``, ``ollama_cloud``), the resolver fetches
+  the user's encrypted credential from :class:`PremiumProviderService` and
+  synthesises a ResolvedConnection carrying the registry-fixed ``base_url``
+  + decrypted ``api_key``. Otherwise it falls back to the per-user Connection
+  repository lookup (the existing behaviour).
+"""
+
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, Path
 
@@ -6,6 +24,15 @@ from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
+
+# Mapping from reserved Premium-Provider id → adapter_type string. Only
+# providers with an LLM capability appear here. ``mistral`` is reserved by
+# the slug system but has no LLM adapter yet, so it intentionally has no
+# entry and will fall through to the "no LLM capability" branch.
+_PREMIUM_ADAPTER_TYPE: dict[str, str] = {
+    "xai": "xai_http",
+    "ollama_cloud": "ollama_http",
+}
 
 
 def _to_resolved(doc: dict) -> ResolvedConnection:
@@ -56,3 +83,81 @@ async def resolve_owned_connection_by_slug(
     if doc is None:
         return None
     return _to_resolved(doc)
+
+
+async def _resolve_premium(
+    user_id: str, model_unique_id: str,
+) -> ResolvedConnection | None:
+    """Return a ResolvedConnection for a Premium-Provider model, or ``None``
+    when ``model_unique_id`` does not begin with a reserved slug.
+
+    Raises :class:`LlmConnectionNotFoundError` if the prefix IS a reserved
+    slug but the user has no matching Premium account, or the account has
+    no ``api_key`` set. Unknown-but-non-premium prefixes return ``None`` so
+    the caller can fall back to the standard Connection lookup.
+    """
+    # Local imports to avoid import-time cycles (providers → ws → llm).
+    from backend.modules.llm import LlmConnectionNotFoundError
+    from backend.modules.providers import PremiumProviderService
+    from backend.modules.providers._registry import get as get_premium_definition
+    from backend.modules.providers._repository import (
+        PremiumProviderAccountRepository,
+    )
+
+    prefix, sep, _ = model_unique_id.partition(":")
+    if not sep or not prefix:
+        return None
+    defn = get_premium_definition(prefix)
+    if defn is None:
+        return None
+    adapter_type = _PREMIUM_ADAPTER_TYPE.get(prefix)
+    if adapter_type is None:
+        # Premium provider exists but has no LLM adapter (e.g. mistral).
+        # Nothing we can resolve for LLM inference — let the caller deal.
+        return None
+
+    svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+    api_key = await svc.get_decrypted_secret(user_id, prefix, "api_key")
+    if api_key is None:
+        raise LlmConnectionNotFoundError(model_unique_id)
+
+    now = datetime.now(UTC)
+    return ResolvedConnection(
+        id=f"premium:{prefix}",
+        user_id=user_id,
+        adapter_type=adapter_type,
+        display_name=defn.display_name,
+        slug=prefix,
+        config={"url": defn.base_url, "api_key": api_key},
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def resolve_for_model(
+    user_id: str, model_unique_id: str,
+) -> ResolvedConnection:
+    """Resolve ``<slug>:<model_slug>`` into a :class:`ResolvedConnection`.
+
+    Dispatch order:
+      1. If ``slug`` is a reserved Premium-Provider id with an LLM adapter,
+         synthesise from the registry + the user's Premium account.
+      2. Otherwise look up the user's Connection by slug.
+
+    Raises:
+        LlmConnectionNotFoundError: neither a premium account nor a
+            per-user connection matched the slug.
+    """
+    from backend.modules.llm import LlmConnectionNotFoundError
+
+    premium = await _resolve_premium(user_id, model_unique_id)
+    if premium is not None:
+        return premium
+
+    slug, sep, _ = model_unique_id.partition(":")
+    if not sep or not slug:
+        raise LlmConnectionNotFoundError(model_unique_id)
+    resolved = await resolve_owned_connection_by_slug(user_id, slug)
+    if resolved is None:
+        raise LlmConnectionNotFoundError(slug)
+    return resolved
