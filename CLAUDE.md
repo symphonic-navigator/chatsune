@@ -148,6 +148,25 @@ Scenarios live in `tests/llm_scenarios/` as JSON files.
 
 ---
 
+## xAI Voice Expression Tags
+
+The canonical xAI voice expression tag vocabulary lives in two files:
+
+- `backend/modules/integrations/_voice_expression_tags.py` — Python side,
+  feeds the `xai_voice` integration's system-prompt extension.
+- `frontend/src/features/voice/expressionTags.ts` — TS side, feeds the
+  sentence-streaming pipeline, the capability-gated filter, and the chat
+  pill renderer.
+
+**Any change to the tag list must update both files.** There is no
+runtime drift check; review discipline and this note are the guard.
+When xAI adds a new tag, add it to both files and extend the prompt
+builder's description table in the Python file. When xAI deprecates a
+tag, remove it from both files — no backwards-compat is needed because
+the markup is carried in free text and ignored tags are harmless.
+
+---
+
 ## Claude-Oriented Logging
 
 The backend maintains structured logs designed to be useful for Claude Code during debugging.
