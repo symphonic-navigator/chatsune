@@ -37,3 +37,4 @@ class CompletionRequest(BaseModel):
     tools: list[ToolDefinition] | None = None
     reasoning_enabled: bool = False
     supports_reasoning: bool = False  # model capability — adapter uses this to decide whether to send think param
+    cache_hint: str | None = None     # provider-specific cache locality hint (e.g. session UUID for x-grok-conv-id)

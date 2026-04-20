@@ -74,3 +74,20 @@ def test_completion_request_full():
     assert req.temperature == 0.7
     assert len(req.tools) == 1
     assert req.reasoning_enabled is True
+
+
+def test_cache_hint_defaults_to_none():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(role="user", content=[ContentPart(type="text", text="hi")])],
+    )
+    assert req.cache_hint is None
+
+
+def test_cache_hint_accepts_string():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(role="user", content=[ContentPart(type="text", text="hi")])],
+        cache_hint="sess-abc",
+    )
+    assert req.cache_hint == "sess-abc"
