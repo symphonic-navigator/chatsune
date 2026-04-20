@@ -51,12 +51,15 @@ from backend.modules.llm._homelabs import (
 )
 from backend.modules.llm._metadata import (
     get_models_for_connection,
+    get_premium_models,
     refresh_connection_models,
+    refresh_premium_models,
 )
 from backend.modules.llm._registry import ADAPTER_REGISTRY, get_adapter_class
 from backend.modules.llm._resolver import (
     resolve_for_model,
     resolve_owned_connection_by_slug,
+    resolve_premium_for_listing,
 )
 
 # Convenience alias — callers that split a model_unique_id pass a slug as the
@@ -84,6 +87,22 @@ class LlmConnectionNotFoundError(Exception):
 
 class LlmInvalidModelUniqueIdError(Exception):
     """model_unique_id is not in ``<connection_slug>:<model_slug>`` format."""
+
+
+class PremiumProviderUnknownError(Exception):
+    """Unknown Premium Provider id — not in the registry."""
+
+    def __init__(self, provider_id: str) -> None:
+        super().__init__(f"Unknown premium provider: {provider_id}")
+        self.provider_id = provider_id
+
+
+class PremiumProviderAccountMissingError(Exception):
+    """The provider is known, but the caller has no account configured."""
+
+    def __init__(self, provider_id: str) -> None:
+        super().__init__(f"No premium account configured: {provider_id}")
+        self.provider_id = provider_id
 
 
 async def init_indexes(db) -> None:
@@ -292,6 +311,86 @@ def active_inference_count() -> int:
     return _tracker.active_count()
 
 
+async def list_premium_provider_models(
+    user_id: str, provider_id: str,
+) -> list[ModelMetaDto]:
+    """Return the cached-or-fresh model list for a Premium Provider.
+
+    Semantics match :func:`get_models_for_connection` on the user-facing
+    Connections path: adapter failures degrade to an empty list, and a
+    provider that has no LLM adapter (e.g. ``mistral`` today) also yields
+    an empty list rather than an error — "no LLM models" is a structural
+    fact, not a fault.
+
+    Raises:
+        PremiumProviderUnknownError: ``provider_id`` is not in the registry.
+        PremiumProviderAccountMissingError: the user has no account
+            configured for this provider.
+    """
+    from backend.modules.providers._registry import get as get_premium_definition
+
+    if get_premium_definition(provider_id) is None:
+        raise PremiumProviderUnknownError(provider_id)
+    c = await resolve_premium_for_listing(user_id, provider_id)
+    if c is None:
+        # Two sub-cases:
+        #   (a) provider has no LLM adapter entry — empty list is correct;
+        #   (b) the user has no account — surface a distinct error.
+        # resolve_premium_for_listing returns None for both. Disambiguate
+        # by consulting the service layer directly.
+        from backend.modules.providers import PremiumProviderService
+        from backend.modules.providers._repository import (
+            PremiumProviderAccountRepository,
+        )
+
+        svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+        if not await svc.has_account(user_id, provider_id):
+            raise PremiumProviderAccountMissingError(provider_id)
+        return []
+    adapter_cls = get_adapter_class(c.adapter_type)
+    if adapter_cls is None:
+        return []
+    return await get_premium_models(
+        c, adapter_cls, get_redis(), user_id, provider_id,
+    )
+
+
+async def refresh_premium_provider_models(
+    user_id: str, provider_id: str,
+) -> list[ModelMetaDto]:
+    """Drop the user-scoped cache and re-fetch.
+
+    Raises on upstream adapter errors so the HTTP layer can surface them
+    — matches :func:`refresh_connection_models`.
+
+    Raises:
+        PremiumProviderUnknownError: unknown ``provider_id``.
+        PremiumProviderAccountMissingError: user has no account.
+        Exception: any adapter-level fetch error.
+    """
+    from backend.modules.providers._registry import get as get_premium_definition
+
+    if get_premium_definition(provider_id) is None:
+        raise PremiumProviderUnknownError(provider_id)
+    c = await resolve_premium_for_listing(user_id, provider_id)
+    if c is None:
+        from backend.modules.providers import PremiumProviderService
+        from backend.modules.providers._repository import (
+            PremiumProviderAccountRepository,
+        )
+
+        svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+        if not await svc.has_account(user_id, provider_id):
+            raise PremiumProviderAccountMissingError(provider_id)
+        return []
+    adapter_cls = get_adapter_class(c.adapter_type)
+    if adapter_cls is None:
+        return []
+    return await refresh_premium_models(
+        c, adapter_cls, get_redis(), user_id, provider_id,
+    )
+
+
 async def get_model_metadata(
     user_id: str, model_unique_id: str,
 ) -> ModelMetaDto | None:
@@ -459,6 +558,10 @@ __all__ = [
     "ToolCallEvent",
     "LlmConnectionNotFoundError",
     "LlmInvalidModelUniqueIdError",
+    "PremiumProviderUnknownError",
+    "PremiumProviderAccountMissingError",
+    "list_premium_provider_models",
+    "refresh_premium_provider_models",
     "UserModelConfigRepository",
     "get_model_context_window",
     "get_effective_context_window",

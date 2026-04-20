@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
+from shared.dtos.llm import ModelMetaDto
 from shared.dtos.providers import (
     PremiumProviderAccountDto,
     PremiumProviderDefinitionDto,
@@ -81,3 +83,99 @@ async def delete_account(
             detail="No account configured",
         )
     return None
+
+
+@router.get(
+    "/accounts/{provider_id}/models",
+    response_model=list[ModelMetaDto],
+)
+async def list_provider_models(
+    provider_id: str,
+    user: dict = Depends(require_active_session),
+):
+    """Return the user's Premium-Provider model list (cached-or-fresh).
+
+    Mirrors ``GET /api/llm/connections/{id}/models`` but for the Premium
+    path. Business logic lives in the LLM module — this handler is just a
+    thin HTTP adaptor that maps domain errors onto the right status codes.
+    """
+    # Local import — avoids import-time cycles (providers → llm → providers).
+    from backend.modules.llm import (
+        PremiumProviderAccountMissingError,
+        PremiumProviderUnknownError,
+        list_premium_provider_models,
+    )
+
+    try:
+        return await list_premium_provider_models(user["sub"], provider_id)
+    except PremiumProviderUnknownError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown provider",
+        )
+    except PremiumProviderAccountMissingError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account configured",
+        )
+
+
+@router.post(
+    "/accounts/{provider_id}/refresh",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def refresh_provider_models(
+    provider_id: str,
+    user: dict = Depends(require_active_session),
+):
+    """Drop the user-scoped cache, re-fetch, and publish a refresh event.
+
+    On upstream failure the handler returns 502, and the event carries
+    ``success=False`` + the error string — same contract as
+    ``POST /api/llm/connections/{id}/refresh``.
+    """
+    from backend.modules.llm import (
+        PremiumProviderAccountMissingError,
+        PremiumProviderUnknownError,
+        refresh_premium_provider_models,
+    )
+    from backend.ws.event_bus import get_event_bus
+    from shared.events.llm import PremiumProviderModelsRefreshedEvent
+    from shared.topics import Topics
+
+    error_msg: str | None = None
+    try:
+        await refresh_premium_provider_models(user["sub"], provider_id)
+    except PremiumProviderUnknownError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown provider",
+        )
+    except PremiumProviderAccountMissingError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account configured",
+        )
+    except Exception as exc:  # noqa: BLE001 — surface to FE
+        error_msg = str(exc)
+        _log.warning(
+            "premium refresh failed for provider=%s user=%s: %s",
+            provider_id, user["sub"], exc,
+        )
+
+    bus = get_event_bus()
+    await bus.publish(
+        Topics.PREMIUM_PROVIDER_MODELS_REFRESHED,
+        PremiumProviderModelsRefreshedEvent(
+            provider_id=provider_id,
+            success=error_msg is None,
+            error=error_msg,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        target_user_ids=[user["sub"]],
+    )
+    if error_msg is not None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=error_msg,
+        )
+    return {"status": "ok"}

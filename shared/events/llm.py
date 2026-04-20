@@ -48,6 +48,20 @@ class LlmConnectionModelsRefreshedEvent(BaseModel):
     timestamp: datetime
 
 
+class PremiumProviderModelsRefreshedEvent(BaseModel):
+    """Emitted after a Premium Provider model-listing refresh.
+
+    Counterpart to :class:`LlmConnectionModelsRefreshedEvent` for the
+    Premium Provider path (where there is no user-owned Connection document
+    and the key is the ``provider_id`` slug instead of a connection UUID).
+    """
+    type: str = "providers.models_refreshed"
+    provider_id: str
+    success: bool = True
+    error: str | None = None
+    timestamp: datetime
+
+
 class ConnectionSlugRenamedEvent(BaseModel):
     type: str = "llm.connection.slug_renamed"
     connection_id: str

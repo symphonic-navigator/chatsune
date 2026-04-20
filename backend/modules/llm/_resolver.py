@@ -134,6 +134,52 @@ async def _resolve_premium(
     )
 
 
+async def resolve_premium_for_listing(
+    user_id: str, provider_id: str,
+) -> ResolvedConnection | None:
+    """Synthesise a :class:`ResolvedConnection` for model-*listing* calls
+    against a Premium Provider.
+
+    Differences versus :func:`_resolve_premium`:
+      * Takes a bare ``provider_id`` (no ``<slug>:<model>`` split needed).
+      * Returns ``None`` on any "not eligible" outcome (unknown provider,
+        no LLM adapter mapping, or no user account with an ``api_key``).
+        The inference path needs to raise because a missing key mid-chat
+        is a hard error; listing is a UI read and "no account configured"
+        is a perfectly normal 404 the handler can translate.
+    """
+    # Local imports — see :func:`_resolve_premium`.
+    from backend.modules.providers import PremiumProviderService
+    from backend.modules.providers._registry import get as get_premium_definition
+    from backend.modules.providers._repository import (
+        PremiumProviderAccountRepository,
+    )
+
+    defn = get_premium_definition(provider_id)
+    if defn is None:
+        return None
+    adapter_type = _PREMIUM_ADAPTER_TYPE.get(provider_id)
+    if adapter_type is None:
+        return None
+
+    svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+    api_key = await svc.get_decrypted_secret(user_id, provider_id, "api_key")
+    if api_key is None:
+        return None
+
+    now = datetime.now(UTC)
+    return ResolvedConnection(
+        id=f"premium:{provider_id}",
+        user_id=user_id,
+        adapter_type=adapter_type,
+        display_name=defn.display_name,
+        slug=provider_id,
+        config={"url": defn.base_url, "api_key": api_key},
+        created_at=now,
+        updated_at=now,
+    )
+
+
 async def resolve_for_model(
     user_id: str, model_unique_id: str,
 ) -> ResolvedConnection:

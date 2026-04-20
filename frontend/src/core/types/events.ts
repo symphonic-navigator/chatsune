@@ -51,6 +51,7 @@ export const Topics = {
   PREMIUM_PROVIDER_ACCOUNT_UPSERTED: "providers.account.upserted",
   PREMIUM_PROVIDER_ACCOUNT_DELETED: "providers.account.deleted",
   PREMIUM_PROVIDER_ACCOUNT_TESTED: "providers.account.tested",
+  PREMIUM_PROVIDER_MODELS_REFRESHED: "providers.models_refreshed",
   SETTING_UPDATED: "setting.updated",
   SETTING_DELETED: "setting.deleted",
   SETTING_SYSTEM_PROMPT_UPDATED: "setting.system_prompt.updated",
