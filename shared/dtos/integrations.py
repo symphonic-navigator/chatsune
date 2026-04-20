@@ -45,6 +45,11 @@ class IntegrationDefinitionDto(BaseModel):
     # the server, no hydration event is emitted, and the plugin lifecycle
     # must not block activation on browser-side secret presence.
     hydrate_secrets: bool = True
+    # When set, the api_key for this integration is sourced from the user's
+    # Premium Provider Account with the given provider id (e.g. ``xai`` for
+    # ``xai_voice``). The frontend uses this to hide the per-integration
+    # api_key UI and redirect the user to the Providers tab instead.
+    linked_premium_provider: str | None = None
 
 
 class UserIntegrationConfigDto(BaseModel):

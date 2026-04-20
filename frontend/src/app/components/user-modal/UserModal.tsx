@@ -295,7 +295,14 @@ export function UserModal({
           {contentKey === 'voice' && <VoiceTab />}
           {contentKey === 'api-keys' && <ApiKeysTab onProvidersLoaded={onProvidersChanged} />}
           {contentKey === 'mcp' && <McpTab />}
-          {contentKey === 'integrations' && <IntegrationsTab />}
+          {contentKey === 'integrations' && (
+            <IntegrationsTab
+              onNavigateToSub={(sub) => {
+                setLastSub('settings', sub)
+                onTabChange('settings', sub)
+              }}
+            />
+          )}
         </div>
       </div>
     </>

@@ -50,6 +50,7 @@ async def list_definitions(
             capabilities=[c.value for c in d.capabilities],
             persona_config_fields=[IntegrationConfigFieldDto(**f) for f in d.persona_config_fields],
             hydrate_secrets=d.hydrate_secrets,
+            linked_premium_provider=d.linked_premium_provider,
         )
         for d in defs.values()
     ]

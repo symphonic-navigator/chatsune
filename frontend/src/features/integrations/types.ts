@@ -39,6 +39,13 @@ export interface IntegrationDefinition {
    * browser-direct behaviour for integrations that don't set it.
    */
   hydrate_secrets?: boolean
+  /**
+   * When set, the api_key for this integration is sourced from the user's
+   * Premium Provider Account with the given provider id (e.g. `xai` for
+   * `xai_voice`). When set, the IntegrationsTab hides the api_key input
+   * and the enable/disable toggle, pointing the user at the Providers tab.
+   */
+  linked_premium_provider?: string | null
 }
 
 /** Mirrors UserIntegrationConfigDto from the backend. */

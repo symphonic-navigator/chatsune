@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useIntegrationsStore } from '../../../features/integrations/store'
 import { getPlugin } from '../../../features/integrations/registry'
 import { GenericConfigForm } from '../../../features/integrations/components/GenericConfigForm'
+import { useProvidersStore } from '../../../core/store/providersStore'
 import type { IntegrationDefinition } from '../../../features/integrations/types'
+import type { SubTabId } from './userModalTree'
 
 // Ensure plugins are registered
 import '../../../features/integrations/plugins/lovense'
@@ -10,12 +12,32 @@ import '../../../features/integrations/plugins/mistral_voice'
 
 const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 font-mono"
 
-function IntegrationCard({ definition }: { definition: IntegrationDefinition }) {
+// Fallback display-names for premium providers in case the providers store
+// has not been populated yet (e.g. user opens Integrations before Providers).
+const PROVIDER_FALLBACK_NAMES: Record<string, string> = {
+  xai: 'xAI',
+  mistral: 'Mistral',
+}
+
+interface IntegrationCardProps {
+  definition: IntegrationDefinition
+  onNavigateToSub?: (sub: SubTabId) => void
+}
+
+function IntegrationCard({ definition, onNavigateToSub }: IntegrationCardProps) {
   const { configs, upsertConfig, healthStatus, setHealth } = useIntegrationsStore()
+  const providerCatalogue = useProvidersStore((s) => s.catalogue)
   const config = configs[definition.id]
   const enabled = config?.enabled ?? false
   const userConfig = config?.config ?? {}
   const health = healthStatus[definition.id] ?? 'unknown'
+
+  const linkedProviderId = definition.linked_premium_provider ?? null
+  const linkedProviderName = linkedProviderId
+    ? providerCatalogue.find((p) => p.id === linkedProviderId)?.display_name
+      ?? PROVIDER_FALLBACK_NAMES[linkedProviderId]
+      ?? linkedProviderId
+    : null
 
   // localConfig is only used by the full-replacement ConfigComponent path (e.g. Lovense).
   const [localConfig, setLocalConfig] = useState<Record<string, unknown>>(userConfig)
@@ -77,6 +99,14 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
     }
   })()
 
+  // Linked premium-provider integrations (e.g. xai_voice → xai) have their
+  // api_key managed centrally under Providers. Hide the toggle and strip
+  // any api_key field from config_fields belt-and-braces against cached
+  // DTOs that might still include it.
+  const visibleConfigFields = linkedProviderId
+    ? definition.config_fields.filter((f) => f.key !== 'api_key')
+    : definition.config_fields
+
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] p-4">
       {/* Header row */}
@@ -85,27 +115,43 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
           <span className="text-[13px] font-semibold text-white/80">{definition.display_name}</span>
           {healthDot}
         </div>
-        <button
-          type="button"
-          onClick={handleToggle}
-          disabled={saving}
-          className={[
-            'px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all border',
-            enabled
-              ? 'border-green-500/40 bg-green-500/15 text-green-400'
-              : 'border-white/15 bg-white/5 text-white/40 hover:text-white/60',
-          ].join(' ')}
-        >
-          {enabled ? 'On' : 'Off'}
-        </button>
+        {!linkedProviderId && (
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={saving}
+            className={[
+              'px-3 py-1 rounded-full text-[10px] font-mono uppercase tracking-wider transition-all border',
+              enabled
+                ? 'border-green-500/40 bg-green-500/15 text-green-400'
+                : 'border-white/15 bg-white/5 text-white/40 hover:text-white/60',
+            ].join(' ')}
+          >
+            {enabled ? 'On' : 'Off'}
+          </button>
+        )}
       </div>
 
       <p className="text-[11px] text-white/40 font-mono leading-relaxed mb-3">{definition.description}</p>
 
-      {/* Config UI (only when enabled) */}
-      {enabled && (
+      {linkedProviderId && (
+        <p className="text-[11px] text-white/50 font-mono leading-relaxed mb-3">
+          Key is managed under{' '}
+          <button
+            type="button"
+            onClick={() => onNavigateToSub?.('llm-providers')}
+            className="text-gold hover:text-gold/80 underline underline-offset-2"
+          >
+            Providers → {linkedProviderName}
+          </button>
+        </p>
+      )}
+
+      {/* Config UI — shown when enabled for unlinked integrations, and always
+          for linked ones (so persona-agnostic settings remain reachable). */}
+      {(enabled || linkedProviderId) && (
         <div className="mt-3 pt-3 border-t border-white/6">
-          <label className={LABEL}>Configuration</label>
+          {!linkedProviderId && <label className={LABEL}>Configuration</label>}
           {ConfigUI ? (
             // Full-replacement custom config (e.g. Lovense pairing flow)
             <>
@@ -124,9 +170,9 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
           ) : (
             // Generic config form driven by the integration's config_fields
             <>
-              {definition.config_fields.length > 0 ? (
+              {visibleConfigFields.length > 0 ? (
                 <GenericConfigForm
-                  fields={definition.config_fields}
+                  fields={visibleConfigFields}
                   initialValues={userConfig}
                   onSubmit={async (values) => {
                     await upsertConfig(definition.id, enabled, values)
@@ -134,7 +180,9 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
                   autoSubmit
                 />
               ) : (
-                <p className="text-[11px] text-white/30 font-mono">No configuration required.</p>
+                !linkedProviderId && (
+                  <p className="text-[11px] text-white/30 font-mono">No configuration required.</p>
+                )
               )}
               {ExtraUI && <ExtraUI />}
             </>
@@ -160,12 +208,27 @@ function IntegrationCard({ definition }: { definition: IntegrationDefinition }) 
 }
 
 
-export function IntegrationsTab() {
+interface IntegrationsTabProps {
+  /** Switch the user-modal to another settings sub-tab (e.g. `llm-providers`). */
+  onNavigateToSub?: (sub: SubTabId) => void
+}
+
+export function IntegrationsTab({ onNavigateToSub }: IntegrationsTabProps = {}) {
   const { definitions, loaded, load } = useIntegrationsStore()
+  const refreshProviders = useProvidersStore((s) => s.refresh)
+  const providerCatalogue = useProvidersStore((s) => s.catalogue)
 
   useEffect(() => {
     if (!loaded) load()
   }, [loaded, load])
+
+  // Ensure the providers catalogue is available so linked integrations can
+  // show the proper display-name. Only triggers a fetch the first time.
+  useEffect(() => {
+    if (providerCatalogue.length === 0) {
+      void refreshProviders()
+    }
+  }, [providerCatalogue.length, refreshProviders])
 
   if (!loaded) {
     return (
@@ -186,7 +249,13 @@ export function IntegrationsTab() {
       {definitions.length === 0 ? (
         <p className="text-[11px] text-white/30 font-mono">No integrations available.</p>
       ) : (
-        definitions.map((d) => <IntegrationCard key={d.id} definition={d} />)
+        definitions.map((d) => (
+          <IntegrationCard
+            key={d.id}
+            definition={d}
+            onNavigateToSub={onNavigateToSub}
+          />
+        ))
       )}
     </div>
   )
