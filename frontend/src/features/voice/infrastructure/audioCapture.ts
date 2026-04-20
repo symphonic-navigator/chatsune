@@ -162,6 +162,13 @@ class AudioCaptureImpl {
   /**
    * Stop PTT recording. Concatenates all chunks and delivers via onSpeechEnd.
    * Always calls onSpeechEnd (with empty audio if nothing was recorded).
+   *
+   * Teardown order matters: the MediaRecorder must be allowed to flush its
+   * final `dataavailable` + `stop` events BEFORE the MediaStream tracks and
+   * AudioContext nodes go away. If the tracks die first, Chrome emits an
+   * empty final chunk and we fall back to WAV — which defeats the whole
+   * parallel-recording pipeline. `teardown()` is idempotent and is invoked
+   * from every terminal branch exactly once, after the recorder is done.
    */
   stopPTT(): void {
     this.pttSession++ // invalidate any in-flight startPTT
@@ -182,29 +189,36 @@ class AudioCaptureImpl {
     const recorder = this.pttRecorder
     const mime = this.pttRecorderMime
     const chunks = this.pttRecorderChunks
+    const stream = this.pttStream
     this.pttRecorder = null
     this.pttRecorderMime = null
     this.pttRecorderChunks = []
-
-    // Clean up audio nodes
-    this.pttProcessor?.disconnect()
-    this.pttProcessor = null
-    this.pttStream?.getTracks().forEach((t) => t.stop())
     this.pttStream = null
-    this.pttContext?.close()
-    this.pttContext = null
-    this.analyser = null
     this.callbacks = null
+
+    let tornDown = false
+    const teardown = (): void => {
+      if (tornDown) return
+      tornDown = true
+      this.pttProcessor?.disconnect()
+      this.pttProcessor = null
+      stream?.getTracks().forEach((t) => t.stop())
+      this.pttContext?.close()
+      this.pttContext = null
+      this.analyser = null
+    }
 
     const deliver = (blob: Blob, mimeType: string, sampleRate: number): void => {
       cb?.onSpeechEnd({ pcm, blob, mimeType, sampleRate, durationMs })
     }
 
     // If a Tier-1/2 recorder was running, wait for its final dataavailable
-    // via onstop before building the bundle. Otherwise derive WAV from PCM.
+    // via onstop before tearing down the stream and building the bundle.
+    // Otherwise derive WAV from PCM immediately.
     if (recorder && mime) {
       const finalise = (): void => {
         const blob = new Blob(chunks, { type: mime })
+        teardown()
         if (blob.size > 0) {
           // MediaRecorder doesn't reliably expose its actual sample rate;
           // report 0 to signal "server-negotiated / container-embedded".
@@ -223,6 +237,7 @@ class AudioCaptureImpl {
         finalise()
       }
     } else {
+      teardown()
       deliver(float32ToWavBlob(pcm, VAD_SAMPLE_RATE), 'audio/wav', VAD_SAMPLE_RATE)
     }
   }
