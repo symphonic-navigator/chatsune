@@ -26,9 +26,6 @@ importers:
       '@soundtouchjs/audio-worklet':
         specifier: ^1.0.10
         version: 1.0.10
-      hast:
-        specifier: ^1.0.0
-        version: 1.0.0
       katex:
         specifier: ^0.16.45
         version: 0.16.45
@@ -123,6 +120,9 @@ importers:
       globals:
         specifier: ^17.4.0
         version: 17.4.0
+      hast:
+        specifier: ^1.0.0
+        version: 1.0.0
       jsdom:
         specifier: ^29.0.1
         version: 29.0.1
