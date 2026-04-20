@@ -3,6 +3,7 @@ import type { Components } from "react-markdown"
 import type { Highlighter } from "shiki"
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import rehypeVoiceTags from './rehypeVoiceTags'
 import rehypeKatex from 'rehype-katex'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -10,7 +11,10 @@ import 'katex/dist/katex.min.css'
 import type { PluggableList } from 'unified'
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkMath]
-export const rehypePlugins: PluggableList = [[rehypeKatex, { throwOnError: false }]]
+export const rehypePlugins: PluggableList = [
+  rehypeVoiceTags,
+  [rehypeKatex, { throwOnError: false }],
+]
 
 /**
  * Preprocess markdown to normalise math delimiters that remark-math does not
