@@ -12,10 +12,48 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
-from shared.dtos.inference import CompletionRequest
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+
+def _translate_message(msg: CompletionMessage) -> dict:
+    """Translate our CompletionMessage into an OpenAI-compatible chat message."""
+    text_parts = [p for p in msg.content if p.type == "text" and p.text]
+    image_parts = [p for p in msg.content if p.type == "image" and p.data]
+
+    # When there are no images, a plain string is more cache-friendly.
+    if not image_parts:
+        content: str | list[dict] = "".join(p.text or "" for p in text_parts)
+    else:
+        content = []
+        for p in text_parts:
+            content.append({"type": "text", "text": p.text or ""})
+        for p in image_parts:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{p.media_type};base64,{p.data}",
+                },
+            })
+
+    result: dict = {"role": msg.role, "content": content}
+
+    if msg.tool_calls:
+        result["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+
+    if msg.tool_call_id is not None:
+        result["tool_call_id"] = msg.tool_call_id
+
+    return result
 
 
 class XaiHttpAdapter(BaseAdapter):

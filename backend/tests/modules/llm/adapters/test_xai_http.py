@@ -66,3 +66,68 @@ async def test_fetch_models_returns_one_grok_4_1_fast():
     assert m.supports_tool_calls is True
     assert m.connection_id == "conn-xai-1"
     assert m.connection_slug == "chris-xai"
+
+
+from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
+from backend.modules.llm._adapters._xai_http import _translate_message
+
+
+def test_translate_text_only_user_message():
+    msg = CompletionMessage(
+        role="user",
+        content=[ContentPart(type="text", text="hello")],
+    )
+    result = _translate_message(msg)
+    assert result == {"role": "user", "content": "hello"}
+
+
+def test_translate_image_message_uses_openai_image_url_format():
+    msg = CompletionMessage(
+        role="user",
+        content=[
+            ContentPart(type="text", text="what is this?"),
+            ContentPart(type="image", data="AAA=", media_type="image/png"),
+        ],
+    )
+    result = _translate_message(msg)
+    assert result["role"] == "user"
+    assert isinstance(result["content"], list)
+    assert result["content"][0] == {"type": "text", "text": "what is this?"}
+    img = result["content"][1]
+    assert img["type"] == "image_url"
+    assert img["image_url"]["url"] == "data:image/png;base64,AAA="
+
+
+def test_translate_assistant_with_tool_calls():
+    msg = CompletionMessage(
+        role="assistant",
+        content=[ContentPart(type="text", text="looking that up")],
+        tool_calls=[
+            ToolCallResult(id="call_a", name="web_search",
+                           arguments='{"query":"grok"}'),
+        ],
+    )
+    result = _translate_message(msg)
+    assert result["role"] == "assistant"
+    assert result["content"] == "looking that up"
+    assert result["tool_calls"] == [
+        {
+            "id": "call_a",
+            "type": "function",
+            "function": {"name": "web_search", "arguments": '{"query":"grok"}'},
+        },
+    ]
+
+
+def test_translate_tool_role_message():
+    msg = CompletionMessage(
+        role="tool",
+        content=[ContentPart(type="text", text='{"results":[]}')],
+        tool_call_id="call_a",
+    )
+    result = _translate_message(msg)
+    assert result == {
+        "role": "tool",
+        "content": '{"results":[]}',
+        "tool_call_id": "call_a",
+    }
