@@ -12,6 +12,8 @@ import { useEffect } from 'react'
 export function useWakeLock(shouldHold: boolean): void {
   useEffect(() => {
     if (!shouldHold) return
+    // wakeLock is absent on iOS Safari browser tabs (only exposed when the
+    // site is launched as a standalone PWA). Silently fall back.
     if (!('wakeLock' in navigator)) return
 
     let sentinel: WakeLockSentinel | null = null
