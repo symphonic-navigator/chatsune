@@ -140,12 +140,20 @@ class AudioCaptureImpl {
 
     // Parallel compressed recording. If no supported MIME type, fall
     // through to Tier-3 WAV at stop() time.
+    //
+    // Bind the chunk array as a closure variable rather than reading
+    // `this.pttRecorderChunks` inside the callback. `recorder.stop()`
+    // delivers its final `dataavailable` event asynchronously, after
+    // stopPTT() has already moved the instance field into a local
+    // reference; reading `this` at that point would write into a stale
+    // array and produce an empty blob (triggering the WAV fallback).
     this.pttRecorderMime = pickRecordingMimeType()
     if (this.pttRecorderMime) {
       try {
         this.pttRecorder = createRecorder(stream, this.pttRecorderMime)
+        const chunks = this.pttRecorderChunks
         this.pttRecorder.ondataavailable = (ev) => {
-          if (ev.data && ev.data.size > 0) this.pttRecorderChunks.push(ev.data)
+          if (ev.data && ev.data.size > 0) chunks.push(ev.data)
         }
         this.pttRecorder.start()
       } catch (err) {
@@ -324,8 +332,12 @@ class AudioCaptureImpl {
       if (mime) {
         try {
           this.vadRecorder = createRecorder(this.vadStream, mime)
+          // Bind the chunk array in a closure — see the matching PTT
+          // path for the rationale; without this, the final async
+          // dataavailable event writes into a reset instance field.
+          const chunks = this.vadRecorderChunks
           this.vadRecorder.ondataavailable = (ev) => {
-            if (ev.data && ev.data.size > 0) this.vadRecorderChunks.push(ev.data)
+            if (ev.data && ev.data.size > 0) chunks.push(ev.data)
           }
           this.vadRecorder.start()
         } catch (err) {
