@@ -16,9 +16,12 @@ export function useWakeLock(shouldHold: boolean): void {
 
     let sentinel: WakeLockSentinel | null = null
     let cancelled = false
+    let acquiring = false
 
     const acquire = async (): Promise<void> => {
       if (sentinel && !sentinel.released) return
+      if (acquiring) return
+      acquiring = true
       try {
         const fresh = await navigator.wakeLock.request('screen')
         if (cancelled) {
@@ -31,6 +34,8 @@ export function useWakeLock(shouldHold: boolean): void {
         // acquire attempted while the page is transitioning). Not
         // user-actionable; debug-log and move on.
         console.debug('[useWakeLock] request failed:', err)
+      } finally {
+        acquiring = false
       }
     }
 
