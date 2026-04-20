@@ -86,13 +86,26 @@ async def init_indexes(db) -> None:
 # ---------------------------------------------------------------------------
 
 async def _resolve_api_key(user_id: str, provider_id: str) -> str:
-    repo = WebSearchCredentialRepository(get_db())
-    doc = await repo.find(user_id, provider_id)
-    if doc is None:
-        raise WebSearchCredentialNotFoundError(
-            f"No credential configured for search provider '{provider_id}'"
+    from backend.modules.websearch._registry import WEBSEARCH_PROVIDER_TO_PREMIUM
+    from backend.modules.providers import PremiumProviderService
+    from backend.modules.providers._repository import (
+        PremiumProviderAccountRepository,
+    )
+
+    premium_id = WEBSEARCH_PROVIDER_TO_PREMIUM.get(provider_id)
+    if premium_id is None:
+        raise WebSearchProviderNotFoundError(
+            f"No Premium mapping for provider '{provider_id}'"
         )
-    return repo.get_raw_key(doc)
+    svc = PremiumProviderService(
+        PremiumProviderAccountRepository(get_db()),
+    )
+    key = await svc.get_decrypted_secret(user_id, premium_id, "api_key")
+    if key is None:
+        raise WebSearchCredentialNotFoundError(
+            f"No Premium account configured for '{premium_id}'"
+        )
+    return key
 
 
 # ---------------------------------------------------------------------------
