@@ -137,7 +137,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
 
   return (
     <div
-      className="sticky bottom-0 z-10 border-t border-white/6 bg-surface px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:static lg:pb-3"
+      className="z-10 border-t border-white/6 bg-surface px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] lg:pb-3"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
