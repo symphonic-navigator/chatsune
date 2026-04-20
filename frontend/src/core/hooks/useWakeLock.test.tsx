@@ -141,4 +141,42 @@ describe('useWakeLock', () => {
     expect(first.release).toHaveBeenCalledTimes(1)
     expect(first.released).toBe(true)
   })
+
+  it('guards against concurrent acquires when visibility fires during an in-flight request', async () => {
+    // Replace the setup-level mock with a deferred one so we can control
+    // when the initial request() resolves.
+    let resolveFirst!: (sentinel: FakeSentinel) => void
+    const deferredRequest = vi.fn(async (_type: 'screen') => {
+      return new Promise<FakeSentinel>((resolve) => {
+        resolveFirst = resolve
+      })
+    })
+    Object.defineProperty(navigator, 'wakeLock', {
+      configurable: true,
+      value: { request: deferredRequest },
+    })
+
+    renderHook(() => useWakeLock(true))
+
+    // Let React flush the effect so the first acquire() kicks off request().
+    await act(async () => {})
+
+    // First request is now in flight — sentinel is still null, acquiring is true.
+    // Fire a visibilitychange → visible before the first request resolves.
+    await act(async () => {
+      setVisibility('visible')
+    })
+
+    // The in-flight guard must have short-circuited the second acquire.
+    expect(deferredRequest).toHaveBeenCalledTimes(1)
+
+    // Resolve the first request with a fresh sentinel and confirm no extra
+    // call happened afterwards.
+    await act(async () => {
+      const s = createFakeSentinel()
+      resolveFirst(s)
+    })
+
+    expect(deferredRequest).toHaveBeenCalledTimes(1)
+  })
 })
