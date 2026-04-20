@@ -34,12 +34,54 @@ async def init_indexes(db) -> None:
     await repo.init_indexes()
 
 
-async def get_enabled_integration_ids(user_id: str, persona_id: str | None = None) -> list[str]:
-    """Return integration IDs that are enabled for a user (and optionally filtered by persona)."""
+async def effective_enabled_map(user_id: str) -> dict[str, bool]:
+    """Return ``{integration_id: enabled}`` applying premium-link semantics.
+
+    For integrations with ``linked_premium_provider`` set, "enabled" means
+    the user has a matching Premium Provider Account — the stored per-user
+    ``enabled`` flag is ignored (there is no UI to toggle it independently
+    from the account, and a linked integration is useless without the
+    account). For unlinked integrations (e.g. ``lovense``) the per-user
+    config's ``enabled`` flag is respected as before.
+    """
     from backend.database import get_db
+    from backend.modules.integrations._registry import get_all as _get_all
+    from backend.modules.providers import PremiumProviderService
+    from backend.modules.providers._repository import (
+        PremiumProviderAccountRepository,
+    )
+
+    definitions = _get_all()
     repo = IntegrationRepository(get_db())
     configs = await repo.get_user_configs(user_id)
-    enabled = [c["integration_id"] for c in configs if c.get("enabled")]
+    cfg_map = {c["integration_id"]: c for c in configs}
+
+    providers = PremiumProviderService(
+        PremiumProviderAccountRepository(get_db()),
+    )
+
+    result: dict[str, bool] = {}
+    for iid, defn in definitions.items():
+        if defn.linked_premium_provider:
+            result[iid] = await providers.has_account(
+                user_id, defn.linked_premium_provider,
+            )
+        else:
+            cfg = cfg_map.get(iid)
+            result[iid] = bool(cfg and cfg.get("enabled", False))
+    return result
+
+
+async def is_effective_enabled(user_id: str, integration_id: str) -> bool:
+    """Convenience wrapper around ``effective_enabled_map``."""
+    m = await effective_enabled_map(user_id)
+    return m.get(integration_id, False)
+
+
+async def get_enabled_integration_ids(user_id: str, persona_id: str | None = None) -> list[str]:
+    """Return integration IDs that are enabled for a user (and optionally filtered by persona)."""
+    effective = await effective_enabled_map(user_id)
+    enabled = [iid for iid, on in effective.items() if on]
 
     if persona_id is not None:
         from backend.modules.persona import get_persona
@@ -151,6 +193,8 @@ __all__ = [
     "init_indexes",
     "get_integration",
     "get_all_integrations",
+    "effective_enabled_map",
+    "is_effective_enabled",
     "get_enabled_integration_ids",
     "get_integration_tools",
     "get_integration_prompt_extensions",
