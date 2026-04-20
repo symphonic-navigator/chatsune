@@ -39,3 +39,8 @@ export interface PremiumProviderAccount {
   last_test_error: string | null
   last_test_at: string | null
 }
+
+export interface PremiumProviderTestResult {
+  status: 'ok' | 'error'
+  error: string | null
+}

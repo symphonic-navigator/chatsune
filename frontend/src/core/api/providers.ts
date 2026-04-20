@@ -2,6 +2,7 @@ import { api } from './client'
 import type {
   PremiumProviderDefinition,
   PremiumProviderAccount,
+  PremiumProviderTestResult,
 } from '../types/providers'
 import type { ModelMetaDto } from '../types/llm'
 
@@ -20,6 +21,11 @@ export const providersApi = {
 
   deleteAccount: (providerId: string) =>
     api.delete<void>(`/api/providers/accounts/${providerId}`),
+
+  testAccount: (providerId: string) =>
+    api.post<PremiumProviderTestResult>(
+      `/api/providers/accounts/${providerId}/test`,
+    ),
 
   /**
    * Cached-or-fresh premium-provider model listing (user-scoped).
