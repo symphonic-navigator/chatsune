@@ -1,0 +1,12 @@
+{
+    "adapter": "xai_http",
+    "model": "grok-4.1-fast",
+    "base_url": "https://api.x.ai/v1",
+    "key_file": ".xai-test-key",
+    "reasoning": true,
+    "supports_reasoning": true,
+    "messages": [
+        {"role": "system", "content": "You are Grok. Think, then answer."},
+        {"role": "user", "content": "What is 27 * 14? Show one reasoning sentence."}
+    ]
+}

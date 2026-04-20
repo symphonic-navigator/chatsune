@@ -116,6 +116,18 @@ def _parse_messages(raw_messages: list[str]) -> list[dict]:
 
 
 async def _run(args: argparse.Namespace) -> None:
+    # Let the scenario file override adapter / base_url / key_file before we
+    # load the API key or construct the runner — this makes scenario files
+    # self-contained: no extra CLI flags needed.
+    scenario = _load_scenario(args.scenario_file) if args.scenario_file else None
+    if scenario:
+        if "adapter" in scenario:
+            args.adapter = scenario["adapter"]
+        if "base_url" in scenario:
+            args.base_url = scenario["base_url"]
+        if "key_file" in scenario:
+            args.key_file = scenario["key_file"]
+
     api_key = load_api_key(args.key_file)
     runner = HarnessRunner(
         api_key=api_key,
@@ -124,8 +136,7 @@ async def _run(args: argparse.Namespace) -> None:
     )
 
     # Build parameters from scenario file or CLI arguments.
-    if args.scenario_file:
-        scenario = _load_scenario(args.scenario_file)
+    if scenario:
         model = scenario["model"]
         system = scenario.get("system")
         messages = scenario.get("messages", [])
