@@ -58,6 +58,10 @@ class Topics:
     WEBSEARCH_CREDENTIAL_SET = "websearch.credential.set"
     WEBSEARCH_CREDENTIAL_REMOVED = "websearch.credential.removed"
     WEBSEARCH_CREDENTIAL_TESTED = "websearch.credential.tested"
+    # --- Premium Provider Accounts ---
+    PREMIUM_PROVIDER_ACCOUNT_UPSERTED = "providers.account.upserted"
+    PREMIUM_PROVIDER_ACCOUNT_DELETED = "providers.account.deleted"
+    PREMIUM_PROVIDER_ACCOUNT_TESTED = "providers.account.tested"
     SETTING_UPDATED = "setting.updated"
     SETTING_DELETED = "setting.deleted"
     SETTING_SYSTEM_PROMPT_UPDATED = "setting.system_prompt.updated"
