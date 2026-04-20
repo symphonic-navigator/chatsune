@@ -1,3 +1,5 @@
+import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
+
 // Normalise the Unicode ellipsis (U+2026) to three ASCII dots so subsequent
 // sentence-boundary logic sees a canonical form.
 function normaliseEllipses(text: string): string {
@@ -29,6 +31,22 @@ export function splitSentences(text: string): string[] {
     for (const sentence of splitLine(line)) {
       out.push(sentence)
     }
+  }
+  return out
+}
+
+// Wrap-aware counterpart of `splitSentences`. Each emitted sentence carries
+// the wrap scope that was active at its start, and closes any opens that
+// remained open at its end. Interior markers inside a sentence are preserved
+// verbatim; `wrapSegmentWithActiveStack` adds only boundary scope.
+export function splitSentencesWithWrapScope(text: string): string[] {
+  const bare = splitSentences(text)
+  const out: string[] = []
+  let entering: string[] = []
+  for (const sentence of bare) {
+    const leaving = scanSegment(sentence, entering)
+    out.push(wrapSegmentWithActiveStack(sentence, entering, leaving))
+    entering = leaving
   }
   return out
 }

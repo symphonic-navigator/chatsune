@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { splitSentences } from '../sentenceSplitter'
+import { splitSentences, splitSentencesWithWrapScope } from '../sentenceSplitter'
 
 describe('splitSentences', () => {
   it('returns a single sentence unchanged', () => {
@@ -78,6 +78,34 @@ describe('splitSentences', () => {
     expect(splitSentences('That is great!😀 Let us go.')).toEqual([
       'That is great!',
       '😀 Let us go.',
+    ])
+  })
+})
+
+describe('splitSentencesWithWrapScope', () => {
+  it('leaves unwrapped text alone', () => {
+    expect(splitSentencesWithWrapScope('Hi there. How are you?')).toEqual([
+      'Hi there.', 'How are you?',
+    ])
+  })
+
+  it('re-wraps a wrap that spans two sentences', () => {
+    expect(splitSentencesWithWrapScope('<whisper>First. Second.</whisper>')).toEqual([
+      '<whisper>First.</whisper>',
+      '<whisper>Second.</whisper>',
+    ])
+  })
+
+  it('handles wraps that close before sentence boundary', () => {
+    expect(splitSentencesWithWrapScope('This is <emphasis>important</emphasis>. Next sentence.')).toEqual([
+      'This is <emphasis>important</emphasis>.',
+      'Next sentence.',
+    ])
+  })
+
+  it('closes an unterminated wrap on the final sentence', () => {
+    expect(splitSentencesWithWrapScope('<whisper>Only one sentence.')).toEqual([
+      '<whisper>Only one sentence.</whisper>',
     ])
   })
 })
