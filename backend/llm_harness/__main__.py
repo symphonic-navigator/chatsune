@@ -57,17 +57,27 @@ def _parse_args() -> argparse.Namespace:
         help="Path to a JSON file containing tool definitions.",
     )
     parser.add_argument(
+        "--adapter",
+        default="ollama_http",
+        choices=["ollama_http", "xai_http"],
+        help="Adapter to exercise (default: ollama_http).",
+    )
+    parser.add_argument(
         "--key-file",
         default=".llm-test-key",
         help="Path to API key file (default: .llm-test-key).",
     )
     parser.add_argument(
         "--base-url",
-        default="https://ollama.com",
-        help="Provider base URL (default: https://ollama.com).",
+        default=None,
+        help="Provider base URL (overrides adapter default).",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    # When no explicit key file was provided, use adapter-appropriate default.
+    if args.key_file == ".llm-test-key" and args.adapter == "xai_http":
+        args.key_file = ".xai-test-key"
+    return args
 
 
 def _load_scenario(path: str) -> dict:
@@ -107,7 +117,11 @@ def _parse_messages(raw_messages: list[str]) -> list[dict]:
 
 async def _run(args: argparse.Namespace) -> None:
     api_key = load_api_key(args.key_file)
-    runner = HarnessRunner(api_key=api_key, base_url=args.base_url)
+    runner = HarnessRunner(
+        api_key=api_key,
+        adapter_type=args.adapter,
+        base_url=args.base_url,
+    )
 
     # Build parameters from scenario file or CLI arguments.
     if args.scenario_file:

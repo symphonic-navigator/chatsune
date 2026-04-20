@@ -1,9 +1,9 @@
 """Core runner for the LLM test harness.
 
-Builds CompletionRequests and calls the OllamaHttpAdapter directly —
+Builds CompletionRequests and calls the selected adapter directly —
 no database, no authentication layer, no event bus.
 
-The adapter now expects a ResolvedConnection rather than a bare API key,
+The adapter expects a ResolvedConnection rather than a bare API key,
 so the harness synthesises an in-memory ResolvedConnection from the
 local API-key file and the chosen base URL.
 """
@@ -20,10 +20,16 @@ from backend.modules.llm import (
     StreamError,
     ToolCallEvent,
 )
-# Adapter import is intentionally direct: harness is a standalone tool that
-# targets a specific provider implementation, not the registry-based public API.
+# Adapter imports are intentionally direct: harness is a standalone tool that
+# targets specific provider implementations, not the registry-based public API.
 from backend.modules.llm._adapters._ollama_http import OllamaHttpAdapter
+from backend.modules.llm._adapters._xai_http import XaiHttpAdapter
 from backend.modules.llm._adapters._types import ResolvedConnection
+
+_ADAPTERS = {
+    "ollama_http": (OllamaHttpAdapter, "https://ollama.com"),
+    "xai_http": (XaiHttpAdapter, "https://api.x.ai/v1"),
+}
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -36,9 +42,19 @@ from shared.dtos.inference import (
 class HarnessRunner:
     """Lightweight runner that builds requests and streams completions."""
 
-    def __init__(self, api_key: str, base_url: str = "https://ollama.com") -> None:
+    def __init__(
+        self,
+        api_key: str,
+        adapter_type: str = "ollama_http",
+        base_url: str | None = None,
+    ) -> None:
+        if adapter_type not in _ADAPTERS:
+            raise ValueError(f"Unknown adapter_type: {adapter_type}")
         self._api_key = api_key
-        self._base_url = base_url
+        self._adapter_type = adapter_type
+        adapter_cls, default_base_url = _ADAPTERS[adapter_type]
+        self._adapter_cls = adapter_cls
+        self._base_url = base_url or default_base_url
 
     def _resolved_connection(self) -> ResolvedConnection:
         """Build a synthetic ResolvedConnection for the harness.
@@ -50,8 +66,8 @@ class HarnessRunner:
         return ResolvedConnection(
             id="harness",
             user_id="harness",
-            adapter_type="ollama_http",
-            display_name="Ollama (harness)",
+            adapter_type=self._adapter_type,
+            display_name=f"{self._adapter_type} (harness)",
             slug="harness",
             config={
                 "url": self._base_url,
@@ -122,7 +138,7 @@ class HarnessRunner:
         request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
         """Stream completion events from the adapter without any processing."""
-        adapter = OllamaHttpAdapter()
+        adapter = self._adapter_cls()
         resolved = self._resolved_connection()
         async for event in adapter.stream_completion(resolved, request):
             yield event
@@ -142,7 +158,7 @@ class HarnessRunner:
 
         All events from every iteration are yielded.
         """
-        adapter = OllamaHttpAdapter()
+        adapter = self._adapter_cls()
         resolved = self._resolved_connection()
         current_request = request
 
