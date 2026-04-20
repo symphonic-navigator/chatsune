@@ -6,6 +6,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from backend.config import settings
 
 
+_COLLECTIONS_TO_CLEAN = [
+    "user_integration_configs",
+    "premium_provider_accounts",
+]
+
+
 @pytest_asyncio.fixture
 async def mongo_db():
     """Provide a real MongoDB database for integration repository tests.
@@ -15,12 +21,26 @@ async def mongo_db():
     """
     client = AsyncIOMotorClient(settings.mongodb_uri)
     db = client[settings.mongo_db_name]
-    collections_to_clean = ["user_integration_configs"]
-    for col_name in collections_to_clean:
+    for col_name in _COLLECTIONS_TO_CLEAN:
         await db[col_name].drop()
     try:
         yield db
     finally:
-        for col_name in collections_to_clean:
+        for col_name in _COLLECTIONS_TO_CLEAN:
+            await db[col_name].drop()
+        client.close()
+
+
+@pytest_asyncio.fixture
+async def mock_db():
+    """Alias of ``mongo_db`` for tests that follow the ``mock_db`` naming."""
+    client = AsyncIOMotorClient(settings.mongodb_uri)
+    db = client[settings.mongo_db_name]
+    for col_name in _COLLECTIONS_TO_CLEAN:
+        await db[col_name].drop()
+    try:
+        yield db
+    finally:
+        for col_name in _COLLECTIONS_TO_CLEAN:
             await db[col_name].drop()
         client.close()

@@ -122,7 +122,23 @@ async def upsert_config(
 
 async def load_api_key_for(user_id: str, integration_id: str) -> str | None:
     """Return the decrypted API key for (user, integration), or None if the
-    integration is not configured or not enabled for this user."""
+    integration is not configured or not enabled for this user.
+
+    For integrations linked to a Premium Provider Account (e.g. ``xai_voice``
+    → ``xai``), the key is resolved against the user's Premium Provider
+    store. Otherwise we fall back to the legacy per-integration secret
+    store.
+    """
+    definition = get_definition(integration_id)
+    if definition is not None and definition.linked_premium_provider:
+        from backend.modules.providers import PremiumProviderService
+        from backend.modules.providers._repository import (
+            PremiumProviderAccountRepository,
+        )
+        svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+        return await svc.get_decrypted_secret(
+            user_id, definition.linked_premium_provider, "api_key",
+        )
     repo = _repo()
     pairs = await repo.list_enabled_with_secrets(user_id)
     for iid, secrets in pairs:

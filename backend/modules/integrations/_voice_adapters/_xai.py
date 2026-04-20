@@ -15,6 +15,7 @@ import logging
 
 import httpx
 
+from backend.database import get_db
 from backend.modules.integrations._voice_adapters._base import (
     VoiceAdapter,
     VoiceAdapterError,
@@ -36,8 +37,38 @@ _DEFAULT_LANGUAGE = "auto"
 class XaiVoiceAdapter(VoiceAdapter):
     BASE_URL = "https://api.x.ai/v1"
 
+    # The slug of the Premium Provider Account that carries this adapter's
+    # API key. Matches the ``linked_premium_provider`` on the xai_voice
+    # integration definition.
+    PREMIUM_PROVIDER_ID = "xai"
+
     def __init__(self, http: httpx.AsyncClient) -> None:
         self._http = http
+
+    async def _resolve_user_key(self, user_id: str) -> str:
+        """Return the decrypted xAI API key for ``user_id``.
+
+        Resolves via :class:`PremiumProviderService` so that the key is
+        shared with any other integration / LLM connection the user has
+        configured for xAI. Raises :class:`LookupError` if the user has
+        no configured Premium Provider Account for xAI.
+        """
+        # Deferred import to avoid a circular import at module load time
+        # (providers → integrations, in some startup paths).
+        from backend.modules.providers import PremiumProviderService
+        from backend.modules.providers._repository import (
+            PremiumProviderAccountRepository,
+        )
+        svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
+        key = await svc.get_decrypted_secret(
+            user_id, self.PREMIUM_PROVIDER_ID, "api_key",
+        )
+        if key is None:
+            raise LookupError(
+                f"No Premium Provider Account configured for provider "
+                f"'{self.PREMIUM_PROVIDER_ID}' (user={user_id})"
+            )
+        return key
 
     async def list_voices(self, api_key: str) -> list[VoiceInfo]:
         url = f"{self.BASE_URL}/tts/voices"
