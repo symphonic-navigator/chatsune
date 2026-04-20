@@ -1,22 +1,26 @@
 import { useEffect } from "react"
 import { useNotificationStore } from "../../../core/store/notificationStore"
+import { useViewport } from "../../../core/hooks/useViewport"
 import { Toast } from "./Toast"
 
 const MAX_VISIBLE = 3
 
 export function ToastContainer() {
+  const { isMobile } = useViewport()
   const notifications = useNotificationStore((s) => s.notifications)
   const dismissToast = useNotificationStore((s) => s.dismissToast)
 
   const visible = notifications.filter((n) => !n.dismissed)
 
-  // Auto-dismiss notifications beyond MAX_VISIBLE
+  // Auto-dismiss notifications beyond MAX_VISIBLE (keep effect so history is
+  // pruned even while the desktop container is hidden on mobile).
   useEffect(() => {
     visible.slice(MAX_VISIBLE).forEach((n) => dismissToast(n.id))
   }, [visible, dismissToast])
 
-  const displayed = visible.slice(0, MAX_VISIBLE)
+  if (isMobile) return null
 
+  const displayed = visible.slice(0, MAX_VISIBLE)
   if (displayed.length === 0) return null
 
   return (
