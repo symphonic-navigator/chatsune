@@ -171,6 +171,13 @@ def test_build_payload_includes_temperature_when_set():
     assert payload["temperature"] == 0.7
 
 
+def test_build_payload_includes_stream_options_for_usage():
+    # xAI only emits the terminal usage chunk when stream_options.include_usage
+    # is set on the request. Without this the StreamDone event is tokenless.
+    payload = _build_chat_payload(_simple_request())
+    assert payload["stream_options"] == {"include_usage": True}
+
+
 def test_build_payload_translates_tools_to_openai_schema():
     tool = ToolDefinition(
         name="web_search",
@@ -302,8 +309,8 @@ async def test_stream_completion_yields_content_and_done(monkeypatch):
         return _sse_response([
             'data: {"choices":[{"delta":{"content":"he"}}]}',
             'data: {"choices":[{"delta":{"content":"llo"}}]}',
-            'data: {"choices":[{"delta":{},"finish_reason":"stop"}],'
-            '"usage":{"prompt_tokens":5,"completion_tokens":2}}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2}}',
             'data: [DONE]',
         ])
 
@@ -327,10 +334,13 @@ async def test_stream_completion_yields_content_and_done(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_stream_completion_forwards_cache_hint_header(monkeypatch):
+    import json as _json
     seen_headers = {}
+    seen_body: dict = {}
 
     def handler(request):
         seen_headers.update(dict(request.headers))
+        seen_body.update(_json.loads(request.content))
         return _sse_response([
             'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
             'data: [DONE]',
@@ -346,6 +356,7 @@ async def test_stream_completion_forwards_cache_hint_header(monkeypatch):
     )
     await _collect(adapter.stream_completion(_resolved_conn(), req))
     assert seen_headers.get("x-grok-conv-id") == "session-abc-123"
+    assert seen_body["stream_options"] == {"include_usage": True}
 
 
 @pytest.mark.asyncio
@@ -386,6 +397,7 @@ async def test_stream_completion_accumulates_tool_call_fragments(monkeypatch):
             'data: {"choices":[{"delta":{"tool_calls":'
             '[{"index":0,"function":{"arguments":"\\"grok\\"}"}}]}}]}',
             'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5}}',
             'data: [DONE]',
         ])
 
@@ -404,6 +416,32 @@ async def test_stream_completion_accumulates_tool_call_fragments(monkeypatch):
     assert tool_calls[0].id == "call_1"
     # Terminal event after tool calls
     assert any(isinstance(e, StreamDone) for e in events)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_safety_net_done_without_usage(monkeypatch):
+    # If the upstream ends on [DONE] without a usage chunk, the outer
+    # safety net in stream_completion emits a tokenless StreamDone so
+    # downstream consumers always see a terminal event.
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{"content":"ok"}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = XaiHttpAdapter()
+    req = CompletionRequest(
+        model="grok-4.1-fast",
+        messages=[CompletionMessage(role="user",
+                                     content=[ContentPart(type="text", text="hi")])],
+    )
+    events = await _collect(adapter.stream_completion(_resolved_conn(), req))
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    assert len(dones) == 1
+    assert dones[0].input_tokens is None
+    assert dones[0].output_tokens is None
 
 
 @pytest.mark.asyncio

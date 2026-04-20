@@ -93,12 +93,28 @@ def _chunk_to_events(
     """Map one parsed SSE chunk into zero or more provider events.
 
     ``acc`` is mutated in-place for tool-call fragment accumulation.
+
+    xAI's SSE flow:
+        delta chunks -> finish_reason chunk (choices present, no usage)
+        -> usage chunk (choices empty, usage present) -> [DONE]
+    We emit StreamDone on the usage chunk, not on finish_reason, so tokens
+    are captured. Tool calls and refusals are still emitted on finish_reason.
     """
     events: list[ProviderStreamEvent] = []
     choices = chunk.get("choices") or []
     usage = chunk.get("usage") or {}
+
+    # Terminal usage-only chunk: emit StreamDone with token counts.
+    if usage and not choices:
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+        ))
+        return events
+
     if not choices:
         return events
+
     choice = choices[0]
     delta = choice.get("delta") or {}
 
@@ -118,26 +134,21 @@ def _chunk_to_events(
     if finish is None:
         return events
 
+    # finish_reason arrives before the usage chunk. Emit tool calls or refusal
+    # here; leave StreamDone to the usage chunk (or the outer safety net).
     if finish == "tool_calls":
         for call in acc.finalised():
             events.append(ToolCallEvent(
                 id=call["id"], name=call["name"],
                 arguments=call["arguments"],
             ))
-        events.append(StreamDone(
-            input_tokens=usage.get("prompt_tokens"),
-            output_tokens=usage.get("completion_tokens"),
-        ))
     elif finish in _REFUSAL_REASONS:
         events.append(StreamRefused(
             reason=finish,
             refusal_text=delta.get("refusal") or None,
         ))
-    else:
-        events.append(StreamDone(
-            input_tokens=usage.get("prompt_tokens"),
-            output_tokens=usage.get("completion_tokens"),
-        ))
+    # Otherwise (stop, length, etc): wait for usage chunk to emit StreamDone.
+
     return events
 
 
@@ -212,6 +223,7 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     payload: dict = {
         "model": model_slug,
         "stream": True,
+        "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
     if request.temperature is not None:
