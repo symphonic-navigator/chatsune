@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator
 
@@ -16,6 +17,29 @@ from shared.dtos.inference import CompletionMessage, CompletionRequest, ToolDefi
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+_SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
+
+
+def _parse_sse_line(line: str) -> dict | object | None:
+    """Parse a single SSE line.
+
+    Returns:
+        - a ``dict`` when the line is a valid ``data: {json}`` frame,
+        - ``_SSE_DONE`` for ``data: [DONE]`` (stream terminator),
+        - ``None`` for empty lines, non-data lines, or malformed JSON.
+    """
+    line = line.strip()
+    if not line or not line.startswith("data:"):
+        return None
+    payload = line[len("data:"):].strip()
+    if payload == "[DONE]":
+        return _SSE_DONE
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        _log.warning("Skipping malformed SSE JSON: %s", payload[:200])
+        return None
 
 
 def _translate_message(msg: CompletionMessage) -> dict:

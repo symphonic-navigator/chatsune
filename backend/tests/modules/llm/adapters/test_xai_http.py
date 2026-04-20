@@ -192,3 +192,30 @@ def test_build_payload_translates_tools_to_openai_schema():
             },
         },
     ]
+
+
+from backend.modules.llm._adapters._xai_http import _parse_sse_line, _SSE_DONE
+
+
+def test_parse_sse_line_returns_dict_for_data_line():
+    parsed = _parse_sse_line('data: {"choices":[{"delta":{"content":"hi"}}]}')
+    assert parsed == {"choices": [{"delta": {"content": "hi"}}]}
+
+
+def test_parse_sse_line_returns_done_sentinel_for_done_marker():
+    assert _parse_sse_line("data: [DONE]") is _SSE_DONE
+
+
+def test_parse_sse_line_returns_none_for_empty_line():
+    assert _parse_sse_line("") is None
+
+
+def test_parse_sse_line_returns_none_for_non_data_line():
+    # Some SSE producers prefix with event: / id: — xAI does not, but we
+    # should ignore anything that isn't a data line rather than crash.
+    assert _parse_sse_line("event: foo") is None
+
+
+def test_parse_sse_line_returns_none_for_malformed_json():
+    # We log and skip — adapter keeps streaming.
+    assert _parse_sse_line("data: {not json}") is None
