@@ -120,9 +120,9 @@ Handler flow:
    preconditions the UI has already ruled out before enabling the
    button).
 3. `httpx.AsyncClient.request(defn.probe_method, defn.probe_url,
-   headers={"Authorization": f"Bearer {api_key}"})` with a **5-second
-   total timeout** (matches the LLM adapter `/test` probe —
-   `_PROBE_TIMEOUT` in `_xai_http.py`).
+   headers={"Authorization": f"Bearer {api_key}"})` with a
+   `httpx.Timeout(10.0)` total timeout (matches `_PROBE_TIMEOUT` in
+   `backend/modules/llm/_adapters/_xai_http.py:48`).
 4. Interpret the response:
    - `200` → `status="ok"`, `error=None`.
    - `401 | 403` → `status="error"`, `error=f"API key rejected by {defn.display_name}"`.
