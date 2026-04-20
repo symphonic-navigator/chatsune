@@ -65,9 +65,25 @@ def _persona_repo() -> PersonaRepository:
 
 
 async def _validate_model_unique_id(user_id: str, model_unique_id: str) -> None:
-    """Validate format and that the connection exists and belongs to the user."""
-    # Deferred import to avoid circular dependency (llm._handlers -> persona -> llm).
+    """Validate format and that the slug resolves to something the user owns.
+
+    A ``model_unique_id`` has the form ``<slug>:<model_slug>``. The ``slug``
+    may refer to either:
+
+    * A reserved Premium Provider Account slug (``xai``, ``mistral``,
+      ``ollama_cloud``) — valid iff the user has a Premium Account for
+      that provider; or
+    * A per-user LLM Connection slug — valid iff a Connection exists for
+      the user with that slug.
+    """
+    # Deferred imports to avoid circular dependency
+    # (llm._handlers -> persona -> llm).
     from backend.modules.llm import resolve_owned_connection
+    from backend.modules.llm._connections import RESERVED_SLUGS
+    from backend.modules.providers import PremiumProviderService
+    from backend.modules.providers._repository import (
+        PremiumProviderAccountRepository,
+    )
 
     if ":" not in model_unique_id:
         raise HTTPException(
@@ -75,6 +91,26 @@ async def _validate_model_unique_id(user_id: str, model_unique_id: str) -> None:
             detail="model_unique_id must be in format 'connection_slug:model_slug'",
         )
     connection_slug = model_unique_id.split(":", 1)[0]
+
+    # Reserved premium-provider slugs bypass the Connection lookup and
+    # check the user's Premium Provider Account instead. This keeps the
+    # persona's declared provider consistent with the Premium Providers
+    # tab in User Settings.
+    if connection_slug in RESERVED_SLUGS:
+        svc = PremiumProviderService(
+            PremiumProviderAccountRepository(get_db()),
+        )
+        if await svc.has_account(user_id, connection_slug):
+            return
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"No Premium Provider Account for '{connection_slug}' — "
+                f"configure it in User Settings before assigning "
+                f"{model_unique_id!r} to a persona."
+            ),
+        )
+
     c = await resolve_owned_connection(user_id, connection_slug)
     if c is None:
         raise HTTPException(
