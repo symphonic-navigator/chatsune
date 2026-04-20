@@ -42,11 +42,14 @@ export function MobileToast({ notification }: MobileToastProps) {
   const icon = LEVEL_ICONS[notification.level]
   const duration = notification.duration ?? DEFAULT_DURATIONS[notification.level]
 
+  const didDismissRef = useRef(false)
+
   const dismiss = useCallback(() => {
-    if (exiting) return
+    if (didDismissRef.current) return
+    didDismissRef.current = true
     setExiting(true)
     setTimeout(() => dismissToast(notification.id), EXIT_ANIMATION_MS)
-  }, [dismissToast, exiting, notification.id])
+  }, [dismissToast, notification.id])
 
   useEffect(() => {
     if (duration === null) return
@@ -77,6 +80,11 @@ export function MobileToast({ notification }: MobileToastProps) {
     setDragY(0)
   }
 
+  const onPointerCancel = () => {
+    pointerStartY.current = null
+    setDragY(0)
+  }
+
   const onClick = () => {
     if (!pointerMoved.current) dismiss()
   }
@@ -85,19 +93,20 @@ export function MobileToast({ notification }: MobileToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className={`pointer-events-auto flex w-[calc(100vw-2rem)] max-w-md items-start gap-3 rounded-xl border-l-4 px-4 py-3 shadow-2xl transition-transform ${exiting ? "animate-toast-exit" : "animate-toast-enter"}`}
+      className={`pointer-events-auto flex w-[calc(100vw-2rem)] max-w-md items-start gap-3 rounded-xl px-4 py-3 shadow-2xl transition-transform ${exiting ? "animate-toast-exit" : "animate-toast-enter"}`}
       style={{
         background: "#0b0a08",
-        borderLeftColor: `rgb(${rgb})`,
-        border: `1px solid rgba(${rgb}, 0.35)`,
-        borderLeftWidth: "4px",
+        borderTop: `1px solid rgba(${rgb}, 0.35)`,
+        borderRight: `1px solid rgba(${rgb}, 0.35)`,
+        borderBottom: `1px solid rgba(${rgb}, 0.35)`,
+        borderLeft: `4px solid rgb(${rgb})`,
         transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
         opacity: dragY > 0 ? Math.max(0.3, 1 - dragY / 200) : 1,
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onClick={onClick}
     >
       <span

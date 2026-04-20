@@ -65,6 +65,18 @@ describe('MobileToast', () => {
     expect(dismissSpy).not.toHaveBeenCalled()
   })
 
+  it('does not dismiss on pointercancel even past swipe threshold', () => {
+    const dismissSpy = vi.fn()
+    useNotificationStore.setState({ dismissToast: dismissSpy } as unknown as Partial<ReturnType<typeof useNotificationStore.getState>>)
+    render(<MobileToast notification={makeNotification()} />)
+    const el = screen.getByRole('status')
+    fireEvent.pointerDown(el, { clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(el, { clientY: 160, pointerId: 1 })
+    fireEvent.pointerCancel(el, { clientY: 160, pointerId: 1 })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(dismissSpy).not.toHaveBeenCalled()
+  })
+
   it('auto-dismisses after duration', () => {
     const dismissSpy = vi.fn()
     useNotificationStore.setState({ dismissToast: dismissSpy } as unknown as Partial<ReturnType<typeof useNotificationStore.getState>>)
