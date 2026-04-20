@@ -11,7 +11,7 @@ def test_xai_registered():
         Capability.LLM, Capability.TTS, Capability.STT,
         Capability.TTI, Capability.ITI,
     }
-    assert defn.base_url == "https://api.x.ai"
+    assert defn.base_url == "https://api.x.ai/v1"
     assert "xai_voice" in defn.linked_integrations
 
 

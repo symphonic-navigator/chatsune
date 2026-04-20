@@ -64,7 +64,7 @@ async def test_resolves_premium_xai(user_with_xai_account):
     resolved = await resolve_for_model(user_with_xai_account, "xai:grok-3")
     assert resolved.adapter_type == "xai_http"
     assert resolved.slug == "xai"
-    assert resolved.config["url"] == "https://api.x.ai"
+    assert resolved.config["url"] == "https://api.x.ai/v1"
     assert resolved.config["api_key"] == "xai-abc"
 
 
@@ -135,7 +135,7 @@ async def test_stream_completion_routes_premium_xai(
     ``stream_completion(user_id, "xai:grok-3", ...)`` must resolve credentials
     through the Premium Provider service (via ``resolve_for_model``) and hand
     the adapter a ResolvedConnection whose ``config`` carries the registry-
-    fixed ``https://api.x.ai`` base URL + the decrypted premium ``api_key``.
+    fixed ``https://api.x.ai/v1`` base URL + the decrypted premium ``api_key``.
 
     Before the rewire: ``stream_completion`` delegated to
     ``resolve_owned_connection_by_slug`` and raised
@@ -178,7 +178,7 @@ async def test_stream_completion_routes_premium_xai(
     c = _FakeAdapter.last_connection
     assert c.adapter_type == "xai_http"
     assert c.slug == "xai"
-    assert c.config["url"] == "https://api.x.ai"
+    assert c.config["url"] == "https://api.x.ai/v1"
     assert c.config["api_key"] == "xai-abc"
     assert _FakeAdapter.last_request is request
 

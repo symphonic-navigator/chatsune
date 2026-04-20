@@ -39,7 +39,7 @@ def _register_builtins() -> None:
         id="xai",
         display_name="xAI",
         icon="xai",
-        base_url="https://api.x.ai",
+        base_url="https://api.x.ai/v1",
         capabilities=[
             Capability.LLM, Capability.TTS, Capability.STT,
             Capability.TTI, Capability.ITI,
@@ -52,7 +52,7 @@ def _register_builtins() -> None:
         id="mistral",
         display_name="Mistral",
         icon="mistral",
-        base_url="https://api.mistral.ai",
+        base_url="https://api.mistral.ai/v1",
         capabilities=[Capability.TTS, Capability.STT],
         config_fields=[_api_key_field("Mistral API Key")],
         linked_integrations=["mistral_voice"],
