@@ -12,7 +12,7 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
-from shared.dtos.inference import CompletionMessage, CompletionRequest
+from shared.dtos.inference import CompletionMessage, CompletionRequest, ToolDefinition
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -54,6 +54,37 @@ def _translate_message(msg: CompletionMessage) -> dict:
         result["tool_call_id"] = msg.tool_call_id
 
     return result
+
+
+_XAI_MODEL_REASONING = "grok-4-1-fast-reasoning"
+_XAI_MODEL_NON_REASONING = "grok-4-1-fast-non-reasoning"
+
+
+def _build_chat_payload(request: CompletionRequest) -> dict:
+    model_slug = (
+        _XAI_MODEL_REASONING if request.reasoning_enabled
+        else _XAI_MODEL_NON_REASONING
+    )
+    payload: dict = {
+        "model": model_slug,
+        "stream": True,
+        "messages": [_translate_message(m) for m in request.messages],
+    }
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    if request.tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in request.tools
+        ]
+    return payload
 
 
 class XaiHttpAdapter(BaseAdapter):

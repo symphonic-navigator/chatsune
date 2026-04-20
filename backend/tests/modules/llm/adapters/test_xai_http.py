@@ -131,3 +131,64 @@ def test_translate_tool_role_message():
         "content": '{"results":[]}',
         "tool_call_id": "call_a",
     }
+
+
+from shared.dtos.inference import CompletionRequest, ToolDefinition
+from backend.modules.llm._adapters._xai_http import _build_chat_payload
+
+
+def _simple_request(**kwargs) -> CompletionRequest:
+    base = {
+        "model": "grok-4.1-fast",
+        "messages": [
+            CompletionMessage(role="user",
+                              content=[ContentPart(type="text", text="hi")]),
+        ],
+        "supports_reasoning": True,
+    }
+    base.update(kwargs)
+    return CompletionRequest(**base)
+
+
+def test_build_payload_picks_non_reasoning_model_by_default():
+    payload = _build_chat_payload(_simple_request(reasoning_enabled=False))
+    assert payload["model"] == "grok-4-1-fast-non-reasoning"
+    assert payload["stream"] is True
+
+
+def test_build_payload_picks_reasoning_model_when_toggle_on():
+    payload = _build_chat_payload(_simple_request(reasoning_enabled=True))
+    assert payload["model"] == "grok-4-1-fast-reasoning"
+
+
+def test_build_payload_omits_temperature_when_none():
+    payload = _build_chat_payload(_simple_request(temperature=None))
+    assert "temperature" not in payload
+
+
+def test_build_payload_includes_temperature_when_set():
+    payload = _build_chat_payload(_simple_request(temperature=0.7))
+    assert payload["temperature"] == 0.7
+
+
+def test_build_payload_translates_tools_to_openai_schema():
+    tool = ToolDefinition(
+        name="web_search",
+        description="Search the web",
+        parameters={"type": "object",
+                    "properties": {"query": {"type": "string"}}},
+    )
+    payload = _build_chat_payload(_simple_request(tools=[tool]))
+    assert payload["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Search the web",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                },
+            },
+        },
+    ]
