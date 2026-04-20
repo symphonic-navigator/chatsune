@@ -712,3 +712,22 @@ All three are process-local `asyncio.Semaphore`s held in `_KeyedSemRegistry`. Si
 **Self-connection lifecycle:** `HomelabService.create_homelab` reserves the slug (rejecting with HTTP 409 + `suggested_slug` on collision), inserts the homelab, inserts the `community` Connection with `is_system_managed=True` and `config.max_parallel = homelab.max_concurrent_requests`, and emits paired `LLM_HOMELAB_CREATED` + `LLM_CONNECTION_CREATED`. `update_homelab` cascades renames and max-concurrency changes to the self-connection. `delete_homelab` drops the self-connection via `delete_by_system` (bypasses the generic `is_system_managed` guard) and evicts all three semaphore registry entries. No MongoDB transaction spans both inserts — the self-connection create runs after the homelab insert and best-effort-rolls-back the homelab on failure; this keeps the service free of Motor session plumbing and the failure mode is tiny (uuid-slug collision within the same user).
 
 **Backwards-compat (no-wipe):** existing homelab documents predate `max_concurrent_requests` and `host_slug` — they deserialise with defaults (`3` and `None` respectively), which means they don't have a self-connection. Hosts of legacy homelabs continue to use API-Keys until they create a new homelab. No migration script; no DB touch. Pydantic models use `int = 3` / `str | None = None` / `bool = False` defaults so old documents decode cleanly (CLAUDE.md §Data-Model Migrations rule).
+
+---
+
+## INS-024 — Usage Telemetry: Cache-Hit Tokens Captured But Not Surfaced (2026-04-20)
+
+**Decision:** Adapters that receive structured cache-hit information from their upstream (xAI returns `usage.prompt_tokens_details.cached_tokens`, Anthropic returns `cache_read_input_tokens` and `cache_creation_input_tokens`, OpenAI returns `prompt_tokens_details.cached_tokens`) currently **discard** this detail. Only the aggregate `input_tokens` / `output_tokens` are forwarded via `StreamDone`, which feeds `ChatStreamEndedEvent.usage`.
+
+**Why this is deliberate (for now):**
+The streaming contract (`StreamDone(input_tokens, output_tokens)`) is adapter-neutral and stays minimal. Adding cache-tier fields per provider would either bloat the event with optional provider-specific fields or force a lowest-common-denominator schema that loses information. Neither is worth doing before we know what we want to show the user or charge against.
+
+**When to revisit:**
+Planned as a small follow-up iteration after the xAI adapter ships. Goals:
+
+1. **Uniform usage schema** — extend `StreamDone` with an optional `cache_tokens_read: int | None` (and possibly `cache_tokens_written` for Anthropic-style providers) so the chat-end-event carries provider-agnostic cache telemetry.
+2. **UI surfacing** — show "N tokens served from cache" in the chat status line or a per-message debug overlay. Lets the user see when `x-grok-conv-id` prefix-stickiness actually pays off, and makes prompt-churn costs visible (helps tuning the PromptAssembler).
+3. **Possibly later** — per-connection rolling cost/token aggregates for the connection health view, once multiple providers report cache data.
+
+**What NOT to do:**
+Do not bake provider-specific fields into `ChatStreamEndedEvent` (no `xai_cached_prompt_tokens`). Keep the outward contract provider-agnostic; per-provider mapping stays inside each adapter, same pattern as `supports_reasoning`.
