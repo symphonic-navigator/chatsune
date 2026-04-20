@@ -12,6 +12,10 @@ export interface VoicePipelineCallbacks {
   onTranscription: (text: string) => void
 }
 
+// Utterances shorter than this are almost certainly accidental PTT taps
+// or mic blips.
+const MIN_UTTERANCE_MS = 300
+
 class VoicePipelineImpl {
   private callbacks: VoicePipelineCallbacks | null = null
   private mode: 'push-to-talk' | 'continuous' = 'push-to-talk'
@@ -74,18 +78,15 @@ class VoicePipelineImpl {
     }
   }
 
-  // Utterances shorter than this are almost certainly accidental PTT taps
-  // or mic blips; uploading them would just burn an API call and (in xAI's
-  // case) return HTTP 400 for "no speech detected". Continuous mode isn't
-  // affected because the VAD gates segment starts itself.
-  private static readonly MIN_UTTERANCE_MS = 300
-
   private async handleAudio(audio: CapturedAudio, gen: number): Promise<void> {
     // Skip empty audio (stopPTT called before any samples were collected)
-    // or utterances too short to contain real speech.
+    // or utterances too short to contain real speech. Accidental PTT taps
+    // or mic blips would otherwise burn an API call and return HTTP 400
+    // from xAI for "no speech detected". Continuous mode isn't affected
+    // because the VAD gates segment starts itself.
     if (
       (audio.pcm.length === 0 && audio.blob.size === 0) ||
-      audio.durationMs < VoicePipeline.MIN_UTTERANCE_MS
+      audio.durationMs < MIN_UTTERANCE_MS
     ) {
       if (gen === this.generation) this.setState({ phase: 'idle' })
       return
