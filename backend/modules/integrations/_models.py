@@ -23,3 +23,4 @@ class IntegrationDefinition:
     response_tag_prefix: str = ""
     tool_definitions: list[ToolDefinition] = field(default_factory=list)
     tool_side: Literal["server", "client"] = "client"
+    linked_premium_provider: str | None = None

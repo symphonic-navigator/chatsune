@@ -175,15 +175,8 @@ def _register_builtins() -> None:
             IntegrationCapability.TTS_PROVIDER,
             IntegrationCapability.STT_PROVIDER,
         ],
+        linked_premium_provider="mistral",
         config_fields=[
-            {
-                "key": "api_key",
-                "label": "Mistral API Key",
-                "field_type": "password",
-                "secret": True,
-                "required": True,
-                "description": "Your personal Mistral AI API key. Encrypted at rest, delivered in memory to your browser.",
-            },
             {
                 "key": "playback_gap_ms",
                 "label": "Pause between chunks",
@@ -236,18 +229,8 @@ def _register_builtins() -> None:
             IntegrationCapability.STT_PROVIDER,
             IntegrationCapability.TTS_EXPRESSIVE_MARKUP,
         ],
+        linked_premium_provider="xai",
         config_fields=[
-            {
-                "key": "api_key",
-                "label": "xAI API Key",
-                "field_type": "password",
-                "secret": True,
-                "required": True,
-                "description": (
-                    "Your personal xAI API key. Encrypted at rest; never "
-                    "leaves the backend."
-                ),
-            },
             {
                 "key": "playback_gap_ms",
                 "label": "Pause between chunks",

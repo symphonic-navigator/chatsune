@@ -20,12 +20,6 @@ def test_mistral_voice_is_tts_and_stt():
     assert IntegrationCapability.STT_PROVIDER in defn.capabilities
 
 
-def test_mistral_voice_api_key_is_secret():
-    defn = get("mistral_voice")
-    api_key_field = next(f for f in defn.config_fields if f["key"] == "api_key")
-    assert api_key_field["secret"] is True
-
-
 def test_mistral_voice_has_persona_voice_field():
     defn = get("mistral_voice")
     voice_field = next(f for f in defn.persona_config_fields if f["key"] == "voice_id")
