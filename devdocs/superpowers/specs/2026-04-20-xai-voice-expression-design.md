@@ -270,11 +270,7 @@ wichtig.</soft>` with a cut after `wichtig.`:
   `enteringStack = ["soft"]` →
   `<soft> nicht so wichtig.</soft>` → `leavingStack = []`
 
-**Unclosed at message end.** If `flush()` is called with a non-empty
-persistent `wrapStack`, the remaining buffer is emitted with the
-entering stack prepended but no synthetic closes appended. The xAI
-API handles what it gets; the next message starts with a fresh
-sentencer and an empty stack.
+**Unclosed at message end.** If `flush()` is called with a non-empty persistent `wrapStack`, the shared emit path computes the current leaving stack from the remaining chunk and re-wraps — so the emitted text is **always syntactically balanced** at the TTS boundary, even when the LLM left a wrap open. This is a minor deliberate deviation from the original intent of letting xAI handle orphaned opens: balanced markup is simpler for the provider and matches the test assertion in `streamingSentencer.test.ts`. Either behaviour is compatible with xAI's synth; balance is the friendlier option.
 
 ### 6.2 audioParser — conditional strip
 
