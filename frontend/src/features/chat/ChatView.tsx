@@ -1119,6 +1119,12 @@ export function ChatView({ persona }: ChatViewProps) {
             available={conversationAvailable}
             phase={conversationPhase}
             onToggle={handleToggleConversation}
+            persona={persona ? {
+              id: persona.id,
+              tts_provider_id: (persona.voice_config as Record<string, unknown> | null | undefined)?.['tts_provider_id'] as string | undefined,
+              stt_provider_id: (persona.voice_config as Record<string, unknown> | null | undefined)?.['stt_provider_id'] as string | undefined,
+            } : null}
+            onConfigure={() => persona?.id && openPersonaOverlay(persona.id, 'voice')}
           />
           <div className="relative">
             <button

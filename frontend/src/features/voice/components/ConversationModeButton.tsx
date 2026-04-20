@@ -1,10 +1,63 @@
 import type { ConversationPhase } from '../stores/conversationModeStore'
+import { useProvidersStore } from '../../../core/store/providersStore'
+
+/** Maps a voice integration id onto the Premium Provider Account that owns
+ *  its API key. Integrations not in this map are either unlinked (their key
+ *  lives in the per-integration config) or premium-account-agnostic. */
+const PROVIDER_ID_BY_INTEGRATION: Record<string, string> = {
+  xai_voice: 'xai',
+  mistral_voice: 'mistral',
+}
+
+function providerIdForIntegration(integrationId: string | null | undefined): string | null {
+  if (!integrationId) return null
+  return PROVIDER_ID_BY_INTEGRATION[integrationId] ?? null
+}
+
+/** Loosely-typed persona prop — we only inspect a handful of voice-related
+ *  fields and both real `PersonaDto` and test doubles satisfy this. */
+interface PersonaVoiceShape {
+  id?: string
+  tts_provider_id?: string | null
+  stt_provider_id?: string | null
+}
+
+/**
+ * True when every voice integration the persona is bound to has a
+ * configured Premium Provider Account. A missing `tts_provider_id`
+ * falls through to `false` because without a TTS provider, voice chat
+ * cannot produce output.
+ */
+function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boolean {
+  // Select the stable `accounts` array rather than the derived Set — the
+  // latter is a new object every render and causes a re-render loop.
+  const accounts = useProvidersStore((s) => s.accounts)
+  if (!persona?.tts_provider_id) return false
+  const ttsPremium = providerIdForIntegration(persona.tts_provider_id)
+  // If the TTS integration is not premium-linked (e.g. a local engine), we
+  // treat it as available — the legacy `available` prop path still gates.
+  if (!ttsPremium) return true
+  const configuredIds = new Set(accounts.map((a) => a.provider_id))
+  if (!configuredIds.has(ttsPremium)) return false
+  if (persona.stt_provider_id) {
+    const sttPremium = providerIdForIntegration(persona.stt_provider_id)
+    if (sttPremium && !configuredIds.has(sttPremium)) return false
+  }
+  return true
+}
 
 interface ConversationModeButtonProps {
-  active: boolean
-  available: boolean
-  phase: ConversationPhase
-  onToggle: () => void
+  active?: boolean
+  available?: boolean
+  phase?: ConversationPhase
+  onToggle?: () => void
+  /** Persona to evaluate for voice availability. When supplied, the button
+   *  checks whether the persona's voice integrations are backed by a
+   *  configured Premium Provider Account. */
+  persona?: PersonaVoiceShape | null
+  /** Invoked when the button is clicked while voice is unavailable — should
+   *  navigate the user to the persona voice-config flow. */
+  onConfigure?: () => void
 }
 
 const PHASE_LABEL: Record<ConversationPhase, string> = {
@@ -30,11 +83,41 @@ const PHASE_DOT: Record<ConversationPhase, string> = {
 /**
  * Top-bar toggle for conversational mode.
  *
+ *   - strikethrough + click-to-configure when the persona's voice integration
+ *     is not backed by a Premium Provider Account
  *   - greyed out when STT or TTS is not available
  *   - prominent accent colour when inactive-but-available
  *   - pulsing live indicator + phase dot when active
  */
-export function ConversationModeButton({ active, available, phase, onToggle }: ConversationModeButtonProps) {
+export function ConversationModeButton({
+  active = false,
+  available = true,
+  phase = 'idle',
+  onToggle,
+  persona,
+  onConfigure,
+}: ConversationModeButtonProps) {
+  const voiceAvailable = useVoiceAvailable(persona)
+
+  // Persona-driven predicate wins when a persona is supplied: the user has
+  // picked a voice integration whose premium account is missing, so point
+  // them at the voice-config flow rather than silently disabling the button.
+  if (persona && !voiceAvailable) {
+    return (
+      <button
+        type="button"
+        onClick={onConfigure}
+        style={{ opacity: 0.4, textDecoration: 'line-through' }}
+        className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-white/60 hover:bg-white/10"
+        title="Voice provider not configured — click to configure"
+        aria-label="Voice provider not configured — click to configure"
+      >
+        <ConvIcon />
+        <span className="hidden sm:inline">Voice chat</span>
+      </button>
+    )
+  }
+
   if (!available) {
     return (
       <button
