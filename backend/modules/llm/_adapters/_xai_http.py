@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 
 from backend.modules.llm._adapters._base import BaseAdapter
+from backend.modules.llm._adapters._events import ProviderStreamEvent, StreamError
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
+    ResolvedConnection,
 )
+from shared.dtos.inference import CompletionRequest
+from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
 
@@ -52,4 +57,28 @@ class XaiHttpAdapter(BaseAdapter):
             ),
         ]
 
-    # fetch_models + stream_completion added in later tasks.
+    async def fetch_models(
+        self, c: ResolvedConnection,
+    ) -> list[ModelMetaDto]:
+        return [
+            ModelMetaDto(
+                connection_id=c.id,
+                connection_display_name=c.display_name,
+                connection_slug=c.slug,
+                model_id="grok-4.1-fast",
+                display_name="Grok 4.1 Fast",
+                context_window=200_000,
+                supports_reasoning=True,
+                supports_vision=True,
+                supports_tool_calls=True,
+            ),
+        ]
+
+    async def stream_completion(
+        self, c: ResolvedConnection, request: CompletionRequest,
+    ) -> AsyncIterator[ProviderStreamEvent]:
+        # Stub — real implementation lands in Task 9.
+        yield StreamError(
+            error_code="provider_unavailable",
+            message="xai_http stream_completion not implemented yet",
+        )

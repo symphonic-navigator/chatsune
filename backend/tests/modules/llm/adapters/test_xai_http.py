@@ -47,3 +47,22 @@ def test_config_schema_lists_url_api_key_max_parallel():
     schema = XaiHttpAdapter.config_schema()
     names = {f.name for f in schema}
     assert names == {"url", "api_key", "max_parallel"}
+
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_one_grok_4_1_fast():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    assert len(metas) == 1
+    m = metas[0]
+    assert m.model_id == "grok-4.1-fast"
+    assert m.display_name == "Grok 4.1 Fast"
+    assert m.context_window == 200_000
+    assert m.supports_reasoning is True
+    assert m.supports_vision is True
+    assert m.supports_tool_calls is True
+    assert m.connection_id == "conn-xai-1"
+    assert m.connection_slug == "chris-xai"
