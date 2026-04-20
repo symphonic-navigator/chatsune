@@ -12,6 +12,7 @@ from shared.dtos.llm import ModelMetaDto
 from shared.dtos.providers import (
     PremiumProviderAccountDto,
     PremiumProviderDefinitionDto,
+    PremiumProviderTestResultDto,
     PremiumProviderUpsertRequest,
 )
 
@@ -183,7 +184,7 @@ async def refresh_provider_models(
 
 @router.post(
     "/accounts/{provider_id}/test",
-    response_model=None,  # response shape handled manually for clarity
+    response_model=PremiumProviderTestResultDto,
 )
 async def test_account(
     provider_id: str,
@@ -205,7 +206,6 @@ async def test_account(
         PremiumProviderAccountRepository,
     )
     from backend.ws.event_bus import get_event_bus
-    from shared.dtos.providers import PremiumProviderTestResultDto
     from shared.events.providers import PremiumProviderAccountTestedEvent
     from shared.topics import Topics
 
@@ -274,4 +274,4 @@ async def test_account(
 
     return PremiumProviderTestResultDto(
         status=probe_status, error=probe_error,
-    ).model_dump()
+    )

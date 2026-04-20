@@ -18,6 +18,7 @@ describe('providersStore', () => {
       accounts: [],
       loading: false,
       error: null,
+      hydrated: false,
       testingIds: new Set<string>(),
     })
   })

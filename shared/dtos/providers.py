@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -72,5 +72,5 @@ class PremiumProviderUpsertRequest(BaseModel):
 
 class PremiumProviderTestResultDto(BaseModel):
     """Response for the /test endpoint."""
-    status: str
+    status: Literal["ok", "error"]
     error: str | None
