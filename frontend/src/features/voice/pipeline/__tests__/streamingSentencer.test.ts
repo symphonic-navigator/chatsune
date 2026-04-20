@@ -205,28 +205,25 @@ describe('createStreamingSentencer', () => {
 describe('createStreamingSentencer — expressive markup', () => {
   it('re-wraps a <whisper> that spans a sentence boundary', () => {
     const s = createStreamingSentencer('off', true)
-    const out1 = s.push('<whisper>ich verrate dir ein geheimnis. die klingonen ')
+    const out1 = s.push('<whisper>Ich verrate dir ein Geheimnis. Die Klingonen ')
     expect(out1).toEqual([
-      { type: 'voice', text: '<whisper>ich verrate dir ein geheimnis.</whisper>' },
+      { type: 'voice', text: '<whisper>Ich verrate dir ein Geheimnis.</whisper>' },
     ])
-    // " die klingonen " remained in the buffer after the first cut and is
-    // prepended to the next sentence — correct: the wrap-stack re-opens the
-    // active <whisper> so the TTS receives balanced, contiguous markup.
-    const out2 = s.push('planen einen angriff.</whisper> Dann ')
+    const out2 = s.push('planen einen Angriff.</whisper> Dann ')
     expect(out2).toEqual([
-      { type: 'voice', text: '<whisper> die klingonen planen einen angriff.</whisper>' },
+      { type: 'voice', text: '<whisper> Die Klingonen planen einen Angriff.</whisper>' },
     ])
   })
 
   it('re-wraps nested wraps across a cut', () => {
     const s = createStreamingSentencer('off', true)
-    const out1 = s.push('<soft><emphasis>wichtig.</emphasis> nicht so ')
+    const out1 = s.push('<soft><emphasis>Wichtig.</emphasis> Nicht so ')
     expect(out1).toEqual([
-      { type: 'voice', text: '<soft><emphasis>wichtig.</emphasis></soft>' },
+      { type: 'voice', text: '<soft><emphasis>Wichtig.</emphasis></soft>' },
     ])
     const out2 = s.push('wichtig.</soft> Danach ')
     expect(out2).toEqual([
-      { type: 'voice', text: '<soft> nicht so wichtig.</soft>' },
+      { type: 'voice', text: '<soft> Nicht so wichtig.</soft>' },
     ])
   })
 

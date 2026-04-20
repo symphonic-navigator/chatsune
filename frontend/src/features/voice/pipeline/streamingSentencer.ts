@@ -147,8 +147,7 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
             if (
               afterTagChar === '\n' ||
               isUppercaseSentenceStart(afterTagChar) ||
-              isPictographAt(text, k) ||
-              isLetter(afterTagChar)
+              isPictographAt(text, k)
             ) {
               // Cut includes the closing tags so the emitted chunk is balanced.
               lastSafeEnd = afterTags
@@ -166,7 +165,7 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
         continue
       }
       const after = text[j]
-      if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j) || isLetter(after)) {
+      if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j)) {
         lastSafeEnd = nextIdx
       }
     }
@@ -184,12 +183,6 @@ function isWordBoundaryLeft(text: string, i: number): boolean {
 
 function isUppercaseSentenceStart(ch: string): boolean {
   return /[A-Z\u00C4\u00D6\u00DC]/.test(ch)
-}
-
-// Whether `ch` is a Unicode letter — used to allow cuts before lowercase
-// sentence starts (e.g. German articles like "die", "der", "ein").
-function isLetter(ch: string): boolean {
-  return /\p{L}/u.test(ch)
 }
 
 // Whether the code point at `i` is an emoji / pictograph. Handles surrogate
