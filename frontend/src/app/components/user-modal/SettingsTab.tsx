@@ -1,5 +1,6 @@
 import { useDisplaySettings } from '../../../core/store/displaySettingsStore'
 import { useHapticsStore } from '../../../core/store/hapticsStore'
+import { useIsPwa } from '../../../core/hooks/useIsPwa'
 import {
   UI_SCALE_OPTIONS,
   FONT_FAMILY_VALUES,
@@ -45,6 +46,7 @@ export function SettingsTab() {
   const { settings, update } = useDisplaySettings()
   const hapticsEnabled = useHapticsStore((s) => s.enabled)
   const setHapticsEnabled = useHapticsStore((s) => s.setEnabled)
+  const isPwa = useIsPwa()
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-xl overflow-y-auto">
@@ -149,6 +151,19 @@ export function SettingsTab() {
           {hapticsEnabled ? 'On' : 'Off'}
         </button>
       </div>
+
+      {isPwa && (
+        <div>
+          <label className={LABEL}>App</label>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono transition-all border border-white/8 bg-transparent text-white/60 hover:text-white/90 hover:border-white/20"
+          >
+            App neu laden
+          </button>
+        </div>
+      )}
     </div>
   )
 }
