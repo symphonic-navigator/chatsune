@@ -68,6 +68,10 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
   save: async (providerId, config) => {
     const acct = await providersApi.upsertAccount(providerId, config)
     set({ accounts: upsert(get().accounts, acct) })
+    // Auto-validate the stored API key by probing upstream. test() owns the
+    // testingIds/refresh lifecycle so the card shows the spinner and picks up
+    // the new last_test_status without an extra round-trip here.
+    await get().test(providerId)
   },
 
   remove: async (providerId) => {

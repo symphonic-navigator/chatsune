@@ -76,16 +76,52 @@ describe('providersStore', () => {
 
   it('save upserts into accounts array', async () => {
     const { providersApi } = await import('../api/providers')
-    ;(providersApi.upsertAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    const saved = {
       provider_id: 'xai',
       config: { api_key: { is_set: true } },
       last_test_status: null,
       last_test_error: null,
       last_test_at: null,
+    }
+    ;(providersApi.upsertAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce(saved)
+    // save() auto-chains test() + refresh(); the refresh pulls canonical
+    // accounts from the server, so listAccounts must return the upserted row.
+    ;(providersApi.testAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: 'ok',
+      error: null,
     })
+    ;(providersApi.catalogue as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    ;(providersApi.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([saved])
+
     await useProvidersStore.getState().save('xai', { api_key: 'k' })
     expect(useProvidersStore.getState().accounts).toHaveLength(1)
     expect(useProvidersStore.getState().accounts[0].provider_id).toBe('xai')
+  })
+
+  it('save auto-tests the provider after upserting', async () => {
+    const { providersApi } = await import('../api/providers')
+    const saved = {
+      provider_id: 'xai',
+      config: { api_key: { is_set: true } },
+      last_test_status: null,
+      last_test_error: null,
+      last_test_at: null,
+    }
+    ;(providersApi.upsertAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce(saved)
+    ;(providersApi.testAccount as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      status: 'ok',
+      error: null,
+    })
+    ;(providersApi.catalogue as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    ;(providersApi.listAccounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([saved])
+
+    await useProvidersStore.getState().save('xai', { api_key: 'k' })
+
+    expect(providersApi.testAccount).toHaveBeenCalledWith('xai')
+    // refresh() pulls the canonical last_test_* fields from the server.
+    expect(providersApi.listAccounts).toHaveBeenCalled()
+    // testingIds has been cleaned up by the time save() resolves.
+    expect(useProvidersStore.getState().testingIds.has('xai')).toBe(false)
   })
 
   it('test() flips testingIds on, calls refresh, then flips it off', async () => {
