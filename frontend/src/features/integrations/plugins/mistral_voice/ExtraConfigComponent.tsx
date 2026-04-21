@@ -36,7 +36,7 @@ export function ExtraConfigComponent() {
   // The API key itself now lives server-side — we no longer check a client
   // secrets store.
   const enabled = useIntegrationsStore(
-    (s) => s.configs?.[INTEGRATION_ID]?.enabled === true,
+    (s) => s.configs?.[INTEGRATION_ID]?.effective_enabled === true,
   )
   const [voices, setVoices] = useState<MistralVoice[]>([])
   const [name, setName] = useState('')

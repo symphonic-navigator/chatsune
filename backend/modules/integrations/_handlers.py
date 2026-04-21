@@ -65,10 +65,53 @@ async def list_definitions(
 async def list_user_configs(
     user: dict = Depends(require_active_session),
 ) -> list[UserIntegrationConfigDto]:
-    """Return all integration configs for the current user."""
+    """Return all integration configs for the current user.
+
+    Each returned DTO carries ``effective_enabled`` — the authoritative
+    "is this integration usable" flag derived from
+    :func:`effective_enabled_map`. For integrations linked to a Premium
+    Provider Account (``xai_voice``, ``mistral_voice``), there is usually
+    no ``user_integration_configs`` document, yet the integration is
+    effectively enabled as soon as the Premium account exists. We emit a
+    synthetic DTO for those cases so the frontend store has an entry
+    keyed by the integration id (otherwise voice-provider dropdowns and
+    engine-readiness checks, which look up ``configs[integration_id]``,
+    find nothing and treat the integration as disabled).
+    """
+    # Local import to avoid circular: backend.modules.integrations
+    # imports from _handlers at module init.
+    from backend.modules.integrations import effective_enabled_map
+
     repo = _repo()
     docs = await repo.get_user_configs(user["sub"])
-    return [UserIntegrationConfigDto(**d) for d in docs]
+    effective_map = await effective_enabled_map(user["sub"])
+
+    result: list[UserIntegrationConfigDto] = []
+    seen: set[str] = set()
+    for d in docs:
+        iid = d["integration_id"]
+        seen.add(iid)
+        result.append(
+            UserIntegrationConfigDto(
+                **d,
+                effective_enabled=effective_map.get(iid, False),
+            )
+        )
+    # Synthetic entries for integrations that are effectively enabled but
+    # have no stored config document (the common case for linked premium
+    # integrations — there is no UI to create a config row, so the doc
+    # never exists even though the integration is usable).
+    for iid, on in effective_map.items():
+        if on and iid not in seen:
+            result.append(
+                UserIntegrationConfigDto(
+                    integration_id=iid,
+                    enabled=False,
+                    config={},
+                    effective_enabled=True,
+                )
+            )
+    return result
 
 
 class _UpsertBody(BaseModel):
@@ -123,7 +166,12 @@ async def upsert_config(
             event_bus=event_bus,
         )
 
-    return UserIntegrationConfigDto(**doc)
+    # Derive effective_enabled from the authoritative map, not doc["enabled"] —
+    # for linked integrations the stored flag is meaningless; effective state
+    # depends on the Premium Provider Account's presence.
+    from backend.modules.integrations import is_effective_enabled
+    effective = await is_effective_enabled(user["sub"], integration_id)
+    return UserIntegrationConfigDto(**doc, effective_enabled=effective)
 
 
 async def load_api_key_for(user_id: str, integration_id: str) -> str | None:

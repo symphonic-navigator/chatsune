@@ -37,7 +37,7 @@ function makeDef(id: string, name: string): IntegrationDefinition {
 }
 
 function makeConfig(id: string): UserIntegrationConfig {
-  return { integration_id: id, enabled: true, config: {} }
+  return { integration_id: id, enabled: true, config: {}, effective_enabled: true }
 }
 
 beforeEach(() => {

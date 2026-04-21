@@ -15,7 +15,7 @@ function firstEnabledIntegrationId(cap: string): string | undefined {
   const s = useIntegrationsStore.getState()
   const defn = s.definitions.find(
     (d: { id: string; capabilities?: string[] }) =>
-      d.capabilities?.includes(cap) && s.configs?.[d.id]?.enabled,
+      d.capabilities?.includes(cap) && s.configs?.[d.id]?.effective_enabled,
   )
   return defn?.id
 }

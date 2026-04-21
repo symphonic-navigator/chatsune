@@ -64,7 +64,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   useEffect(() => { modulationRef.current = modulation }, [modulation])
 
   const ttsProviders = definitions.filter(
-    (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.enabled,
+    (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.effective_enabled,
   )
   const selectedProviderId =
     (persona.voice_config as { tts_provider_id?: string } | undefined)?.tts_provider_id

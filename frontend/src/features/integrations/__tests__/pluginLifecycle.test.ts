@@ -31,7 +31,7 @@ describe('pluginLifecycle', () => {
       capabilities: [],
       persona_config_fields: [],
     }
-    const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {} }
+    const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {}, effective_enabled: true }
 
     useIntegrationsStore.setState({ definitions: [definition], configs: { lovense: config } } as any)
 
@@ -59,7 +59,7 @@ describe('pluginLifecycle', () => {
       capabilities: [],
       persona_config_fields: [],
     }
-    const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {} }
+    const config: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {}, effective_enabled: false }
 
     useIntegrationsStore.setState({ definitions: [definition], configs: { lovense: config } } as any)
 
@@ -88,7 +88,7 @@ describe('pluginLifecycle', () => {
       capabilities: [],
       persona_config_fields: [],
     }
-    const config: UserIntegrationConfig = { integration_id: 'test_plugin', enabled: true, config: {} }
+    const config: UserIntegrationConfig = { integration_id: 'test_plugin', enabled: true, config: {}, effective_enabled: true }
 
     useIntegrationsStore.setState({ definitions: [definition], configs: { test_plugin: config } } as any)
 
@@ -122,8 +122,8 @@ describe('pluginLifecycle', () => {
       capabilities: [],
       persona_config_fields: [],
     }
-    const enabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {} }
-    const disabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {} }
+    const enabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: true, config: {}, effective_enabled: true }
+    const disabledConfig: UserIntegrationConfig = { integration_id: 'lovense', enabled: false, config: {}, effective_enabled: false }
 
     useIntegrationsStore.setState({ definitions: [definition], configs: { lovense: enabledConfig } } as any)
 

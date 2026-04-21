@@ -14,7 +14,7 @@ vi.mock('../api', () => ({
 // Path: from __tests__/ it's one deeper than from engines.ts
 vi.mock('../../../store', () => ({
   useIntegrationsStore: {
-    getState: () => ({ configs: { xai_voice: { enabled: true } } }),
+    getState: () => ({ configs: { xai_voice: { enabled: true, effective_enabled: true } } }),
   },
 }))
 

@@ -10,8 +10,8 @@ vi.mock('../../../integrations/store', () => ({
         { id: 'xai_voice', capabilities: ['tts_provider', 'stt_provider'] },
       ],
       configs: {
-        mistral_voice: { enabled: true },
-        xai_voice: { enabled: true },
+        mistral_voice: { enabled: true, effective_enabled: true },
+        xai_voice: { enabled: true, effective_enabled: true },
       },
     })),
   },

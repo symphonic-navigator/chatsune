@@ -53,6 +53,16 @@ export interface UserIntegrationConfig {
   integration_id: string
   enabled: boolean
   config: Record<string, unknown>
+  /**
+   * Authoritative "is this integration usable" flag derived server-side
+   * from `effective_enabled_map`. For linked-premium integrations
+   * (`xai_voice`, `mistral_voice`) it reflects whether the user has a
+   * matching Premium Provider Account — the raw `enabled` field is
+   * meaningless for those. UI code that decides whether to show a voice
+   * provider in a dropdown, or whether an engine is ready, must read
+   * this — not `enabled`.
+   */
+  effective_enabled: boolean
 }
 
 /** Result of a response tag execution. */

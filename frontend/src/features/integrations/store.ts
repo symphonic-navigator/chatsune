@@ -60,6 +60,6 @@ export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
 
   getEnabledIds: () => {
     const configs = get().configs
-    return Object.keys(configs).filter((id) => configs[id].enabled)
+    return Object.keys(configs).filter((id) => configs[id].effective_enabled)
   },
 }))
