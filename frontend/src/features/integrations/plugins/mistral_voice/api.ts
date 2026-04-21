@@ -3,8 +3,11 @@
 // server. Matches the shape of the xai_voice api.ts.
 
 import type { VoicePreset } from '../../../voice/types'
-import { currentAccessToken } from '../../../../core/api/client'
+import { apiUrl, currentAccessToken } from '../../../../core/api/client'
 
+// Relative path; routed through apiUrl() so VITE_API_URL is honoured. In
+// split-origin Docker setups the frontend and backend live on different
+// ports and a raw relative URL would hit the frontend origin.
 const BASE = '/api/integrations/mistral_voice/voice'
 
 interface ApiErrorBody { error_code?: string; message?: string; detail?: string }
@@ -40,7 +43,7 @@ export async function transcribe({ audio, mimeType, language }: TranscribeParams
   const file = new File([audio], filenameForMime(mimeType), { type: mimeType || audio.type || 'audio/wav' })
   form.append('audio', file, file.name)
   if (language) form.append('language', language)
-  const res = await fetch(`${BASE}/stt`, {
+  const res = await fetch(apiUrl(`${BASE}/stt`), {
     method: 'POST',
     credentials: 'include',
     headers: authHeaders(),
@@ -59,7 +62,7 @@ export async function synthesise({ text, voiceId }: SynthesiseParams): Promise<B
   const preview = text.slice(0, 40).replace(/\s+/g, ' ')
   const httpStart = performance.now()
   console.log(`[TTS-http]  request "${preview}"`)
-  const res = await fetch(`${BASE}/tts`, {
+  const res = await fetch(apiUrl(`${BASE}/tts`), {
     method: 'POST',
     credentials: 'include',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -83,7 +86,7 @@ function mapVoice(raw: RawVoice): MistralVoice {
 }
 
 export async function listVoices(): Promise<MistralVoice[]> {
-  const res = await fetch(`${BASE}/voices`, {
+  const res = await fetch(apiUrl(`${BASE}/voices`), {
     method: 'GET',
     credentials: 'include',
     headers: authHeaders(),
@@ -102,7 +105,7 @@ export async function cloneVoice({ audio, name }: {
   const file = new File([audio], filenameForMime(mimeType), { type: mimeType })
   form.append('audio', file, file.name)
   form.append('name', name)
-  const res = await fetch(`${BASE}/clone`, {
+  const res = await fetch(apiUrl(`${BASE}/clone`), {
     method: 'POST',
     credentials: 'include',
     headers: authHeaders(),
@@ -114,7 +117,7 @@ export async function cloneVoice({ audio, name }: {
 }
 
 export async function deleteVoice(voiceId: string): Promise<void> {
-  const res = await fetch(`${BASE}/voices/${encodeURIComponent(voiceId)}`, {
+  const res = await fetch(apiUrl(`${BASE}/voices/${encodeURIComponent(voiceId)}`), {
     method: 'DELETE',
     credentials: 'include',
     headers: authHeaders(),
