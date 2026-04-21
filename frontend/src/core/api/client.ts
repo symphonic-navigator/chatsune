@@ -21,6 +21,16 @@ function baseUrl(): string {
   return import.meta.env.VITE_API_URL ?? ""
 }
 
+// Prepend the configured API base URL to a relative path. Centralises the
+// VITE_API_URL prefix so that every fetch-based API client — including the
+// integration plugins that live outside this module — routes through the
+// same origin. Without this, relative URLs hit the frontend origin, which
+// in split-origin Docker setups (frontend :5080, backend :5079) produces
+// 405 Not Allowed and silent voice-list failures.
+export function apiUrl(path: string): string {
+  return `${baseUrl()}${path}`
+}
+
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError && (err.message === "Failed to fetch" || err.message === "Load failed")
 }
@@ -32,7 +42,7 @@ async function refreshToken(): Promise<boolean | "network_error"> {
   if (currentRefresh) return currentRefresh
   currentRefresh = (async () => {
     try {
-      const res = await fetch(`${baseUrl()}/api/auth/refresh`, {
+      const res = await fetch(apiUrl("/api/auth/refresh"), {
         method: "POST",
         credentials: "include",
       })
@@ -70,7 +80,7 @@ export async function apiRequest<T>(
 
   let res: Response
   try {
-    res = await fetch(`${baseUrl()}${path}`, {
+    res = await fetch(apiUrl(path), {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -91,7 +101,7 @@ export async function apiRequest<T>(
       if (token) {
         headers["Authorization"] = `Bearer ${token}`
       }
-      res = await fetch(`${baseUrl()}${path}`, {
+      res = await fetch(apiUrl(path), {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -2,8 +2,11 @@
 // xAI does not send CORS headers; all calls go through the backend.
 
 import type { VoicePreset } from '../../../voice/types'
-import { currentAccessToken } from '../../../../core/api/client'
+import { apiUrl, currentAccessToken } from '../../../../core/api/client'
 
+// Relative path; routed through apiUrl() so VITE_API_URL is honoured. In
+// split-origin Docker setups the frontend and backend live on different
+// ports and a raw relative URL would hit the frontend origin.
 const BASE = '/api/integrations/xai_voice/voice'
 
 interface ApiErrorBody { error_code?: string; message?: string }
@@ -38,7 +41,7 @@ export async function transcribeXai({ audio, mimeType, language }: TranscribePar
   const file = new File([audio], filenameForMime(mimeType), { type: mimeType })
   form.append('audio', file, file.name)
   if (language) form.append('language', language)
-  const res = await fetch(`${BASE}/stt`, {
+  const res = await fetch(apiUrl(`${BASE}/stt`), {
     method: 'POST',
     credentials: 'include',
     headers: authHeaders(),
@@ -52,7 +55,7 @@ export async function transcribeXai({ audio, mimeType, language }: TranscribePar
 export interface SynthesiseParams { text: string; voiceId: string }
 
 export async function synthesiseXai({ text, voiceId }: SynthesiseParams): Promise<Blob> {
-  const res = await fetch(`${BASE}/tts`, {
+  const res = await fetch(apiUrl(`${BASE}/tts`), {
     method: 'POST',
     credentials: 'include',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -71,7 +74,7 @@ export interface XaiVoice {
 }
 
 export async function listXaiVoices(): Promise<XaiVoice[]> {
-  const res = await fetch(`${BASE}/voices`, {
+  const res = await fetch(apiUrl(`${BASE}/voices`), {
     method: 'GET',
     credentials: 'include',
     headers: authHeaders(),

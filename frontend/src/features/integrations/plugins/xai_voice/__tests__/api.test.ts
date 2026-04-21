@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock the auth-token provider BEFORE importing the module under test.
+// apiUrl is passthrough in tests — VITE_API_URL is unset in the vitest env,
+// so the production helper would also return the path unchanged; keeping
+// the assertions origin-agnostic via toContain() leaves both behaviours valid.
 vi.mock('../../../../../core/api/client', () => ({
   currentAccessToken: () => 'TEST_TOKEN',
+  apiUrl: (path: string) => path,
 }))
 
 import { transcribeXai, synthesiseXai, listXaiVoices } from '../api'
