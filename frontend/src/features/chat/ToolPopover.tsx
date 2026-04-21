@@ -93,7 +93,7 @@ export function ToolPopover({ disabledToolGroups, personaMcpConfig, onClose }: T
 
   const activeIntegrations = useMemo(() => {
     return definitions
-      .filter((d) => intConfigs[d.id]?.enabled && d.has_tools)
+      .filter((d) => intConfigs[d.id]?.effective_enabled && d.has_tools)
       .map((d) => ({
         id: d.id,
         displayName: d.display_name,

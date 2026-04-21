@@ -89,10 +89,13 @@ async function tryIntegrationDispatch(ev: DispatchPayload): Promise<boolean> {
 
     console.debug('[integration-dispatch] matched plugin=%s tool=%s', pluginId, ev.tool_name)
 
-    // Verify the integration is enabled for this user
+    // Verify the integration is usable for this user. We check
+    // `effective_enabled` rather than `enabled` because linked premium
+    // integrations (xai_voice, mistral_voice) carry a meaningless stored
+    // `enabled=false` — see backend/modules/integrations/_handlers.py.
     const config = useIntegrationsStore.getState().getConfig(pluginId)
-    if (!config?.enabled) {
-      console.warn('[integration-dispatch] plugin=%s is not enabled', pluginId)
+    if (!config?.effective_enabled) {
+      console.warn('[integration-dispatch] plugin=%s is not effectively enabled', pluginId)
       sendResult(ev.tool_call_id, {
         stdout: '',
         error: `Integration '${pluginId}' is not enabled`,

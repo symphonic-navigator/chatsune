@@ -104,6 +104,48 @@ describe('pluginLifecycle', () => {
     cleanup()
   })
 
+  it('activates plugin for synthetic linked-premium config (enabled=false, effective_enabled=true)', () => {
+    // Regression test for the xai_voice / mistral_voice Voice-Tab invisibility
+    // bug: the backend emits a synthetic UserIntegrationConfigDto with
+    // `enabled=false, effective_enabled=true` for integrations bound to a
+    // Premium Provider Account. The plugin lifecycle must gate activation on
+    // `effective_enabled` — otherwise STT/TTS engines never register, the
+    // voice-tab disappears, and the Voice list stays empty.
+    const onActivate = vi.fn()
+    const onDeactivate = vi.fn()
+    registerPlugin({ id: 'xai_voice', onActivate, onDeactivate })
+
+    const definition: IntegrationDefinition = {
+      id: 'xai_voice',
+      display_name: 'xAI Voice',
+      description: '',
+      icon: '',
+      execution_mode: 'backend',
+      config_fields: [],
+      has_tools: false,
+      has_response_tags: false,
+      has_prompt_extension: false,
+      capabilities: ['tts_provider', 'stt_provider'],
+      persona_config_fields: [],
+      hydrate_secrets: false,
+      linked_premium_provider: 'xai',
+    }
+    const syntheticConfig: UserIntegrationConfig = {
+      integration_id: 'xai_voice',
+      enabled: false,
+      config: {},
+      effective_enabled: true,
+    }
+
+    useIntegrationsStore.setState({ definitions: [definition], configs: { xai_voice: syntheticConfig } } as any)
+
+    const cleanup = initPluginLifecycle()
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(onDeactivate).not.toHaveBeenCalled()
+
+    cleanup()
+  })
+
   it('deactivates plugin when config is disabled after being active', () => {
     const onActivate = vi.fn()
     const onDeactivate = vi.fn()

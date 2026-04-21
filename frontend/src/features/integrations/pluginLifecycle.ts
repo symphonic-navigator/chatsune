@@ -2,7 +2,11 @@
  * pluginLifecycle.ts — Orchestrates plugin activate/deactivate callbacks.
  *
  * A plugin becomes active when:
- *   1. Its config is enabled (configs[id].enabled === true)
+ *   1. Its config is effectively enabled (configs[id].effective_enabled === true).
+ *      This is the authoritative "is this integration usable" flag — for
+ *      integrations linked to a Premium Provider Account (xai_voice,
+ *      mistral_voice) the raw `enabled` field is meaningless; see
+ *      backend/modules/integrations/_handlers.py:list_user_configs.
  *   2. AND either the integration has no secret fields, OR secrets are hydrated
  *      (secretsStore.hasSecrets(id) === true)
  */
@@ -23,7 +27,7 @@ function shouldBeActive(integrationId: string): boolean {
   const { definitions, configs } = useIntegrationsStore.getState()
 
   const cfg = configs[integrationId]
-  if (!cfg?.enabled) return false
+  if (!cfg?.effective_enabled) return false
 
   // definitions is an array — find by id
   const defn = definitions.find((d) => d.id === integrationId)

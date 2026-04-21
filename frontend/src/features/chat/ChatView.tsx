@@ -334,7 +334,7 @@ export function ChatView({ persona }: ChatViewProps) {
   // Integration tool count for the badge
   const intDefinitions = useIntegrationsStore((s) => s.definitions)
   const intConfigs = useIntegrationsStore((s) => s.configs)
-  const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.enabled && d.has_tools).length * 2 // get_toys + control per integration
+  const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.effective_enabled && d.has_tools).length * 2 // get_toys + control per integration
   const totalToolCount = mcpToolCount + integrationToolCount
   const { openPersonaOverlay, openModal } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void

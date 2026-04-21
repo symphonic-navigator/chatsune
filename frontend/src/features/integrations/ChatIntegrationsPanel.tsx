@@ -42,7 +42,7 @@ export function ChatIntegrationsPanel({ persona }: Props = {}) {
   )
 
   const enabledDefs = definitions.filter((d) => {
-    if (!configs[d.id]?.enabled) return false
+    if (!configs[d.id]?.effective_enabled) return false
     if (ttsProviderIds.has(d.id)) {
       // Only the currently active TTS integration is shown as a chip.
       return d.id === activeTTSId
