@@ -1,8 +1,13 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { UserModal } from './UserModal'
 import type { TopTabId, SubTabId } from './userModalTree'
+import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
+import type {
+  ConnectionModelGroup,
+  UseEnrichedModels,
+} from '../../../core/hooks/useEnrichedModels'
 
 // Stub heavy child tabs so tests stay fast and isolated
 vi.mock('./AboutMeTab', () => ({ AboutMeTab: () => <div>about-me-content</div> }))
@@ -12,13 +17,39 @@ vi.mock('./ProjectsTab', () => ({ ProjectsTab: () => <div>projects-content</div>
 vi.mock('./KnowledgeTab', () => ({ KnowledgeTab: () => <div>knowledge-content</div> }))
 vi.mock('./LlmProvidersTab', () => ({ LlmProvidersTab: () => <div>llm-providers-content</div> }))
 
-// Suppress async badge-fetch calls that are not under test here
-vi.mock('../../../core/api/llm', () => ({
-  llmApi: { listConnections: vi.fn().mockResolvedValue([]) },
+// The LLM-providers badge is driven entirely by useEnrichedModels. Mocking
+// the hook directly keeps these tests insulated from the hub's internal
+// plumbing (REST adapters, event-bus subscriptions, premium-provider merge
+// logic). Each test overrides the return value to express the exact badge
+// scenario under test.
+vi.mock('../../../core/hooks/useEnrichedModels', () => ({
+  useEnrichedModels: vi.fn(),
 }))
-vi.mock('../../../core/websocket/eventBus', () => ({
-  eventBus: { on: vi.fn().mockReturnValue(() => {}) },
-}))
+
+const mockedUseEnrichedModels = vi.mocked(useEnrichedModels)
+
+function hookReturn(
+  overrides: Partial<UseEnrichedModels> = {},
+): UseEnrichedModels {
+  return {
+    groups: [],
+    loading: false,
+    error: null,
+    refresh: vi.fn().mockResolvedValue(undefined),
+    findByUniqueId: vi.fn().mockReturnValue(null),
+    ...overrides,
+  }
+}
+
+/** Produce a minimally-shaped group with a single model. */
+function groupWithOneModel(): ConnectionModelGroup {
+  // The UserModal only checks `models.length > 0`, so the shape of the
+  // connection/model payload is irrelevant — cast to the expected types.
+  return {
+    connection: { id: 'conn-1' } as ConnectionModelGroup['connection'],
+    models: [{ unique_id: 'conn-1:m' } as ConnectionModelGroup['models'][number]],
+  }
+}
 
 function renderModal(activeTop: TopTabId = 'about-me', activeSub?: SubTabId) {
   const onClose = vi.fn()
@@ -41,6 +72,14 @@ function renderModal(activeTop: TopTabId = 'about-me', activeSub?: SubTabId) {
 }
 
 describe('UserModal', () => {
+  beforeEach(() => {
+    // Default: at least one usable model → badge suppressed. Individual
+    // tests override this before calling renderModal().
+    mockedUseEnrichedModels.mockReturnValue(
+      hookReturn({ groups: [groupWithOneModel()] }),
+    )
+  })
+
   it('renders the active top-tab content for a leaf-only top', () => {
     renderModal('about-me')
     expect(screen.getByText('about-me-content')).toBeInTheDocument()
@@ -76,23 +115,56 @@ describe('UserModal', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('shows ! badge on Settings top-pill when llm-providers has no connection', async () => {
-    const { llmApi } = await import('../../../core/api/llm')
-    vi.mocked(llmApi.listConnections).mockResolvedValueOnce([])
+  it('shows ! badge on Settings top-pill when the user has no usable models', () => {
+    // Empty groups + settled hub → badge must appear.
+    mockedUseEnrichedModels.mockReturnValue(
+      hookReturn({ groups: [], loading: false }),
+    )
     renderModal('about-me')
-    // The badge span renders "!" with aria-label="Attention required".
-    // Wait for the async connection-check to resolve and the badge to appear.
-    const badgeSpan = await screen.findByLabelText('Attention required')
+
+    const badgeSpan = screen.getByLabelText('Attention required')
     expect(badgeSpan.textContent).toBe('!')
     // The badge must sit inside the Settings top-pill, not any other pill.
-    // Query by id since the accessible name includes "Attention required" after the badge renders.
     const settingsTab = document.getElementById('user-tab-settings')
     expect(settingsTab).not.toBeNull()
     expect(settingsTab!.contains(badgeSpan)).toBe(true)
-    // Other top-level tabs must not contain the badge
     const aboutMeTab = document.getElementById('user-tab-about-me')
     expect(aboutMeTab).not.toBeNull()
     expect(aboutMeTab!.contains(badgeSpan)).toBe(false)
+  })
+
+  it('suppresses the badge when at least one group exposes a model', () => {
+    // Default beforeEach already sets one group with a model, but be
+    // explicit here so the intent is readable.
+    mockedUseEnrichedModels.mockReturnValue(
+      hookReturn({ groups: [groupWithOneModel()] }),
+    )
+    renderModal('about-me')
+    expect(screen.queryByLabelText('Attention required')).not.toBeInTheDocument()
+  })
+
+  it('suppresses the badge while the models hub is still loading', () => {
+    // Loading-state flash guard: groups are empty only because the hub
+    // has not finished hydrating yet, so the badge must stay hidden.
+    mockedUseEnrichedModels.mockReturnValue(
+      hookReturn({ groups: [], loading: true }),
+    )
+    renderModal('about-me')
+    expect(screen.queryByLabelText('Attention required')).not.toBeInTheDocument()
+  })
+
+  it('shows the badge when every group has zero models (all probes failed)', () => {
+    // A premium account whose probe failed yields a group with models=[].
+    // This must still count as "no usable LLM".
+    const emptyGroup: ConnectionModelGroup = {
+      connection: { id: 'premium:fake' } as ConnectionModelGroup['connection'],
+      models: [],
+    }
+    mockedUseEnrichedModels.mockReturnValue(
+      hookReturn({ groups: [emptyGroup], loading: false }),
+    )
+    renderModal('about-me')
+    expect(screen.getByLabelText('Attention required')).toBeInTheDocument()
   })
 
   it('clicking a top-pill with children calls onTabChange with top only (AppLayout resolves sub)', () => {
