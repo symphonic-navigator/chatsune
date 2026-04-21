@@ -6,6 +6,7 @@ import { useBootstrap } from "./core/hooks/useBootstrap"
 import BackendUnavailablePage from "./app/pages/BackendUnavailablePage"
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import { registerSecretsEventHandler } from "./features/integrations/secretsEventHandler"
+import { registerIntegrationsEventHandler } from "./features/integrations/integrationsEventHandler"
 import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import './features/integrations/plugins/mistral_voice'
@@ -80,10 +81,12 @@ function AppRoutes() {
 
     const unregisterClientTool = registerClientToolHandler()
     const unregisterSecrets = registerSecretsEventHandler()
+    const unregisterIntegrations = registerIntegrationsEventHandler()
     const cleanupPluginLifecycle = initPluginLifecycle()
     return () => {
       unregisterClientTool()
       unregisterSecrets()
+      unregisterIntegrations()
       cleanupPluginLifecycle()
     }
   }, [isAuthenticated])

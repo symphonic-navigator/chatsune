@@ -50,13 +50,25 @@ async def upsert_account(
     user: dict = Depends(require_active_session),
 ):
     from backend.modules.providers import PremiumProviderNotFoundError
+    from backend.ws.event_bus import get_event_bus
+    from shared.events.providers import PremiumProviderAccountUpsertedEvent
+    from shared.topics import Topics
     try:
-        return await _service().upsert(user["sub"], provider_id, body.config)
+        account = await _service().upsert(
+            user["sub"], provider_id, body.config,
+        )
     except PremiumProviderNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown provider: {provider_id}",
         )
+    bus = get_event_bus()
+    await bus.publish(
+        Topics.PREMIUM_PROVIDER_ACCOUNT_UPSERTED,
+        PremiumProviderAccountUpsertedEvent(provider_id=provider_id),
+        target_user_ids=[user["sub"]],
+    )
+    return account
 
 
 @router.delete(
@@ -71,6 +83,9 @@ async def delete_account(
         PremiumProviderAccountNotFoundError,
     )
     from backend.modules.providers._registry import get as get_definition
+    from backend.ws.event_bus import get_event_bus
+    from shared.events.providers import PremiumProviderAccountDeletedEvent
+    from shared.topics import Topics
     if get_definition(provider_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,6 +98,12 @@ async def delete_account(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No account configured",
         )
+    bus = get_event_bus()
+    await bus.publish(
+        Topics.PREMIUM_PROVIDER_ACCOUNT_DELETED,
+        PremiumProviderAccountDeletedEvent(provider_id=provider_id),
+        target_user_ids=[user["sub"]],
+    )
     return None
 
 
