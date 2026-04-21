@@ -24,6 +24,7 @@ from backend.modules.integrations._voice_adapters._base import (
     VoiceInfo,
     VoiceRateLimitError,
     VoiceUnavailableError,
+    log_upstream_failure,
 )
 
 _log = logging.getLogger(__name__)
@@ -76,7 +77,11 @@ class XaiVoiceAdapter(VoiceAdapter):
             resp = await self._http.get(url, headers=self._auth(api_key))
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="list_voices",
+            request_context={"url": url},
+        )
         data = resp.json()
         return [
             VoiceInfo(
@@ -108,7 +113,17 @@ class XaiVoiceAdapter(VoiceAdapter):
             )
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="transcribe",
+            request_context={
+                "url": url,
+                "audio_bytes": len(audio),
+                "content_type": content_type,
+                "language": language or _DEFAULT_LANGUAGE,
+                "filename_ext": ext,
+            },
+        )
         body = resp.json()
         return body["text"]
 
@@ -130,14 +145,29 @@ class XaiVoiceAdapter(VoiceAdapter):
             )
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="synthesise",
+            request_context={
+                "url": url,
+                "text_len": len(text),
+                "voice_id": voice_id,
+                "language": _DEFAULT_LANGUAGE,
+            },
+        )
         content_type = resp.headers.get("content-type", "audio/mpeg").split(";")[0].strip()
         return resp.content, content_type
 
     def _auth(self, api_key: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {api_key}"}
 
-    def _raise_for_status(self, resp: httpx.Response) -> None:
+    def _raise_for_status(
+        self,
+        resp: httpx.Response,
+        *,
+        operation: str | None = None,
+        request_context: dict | None = None,
+    ) -> None:
         if resp.is_success:
             return
         status = resp.status_code
@@ -152,6 +182,16 @@ class XaiVoiceAdapter(VoiceAdapter):
                 msg = resp.text
             raise VoiceBadRequestError(str(msg))
         if 500 <= status < 600:
+            # Structured diagnosis log before the raise so the handler-
+            # level retry log and the adapter-level upstream log can be
+            # correlated per attempt.
+            log_upstream_failure(
+                _log,
+                "xai",
+                operation or "unknown",
+                resp,
+                request_context or {},
+            )
             raise VoiceUnavailableError(f"Upstream {status}")
         # Unexpected status — treat as unavailable
         raise VoiceAdapterError(f"Unexpected status {status}")

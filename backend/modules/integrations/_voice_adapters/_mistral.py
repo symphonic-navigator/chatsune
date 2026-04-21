@@ -29,6 +29,7 @@ from backend.modules.integrations._voice_adapters._base import (
     VoiceInfo,
     VoiceRateLimitError,
     VoiceUnavailableError,
+    log_upstream_failure,
 )
 
 _log = logging.getLogger(__name__)
@@ -81,7 +82,17 @@ class MistralVoiceAdapter(VoiceAdapter):
             )
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="transcribe",
+            request_context={
+                "url": url,
+                "audio_bytes": len(audio),
+                "content_type": content_type or "audio/wav",
+                "language": language or "auto",
+                "filename": filename,
+            },
+        )
         body = resp.json()
         return body["text"]
 
@@ -101,7 +112,16 @@ class MistralVoiceAdapter(VoiceAdapter):
             )
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="synthesise",
+            request_context={
+                "url": url,
+                "text_len": len(text),
+                "voice_id": voice_id,
+                "model": _TTS_MODEL,
+            },
+        )
         body = resp.json()
         # The API returns base64-encoded mp3 under ``audio_data`` (snake_case
         # on the wire; the SDK surfaces it as ``audioData``).
@@ -123,7 +143,11 @@ class MistralVoiceAdapter(VoiceAdapter):
                 resp = await self._http.get(url, headers=self._auth(api_key))
             except (httpx.TimeoutException, httpx.TransportError) as e:
                 raise VoiceUnavailableError(str(e)) from e
-            self._raise_for_status(resp)
+            self._raise_for_status(
+                resp,
+                operation="list_voices",
+                request_context={"url": url, "offset": offset},
+            )
             body = resp.json()
             items = body.get("items", []) or []
             for raw in items:
@@ -161,7 +185,16 @@ class MistralVoiceAdapter(VoiceAdapter):
             )
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="clone_voice",
+            request_context={
+                "url": url,
+                "audio_bytes": len(audio),
+                "content_type": content_type or "audio/wav",
+                "name_len": len(name),
+            },
+        )
         body = resp.json()
         return VoiceInfo(
             id=body["id"],
@@ -176,7 +209,11 @@ class MistralVoiceAdapter(VoiceAdapter):
             resp = await self._http.delete(url, headers=self._auth(api_key))
         except (httpx.TimeoutException, httpx.TransportError) as e:
             raise VoiceUnavailableError(str(e)) from e
-        self._raise_for_status(resp)
+        self._raise_for_status(
+            resp,
+            operation="delete_voice",
+            request_context={"url": url, "voice_id": voice_id},
+        )
         # No response body expected on success.
 
     # -- Helpers -------------------------------------------------------
@@ -184,7 +221,13 @@ class MistralVoiceAdapter(VoiceAdapter):
     def _auth(self, api_key: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {api_key}"}
 
-    def _raise_for_status(self, resp: httpx.Response) -> None:
+    def _raise_for_status(
+        self,
+        resp: httpx.Response,
+        *,
+        operation: str | None = None,
+        request_context: dict | None = None,
+    ) -> None:
         if resp.is_success:
             return
         status = resp.status_code
@@ -207,6 +250,15 @@ class MistralVoiceAdapter(VoiceAdapter):
                 msg = resp.text
             raise VoiceBadRequestError(str(msg))
         if 500 <= status < 600:
+            # Structured diagnosis log before the raise — mirrors the xAI
+            # adapter so Grafana / Loki can filter by adapter=mistral.
+            log_upstream_failure(
+                _log,
+                "mistral",
+                operation or "unknown",
+                resp,
+                request_context or {},
+            )
             raise VoiceUnavailableError(f"Upstream {status}")
         # Unexpected status — treat as generic adapter error.
         raise VoiceAdapterError(f"Unexpected status {status}")
