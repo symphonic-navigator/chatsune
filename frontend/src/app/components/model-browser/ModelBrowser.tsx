@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { llmApi } from '../../../core/api/llm'
+import { providersApi } from '../../../core/api/providers'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import type { EnrichedModelDto } from '../../../core/types/llm'
 import { applyModelFilters, slugWithoutConnection, sortModels, type ModelFilters } from './modelFilters'
@@ -222,7 +223,15 @@ function ConnectionGroup({
     setRefreshing(true)
     setRefreshError(null)
     try {
-      await llmApi.refreshConnectionModels(connectionId)
+      // Premium pseudo-connections carry an id like "premium:{slug}" and do
+      // not exist in the LLM connections collection — their refresh lives
+      // on the providers API instead.
+      if (connectionId.startsWith('premium:')) {
+        const providerId = connectionId.slice('premium:'.length)
+        await providersApi.refreshProviderModels(providerId)
+      } else {
+        await llmApi.refreshConnectionModels(connectionId)
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Refresh failed'
       setRefreshError(msg)
