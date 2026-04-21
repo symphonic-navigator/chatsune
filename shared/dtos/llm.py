@@ -22,6 +22,10 @@ class ModelMetaDto(BaseModel):
     parameter_count: str | None = None
     raw_parameter_count: int | None = None
     quantisation_level: str | None = None
+    # Upstream has marked this model as deprecated (scheduled for removal).
+    # Default False keeps pre-existing cached documents readable — see
+    # CLAUDE.md §Data-Model Migrations.
+    is_deprecated: bool = False
 
     @computed_field
     @property

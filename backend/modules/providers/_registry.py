@@ -55,7 +55,7 @@ def _register_builtins() -> None:
         display_name="Mistral",
         icon="mistral",
         base_url="https://api.mistral.ai/v1",
-        capabilities=[Capability.TTS, Capability.STT],
+        capabilities=[Capability.LLM, Capability.TTS, Capability.STT],
         config_fields=[_api_key_field("Mistral API Key")],
         probe_url="https://api.mistral.ai/v1/models",
         probe_method="GET",

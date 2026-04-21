@@ -347,6 +347,15 @@ function ModelRow({ model, isCurrent, onSelect, onEdit, onToggleFavourite }: Mod
               current
             </span>
           )}
+          {model.is_deprecated && (
+            <span
+              className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300"
+              title="This model is deprecated and may be removed"
+              aria-label="Deprecated model"
+            >
+              deprecated
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-[11px] text-white/45 font-mono">
           <span>{model.model_id}</span>
