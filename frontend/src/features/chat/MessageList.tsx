@@ -118,7 +118,16 @@ export function MessageList({
 
   return (
     <div className="relative flex-1">
-      <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-3 py-6 lg:px-4">
+      {/*
+        `[overflow-anchor:none]` disables the browser's default scroll-anchoring.
+        At stream-end the streaming block is swapped out for the persisted
+        message (different DOM subtrees, different heights). With the default
+        `overflow-anchor: auto` the browser adjusts `scrollTop` to keep visual
+        content stable, which fires a programmatic scroll event that
+        useAutoScroll's handler reads as "no longer near bottom" — flipping
+        `followingRef` to false and breaking auto-follow permanently.
+      */}
+      <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-3 py-6 lg:px-4 [overflow-anchor:none]">
       <style>{scrollbarStyle}</style>
       <div className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.length === 0 && !isStreaming && !isWaitingForResponse && (
