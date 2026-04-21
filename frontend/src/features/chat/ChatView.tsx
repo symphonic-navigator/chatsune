@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
-import { llmApi } from '../../core/api/llm'
 import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
-import { eventBus } from '../../core/websocket/eventBus'
-import { Topics } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
 import { useChatStream } from './useChatStream'
@@ -78,27 +75,17 @@ export function ChatView({ persona }: ChatViewProps) {
   const navigate = useNavigate()
   const location = useLocation() as { state?: { pendingArtefactId?: string } | null }
 
-  // Empty-state detection: if the user has no LLM connections yet, render
-  // a CTA instead of the chat UI. We fetch on mount and live-refresh on
-  // connection create/remove events.
-  const [connectionCount, setConnectionCount] = useState<number | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    const refresh = () => {
-      llmApi.listConnections()
-        .then((conns) => { if (!cancelled) setConnectionCount(conns.length) })
-        .catch(() => { if (!cancelled) setConnectionCount(null) })
-    }
-    refresh()
-    const unsubs = [
-      eventBus.on(Topics.LLM_CONNECTION_CREATED, refresh),
-      eventBus.on(Topics.LLM_CONNECTION_REMOVED, refresh),
-    ]
-    return () => {
-      cancelled = true
-      unsubs.forEach((u) => u())
-    }
-  }, [])
+  // Empty-state detection: the chat UI is unusable without any LLM. We
+  // consult the unified enriched-models hub (custom Connections + configured
+  // Premium provider accounts) and count a user as "has an LLM" only once at
+  // least one actual model is reachable — a premium account that failed its
+  // probe and has zero models must still show the CTA.
+  const {
+    findByUniqueId: findModelByUniqueId,
+    groups: modelGroups,
+    loading: modelsLoading,
+  } = useEnrichedModels()
+  const hasAnyModel = modelGroups.some((g) => g.models.length > 0)
   const { isMobile } = useViewport()
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -287,10 +274,10 @@ export function ChatView({ persona }: ChatViewProps) {
     setShowIncognitoNotice(isIncognito)
   }, [isIncognito])
 
-  // Resolve the persona's model through the unified enriched-models hub so
-  // premium-provider unique ids (e.g. ``mistral:``, ``xai:``) dispatch to the
-  // providers API — a raw ``listConnectionModels`` call 404s for those.
-  const { findByUniqueId: findModelByUniqueId, loading: modelsLoading } = useEnrichedModels()
+  // ``findModelByUniqueId`` and ``modelsLoading`` are resolved at the top of
+  // the component (see the empty-state block) and reused here — they resolve
+  // persona-owned unique ids (e.g. ``mistral:``, ``xai:``) through the
+  // unified hub; a raw ``listConnectionModels`` call 404s for those.
 
   // Look up tool/reasoning capabilities for a model unique id and update local state.
   // Synchronous now: the enriched-models hub populates once and answers from memory.
@@ -1007,12 +994,12 @@ export function ChatView({ persona }: ChatViewProps) {
     enterConversationMode()
   }, [conversationActive, conversationAvailable, enterConversationMode, exitConversationMode])
 
-  if (connectionCount === 0) {
+  if (!modelsLoading && !hasAnyModel) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
         <div className="space-y-3">
           <p className="text-white/80">
-            You haven't configured an LLM connection yet.
+            You haven't configured any LLM providers yet.
           </p>
           <button
             type="button"
