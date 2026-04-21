@@ -16,11 +16,18 @@ function providerIdForIntegration(integrationId: string | null | undefined): str
 }
 
 /** Loosely-typed persona prop — we only inspect a handful of voice-related
- *  fields and both real `PersonaDto` and test doubles satisfy this. */
+ *  fields and both real `PersonaDto` and test doubles satisfy this.
+ *
+ *  IMPORTANT: `tts_provider_id` is nested under `voice_config` in the data
+ *  model (see `shared/dtos/persona.py` `VoiceConfigDto.tts_provider_id`).
+ *  Earlier iterations of this file read the field top-level on the persona
+ *  which always resolved to `undefined`, causing the button to be
+ *  permanently strikethrough even when a premium account was configured. */
 interface PersonaVoiceShape {
   id?: string
-  tts_provider_id?: string | null
-  stt_provider_id?: string | null
+  voice_config?: {
+    tts_provider_id?: string | null
+  } | null
 }
 
 /**
@@ -47,17 +54,19 @@ function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boole
     if (!hydrated && !loading && error === null) void refresh()
   }, [hydrated, loading, error, refresh])
 
-  if (!persona?.tts_provider_id) return false
-  const ttsPremium = providerIdForIntegration(persona.tts_provider_id)
+  const ttsProviderId = persona?.voice_config?.tts_provider_id
+  if (!ttsProviderId) return false
+  const ttsPremium = providerIdForIntegration(ttsProviderId)
   // If the TTS integration is not premium-linked (e.g. a local engine), we
   // treat it as available — the legacy `available` prop path still gates.
   if (!ttsPremium) return true
   const configuredIds = new Set(accounts.map((a) => a.provider_id))
   if (!configuredIds.has(ttsPremium)) return false
-  if (persona.stt_provider_id) {
-    const sttPremium = providerIdForIntegration(persona.stt_provider_id)
-    if (sttPremium && !configuredIds.has(sttPremium)) return false
-  }
+  // NOTE: no STT gate here. STT is a user-level setting living in
+  // `useVoiceSettingsStore` (see `stt_provider_id` there), not a
+  // persona-level field. Mixing the two concerns here was the cause of
+  // the original drift; the user-level STT readiness check lives in the
+  // voice engines resolver.
   return true
 }
 

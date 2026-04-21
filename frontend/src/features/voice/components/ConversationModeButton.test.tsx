@@ -12,7 +12,7 @@ describe('ConversationModeButton', () => {
     useProvidersStore.setState({ accounts: [], catalogue: [] })
     render(
       <ConversationModeButton
-        persona={{ id: 'p1', tts_provider_id: 'xai_voice' }}
+        persona={{ id: 'p1', voice_config: { tts_provider_id: 'xai_voice' } }}
       />,
     )
     const btn = screen.getByRole('button')
@@ -34,7 +34,7 @@ describe('ConversationModeButton', () => {
     })
     render(
       <ConversationModeButton
-        persona={{ id: 'p1', tts_provider_id: 'xai_voice' }}
+        persona={{ id: 'p1', voice_config: { tts_provider_id: 'xai_voice' } }}
       />,
     )
     const btn = screen.getByRole('button')
@@ -46,7 +46,7 @@ describe('ConversationModeButton', () => {
     const onConfigure = vi.fn()
     render(
       <ConversationModeButton
-        persona={{ id: 'p1', tts_provider_id: 'xai_voice' }}
+        persona={{ id: 'p1', voice_config: { tts_provider_id: 'xai_voice' } }}
         onConfigure={onConfigure}
       />,
     )
@@ -67,7 +67,13 @@ describe('ConversationModeButton', () => {
     expect(btn.style.textDecoration).not.toContain('line-through')
   })
 
-  it('blocks an STT premium integration when its account is missing', () => {
+  // Regression test for the staging bug where a persona bound to xai_voice
+  // plus a fully configured xAI premium account still rendered the button
+  // as strikethrough. Root cause was a field-path drift — the component
+  // read `persona.tts_provider_id` at the top level instead of the real
+  // location `persona.voice_config.tts_provider_id`. Keep this test as a
+  // guard against the same drift re-appearing.
+  it('is not strikethrough for persona with voice_config.tts_provider_id + configured xAI account', () => {
     useProvidersStore.setState({
       accounts: [
         {
@@ -82,14 +88,14 @@ describe('ConversationModeButton', () => {
     })
     render(
       <ConversationModeButton
-        persona={{
-          id: 'p1',
-          tts_provider_id: 'xai_voice',
-          stt_provider_id: 'mistral_voice',
-        }}
+        persona={{ id: 'p1', voice_config: { tts_provider_id: 'xai_voice' } }}
       />,
     )
     const btn = screen.getByRole('button')
-    expect(btn.style.textDecoration).toContain('line-through')
+    expect(btn.style.textDecoration).not.toContain('line-through')
+    // And the button must be the "start conversational mode" variant, not
+    // the legacy disabled one.
+    expect(btn).not.toBeDisabled()
+    expect(btn.getAttribute('aria-label')).toBe('Start conversational mode')
   })
 })
