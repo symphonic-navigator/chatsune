@@ -175,7 +175,7 @@ function IntegrationToolIndicator({ modelSupportsTools }: { modelSupportsTools: 
 
   if (!loaded) return null
 
-  const enabledDefs = definitions.filter((d) => configs[d.id]?.enabled && d.has_tools)
+  const enabledDefs = definitions.filter((d) => configs[d.id]?.effective_enabled && d.has_tools)
   if (enabledDefs.length === 0) return null
 
   const active = modelSupportsTools
