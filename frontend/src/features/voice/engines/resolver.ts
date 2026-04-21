@@ -21,23 +21,18 @@ function firstEnabledIntegrationId(cap: string): string | undefined {
 }
 
 /**
- * Resolve the TTS engine for a given persona.
+ * Resolve the TTS integration ID for a persona.
  *
  * Priority:
  * 1. The engine mapped to the persona's `tts_provider_id` (if set and ready).
  * 2. The engine of the first enabled integration that declares TTS_PROVIDER capability.
  *
- * `tts_provider_id` is not part of the current `PersonaDto.voice_config` shape —
- * it is stored as a loose extra key and read via a type cast.
- */
-/**
- * Resolve the TTS integration ID for a persona — same priority rules as
- * `resolveTTSEngine` but returns the integration ID so callers can look
- * up persona.integration_configs[<id>] (voice_id, narrator_voice_id,
+ * Returns the integration ID so callers can also look up
+ * persona.integration_configs[<id>] (voice_id, narrator_voice_id,
  * modulation, etc.).
  */
 export function resolveTTSIntegrationId(persona: PersonaDto | null | undefined): string | undefined {
-  const requested = (persona?.voice_config as Record<string, unknown> | null | undefined)?.['tts_provider_id'] as string | undefined
+  const requested = persona?.voice_config?.tts_provider_id ?? undefined
   if (requested) {
     const engineId = providerToEngineId(requested, 'tts')
     const engine = engineId ? ttsRegistry.get(engineId) : undefined

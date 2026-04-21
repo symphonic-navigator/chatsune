@@ -66,8 +66,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   const ttsProviders = definitions.filter(
     (d) => d.capabilities?.includes(TTS_PROVIDER) && configs?.[d.id]?.effective_enabled,
   )
-  const selectedProviderId =
-    (persona.voice_config as { tts_provider_id?: string } | undefined)?.tts_provider_id
+  const selectedProviderId = persona.voice_config?.tts_provider_id ?? undefined
   const activeTTS = (selectedProviderId ? ttsProviders.find((d) => d.id === selectedProviderId) : undefined)
     ?? ttsProviders[0]
   const ttsPlugin = activeTTS ? getPlugin(activeTTS.id) : undefined
@@ -98,18 +97,18 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
         // omitting a field here silently resets it on the next round-trip.
         // tts_provider_id in particular was jumping back to the fallback
         // (Mistral) every time a modulation slider fired a debounced save.
-        const prior = persona.voice_config as Record<string, unknown> | null | undefined
+        const prior = persona.voice_config
         await onSave(persona.id, {
           voice_config: {
-            dialogue_voice: persona.voice_config?.dialogue_voice ?? null,
-            narrator_voice: persona.voice_config?.narrator_voice ?? null,
+            dialogue_voice: prior?.dialogue_voice ?? null,
+            narrator_voice: prior?.narrator_voice ?? null,
             auto_read: autoReadRef.current,
             narrator_mode: narratorModeRef.current,
             dialogue_speed: mod.dialogue_speed,
             dialogue_pitch: mod.dialogue_pitch,
             narrator_speed: mod.narrator_speed,
             narrator_pitch: mod.narrator_pitch,
-            tts_provider_id: (prior?.tts_provider_id as string | undefined) ?? null,
+            tts_provider_id: prior?.tts_provider_id ?? null,
             ...patch,
           },
         })
