@@ -45,6 +45,11 @@ export interface PersonaDto {
     dialogue_pitch: number
     narrator_speed: number
     narrator_pitch: number
+    // tts_provider_id — ID of the TTS integration that speaks for this
+    // persona. null means "fall back to the first enabled TTS provider"
+    // (the resolver applies the fallback). Mirrors VoiceConfigDto in
+    // shared/dtos/persona.py.
+    tts_provider_id?: string | null
   } | null;
   integration_configs?: Record<string, Record<string, unknown>>;
   created_at: string;

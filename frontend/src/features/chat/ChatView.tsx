@@ -1118,12 +1118,8 @@ export function ChatView({ persona }: ChatViewProps) {
             onToggle={handleToggleConversation}
             persona={persona ? {
               id: persona.id,
-              // `tts_provider_id` lives inside `voice_config` in the Python
-              // DTO (`VoiceConfigDto`). The TS `Persona.voice_config` type
-              // does not declare it yet, so cast narrowly here — the cast
-              // is load-bearing until the TS type is extended.
               voice_config: {
-                tts_provider_id: (persona.voice_config as { tts_provider_id?: string | null } | null | undefined)?.tts_provider_id ?? null,
+                tts_provider_id: persona.voice_config?.tts_provider_id ?? null,
               },
             } : null}
             onConfigure={() => persona?.id && openPersonaOverlay(persona.id, 'voice')}
