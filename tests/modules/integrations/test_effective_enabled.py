@@ -55,3 +55,31 @@ async def test_unlinked_integration_disabled_by_default(mock_db):
     from backend.modules.integrations import effective_enabled_map
     m = await effective_enabled_map("fresh-user")
     assert m["lovense"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_user_configs_synthesises_entry_for_linked_integration(mock_db):
+    """The ``/api/integrations/configs`` handler must include a synthetic
+    entry for linked integrations that have an active Premium Provider
+    Account but no ``user_integration_configs`` document.
+
+    Without the synthetic entry, the frontend store never sees
+    ``configs[xai_voice]`` and voice-provider dropdowns filter it out
+    even though xAI is effectively enabled.
+    """
+    # Create a Premium xAI account but NO integration config document.
+    repo = PremiumProviderAccountRepository(mock_db)
+    await repo.upsert("u-xai", "xai", {"api_key": "k"})
+
+    result = await integrations_handlers_mod.list_user_configs(user={"sub": "u-xai"})
+
+    by_id = {c.integration_id: c for c in result}
+    assert "xai_voice" in by_id, (
+        "xai_voice missing from /configs response — frontend store would "
+        "not see the integration at all"
+    )
+    xai_entry = by_id["xai_voice"]
+    assert xai_entry.effective_enabled is True
+    # Synthetic entry has no stored doc — stored enabled is False, config is empty.
+    assert xai_entry.enabled is False
+    assert xai_entry.config == {}

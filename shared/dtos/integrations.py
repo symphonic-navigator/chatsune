@@ -54,10 +54,23 @@ class IntegrationDefinitionDto(BaseModel):
 
 
 class UserIntegrationConfigDto(BaseModel):
-    """Per-user config for one integration (persisted in MongoDB)."""
+    """Per-user config for one integration (persisted in MongoDB).
+
+    ``effective_enabled`` is a response-only derived flag that reflects
+    ``effective_enabled_map()`` — True when the integration is actually
+    usable. For unlinked integrations (e.g. ``lovense``) it tracks the
+    stored ``enabled`` flag. For integrations linked to a Premium Provider
+    Account (e.g. ``xai_voice`` → ``xai``), it is True whenever the user
+    has a matching Premium account, regardless of the stored ``enabled``
+    (which has no independent meaning for linked integrations). Frontend
+    voice-provider dropdowns and engine-readiness checks should use this
+    field — not the raw ``enabled`` — so linked integrations show up even
+    when there is no ``user_integration_configs`` document for them.
+    """
     integration_id: str
     enabled: bool = False
     config: dict = {}
+    effective_enabled: bool = False
 
 
 class PersonaIntegrationConfigDto(BaseModel):

@@ -29,6 +29,7 @@ const FAKE_TTS_CFG: UserIntegrationConfig = {
   integration_id: FAKE_TTS_ID,
   enabled: true,
   config: {},
+  effective_enabled: true,
 }
 
 const CHAKRA: ChakraPaletteEntry = {

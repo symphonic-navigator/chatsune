@@ -27,7 +27,7 @@ export function VoiceTab() {
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
   const sttProviders = useMemo(
-    () => definitions.filter((d) => d.capabilities?.includes(STT_PROVIDER) && configs?.[d.id]?.enabled),
+    () => definitions.filter((d) => d.capabilities?.includes(STT_PROVIDER) && configs?.[d.id]?.effective_enabled),
     [definitions, configs],
   )
 

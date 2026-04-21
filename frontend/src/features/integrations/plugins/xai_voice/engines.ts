@@ -6,7 +6,7 @@ import type { CapturedAudio, STTEngine, STTOptions, STTResult, TTSEngine, VoiceP
 const INTEGRATION_ID = 'xai_voice'
 
 function isIntegrationEnabled(): boolean {
-  return useIntegrationsStore.getState().configs?.[INTEGRATION_ID]?.enabled === true
+  return useIntegrationsStore.getState().configs?.[INTEGRATION_ID]?.effective_enabled === true
 }
 
 async function decodeAudioToMono(blob: Blob): Promise<Float32Array> {
