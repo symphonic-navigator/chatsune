@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSecretsStore } from '../../secretsStore'
 import {
   cloneVoice,
   deleteVoice,
@@ -7,6 +6,9 @@ import {
   type MistralVoice,
 } from './api'
 import { refreshMistralVoices } from './voices'
+import { useIntegrationsStore } from '../../store'
+
+const INTEGRATION_ID = 'mistral_voice'
 
 const MIC_ICON = (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -29,7 +31,13 @@ const UPLOAD_ICON = (
 )
 
 export function ExtraConfigComponent() {
-  const apiKey = useSecretsStore((s) => s.getSecret('mistral_voice', 'api_key'))
+  // The integration must be enabled (and therefore linked to a Premium
+  // Provider Account with a Mistral API key) for clone/list/delete to work.
+  // The API key itself now lives server-side — we no longer check a client
+  // secrets store.
+  const enabled = useIntegrationsStore(
+    (s) => s.configs?.[INTEGRATION_ID]?.enabled === true,
+  )
   const [voices, setVoices] = useState<MistralVoice[]>([])
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -47,25 +55,25 @@ export function ExtraConfigComponent() {
   }, [recorder])
 
   const refresh = useCallback(async () => {
-    if (!apiKey) return
+    if (!enabled) return
     setError(null)
     try {
-      setVoices(await listVoices(apiKey))
-      await refreshMistralVoices(apiKey)
+      setVoices(await listVoices())
+      await refreshMistralVoices()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
       setError(msg)
     }
-  }, [apiKey])
+  }, [enabled])
 
   useEffect(() => { void refresh() }, [refresh])
 
   const submitAudio = async (audio: Blob) => {
-    if (!apiKey || !name) return
+    if (!enabled || !name) return
     setBusy(true)
     setError(null)
     try {
-      await cloneVoice({ apiKey, audio, name })
+      await cloneVoice({ audio, name })
       setName('')
       await refresh()
     } catch (e: unknown) {
@@ -77,11 +85,11 @@ export function ExtraConfigComponent() {
   }
 
   const handleRemove = async (voiceId: string) => {
-    if (!apiKey) return
+    if (!enabled) return
     if (!confirm('Delete this cloned voice?')) return
     setError(null)
     try {
-      await deleteVoice(apiKey, voiceId)
+      await deleteVoice(voiceId)
       await refresh()
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -114,7 +122,7 @@ export function ExtraConfigComponent() {
     setRecorder(null)
   }
 
-  if (!apiKey) return null
+  if (!enabled) return null
 
   return (
     <section className="mt-4 space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-4">
@@ -203,4 +211,3 @@ export function ExtraConfigComponent() {
     </section>
   )
 }
-

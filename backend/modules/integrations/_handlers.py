@@ -17,7 +17,12 @@ from backend.modules.integrations._voice_adapters import (
 # Deferred at call site to break the __init__ → _handlers → __init__ circular import.
 from backend.database import get_db
 from backend.ws.event_bus import get_event_bus
-from shared.dtos.integrations import IntegrationDefinitionDto, IntegrationConfigFieldDto, UserIntegrationConfigDto
+from shared.dtos.integrations import (
+    IntegrationCapability,
+    IntegrationDefinitionDto,
+    IntegrationConfigFieldDto,
+    UserIntegrationConfigDto,
+)
 from shared.events.integrations import IntegrationConfigUpdatedEvent
 from shared.topics import Topics
 
@@ -218,3 +223,70 @@ async def voice_tts(
     except VoiceAdapterError as e:
         return _voice_error_response(e)
     return Response(content=audio_bytes, media_type=content_type)
+
+
+def _require_cloning_support(integration_id: str) -> None:
+    """Return None if the integration declares TTS_VOICE_CLONING, else raise 400.
+
+    We check the declared capability rather than probing the adapter; the
+    adapter's default ``clone_voice`` / ``delete_voice`` raise
+    ``NotImplementedError`` which we also map to 400 below as a safety net.
+    """
+    definition = get_definition(integration_id)
+    if definition is None:
+        raise HTTPException(status_code=404, detail=f"Unknown integration: {integration_id}")
+    if IntegrationCapability.TTS_VOICE_CLONING not in definition.capabilities:
+        raise HTTPException(
+            status_code=400,
+            detail="Integration does not support voice cloning",
+        )
+
+
+@router.post("/{integration_id}/voice/clone")
+async def voice_clone(
+    integration_id: str,
+    audio: UploadFile = File(...),
+    name: str = Form(...),
+    user: dict = Depends(require_active_session),
+):
+    _require_cloning_support(integration_id)
+    api_key = await load_api_key_for(user["sub"], integration_id)
+    if api_key is None:
+        raise HTTPException(status_code=400, detail="Integration not enabled or no API key configured")
+    adapter = get_adapter(integration_id)
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    audio_bytes = await audio.read()
+    content_type = audio.content_type or "audio/wav"
+    try:
+        voice = await adapter.clone_voice(
+            audio=audio_bytes, content_type=content_type,
+            name=name, api_key=api_key,
+        )
+    except NotImplementedError:
+        raise HTTPException(status_code=400, detail="Adapter does not support voice cloning")
+    except VoiceAdapterError as e:
+        return _voice_error_response(e)
+    return voice.model_dump()
+
+
+@router.delete("/{integration_id}/voice/voices/{voice_id}", status_code=204)
+async def voice_delete(
+    integration_id: str,
+    voice_id: str,
+    user: dict = Depends(require_active_session),
+):
+    _require_cloning_support(integration_id)
+    api_key = await load_api_key_for(user["sub"], integration_id)
+    if api_key is None:
+        raise HTTPException(status_code=400, detail="Integration not enabled or no API key configured")
+    adapter = get_adapter(integration_id)
+    if adapter is None:
+        raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    try:
+        await adapter.delete_voice(voice_id=voice_id, api_key=api_key)
+    except NotImplementedError:
+        raise HTTPException(status_code=400, detail="Adapter does not support voice cloning")
+    except VoiceAdapterError as e:
+        return _voice_error_response(e)
+    return Response(status_code=204)

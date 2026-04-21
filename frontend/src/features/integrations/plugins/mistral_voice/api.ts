@@ -1,79 +1,74 @@
-// Thin wrapper around @mistralai/mistralai. Browser-side, BYOK. All calls
-// take the API key per invocation — the secret lives only in the secrets store.
+// Thin client over the Chatsune backend voice-proxy routes for Mistral.
+// All calls go through the backend — the Mistral API key never leaves the
+// server. Matches the shape of the xai_voice api.ts.
 
-import { Mistral } from '@mistralai/mistralai'
-import type {
-  AudioTranscriptionRequest,
-  TranscriptionResponse,
-  SpeechRequest,
-  VoiceCreateRequest,
-  VoiceResponse,
-} from '@mistralai/mistralai/models/components'
-import type {
-  SpeechResponse,
-  ListVoicesV1AudioVoicesGetRequest,
-} from '@mistralai/mistralai/models/operations'
+import type { VoicePreset } from '../../../voice/types'
+import { currentAccessToken } from '../../../../core/api/client'
 
-function client(apiKey: string): Mistral {
-  return new Mistral({ apiKey })
+const BASE = '/api/integrations/mistral_voice/voice'
+
+interface ApiErrorBody { error_code?: string; message?: string; detail?: string }
+
+function authHeaders(): Record<string, string> {
+  const token = currentAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export interface TranscribeParams {
-  apiKey: string
-  audio: Blob
-  mimeType: string
-  language?: string
+async function ensureOk(res: Response): Promise<Response> {
+  if (res.ok) return res
+  let msg = `HTTP ${res.status}`
+  try {
+    const body = (await res.clone().json()) as ApiErrorBody
+    if (body.message) msg = body.message
+    else if (body.detail) msg = body.detail
+  } catch { /* non-JSON body */ }
+  throw new Error(msg)
 }
 
 function filenameForMime(mimeType: string): string {
-  // Mistral's server inspects the filename extension as a fallback when the
-  // Content-Type is missing or generic. Keep the two aligned.
+  // Keep aligned with the backend adapter's filename heuristic so the server
+  // can still use the extension as a format hint when Content-Type is generic.
   if (mimeType.startsWith('audio/webm')) return 'recording.webm'
   if (mimeType.startsWith('audio/mp4')) return 'recording.m4a'
   return 'recording.wav'
 }
 
-export async function transcribe({ apiKey, audio, mimeType, language }: TranscribeParams): Promise<string> {
+export interface TranscribeParams { audio: Blob; mimeType: string; language?: string }
+
+export async function transcribe({ audio, mimeType, language }: TranscribeParams): Promise<string> {
+  const form = new FormData()
   const file = new File([audio], filenameForMime(mimeType), { type: mimeType || audio.type || 'audio/wav' })
-
-  const request: AudioTranscriptionRequest = {
-    model: 'voxtral-mini-latest',
-    file,
-    ...(language != null ? { language } : {}),
-  }
-
-  const result: TranscriptionResponse = await client(apiKey).audio.transcriptions.complete(request)
-  return result.text
+  form.append('audio', file, file.name)
+  if (language) form.append('language', language)
+  const res = await fetch(`${BASE}/stt`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+    body: form,
+  })
+  await ensureOk(res)
+  const body = (await res.json()) as { text: string }
+  return body.text
 }
 
-export interface SynthesiseParams {
-  apiKey: string
-  text: string
-  voiceId: string
-}
+export interface SynthesiseParams { text: string; voiceId: string }
 
-export async function synthesise({ apiKey, text, voiceId }: SynthesiseParams): Promise<Blob> {
-  const request: SpeechRequest = {
-    // STT and TTS use different Voxtral snapshots. STT uses voxtral-mini-latest;
-    // TTS is a separate model identifier — the SDK README's example was wrong.
-    model: 'voxtral-mini-tts-2603',
-    input: text,
-    voiceId,
-    stream: false,
-  }
-
-  // Diagnostic logs — remove once "TTS starts only at end of inference" bug
-  // is pinned down. Brackets the raw SDK/HTTP call so we can tell if the
-  // latency is network (H1) or JS event-loop starvation (H2).
+export async function synthesise({ text, voiceId }: SynthesiseParams): Promise<Blob> {
+  // Diagnostic logs — retained from the old SDK path. Brackets the full
+  // round-trip so we can tell if latency is network vs JS event-loop.
   const preview = text.slice(0, 40).replace(/\s+/g, ' ')
   const httpStart = performance.now()
   console.log(`[TTS-http]  request "${preview}"`)
-  // SpeechResponse carries base64-encoded audio data
-  const result = await client(apiKey).audio.speech.complete(request) as SpeechResponse
+  const res = await fetch(`${BASE}/tts`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId }),
+  })
+  await ensureOk(res)
+  const buf = await res.arrayBuffer()
   console.log(`[TTS-http]  response "${preview}" ${Math.round(performance.now() - httpStart)}ms`)
-  const binary = atob(result.audioData)
-  const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0))
-  return new Blob([bytes], { type: 'audio/mpeg' })
+  return new Blob([buf], { type: res.headers.get('content-type') ?? 'audio/mpeg' })
 }
 
 export interface MistralVoice {
@@ -81,48 +76,54 @@ export interface MistralVoice {
   name: string
 }
 
-function mapVoice(raw: VoiceResponse): MistralVoice {
+interface RawVoice { id: string; name: string; language?: string | null; gender?: string | null }
+
+function mapVoice(raw: RawVoice): MistralVoice {
   return { id: raw.id, name: raw.name }
 }
 
-export async function listVoices(apiKey: string): Promise<MistralVoice[]> {
-  const PAGE_SIZE = 100
-  const voices: MistralVoice[] = []
-  let offset = 0
-
-  // The API defaults to 10 per page; paginate with offset/limit until all pages consumed
-  while (true) {
-    const request: ListVoicesV1AudioVoicesGetRequest = { limit: PAGE_SIZE, offset }
-    const page = await client(apiKey).audio.voices.list(request)
-    voices.push(...page.items.map(mapVoice))
-    if (page.page >= page.totalPages) break
-    offset += PAGE_SIZE
-  }
-
-  return voices
+export async function listVoices(): Promise<MistralVoice[]> {
+  const res = await fetch(`${BASE}/voices`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  await ensureOk(res)
+  const body = (await res.json()) as { voices: RawVoice[] }
+  return body.voices.map(mapVoice)
 }
 
-export async function cloneVoice({ apiKey, audio, name }: {
-  apiKey: string
+export async function cloneVoice({ audio, name }: {
   audio: Blob
   name: string
 }): Promise<MistralVoice> {
-  // The SDK create endpoint expects base64-encoded audio, not a File/FormData upload.
-  const buffer = await audio.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
-  const sampleAudio = btoa(binary)
-
-  const request: VoiceCreateRequest = {
-    name,
-    sampleAudio,
-    sampleFilename: 'sample.wav',
-  }
-  const result: VoiceResponse = await client(apiKey).audio.voices.create(request)
-  return mapVoice(result)
+  const form = new FormData()
+  const mimeType = audio.type || 'audio/wav'
+  const file = new File([audio], filenameForMime(mimeType), { type: mimeType })
+  form.append('audio', file, file.name)
+  form.append('name', name)
+  const res = await fetch(`${BASE}/clone`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: authHeaders(),
+    body: form,
+  })
+  await ensureOk(res)
+  const body = (await res.json()) as RawVoice
+  return mapVoice(body)
 }
 
-export async function deleteVoice(apiKey: string, voiceId: string): Promise<void> {
-  await client(apiKey).audio.voices.delete({ voiceId })
+export async function deleteVoice(voiceId: string): Promise<void> {
+  const res = await fetch(`${BASE}/voices/${encodeURIComponent(voiceId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: authHeaders(),
+  })
+  await ensureOk(res)
+}
+
+export function toVoicePreset(v: MistralVoice): VoicePreset {
+  // Mistral voices are multilingual; default to 'en' as the primary language
+  // since the API does not guarantee a single-language label per voice.
+  return { id: v.id, name: v.name, language: 'en' }
 }
