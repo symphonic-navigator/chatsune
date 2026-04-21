@@ -14,9 +14,9 @@ describe('expressionTags constants', () => {
     expect(new Set(INLINE_TAGS)).toEqual(
       new Set([
         'pause', 'long-pause', 'hum-tune',
-        'laugh', 'chuckle', 'giggle', 'cry',
+        'laugh', 'chuckle', 'giggle', 'cry', 'whoop',
         'tsk', 'tongue-click', 'lip-smack',
-        'breath', 'inhale', 'exhale', 'sigh',
+        'breath', 'inhale', 'exhale', 'sigh', 'gasp',
       ]),
     )
   })

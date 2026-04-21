@@ -23,9 +23,9 @@ def test_mistral_voice_does_not_advertise_expressive_markup() -> None:
 def test_inline_tags_cover_xai_vocabulary() -> None:
     expected = {
         "pause", "long-pause", "hum-tune",
-        "laugh", "chuckle", "giggle", "cry",
+        "laugh", "chuckle", "giggle", "cry", "whoop",
         "tsk", "tongue-click", "lip-smack",
-        "breath", "inhale", "exhale", "sigh",
+        "breath", "inhale", "exhale", "sigh", "gasp",
     }
     assert set(INLINE_TAGS) == expected
 
