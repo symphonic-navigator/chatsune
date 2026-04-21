@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useEventStore } from "../../../core/store/eventStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
-import type { ModelMetaDto } from "../../../core/types/llm"
-import { llmApi } from "../../../core/api/llm"
+import { useEnrichedModels } from "../../../core/hooks/useEnrichedModels"
 import { JobsPill } from "./JobsPill"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 
@@ -22,26 +21,11 @@ function ModelPill({ modelUniqueId }: { modelUniqueId: string }) {
   const connectionId = modelUniqueId.includes(":") ? modelUniqueId.split(":")[0] : null
 
   const [open, setOpen] = useState(false)
-  const [model, setModel] = useState<ModelMetaDto | null>(null)
-
-  useEffect(() => {
-    if (!connectionId || !slug) {
-      setModel(null)
-      return
-    }
-    let cancelled = false
-    llmApi
-      .listConnectionModels(connectionId)
-      .then((models) => {
-        if (cancelled) return
-        setModel(models.find((m) => m.model_id === slug) ?? null)
-      })
-      .catch(() => {
-        if (cancelled) return
-        setModel(null)
-      })
-    return () => { cancelled = true }
-  }, [connectionId, slug])
+  // Resolve the model through the unified enriched-models hub so that
+  // premium-provider slugs (e.g. ``mistral``, ``xai``) dispatch to the
+  // providers API — a raw ``listConnectionModels`` call 404s for those.
+  const { findByUniqueId } = useEnrichedModels()
+  const model = findByUniqueId(modelUniqueId)
 
   return (
     <span

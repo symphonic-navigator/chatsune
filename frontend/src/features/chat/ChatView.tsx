@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto } from '../../core/api/chat'
 import { llmApi } from '../../core/api/llm'
+import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
 import { eventBus } from '../../core/websocket/eventBus'
 import { Topics } from '../../core/types/events'
@@ -286,27 +287,31 @@ export function ChatView({ persona }: ChatViewProps) {
     setShowIncognitoNotice(isIncognito)
   }, [isIncognito])
 
+  // Resolve the persona's model through the unified enriched-models hub so
+  // premium-provider unique ids (e.g. ``mistral:``, ``xai:``) dispatch to the
+  // providers API — a raw ``listConnectionModels`` call 404s for those.
+  const { findByUniqueId: findModelByUniqueId, loading: modelsLoading } = useEnrichedModels()
+
   // Look up tool/reasoning capabilities for a model unique id and update local state.
-  // Returns a cancel-aware function so callers can ignore stale results on session switch.
-  const applyModelCapabilities = useCallback((uid: string | null | undefined, isCancelled: () => boolean) => {
+  // Synchronous now: the enriched-models hub populates once and answers from memory.
+  const applyModelCapabilities = useCallback((uid: string | null | undefined) => {
     if (!uid || !uid.includes(':')) return
     // unique_id format: "<connection_id>:<model_slug>" (see INSIGHTS.md INS-004).
-    const connectionId = uid.split(':')[0]
-    const modelSlug = uid.split(':').slice(1).join(':')
-    llmApi
-      .listConnectionModels(connectionId)
-      .then((models) => {
-        if (isCancelled()) return
-        const model = models.find((m) => m.model_id === modelSlug)
-        setModelSupportsTools(model?.supports_tool_calls ?? false)
-        setModelSupportsReasoning(model?.supports_reasoning ?? false)
-      })
-      .catch((err: unknown) => {
-        if (isCancelled()) return
-        console.error('Failed to load model capabilities', err)
-        setModelSupportsTools(true)
-      })
-  }, [])
+    const model = findModelByUniqueId(uid)
+    if (model) {
+      setModelSupportsTools(model.supports_tool_calls)
+      setModelSupportsReasoning(model.supports_reasoning)
+      return
+    }
+    // No match. If the hub is still loading, hold off until it repopulates —
+    // the useEffect that calls us is subscribed to ``applyModelCapabilities``
+    // in its dep list, so a fresh run will pick up the answer. If it has
+    // finished loading and still returned null, fall back to the pre-existing
+    // behaviour (permissive on tools so the UI does not hide them).
+    if (modelsLoading) return
+    setModelSupportsTools(true)
+    setModelSupportsReasoning(false)
+  }, [findModelByUniqueId, modelsLoading])
   // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
   useChatStream(effectiveSessionId ?? null)
@@ -343,10 +348,9 @@ export function ChatView({ persona }: ChatViewProps) {
     setLoadError(null)
 
     let cancelled = false
-    const isCancelled = () => cancelled
 
     if (isIncognito) {
-      applyModelCapabilities(persona?.model_unique_id, isCancelled)
+      applyModelCapabilities(persona?.model_unique_id)
       return () => { cancelled = true }
     }
 
@@ -397,7 +401,7 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setSessionTitle(session.title)
         useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
-        applyModelCapabilities(persona?.model_unique_id, isCancelled)
+        applyModelCapabilities(persona?.model_unique_id)
       })
       .catch((err) => {
         if (cancelled) return
