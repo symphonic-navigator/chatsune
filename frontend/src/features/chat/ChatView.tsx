@@ -679,8 +679,12 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Diagnostic refs — pair with the [LLM-infer] / [TTS-infer] / [TTS-play]
   // logs. Remove once the "TTS starts only at end of inference" bug is
-  // understood.
+  // understood. llmLogPrevStreamingRef is separate from prevIsStreamingRef
+  // because the auto-read effect above updates that ref before its own
+  // comparisons run; reusing it here would let its write race ahead of our
+  // read and mask every streaming transition in this effect.
   const prevIsWaitingRef = useRef(false)
+  const llmLogPrevStreamingRef = useRef(false)
   const llmStartTsRef = useRef<number | null>(null)
 
   // Conversation-mode active state — read once here so we can override
@@ -865,11 +869,10 @@ export function ChatView({ persona }: ChatViewProps) {
   // [TTS-infer] / [TTS-play]. Remove once bug understood.
   //   start       — request sent, waiting for first token
   //   first-token — first content token arrived (isStreaming flipped true)
-  //   end         — stream finished
+  //   done        — stream finished
   useEffect(() => {
     const wasWaiting = prevIsWaitingRef.current
-    const wasStreaming = prevIsStreamingRef.current
-    prevIsWaitingRef.current = isWaitingForResponse
+    const wasStreaming = llmLogPrevStreamingRef.current
 
     if (isWaitingForResponse && !wasWaiting) {
       llmStartTsRef.current = performance.now()
@@ -883,9 +886,12 @@ export function ChatView({ persona }: ChatViewProps) {
     if (!isStreaming && wasStreaming) {
       const start = llmStartTsRef.current
       const total = start !== null ? ` total=${Math.round(performance.now() - start)}ms` : ''
-      console.log(`[LLM-infer] end${total}`)
+      console.log(`[LLM-infer] done${total}`)
       llmStartTsRef.current = null
     }
+
+    prevIsWaitingRef.current = isWaitingForResponse
+    llmLogPrevStreamingRef.current = isStreaming
   }, [isStreaming, isWaitingForResponse])
 
   // Diagnostic — long-task observer. Reports every synchronous block on the
