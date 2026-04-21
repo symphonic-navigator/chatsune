@@ -153,9 +153,15 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   // which cancels any ongoing read-aloud or earlier preview.
   const playPreview = useCallback(async (voiceId: string, isNarrator: boolean) => {
     const tts = resolveTTSEngine(persona)
-    if (!tts?.isReady()) return
+    if (!tts?.isReady()) {
+      console.warn('[PersonaVoiceConfig] Preview aborted: no ready TTS engine for persona', persona.id)
+      return
+    }
     const voice = tts.voices.find((v) => v.id === voiceId)
-    if (!voice) return
+    if (!voice) {
+      console.warn('[PersonaVoiceConfig] Preview aborted: voiceId %s not in engine %s voices (%d)', voiceId, tts.id, tts.voices.length)
+      return
+    }
     audioPlayback.stopAll()
     setActiveReader(null, 'idle')
     try {
@@ -172,7 +178,7 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
     } catch (err) {
       console.error('[PersonaVoiceConfig] Preview failed:', err)
     }
-  }, [testPhrase, modulation])
+  }, [persona, testPhrase, modulation])
 
   const showNarratorField = narratorMode !== 'off'
 
