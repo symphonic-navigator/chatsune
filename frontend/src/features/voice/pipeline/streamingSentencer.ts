@@ -1,6 +1,7 @@
 import type { NarratorMode, SpeechSegment } from '../types'
 import { parseForSpeech } from './audioParser'
 import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
+import { effectiveLength } from './effectiveLength'
 
 export interface StreamingSentencer {
   push(delta: string): SpeechSegment[]
@@ -10,6 +11,13 @@ export interface StreamingSentencer {
 
 const SENTENCE_END = /[.!?\n]/
 
+// Per-sentence length thresholds. The first sentence in the stream must
+// carry at least 20 effective characters to be worth emitting on its own;
+// every follow-up must clear 30. Effective length ignores expression tags
+// (inline and wrapping) because they carry no spoken content.
+const FIRST_SENTENCE_MIN = 20
+const FOLLOWUP_SENTENCE_MIN = 30
+
 // Scan `text` up to `limit` and return the index of the last position that is
 // simultaneously (a) a sentence boundary the downstream splitter will honour
 // and (b) not inside any unterminated markdown / OOC / quote construct. Returns
@@ -17,7 +25,19 @@ const SENTENCE_END = /[.!?\n]/
 // must never hand a chunk to `parseForSpeech` that would strip an unterminated
 // fence (```…) or OOC marker ((…)) and thereby mangle the text on the next
 // push — so we require each tracked construct to be balanced at the cut point.
-function findSafeCutPoint(text: string, start: number, mode: NarratorMode): number {
+//
+// In addition, two content guards are applied:
+//   Guard 1 — length: the chunk [start, cutPoint) must have at least
+//     `minEffectiveLength` effective characters (tags excluded).
+//   Guard 2 — no-space: for non-newline cuts, the chunk must contain at
+//     least one whitespace character, so that abbreviations like "z.B."
+//     never count as a complete sentence.
+function findSafeCutPoint(
+  text: string,
+  start: number,
+  mode: NarratorMode,
+  minEffectiveLength: number,
+): number {
   let fenceOpen = false
   let inlineTickOpen = false
   let oocDepth = 0
@@ -73,9 +93,9 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
     if (trackQuotes) {
       if (ch === '"') {
         doubleQuoteOpen = !doubleQuoteOpen
-      } else if (ch === '\u201c') {
+      } else if (ch === '“') {
         smartQuoteOpen = true
-      } else if (ch === '\u201d') {
+      } else if (ch === '”') {
         smartQuoteOpen = false
       } else if (ch === "'" && !singleQuoteOpen && isWordBoundaryLeft(text, i)) {
         // Only open a single-quote pair at a word boundary, so that
@@ -102,7 +122,12 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
 
       if (ch === '\n') {
         // Hard line break — sentenceSplitter treats newlines as boundaries.
-        lastSafeEnd = i + 1
+        // Guard 1 applies (length), Guard 2 does not (newlines are always
+        // genuine boundaries even inside an abbreviation-only prefix).
+        const candidate = i + 1
+        if (effectiveLength(text.slice(start, candidate)) >= minEffectiveLength) {
+          lastSafeEnd = candidate
+        }
         continue
       }
 
@@ -124,7 +149,9 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
       if (!nextIsWhitespace) {
         // Case (b): only accept pictographic chars directly after punctuation.
         if (isPictographAt(text, nextIdx)) {
-          lastSafeEnd = nextIdx
+          tryRegisterCut(text, start, nextIdx, minEffectiveLength, (end) => {
+            lastSafeEnd = end
+          })
           continue
         }
         // Case (c): one or more closing tags directly after punctuation —
@@ -150,7 +177,9 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
               isPictographAt(text, k)
             ) {
               // Cut includes the closing tags so the emitted chunk is balanced.
-              lastSafeEnd = afterTags
+              tryRegisterCut(text, start, afterTags, minEffectiveLength, (end) => {
+                lastSafeEnd = end
+              })
             }
           }
         }
@@ -166,7 +195,9 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
       }
       const after = text[j]
       if (after === '\n' || isUppercaseSentenceStart(after) || isPictographAt(text, j)) {
-        lastSafeEnd = nextIdx
+        tryRegisterCut(text, start, nextIdx, minEffectiveLength, (end) => {
+          lastSafeEnd = end
+        })
       }
     }
   }
@@ -175,14 +206,31 @@ function findSafeCutPoint(text: string, start: number, mode: NarratorMode): numb
   return lastSafeEnd
 }
 
+// Apply Guard 1 (effective-length threshold) and Guard 2 (at least one
+// whitespace in the candidate chunk) before accepting a cut. Both guards
+// apply to punctuation-based cuts; newline cuts bypass Guard 2 (see the
+// `ch === '\n'` branch) but still use this helper for Guard 1 indirectly.
+function tryRegisterCut(
+  text: string,
+  start: number,
+  candidate: number,
+  minEffectiveLength: number,
+  register: (end: number) => void,
+): void {
+  const chunk = text.slice(start, candidate)
+  if (effectiveLength(chunk) < minEffectiveLength) return
+  if (!/\s/.test(chunk)) return
+  register(candidate)
+}
+
 function isWordBoundaryLeft(text: string, i: number): boolean {
   if (i === 0) return true
   const prev = text[i - 1]
-  return !/[A-Za-z0-9\u00C0-\u024F]/.test(prev)
+  return !/[A-Za-z0-9À-ɏ]/.test(prev)
 }
 
 function isUppercaseSentenceStart(ch: string): boolean {
-  return /[A-Z\u00C4\u00D6\u00DC]/.test(ch)
+  return /[A-ZÄÖÜ]/.test(ch)
 }
 
 // Whether the code point at `i` is an emoji / pictograph. Handles surrogate
@@ -201,6 +249,12 @@ class StreamingSentencerImpl implements StreamingSentencer {
   private readonly mode: NarratorMode
   private readonly supportsExpressiveMarkup: boolean
   private wrapStack: string[] = []
+  // True once at least one speakable SpeechSegment has been emitted. Gates
+  // the length-threshold choice (20 chars for the very first sentence,
+  // 30 for every subsequent one). A chunk that parseForSpeech reduces to
+  // nothing (e.g. tags only) does not flip this flag — the stream stays in
+  // "first sentence" mode until real speech has left the sentencer.
+  private hasEmitted = false
 
   constructor(mode: NarratorMode, supportsExpressiveMarkup: boolean) {
     this.mode = mode
@@ -210,24 +264,33 @@ class StreamingSentencerImpl implements StreamingSentencer {
   push(delta: string): SpeechSegment[] {
     if (!delta) return []
     this.buffer += delta
-    const safeEnd = findSafeCutPoint(this.buffer, this.committedIndex, this.mode)
+    const threshold = this.hasEmitted ? FOLLOWUP_SENTENCE_MIN : FIRST_SENTENCE_MIN
+    const safeEnd = findSafeCutPoint(this.buffer, this.committedIndex, this.mode, threshold)
     if (safeEnd <= this.committedIndex) return []
     const chunk = this.buffer.slice(this.committedIndex, safeEnd)
     this.committedIndex = safeEnd
-    return this.emitChunk(chunk)
+    const segments = this.emitChunk(chunk)
+    if (segments.length > 0) this.hasEmitted = true
+    return segments
   }
 
   flush(): SpeechSegment[] {
+    // Guard 3: flush bypasses length and whitespace guards. Whatever is left
+    // in the buffer goes out — otherwise a legitimate short closing sentence
+    // like "Ja." would never become audible.
     if (this.committedIndex >= this.buffer.length) return []
     const rest = this.buffer.slice(this.committedIndex)
     this.committedIndex = this.buffer.length
-    return this.emitChunk(rest)
+    const segments = this.emitChunk(rest)
+    if (segments.length > 0) this.hasEmitted = true
+    return segments
   }
 
   reset(): void {
     this.buffer = ''
     this.committedIndex = 0
     this.wrapStack = []
+    this.hasEmitted = false
   }
 
   private emitChunk(chunk: string): SpeechSegment[] {

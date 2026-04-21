@@ -9,10 +9,17 @@ describe('parseForSpeech', () => {
       ])
     })
     it('splits multi-sentence input into one voice segment per sentence', () => {
-      expect(parseForSpeech('Hi! How are you? I am fine.', 'off')).toEqual([
-        { type: 'voice', text: 'Hi!' },
-        { type: 'voice', text: 'How are you?' },
-        { type: 'voice', text: 'I am fine.' },
+      // Each sentence must clear its threshold (20 for first, 30 for
+      // followers) to stay separate under the length guard.
+      expect(
+        parseForSpeech(
+          'Hi there my dearest friend! How are you doing today so far? I am doing absolutely fine thank you.',
+          'off',
+        ),
+      ).toEqual([
+        { type: 'voice', text: 'Hi there my dearest friend!' },
+        { type: 'voice', text: 'How are you doing today so far?' },
+        { type: 'voice', text: 'I am doing absolutely fine thank you.' },
       ])
     })
     it('returns empty array for empty input', () => {
@@ -22,18 +29,26 @@ describe('parseForSpeech', () => {
 
   describe("mode 'play' (dialogue spoken, narration narrated)", () => {
     it('splits dialogue and narration, then splits each by sentence', () => {
-      const result = parseForSpeech('*walks over* "Hello there! How are you?" *waves*', 'play')
+      const result = parseForSpeech(
+        '*walks over slowly* "Hello there my dear friend! How are you doing today so far?" *waves back*',
+        'play',
+      )
       expect(result).toEqual([
-        { type: 'narration', text: 'walks over' },
-        { type: 'voice', text: 'Hello there!' },
-        { type: 'voice', text: 'How are you?' },
-        { type: 'narration', text: 'waves' },
+        { type: 'narration', text: 'walks over slowly' },
+        { type: 'voice', text: 'Hello there my dear friend!' },
+        { type: 'voice', text: 'How are you doing today so far?' },
+        { type: 'narration', text: 'waves back' },
       ])
     })
     it('treats unmarked text as narration and sentence-splits it', () => {
-      expect(parseForSpeech('She looked away. He did too.', 'play')).toEqual([
-        { type: 'narration', text: 'She looked away.' },
-        { type: 'narration', text: 'He did too.' },
+      expect(
+        parseForSpeech(
+          'She looked away quietly just then. He did too without saying anything.',
+          'play',
+        ),
+      ).toEqual([
+        { type: 'narration', text: 'She looked away quietly just then.' },
+        { type: 'narration', text: 'He did too without saying anything.' },
       ])
     })
     it('handles consecutive dialogue segments', () => {
@@ -46,12 +61,15 @@ describe('parseForSpeech', () => {
 
   describe("mode 'narrate' (narration narrated, only dialogue spoken)", () => {
     it('strips decorative asterisks in narration and sentence-splits inside quotes', () => {
-      const result = parseForSpeech('*walks over* "Hello there! How are you?" *waves*', 'narrate')
+      const result = parseForSpeech(
+        '*walks over slowly* "Hello there my dear friend! How are you doing today so far?" *waves back*',
+        'narrate',
+      )
       expect(result).toEqual([
-        { type: 'narration', text: 'walks over' },
-        { type: 'voice', text: 'Hello there!' },
-        { type: 'voice', text: 'How are you?' },
-        { type: 'narration', text: 'waves' },
+        { type: 'narration', text: 'walks over slowly' },
+        { type: 'voice', text: 'Hello there my dear friend!' },
+        { type: 'voice', text: 'How are you doing today so far?' },
+        { type: 'narration', text: 'waves back' },
       ])
     })
     it('sentence-splits narration between quotes', () => {
@@ -83,27 +101,40 @@ describe('parseForSpeech', () => {
 
   describe('list handling via line breaks', () => {
     it('splits bulleted lists item-by-item', () => {
-      const result = parseForSpeech('- First item\n- Second item\n- Third item', 'off')
+      // Each item must clear its length threshold so the splitter does not
+      // merge them back together.
+      const result = parseForSpeech(
+        '- First item is long enough to stand alone\n- Second item is also long enough to stand alone\n- Third item is likewise long enough to stand alone',
+        'off',
+      )
       expect(result).toEqual([
-        { type: 'voice', text: 'First item' },
-        { type: 'voice', text: 'Second item' },
-        { type: 'voice', text: 'Third item' },
+        { type: 'voice', text: 'First item is long enough to stand alone' },
+        { type: 'voice', text: 'Second item is also long enough to stand alone' },
+        { type: 'voice', text: 'Third item is likewise long enough to stand alone' },
       ])
     })
     it('splits numbered lists item-by-item', () => {
-      const result = parseForSpeech('1. Alpha\n2. Bravo', 'off')
+      const result = parseForSpeech(
+        '1. Alpha is a long enough list item here\n2. Bravo is another long enough list item here',
+        'off',
+      )
       expect(result).toEqual([
-        { type: 'voice', text: 'Alpha' },
-        { type: 'voice', text: 'Bravo' },
+        { type: 'voice', text: 'Alpha is a long enough list item here' },
+        { type: 'voice', text: 'Bravo is another long enough list item here' },
       ])
     })
   })
 
   describe('pre-processing (mode-agnostic)', () => {
     it('strips code blocks', () => {
-      expect(parseForSpeech('Here is some code:\n```js\nconsole.log("hi")\n```\nDone.', 'off')).toEqual([
-        { type: 'voice', text: 'Here is some code:' },
-        { type: 'voice', text: 'Done.' },
+      expect(
+        parseForSpeech(
+          'Here is some code for you today:\n```js\nconsole.log("hi")\n```\nAnd that concludes everything nicely.',
+          'off',
+        ),
+      ).toEqual([
+        { type: 'voice', text: 'Here is some code for you today:' },
+        { type: 'voice', text: 'And that concludes everything nicely.' },
       ])
     })
     it('strips inline code', () => {
@@ -123,9 +154,14 @@ describe('parseForSpeech', () => {
       ])
     })
     it('strips markdown headings', () => {
-      expect(parseForSpeech('## Section Title\nSome text.', 'off')).toEqual([
-        { type: 'voice', text: 'Section Title' },
-        { type: 'voice', text: 'Some text.' },
+      expect(
+        parseForSpeech(
+          '## Section Title For Today\nSome substantive text goes into this section.',
+          'off',
+        ),
+      ).toEqual([
+        { type: 'voice', text: 'Section Title For Today' },
+        { type: 'voice', text: 'Some substantive text goes into this section.' },
       ])
     })
     it('strips markdown links', () => {
