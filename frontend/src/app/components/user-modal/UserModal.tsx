@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
@@ -15,9 +15,7 @@ import { IntegrationsTab } from './IntegrationsTab'
 import { LlmProvidersTab } from './LlmProvidersTab'
 import { VoiceTab } from './VoiceTab'
 import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
-import { llmApi } from '../../../core/api/llm'
-import { eventBus } from '../../../core/websocket/eventBus'
-import { Topics } from '../../../core/types/events'
+import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import { TABS_TREE, type TopTabId, type SubTabId } from './userModalTree'
 import { useSubtabStore } from './userModalSubtabStore'
 
@@ -64,32 +62,20 @@ export function UserModal({
   const modalRef = useRef<HTMLDivElement>(null)
   const setLastSub = useSubtabStore((s) => s.setLastSub)
 
-  // LLM-connection badge: an exclamation flag appears on the LLM Providers
-  // sub-tab (and propagated to the Settings top-pill) when the user has zero
-  // connections configured.
-  const [hasNoLlmConnection, setHasNoLlmConnection] = useState(false)
+  // LLM-providers badge: an exclamation flag appears on the LLM Providers
+  // sub-tab (and propagated to the Settings top-pill) when the user has no
+  // usable model — either no custom Connection and no Premium provider
+  // account, or every configured source failed its probe and exposes zero
+  // models. The enriched-models hub already aggregates both sources and
+  // keeps itself live via the relevant topics, so we just derive the flag
+  // from its output. While the hub is still loading we suppress the badge
+  // to avoid a brief flash on modal open.
+  const { groups: modelGroups, loading: modelsLoading } = useEnrichedModels()
+  const hasNoLlmConnection =
+    !modelsLoading && !modelGroups.some((g) => g.models.length > 0)
 
   // Only flag currently feeding the Settings top-pill badge.
   const settingsHasProblem = hasNoLlmConnection
-
-  const refreshConnectionCount = useCallback(async () => {
-    try {
-      const conns = await llmApi.listConnections()
-      setHasNoLlmConnection(conns.length === 0)
-    } catch {
-      // Best-effort — silently ignore. The badge defaults to "no problem".
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshConnectionCount()
-    const topics = [
-      Topics.LLM_CONNECTION_CREATED,
-      Topics.LLM_CONNECTION_REMOVED,
-    ] as const
-    const unsubs = topics.map((t) => eventBus.on(t, () => { void refreshConnectionCount() }))
-    return () => unsubs.forEach((u) => u())
-  }, [refreshConnectionCount])
 
   // Focus trap + Escape key
   useEffect(() => {
