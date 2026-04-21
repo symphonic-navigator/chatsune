@@ -1,7 +1,9 @@
 """REST endpoints for the integrations module."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import Awaitable, Callable, TypeVar
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response
 from fastapi.responses import JSONResponse
@@ -13,6 +15,7 @@ from backend.modules.integrations._repository import IntegrationRepository
 from backend.modules.integrations._voice_adapters import (
     get_adapter,
     VoiceAdapterError,
+    VoiceUnavailableError,
 )
 # Deferred at call site to break the __init__ → _handlers → __init__ circular import.
 from backend.database import get_db
@@ -209,6 +212,41 @@ def _voice_error_response(exc: VoiceAdapterError) -> JSONResponse:
     )
 
 
+# Single retry after a transient upstream 5xx. Real provider downtime is
+# rare; most 500s on api.x.ai / api.mistral.ai are momentary glitches that
+# clear within a few hundred milliseconds. Retrying once doubles the worst
+# case but avoids bouncing a 502 back to the user for a blip.
+_VOICE_RETRY_DELAY_SECONDS = 0.25
+
+T = TypeVar("T")
+
+
+async def _with_transient_retry(
+    operation: str,
+    integration_id: str,
+    fn: Callable[[], Awaitable[T]],
+) -> T:
+    """Execute ``fn`` with a single retry on :class:`VoiceUnavailableError`.
+
+    Only retries the "upstream 5xx / transport failure" class — auth,
+    rate-limit, bad-request and unexpected-status errors bubble up on
+    the first try since they are not transient.
+
+    The helper lives in the handler layer (not the adapters) so every
+    adapter — xAI, Mistral, and any future one — benefits uniformly
+    without each implementation having to remember to retry.
+    """
+    try:
+        return await fn()
+    except VoiceUnavailableError as first:
+        _log.warning(
+            "voice.transient_retry integration_id=%s operation=%s first_error=%r",
+            integration_id, operation, str(first),
+        )
+        await asyncio.sleep(_VOICE_RETRY_DELAY_SECONDS)
+        return await fn()
+
+
 @router.get("/{integration_id}/voice/voices")
 async def voice_list_voices(
     integration_id: str,
@@ -221,7 +259,10 @@ async def voice_list_voices(
     if adapter is None:
         raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
     try:
-        voices = await adapter.list_voices(api_key)
+        voices = await _with_transient_retry(
+            "list_voices", integration_id,
+            lambda: adapter.list_voices(api_key),
+        )
     except VoiceAdapterError as e:
         return _voice_error_response(e)
     return {"voices": [v.model_dump() for v in voices]}
@@ -240,12 +281,19 @@ async def voice_stt(
     adapter = get_adapter(integration_id)
     if adapter is None:
         raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    # Read the upload eagerly so we have immutable bytes to pass on retry.
+    # The UploadFile's underlying SpooledTemporaryFile would be at EOF on a
+    # second read without an explicit seek, which we avoid by staying in
+    # the local ``audio_bytes`` buffer for both attempts.
     audio_bytes = await audio.read()
     content_type = audio.content_type or "audio/wav"
     try:
-        text = await adapter.transcribe(
-            audio=audio_bytes, content_type=content_type,
-            api_key=api_key, language=language,
+        text = await _with_transient_retry(
+            "transcribe", integration_id,
+            lambda: adapter.transcribe(
+                audio=audio_bytes, content_type=content_type,
+                api_key=api_key, language=language,
+            ),
         )
     except VoiceAdapterError as e:
         return _voice_error_response(e)
@@ -265,8 +313,11 @@ async def voice_tts(
     if adapter is None:
         raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
     try:
-        audio_bytes, content_type = await adapter.synthesise(
-            text=body.text, voice_id=body.voice_id, api_key=api_key,
+        audio_bytes, content_type = await _with_transient_retry(
+            "synthesise", integration_id,
+            lambda: adapter.synthesise(
+                text=body.text, voice_id=body.voice_id, api_key=api_key,
+            ),
         )
     except VoiceAdapterError as e:
         return _voice_error_response(e)
@@ -304,12 +355,16 @@ async def voice_clone(
     adapter = get_adapter(integration_id)
     if adapter is None:
         raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
+    # Same reasoning as voice_stt: read once, retry from the buffer.
     audio_bytes = await audio.read()
     content_type = audio.content_type or "audio/wav"
     try:
-        voice = await adapter.clone_voice(
-            audio=audio_bytes, content_type=content_type,
-            name=name, api_key=api_key,
+        voice = await _with_transient_retry(
+            "clone_voice", integration_id,
+            lambda: adapter.clone_voice(
+                audio=audio_bytes, content_type=content_type,
+                name=name, api_key=api_key,
+            ),
         )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Adapter does not support voice cloning")
@@ -332,7 +387,10 @@ async def voice_delete(
     if adapter is None:
         raise HTTPException(status_code=400, detail="Integration is not backend-proxied")
     try:
-        await adapter.delete_voice(voice_id=voice_id, api_key=api_key)
+        await _with_transient_retry(
+            "delete_voice", integration_id,
+            lambda: adapter.delete_voice(voice_id=voice_id, api_key=api_key),
+        )
     except NotImplementedError:
         raise HTTPException(status_code=400, detail="Adapter does not support voice cloning")
     except VoiceAdapterError as e:
