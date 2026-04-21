@@ -11,12 +11,12 @@ from __future__ import annotations
 INLINE_TAGS: list[str] = [
     # Pauses
     "pause", "long-pause", "hum-tune",
-    # Laughter & crying
-    "laugh", "chuckle", "giggle", "cry",
+    # Laughter, crying & exclamations
+    "laugh", "chuckle", "giggle", "cry", "whoop",
     # Mouth sounds
     "tsk", "tongue-click", "lip-smack",
     # Breathing
-    "breath", "inhale", "exhale", "sigh",
+    "breath", "inhale", "exhale", "sigh", "gasp",
 ]
 
 WRAPPING_TAGS: list[str] = [
@@ -83,6 +83,7 @@ def _describe_inline(tag: str) -> str:
         "chuckle": "a quiet chuckle",
         "giggle": "a playful giggle",
         "cry": "a sob or cry",
+        "whoop": "a whoop of excitement",
         "tsk": "a disapproving tsk",
         "tongue-click": "a tongue click",
         "lip-smack": "a lip smack",
@@ -90,6 +91,7 @@ def _describe_inline(tag: str) -> str:
         "inhale": "an inward breath",
         "exhale": "an outward breath",
         "sigh": "a sigh",
+        "gasp": "a sharp gasp",
     }
     return table[tag]
 

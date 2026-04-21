@@ -7,9 +7,9 @@
 
 export const INLINE_TAGS = [
   'pause', 'long-pause', 'hum-tune',
-  'laugh', 'chuckle', 'giggle', 'cry',
+  'laugh', 'chuckle', 'giggle', 'cry', 'whoop',
   'tsk', 'tongue-click', 'lip-smack',
-  'breath', 'inhale', 'exhale', 'sigh',
+  'breath', 'inhale', 'exhale', 'sigh', 'gasp',
 ] as const
 
 export const WRAPPING_TAGS = [
