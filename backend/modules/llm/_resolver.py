@@ -25,12 +25,14 @@ from backend.dependencies import require_active_session
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._connections import ConnectionRepository
 
-# Mapping from reserved Premium-Provider id → adapter_type string. Only
-# providers with an LLM capability appear here. ``mistral`` is reserved by
-# the slug system but has no LLM adapter yet, so it intentionally has no
-# entry and will fall through to the "no LLM capability" branch.
+# Mapping from reserved Premium-Provider id → adapter_type string. Each
+# entry must correspond to a premium provider with an LLM capability.
+# Premium providers without an LLM adapter are intentionally omitted and
+# will fall through to the "no LLM adapter mapping" branch in
+# :func:`_resolve_premium` (e.g. a voice-only premium provider).
 _PREMIUM_ADAPTER_TYPE: dict[str, str] = {
     "xai": "xai_http",
+    "mistral": "mistral_http",
     "ollama_cloud": "ollama_http",
 }
 
@@ -112,7 +114,7 @@ async def _resolve_premium(
         return None
     adapter_type = _PREMIUM_ADAPTER_TYPE.get(prefix)
     if adapter_type is None:
-        # Premium provider exists but has no LLM adapter (e.g. mistral).
+        # Premium provider exists but has no LLM adapter (voice-only, etc.).
         # Nothing we can resolve for LLM inference — let the caller deal.
         return None
 

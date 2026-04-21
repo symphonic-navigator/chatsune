@@ -81,6 +81,12 @@ export interface ModelMetaDto {
   parameter_count: string | null
   raw_parameter_count: number | null
   quantisation_level: string | null
+  /**
+   * Upstream has marked this model as deprecated (scheduled for removal).
+   * Optional for backwards compat on older cached payloads — treat missing
+   * as false. See shared/dtos/llm.py::ModelMetaDto.is_deprecated.
+   */
+  is_deprecated?: boolean
   unique_id: string
 }
 
