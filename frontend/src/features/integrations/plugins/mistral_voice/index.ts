@@ -2,7 +2,6 @@ import type { IntegrationPlugin, Option } from '../../types'
 import { sttRegistry, ttsRegistry, declareProviderEngines } from '../../../voice/engines/registry'
 import { MistralSTTEngine, MistralTTSEngine } from './engines'
 import { mistralVoices, refreshMistralVoices, invalidateVoicesCache } from './voices'
-import { useSecretsStore } from '../../secretsStore'
 import { registerPlugin } from '../../registry'
 import { ExtraConfigComponent } from './ExtraConfigComponent'
 
@@ -20,8 +19,7 @@ const mistralVoicePlugin: IntegrationPlugin = {
     if (!ttsInstance) ttsInstance = new MistralTTSEngine()
     sttRegistry.register(sttInstance)
     ttsRegistry.register(ttsInstance)
-    const key = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-    if (key) void refreshMistralVoices(key)
+    void refreshMistralVoices()
   },
 
   onDeactivate(): void {
@@ -32,10 +30,7 @@ const mistralVoicePlugin: IntegrationPlugin = {
 
   async getPersonaConfigOptions(fieldKey: string): Promise<Option[]> {
     if (fieldKey !== 'voice_id' && fieldKey !== 'narrator_voice_id') return []
-    const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-    if (apiKey) {
-      await refreshMistralVoices(apiKey)
-    }
+    await refreshMistralVoices()
     const voiceOptions = mistralVoices.current.map((v) => ({ value: v.id, label: v.name }))
     if (fieldKey === 'narrator_voice_id') {
       return [{ value: null, label: 'Inherit from primary voice' }, ...voiceOptions]

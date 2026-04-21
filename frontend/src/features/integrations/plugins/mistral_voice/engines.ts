@@ -1,13 +1,12 @@
 import { transcribe as apiTranscribe, synthesise as apiSynthesise } from './api'
 import { mistralVoices } from './voices'
-import { useSecretsStore } from '../../secretsStore'
+import { useIntegrationsStore } from '../../store'
 import type { CapturedAudio, STTEngine, STTOptions, STTResult, TTSEngine, VoicePreset } from '../../../voice/types'
 
 const INTEGRATION_ID = 'mistral_voice'
-const API_KEY_FIELD = 'api_key'
 
-function getApiKey(): string | undefined {
-  return useSecretsStore.getState().getSecret(INTEGRATION_ID, API_KEY_FIELD)
+function isIntegrationEnabled(): boolean {
+  return useIntegrationsStore.getState().configs?.[INTEGRATION_ID]?.enabled === true
 }
 
 // Decodes an audio Blob (MP3) to a mono Float32Array via the browser's
@@ -30,15 +29,11 @@ export class MistralSTTEngine implements STTEngine {
   async dispose(): Promise<void> { /* no-op */ }
 
   isReady(): boolean {
-    return !!getApiKey()
+    return isIntegrationEnabled()
   }
 
   async transcribe(audio: CapturedAudio, options?: STTOptions): Promise<STTResult> {
-    const key = getApiKey()
-    if (!key) throw new Error('Mistral API key not configured')
-
     const text = await apiTranscribe({
-      apiKey: key,
       audio: audio.blob,
       mimeType: audio.mimeType,
       language: options?.language,
@@ -60,18 +55,18 @@ export class MistralTTSEngine implements TTSEngine {
   async dispose(): Promise<void> { /* no-op */ }
 
   isReady(): boolean {
-    return !!getApiKey()
+    return isIntegrationEnabled()
   }
 
-  async synthesise(text: string, voice: VoicePreset): Promise<Float32Array> {
-    const key = getApiKey()
-    if (!key) throw new Error('Mistral API key not configured')
+  // Override hook for tests (OfflineAudioContext is not available in jsdom).
+  private _decode = blobToFloat32
 
-    const blob = await apiSynthesise({ apiKey: key, text, voiceId: voice.id })
+  async synthesise(text: string, voice: VoicePreset): Promise<Float32Array> {
+    const blob = await apiSynthesise({ text, voiceId: voice.id })
     // Diagnostic log — pair with [TTS-http] lines in api.ts. Remove with them.
     const preview = text.slice(0, 40).replace(/\s+/g, ' ')
     const decodeStart = performance.now()
-    const pcm = await blobToFloat32(blob)
+    const pcm = await this._decode(blob)
     console.log(`[TTS-decode] done "${preview}" ${Math.round(performance.now() - decodeStart)}ms`)
     return pcm
   }

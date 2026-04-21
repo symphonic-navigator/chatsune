@@ -49,7 +49,6 @@ import { TranscriptionOverlay } from '../voice/components/TranscriptionOverlay'
 import { setActiveReader } from '../voice/components/ReadAloudButton'
 import { audioPlayback } from '../voice/infrastructure/audioPlayback'
 import { refreshMistralVoices } from '../integrations/plugins/mistral_voice/voices'
-import { useSecretsStore } from '../integrations/secretsStore'
 import { createStreamingSentencer } from '../voice/pipeline/streamingSentencer'
 import { providerSupportsExpressiveMarkup } from '../voice/engines/expressiveMarkupCapability'
 import {
@@ -716,8 +715,9 @@ export function ChatView({ persona }: ChatViewProps) {
     if (!voiceId) return null
 
     if (tts.voices.length === 0) {
-      const apiKey = useSecretsStore.getState().getSecret('mistral_voice', 'api_key')
-      if (apiKey) await refreshMistralVoices(apiKey)
+      // Best-effort refresh before synthesising. Backend-proxied, so no
+      // browser-side API key is required; failures are handled softly.
+      await refreshMistralVoices()
     }
     const voice = tts.voices.find((v) => v.id === voiceId)
     if (!voice) return null

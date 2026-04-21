@@ -76,3 +76,24 @@ class VoiceAdapter(ABC):
         Adapters may override with a cheaper endpoint if available.
         """
         await self.list_voices(api_key)
+
+    async def clone_voice(
+        self,
+        audio: bytes,
+        content_type: str,
+        name: str,
+        api_key: str,
+    ) -> VoiceInfo:
+        """Create a cloned voice from a user-supplied audio sample.
+
+        Default: adapter doesn't support cloning. Override in subclasses
+        that do. Handlers must capability-check before calling.
+        """
+        raise NotImplementedError("Voice cloning not supported by this adapter")
+
+    async def delete_voice(self, voice_id: str, api_key: str) -> None:
+        """Delete a previously cloned voice.
+
+        Default: adapter doesn't support cloning. Override in subclasses.
+        """
+        raise NotImplementedError("Voice cloning not supported by this adapter")

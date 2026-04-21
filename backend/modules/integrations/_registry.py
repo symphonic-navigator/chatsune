@@ -171,9 +171,11 @@ def _register_builtins() -> None:
         description="Speech-to-text and text-to-speech via Mistral AI. Bring your own API key.",
         icon="mistral",
         execution_mode="hybrid",
+        hydrate_secrets=False,
         capabilities=[
             IntegrationCapability.TTS_PROVIDER,
             IntegrationCapability.STT_PROVIDER,
+            IntegrationCapability.TTS_VOICE_CLONING,
         ],
         linked_premium_provider="mistral",
         config_fields=[
@@ -290,5 +292,7 @@ def _register_builtin_voice_adapters() -> None:
     """
     from backend.modules.integrations._voice_adapters import register_adapter
     from backend.modules.integrations._voice_adapters._client import get_voice_http_client
+    from backend.modules.integrations._voice_adapters._mistral import MistralVoiceAdapter
     from backend.modules.integrations._voice_adapters._xai import XaiVoiceAdapter
     register_adapter("xai_voice", XaiVoiceAdapter(get_voice_http_client()))
+    register_adapter("mistral_voice", MistralVoiceAdapter(get_voice_http_client()))
