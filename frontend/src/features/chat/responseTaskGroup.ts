@@ -83,6 +83,7 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
     const reasonSuffix = reason ? ` (reason=${reason})` : ''
     logger.info(`${prefix} ${state} → ${next}${reasonSuffix}`)
     state = next
+    notifyActiveGroup(logger)
     if (state === 'done' || state === 'cancelled') {
       clearActiveGroup(group)
     }
@@ -162,11 +163,40 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
 
 let activeGroup: ResponseTaskGroup | null = null
 
+export type GroupListener = (group: ResponseTaskGroup | null) => void
+
+const listeners = new Set<GroupListener>()
+
+export function subscribeActiveGroup(fn: GroupListener): () => void {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
+// Snapshot the set before iterating so a listener that synchronously
+// unsubscribes itself (or another listener) during the callback does not
+// break the loop. Listener errors are isolated to keep one faulty consumer
+// from silencing the others.
+function notifyActiveGroup(logger?: GroupLogger): void {
+  const snapshot = Array.from(listeners)
+  for (const fn of snapshot) {
+    try {
+      fn(activeGroup)
+    }
+    catch (err) {
+      if (logger) logger.error('[group registry] listener threw', err)
+      else console.error('[group registry] listener threw', err)
+    }
+  }
+}
+
 export function registerActiveGroup(g: ResponseTaskGroup): void {
   if (activeGroup && activeGroup.state !== 'done' && activeGroup.state !== 'cancelled') {
     activeGroup.cancel('superseded')
   }
   activeGroup = g
+  notifyActiveGroup()
 }
 
 export function getActiveGroup(): ResponseTaskGroup | null {
@@ -174,5 +204,8 @@ export function getActiveGroup(): ResponseTaskGroup | null {
 }
 
 export function clearActiveGroup(g: ResponseTaskGroup): void {
-  if (activeGroup === g) activeGroup = null
+  if (activeGroup === g) {
+    activeGroup = null
+    notifyActiveGroup()
+  }
 }
