@@ -394,7 +394,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    *
    * If we are already in TENTATIVE_BARGE (user re-triggered VAD mid-
    * utterance), we only bump bargeId so any in-flight STT becomes stale;
-   * the earliest mute/anchor is kept (audioPlayback.mute is idempotent).
+   * the earliest pause/anchor is kept (Group.pause is idempotent).
    */
   const executeBarge = useCallback(() => {
     pendingBargeRef.current = null

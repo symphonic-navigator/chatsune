@@ -149,7 +149,6 @@ class VoicePipelineImpl {
   }
 
   stopPlayback(): void { audioPlayback.stopAll() }
-  skipSegment(): void { audioPlayback.skipCurrent() }
   getPhase(): PipelineState['phase'] { return this.state.phase }
 
   dispose(): void {
