@@ -12,6 +12,16 @@ import { float32ToWavBlob } from '../infrastructure/wavEncoder'
 import { createBargeController, type Barge, type BargeController } from '../bargeController'
 import type { CapturedAudio } from '../types'
 
+// Silero fires onSpeechStart on any loud-enough frame — including brief
+// non-speech noise (chair creaks, keyboard clicks) that later turns out
+// to be a misfire. Defer the barge by this long; if a misfire arrives
+// inside the window, the pending barge is cancelled and playback
+// continues untouched.
+const BARGE_DELAY_MS = 150
+
+// Safety fallback after hold release when VAD is still active.
+const RELEASE_SAFETY_MS = 3000
+
 // One MediaRecorder instance per utterance (non-hold) or per hold-cycle
 // (hold). The hook drives the lifecycle directly because the hold-cycle
 // spans multiple VAD sub-segments and audioCapture's per-segment recorder
@@ -332,13 +342,6 @@ export function useConversationMode({
     publishBargeState()
   }, [controller, exitStore, publishBargeState, setSttInFlight])
 
-  // Silero fires onSpeechStart on any loud-enough frame — including brief
-  // non-speech noise (chair creaks, keyboard clicks) that later turns out to
-  // be a misfire. Reacting immediately would cut off playback for those
-  // bursts. Instead we defer the barge by BARGE_DELAY_MS; if a misfire
-  // arrives inside that window, the pending barge is cancelled and playback
-  // continues untouched. Real speech typically lasts longer than this.
-  const BARGE_DELAY_MS = 150
   const pendingBargeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // True while Silero is tracking an utterance (between speech-start and the
@@ -346,8 +349,6 @@ export function useConversationMode({
   // whether to dispatch immediately or wait for the final speech-end.
   const vadActiveRef = useRef(false)
 
-  // Safety fallback after hold release when VAD is still active.
-  const RELEASE_SAFETY_MS = 3000
   const releaseFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearPendingBarge = useCallback(() => {
