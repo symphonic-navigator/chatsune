@@ -59,6 +59,8 @@ import { applyModulation, resolveModulation } from '../voice/pipeline/applyModul
 import type { NarratorMode, SpeechSegment } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
+import { createResponseTaskGroup, registerActiveGroup, getActiveGroup } from './responseTaskGroup'
+import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
 import { useWakeLock } from '../../core/hooks/useWakeLock'
@@ -487,168 +489,6 @@ export function ChatView({ persona }: ChatViewProps) {
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
-  const handleSend = useCallback(
-    (text: string) => {
-      if (!effectiveSessionId) return
-      const clientMessageId = `optimistic-${crypto.randomUUID()}`
-      const optimisticMsg: ChatMessageDto = {
-        id: clientMessageId,
-        session_id: effectiveSessionId,
-        role: 'user',
-        content: text,
-        thinking: null,
-        token_count: 0,
-        attachments: isIncognito ? null : (attachments.getAttachmentRefs().length > 0 ? attachments.getAttachmentRefs() : null),
-        web_search_context: null,
-        knowledge_context: null,
-        created_at: new Date().toISOString(),
-      }
-      useChatStore.getState().appendMessage(optimisticMsg)
-      useChatStore.getState().setWaitingForResponse(true)
-
-      if (isIncognito) {
-        const allMessages = useChatStore.getState().messages
-        sendMessage({
-          type: 'chat.incognito.send',
-          persona_id: personaId,
-          session_id: effectiveSessionId,
-          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
-        })
-      } else {
-        const attachmentIds = attachments.getAttachmentIds()
-        sendMessage({
-          type: 'chat.send',
-          session_id: effectiveSessionId,
-          content: [{ type: 'text', text }],
-          client_message_id: clientMessageId,
-          ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
-        })
-        attachments.clearAttachments()
-        setShowUploadBrowser(false)
-      }
-      setTimeout(() => scrollToBottom(), 50)
-    },
-    [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments],
-  )
-
-  const handleCancel = useCallback(() => {
-    if (!correlationId) return
-    sendMessage({ type: 'chat.cancel', correlation_id: correlationId })
-    // Stopping inference must also kill in-flight TTS synthesis and any
-    // audio already queued, otherwise the user hears the tail of content
-    // that was never shown on screen.
-    cancelStreamingAutoRead()
-    setActiveReader(null, 'idle')
-    setPartialSavedNotice(true)
-    setTimeout(() => setPartialSavedNotice(false), 6000)
-  }, [correlationId])
-
-  const handleEdit = useCallback(
-    (messageId: string, newContent: string) => {
-      if (!effectiveSessionId) return
-      if (messageId.startsWith('optimistic-')) {
-        // The server has not yet confirmed this message, so we cannot reference
-        // it by its final ID. The edit affordance is normally disabled in this
-        // state (see UserBubble), but surface a visible notice as a safety net.
-        console.warn('Refusing to edit optimistic message — ID not yet swapped by server')
-        useNotificationStore.getState().addNotification({
-          level: 'info',
-          title: 'Please wait',
-          message: 'Message is still syncing, please wait a moment.',
-          duration: 4000,
-        })
-        return
-      }
-      if (isIncognito) {
-        const store = useChatStore.getState()
-        store.truncateAfter(messageId)
-        store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
-        const allMessages = useChatStore.getState().messages
-        sendMessage({
-          type: 'chat.incognito.send',
-          persona_id: personaId,
-          session_id: effectiveSessionId,
-          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
-        })
-      } else {
-        // Optimistically reflect the edit in the store so the bubble does
-        // not flash the previous text between closing the editor and the
-        // backend's CHAT_MESSAGE_UPDATED arriving. The backend remains
-        // authoritative — the truncate/update events will reconcile this.
-        const store = useChatStore.getState()
-        store.truncateAfter(messageId)
-        store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
-        sendMessage({
-          type: 'chat.edit',
-          session_id: effectiveSessionId,
-          message_id: messageId,
-          content: [{ type: 'text', text: newContent }],
-        })
-      }
-    },
-    [effectiveSessionId, isIncognito, personaId],
-  )
-
-  const handleRegenerate = useCallback(() => {
-    if (!effectiveSessionId) return
-    if (isIncognito) {
-      const store = useChatStore.getState()
-      const msgs = store.messages
-      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (lastAssistant) store.deleteMessage(lastAssistant.id)
-      store.setWaitingForResponse(true)
-      const allMessages = useChatStore.getState().messages
-      sendMessage({
-        type: 'chat.incognito.send',
-        persona_id: personaId,
-        session_id: effectiveSessionId,
-        messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
-      })
-    } else {
-      useChatStore.getState().setWaitingForResponse(true)
-      sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId })
-    }
-  }, [effectiveSessionId, isIncognito, personaId])
-
-  // Voice pipeline callbacks — registered once on mount. handleSend and
-  // autoSendTranscription are read through refs so that re-renders (which
-  // happen e.g. every time `attachments` produces a new object reference) do
-  // NOT cause the effect to re-run; a re-run would fire the cleanup which
-  // calls voicePipeline.dispose(), which in turn cancels any in-flight
-  // getUserMedia and leaves the mic spinner stuck.
-  const handleSendRef = useRef(handleSend)
-  useEffect(() => { handleSendRef.current = handleSend }, [handleSend])
-  const autoSendTranscriptionRef = useRef(autoSendTranscription)
-  useEffect(() => { autoSendTranscriptionRef.current = autoSendTranscription }, [autoSendTranscription])
-
-  useEffect(() => {
-    voicePipeline.setCallbacks({
-      onStateChange: setPipelineState,
-      onTranscription: (text) => {
-        // In conversational mode we never surface the transcription overlay
-        // and always auto-send — the dedicated VAD path (useConversationMode)
-        // owns the send, so PTT's onTranscription should not double-fire.
-        // This branch handles only the PTT pipeline.
-        if (useConversationModeStore.getState().active) return
-        setTranscription(text)
-        if (autoSendTranscriptionRef.current && text.trim()) {
-          // Auto-send mode: briefly show the transcription, then send.
-          setTimeout(() => {
-            handleSendRef.current(text)
-            setTranscription('')
-          }, 800)
-        } else {
-          // Default (push-to-talk review) mode: put text in input for editing before send.
-          chatInputRef.current?.setText(text)
-          setTimeout(() => setTranscription(''), 1500)
-        }
-      },
-    })
-    return () => voicePipeline.dispose()
-  }, [setPipelineState])
-
   // Streaming auto-read: as ChatContentDelta events accumulate into
   // streamingContent, we incrementally cut sentence-safe prefixes with
   // StreamingSentencer, synthesise each via the active TTS integration,
@@ -746,6 +586,243 @@ export function ChatView({ persona }: ChatViewProps) {
       modulation,
     }
   }, [persona, intDefinitions, intConfigs, conversationActive])
+
+  // Build and register a ResponseTaskGroup for a new response. Must be called
+  // BEFORE the WS message is sent so the Group is ready to receive events.
+  const createAndRegisterGroup = useCallback((correlationId: string, sessionId: string) => {
+    const mode: Mode = conversationActive ? 'voice' : 'text'
+    const ttsEngine = mode === 'voice' ? resolveTTSEngine(persona) : null
+
+    // For voice mode, resolve all the voice config bits the Group children need.
+    let voiceOpts: Parameters<typeof buildChildren>[0]['voice'] = undefined
+    if (mode === 'voice' && ttsEngine) {
+      const ttsIntegrationId = resolveTTSIntegrationId(persona)
+      const activeTTS = ttsIntegrationId
+        ? intDefinitions.find((d) => d.id === ttsIntegrationId)
+        : undefined
+      if (activeTTS) {
+        const voiceId = persona?.integration_configs?.[activeTTS.id]?.voice_id as string | undefined
+        const voice = voiceId ? (ttsEngine.voices.find((v) => v.id === voiceId) ?? ttsEngine.voices[0]) : ttsEngine.voices[0]
+        const narratorMode = (persona?.voice_config?.narrator_mode ?? 'off') as import('../voice/types').NarratorMode
+        const rawNarratorVoiceId = persona?.integration_configs?.[activeTTS.id]?.narrator_voice_id as string | null | undefined
+        const narratorVoice = rawNarratorVoiceId
+          ? (ttsEngine.voices.find((v) => v.id === rawNarratorVoiceId) ?? voice)
+          : voice ?? ttsEngine.voices[0]
+        const gapMs = resolveTtsGapMs(
+          activeTTS.id,
+          intConfigs?.[activeTTS.id]?.config as Record<string, unknown> | undefined,
+        )
+        const modulation = resolveModulation(persona?.voice_config)
+        const supportsExpressive = providerSupportsExpressiveMarkup(ttsIntegrationId ?? null, intDefinitions)
+        if (voice && narratorVoice) {
+          voiceOpts = {
+            tts: ttsEngine,
+            voice,
+            narratorVoice,
+            narratorMode,
+            modulation,
+            gapMs,
+            narratorEnabled: narratorMode !== 'off',
+            supportsExpressiveMarkup: supportsExpressive,
+          }
+        }
+      }
+    }
+
+    const children = buildChildren({
+      correlationId,
+      sessionId,
+      mode,
+      voice: voiceOpts,
+    })
+    const group = createResponseTaskGroup({
+      correlationId,
+      sessionId,
+      userId: '',
+      children,
+      sendWsMessage: sendMessage,
+      logger: {
+        info: (m, ...a) => console.info(m, ...a),
+        debug: (m, ...a) => console.debug(m, ...a),
+        warn: (m, ...a) => console.warn(m, ...a),
+        error: (m, ...a) => console.error(m, ...a),
+      },
+    })
+    registerActiveGroup(group)
+    return group
+  }, [conversationActive, persona, intDefinitions, intConfigs])
+
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!effectiveSessionId) return
+      const clientMessageId = `optimistic-${crypto.randomUUID()}`
+      const optimisticMsg: ChatMessageDto = {
+        id: clientMessageId,
+        session_id: effectiveSessionId,
+        role: 'user',
+        content: text,
+        thinking: null,
+        token_count: 0,
+        attachments: isIncognito ? null : (attachments.getAttachmentRefs().length > 0 ? attachments.getAttachmentRefs() : null),
+        web_search_context: null,
+        knowledge_context: null,
+        created_at: new Date().toISOString(),
+      }
+      useChatStore.getState().appendMessage(optimisticMsg)
+      useChatStore.getState().setWaitingForResponse(true)
+
+      const correlationId = crypto.randomUUID()
+      createAndRegisterGroup(correlationId, effectiveSessionId)
+
+      if (isIncognito) {
+        const allMessages = useChatStore.getState().messages
+        sendMessage({
+          type: 'chat.incognito.send',
+          persona_id: personaId,
+          session_id: effectiveSessionId,
+          correlation_id: correlationId,
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
+      } else {
+        const attachmentIds = attachments.getAttachmentIds()
+        sendMessage({
+          type: 'chat.send',
+          session_id: effectiveSessionId,
+          correlation_id: correlationId,
+          content: [{ type: 'text', text }],
+          client_message_id: clientMessageId,
+          ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+        })
+        attachments.clearAttachments()
+        setShowUploadBrowser(false)
+      }
+      setTimeout(() => scrollToBottom(), 50)
+    },
+    [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments, createAndRegisterGroup],
+  )
+
+  const handleCancel = useCallback(() => {
+    const g = getActiveGroup()
+    if (!g) return
+    g.cancel('user-stop')
+    setPartialSavedNotice(true)
+    setTimeout(() => setPartialSavedNotice(false), 6000)
+  }, [])
+
+  const handleEdit = useCallback(
+    (messageId: string, newContent: string) => {
+      if (!effectiveSessionId) return
+      if (messageId.startsWith('optimistic-')) {
+        // The server has not yet confirmed this message, so we cannot reference
+        // it by its final ID. The edit affordance is normally disabled in this
+        // state (see UserBubble), but surface a visible notice as a safety net.
+        console.warn('Refusing to edit optimistic message — ID not yet swapped by server')
+        useNotificationStore.getState().addNotification({
+          level: 'info',
+          title: 'Please wait',
+          message: 'Message is still syncing, please wait a moment.',
+          duration: 4000,
+        })
+        return
+      }
+      const correlationId = crypto.randomUUID()
+      createAndRegisterGroup(correlationId, effectiveSessionId)
+
+      if (isIncognito) {
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true)
+        const allMessages = useChatStore.getState().messages
+        sendMessage({
+          type: 'chat.incognito.send',
+          persona_id: personaId,
+          session_id: effectiveSessionId,
+          correlation_id: correlationId,
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
+      } else {
+        // Optimistically reflect the edit in the store so the bubble does
+        // not flash the previous text between closing the editor and the
+        // backend's CHAT_MESSAGE_UPDATED arriving. The backend remains
+        // authoritative — the truncate/update events will reconcile this.
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true)
+        sendMessage({
+          type: 'chat.edit',
+          session_id: effectiveSessionId,
+          message_id: messageId,
+          correlation_id: correlationId,
+          content: [{ type: 'text', text: newContent }],
+        })
+      }
+    },
+    [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup],
+  )
+
+  const handleRegenerate = useCallback(() => {
+    if (!effectiveSessionId) return
+    const correlationId = crypto.randomUUID()
+    createAndRegisterGroup(correlationId, effectiveSessionId)
+
+    if (isIncognito) {
+      const store = useChatStore.getState()
+      const msgs = store.messages
+      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (lastAssistant) store.deleteMessage(lastAssistant.id)
+      store.setWaitingForResponse(true)
+      const allMessages = useChatStore.getState().messages
+      sendMessage({
+        type: 'chat.incognito.send',
+        persona_id: personaId,
+        session_id: effectiveSessionId,
+        correlation_id: correlationId,
+        messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+      })
+    } else {
+      useChatStore.getState().setWaitingForResponse(true)
+      sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId, correlation_id: correlationId })
+    }
+  }, [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup])
+
+  // Voice pipeline callbacks — registered once on mount. handleSend and
+  // autoSendTranscription are read through refs so that re-renders (which
+  // happen e.g. every time `attachments` produces a new object reference) do
+  // NOT cause the effect to re-run; a re-run would fire the cleanup which
+  // calls voicePipeline.dispose(), which in turn cancels any in-flight
+  // getUserMedia and leaves the mic spinner stuck.
+  const handleSendRef = useRef(handleSend)
+  useEffect(() => { handleSendRef.current = handleSend }, [handleSend])
+  const autoSendTranscriptionRef = useRef(autoSendTranscription)
+  useEffect(() => { autoSendTranscriptionRef.current = autoSendTranscription }, [autoSendTranscription])
+
+  useEffect(() => {
+    voicePipeline.setCallbacks({
+      onStateChange: setPipelineState,
+      onTranscription: (text) => {
+        // In conversational mode we never surface the transcription overlay
+        // and always auto-send — the dedicated VAD path (useConversationMode)
+        // owns the send, so PTT's onTranscription should not double-fire.
+        // This branch handles only the PTT pipeline.
+        if (useConversationModeStore.getState().active) return
+        setTranscription(text)
+        if (autoSendTranscriptionRef.current && text.trim()) {
+          // Auto-send mode: briefly show the transcription, then send.
+          setTimeout(() => {
+            handleSendRef.current(text)
+            setTranscription('')
+          }, 800)
+        } else {
+          // Default (push-to-talk review) mode: put text in input for editing before send.
+          chatInputRef.current?.setText(text)
+          setTimeout(() => setTranscription(''), 1500)
+        }
+      },
+    })
+    return () => voicePipeline.dispose()
+  }, [setPipelineState])
 
   // Enqueue synthesis of new segments onto the session's promise chain.
   // Serialises the async synths so audio is enqueued in arrival order, even
