@@ -2,17 +2,14 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useConversationModeStore } from '../stores/conversationModeStore'
 import { voicePipeline } from '../pipeline/voicePipeline'
 import { audioCapture } from '../infrastructure/audioCapture'
-import { audioPlayback } from '../infrastructure/audioPlayback'
-import { getActiveGroup } from '../../chat/responseTaskGroup'
 import { useChatStore } from '../../../core/store/chatStore'
 import { chatApi } from '../../../core/api/chat'
 import { useNotificationStore } from '../../../core/store/notificationStore'
-import { setActiveReader } from '../components/ReadAloudButton'
 import { resolveSTTEngine } from '../engines/resolver'
-import { decideSttOutcome } from './bargeDecision'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { pickRecordingMimeType, createRecorder } from '../infrastructure/audioRecording'
 import { float32ToWavBlob } from '../infrastructure/wavEncoder'
+import { createBargeController, type Barge, type BargeController } from '../bargeController'
 import type { CapturedAudio } from '../types'
 
 // One MediaRecorder instance per utterance (non-hold) or per hold-cycle
@@ -39,35 +36,45 @@ interface UseConversationModeOptions {
    */
   available: boolean
   /**
-   * Called when the controller has a transcribed utterance ready to send.
-   * Use the same path a normal text send uses — the backend's
-   * `cancel_all_for_user` cascade will abort any in-flight inference.
+   * Build and register a new ResponseTaskGroup for the voice-commit, returning
+   * the new Group id. Must call registerActiveGroup internally (the registry's
+   * supersede semantics take care of cancelling the predecessor). The caller
+   * is also responsible for optimistic message insertion + setWaitingForResponse.
    */
-  onSend: (text: string) => void
+  buildAndRegisterGroup: (correlationId: string, transcript: string) => string
+  /**
+   * Send the WebSocket chat.send (or chat.incognito.send) for the given
+   * correlation id + transcript. Called immediately after buildAndRegisterGroup.
+   */
+  sendChatMessage: (correlationId: string, transcript: string) => void
 }
 
 /**
  * Controller for conversational voice mode.
  *
- * Owns the transitions between listening / user-speaking / thinking /
- * speaking. Snapshots and restores the session reasoning override and the
- * persona auto_read flag so the user's chosen settings survive the
- * conversation. Reuses the existing streaming TTS pipeline by ensuring
- * auto_read is true while active; the sentencer/synth plumbing lives in
- * ChatView.
+ * Owns the VAD lifecycle and the utterance-recorder plumbing. All barge
+ * state flows through a `bargeController` instance held in a ref; this hook
+ * no longer carries parallel state (no tentativeRef, no bargeIdRef, no
+ * phaseRef). See devdocs/voice-barge-structural-redesign.md.
  *
  * The hook registers capture-level callbacks directly against
  * `audioCapture.startContinuous` (bypassing `voicePipeline.startRecording`)
  * so it can implement the hold-to-keep-talking gate without touching the
  * generic push-to-talk pipeline.
  */
-export function useConversationMode({ sessionId, available, onSend }: UseConversationModeOptions): void {
+export function useConversationMode({
+  sessionId,
+  available,
+  buildAndRegisterGroup,
+  sendChatMessage,
+}: UseConversationModeOptions): void {
   const active = useConversationModeStore((s) => s.active)
-  const phase = useConversationModeStore((s) => s.phase)
   const isHolding = useConversationModeStore((s) => s.isHolding)
-  const setPhase = useConversationModeStore((s) => s.setPhase)
   const exitStore = useConversationModeStore((s) => s.exit)
   const setPreviousReasoning = useConversationModeStore((s) => s.setPreviousReasoning)
+  const setCurrentBargeState = useConversationModeStore((s) => s.setCurrentBargeState)
+  const setSttInFlight = useConversationModeStore((s) => s.setSttInFlight)
+  const setVadActive = useConversationModeStore((s) => s.setVadActive)
 
   // Mirror isHolding into a ref so capture callbacks (which are created once
   // per listen-session) can read the current value without re-binding.
@@ -78,31 +85,20 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // while the user holds "keep talking"; on release (or a later non-held
   // speech-end) the full buffer is concatenated into a single Float32Array
   // and bundled with the compressed blob for STT.
-  //
-  // PCM is kept alongside the compressed blob so local STT engines and
-  // debug paths still work — only cloud engines read `.blob`.
   const heldAudioRef = useRef<Float32Array[]>([])
 
   // Current utterance recorder. Starts on the first VAD speech-start OR on
-  // hold-begin (whichever comes first), stops at dispatch time. A single
-  // recorder spans the whole hold-cycle: its ondataavailable fires at
-  // whatever cadence MediaRecorder chooses, and the accumulated Blob is
-  // the one-shot upload payload. Stale-cycle safety comes from the bargeId
-  // check inside transcribeAndSend (the STT call is what triggers side
-  // effects; the bundle itself is cheap to throw away).
+  // hold-begin (whichever comes first), stops at dispatch time.
   const utteranceRecorderRef = useRef<UtteranceRecorder | null>(null)
-
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
-
-  const phaseRef = useRef(phase)
-  useEffect(() => { phaseRef.current = phase }, [phase])
 
   const activeRef = useRef(active)
   useEffect(() => { activeRef.current = active }, [active])
 
-  const onSendRef = useRef(onSend)
-  useEffect(() => { onSendRef.current = onSend }, [onSend])
+  // Refs so capture callbacks, built once, read fresh values.
+  const buildAndRegisterGroupRef = useRef(buildAndRegisterGroup)
+  useEffect(() => { buildAndRegisterGroupRef.current = buildAndRegisterGroup }, [buildAndRegisterGroup])
+  const sendChatMessageRef = useRef(sendChatMessage)
+  useEffect(() => { sendChatMessageRef.current = sendChatMessage }, [sendChatMessage])
 
   const sessionIdRef = useRef(sessionId)
   useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
@@ -113,6 +109,37 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   const voiceActivationThreshold = useVoiceSettingsStore((s) => s.voiceActivationThreshold)
   const voiceActivationThresholdRef = useRef(voiceActivationThreshold)
   useEffect(() => { voiceActivationThresholdRef.current = voiceActivationThreshold }, [voiceActivationThreshold])
+
+  // Stable controller instance, created lazily once per hook lifetime.
+  // Using a ref (rather than useMemo) guarantees identity is preserved even
+  // under React 18 StrictMode's double-invoke of the render function.
+  const controllerRef = useRef<BargeController | null>(null)
+  if (controllerRef.current === null) {
+    controllerRef.current = createBargeController({
+      buildAndRegisterGroup: (corr, transcript) =>
+        buildAndRegisterGroupRef.current(corr, transcript),
+      sendChatMessage: (corr, transcript) =>
+        sendChatMessageRef.current(corr, transcript),
+      logger: {
+        info: (...a) => console.info(...a),
+        debug: (...a) => console.debug(...a),
+        warn: (...a) => console.warn(...a),
+        error: (...a) => console.error(...a),
+      },
+    })
+  }
+  const controller = controllerRef.current
+
+  // Direct reference to the in-flight Barge so handleMisfire can mark it
+  // stale and transcribeAndSend can call commit/resume on it. Referential
+  // identity is how the controller detects staleness, so we never copy this.
+  const currentBargeRef = useRef<Barge | null>(null)
+
+  // Helper that pushes the controller's current Barge state into the store
+  // so usePhase picks it up reactively.
+  const publishBargeState = useCallback(() => {
+    setCurrentBargeState(controller.current?.state ?? null)
+  }, [controller, setCurrentBargeState])
 
   // Concatenate held+current chunks into a single Float32Array for STT.
   const flushHeldAudio = useCallback((finalChunk: Float32Array | null): Float32Array => {
@@ -165,8 +192,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
    * Finalise the current utterance recorder, waiting for its final
    * `dataavailable` + `onstop`. Resolves with the upload-ready bundle
    * (compressed if available, WAV fallback otherwise). `pcm` is the
-   * caller-provided Float32 merge — used as the `CapturedAudio.pcm` field
-   * AND as input to the Tier-3 WAV encoder when no recorder ran.
+   * caller-provided Float32 merge.
    */
   const finaliseRecorderAndBundle = useCallback(
     (pcm: Float32Array): Promise<CapturedAudio> => {
@@ -211,8 +237,8 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
 
   /**
    * Abort (not stop) the current utterance recorder. Discards any pending
-   * bundle. Used on generation bumps (stale cycle), teardown, or any path
-   * where we know the bundle must not be uploaded.
+   * bundle. Used on generation bumps, teardown, or any path where we know
+   * the bundle must not be uploaded.
    */
   const abortRecorder = useCallback((): void => {
     const state = utteranceRecorderRef.current
@@ -223,28 +249,34 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     } catch { /* already stopped */ }
   }, [])
 
-  // Run STT against an already-captured CapturedAudio and fire onSend on
-  // any non-empty transcription. Called when the user's utterance ends
-  // (release or normal VAD speech-end while not holding).
+  // Run STT against an already-captured CapturedAudio and hand the outcome
+  // to the barge controller. Called when the user's utterance ends (release
+  // or normal VAD speech-end while not holding).
   const transcribeAndSend = useCallback(async (audio: CapturedAudio): Promise<void> => {
-    if (!activeRef.current) return
-    const sttBargeId = bargeIdRef.current
+    // Speech-end can arrive without a VAD speech-start having crossed the
+    // 150 ms pending-barge window — e.g. an ultra-short utterance. Create a
+    // Barge now so the controller sees a consistent lifecycle and picks up
+    // the currently-active Group as its pause target.
+    const barge = currentBargeRef.current ?? controller.start()
+    currentBargeRef.current = barge
+    publishBargeState()
 
-    if (audio.pcm.length === 0 && audio.blob.size === 0) {
-      // No audio captured (e.g. held-release with nothing buffered). Treat
-      // as "no barge confirmed" — resume if we're muted, otherwise just
-      // return to listening.
-      if (tentativeRef.current) {
-        tentativeRef.current = false
-        getActiveGroup()?.resume()
-        setPhase('speaking')
-      } else {
-        setPhase('listening')
-      }
+    if (!activeRef.current) {
+      controller.abandonAll()
+      currentBargeRef.current = null
+      publishBargeState()
       return
     }
 
-    setPhase('transcribing')
+    if (audio.pcm.length === 0 && audio.blob.size === 0) {
+      // No audio captured (e.g. held-release with nothing buffered). Treat
+      // as "no barge confirmed" — resume the paused Group (if any).
+      controller.resume(barge)
+      currentBargeRef.current = null
+      publishBargeState()
+      return
+    }
+
     const stt = resolveSTTEngine()
     if (!stt) {
       useNotificationStore.getState().addNotification({
@@ -252,62 +284,18 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         title: 'Conversational mode stopped',
         message: 'No transcription engine is available.',
       })
+      controller.abandonAll()
+      currentBargeRef.current = null
+      publishBargeState()
       exitStore()
       return
     }
+
+    // Mark STT in flight so usePhase can show 'transcribing'.
+    setSttInFlight(true)
+    let result: { text: string }
     try {
-      const result = await stt.transcribe(audio)
-      if (!activeRef.current) return
-
-      const outcome = decideSttOutcome({
-        transcript: result.text,
-        sttBargeId,
-        currentBargeId: bargeIdRef.current,
-      })
-
-      if (outcome === 'stale') {
-        // A newer barge has taken over while STT was running. Do nothing:
-        // that newer cycle will run its own STT and decide.
-        return
-      }
-
-      if (outcome === 'resume') {
-        // No text → the noise was not a real barge. Resume playback, unless
-        // we've hit the consecutive-resume cap (feedback-loop guard).
-        if (tentativeRef.current) {
-          tentativeRef.current = false
-          consecutiveResumeRef.current += 1
-          if (consecutiveResumeRef.current >= MAX_CONSECUTIVE_RESUMES) {
-            // Likely TTS-bleed feedback loop — skip past the muted segment
-            // instead of replaying it yet again.
-            getActiveGroup()?.cancel('barge-cancel')
-            consecutiveResumeRef.current = 0
-            clearResumeReset()
-          } else {
-            getActiveGroup()?.resume()
-            clearResumeReset()
-            resumeResetTimerRef.current = setTimeout(() => {
-              resumeResetTimerRef.current = null
-              consecutiveResumeRef.current = 0
-            }, RESUME_RESET_MS)
-          }
-          setPhase('speaking')
-        } else {
-          setPhase('listening')
-        }
-        return
-      }
-
-      // outcome === 'confirm' — commit to the barge.
-      consecutiveResumeRef.current = 0
-      clearResumeReset()
-      if (tentativeRef.current) {
-        tentativeRef.current = false
-        getActiveGroup()?.cancel('barge-cancel')
-        setActiveReader(null, 'idle')
-      }
-      setPhase('thinking')
-      onSendRef.current(result.text.trim())
+      result = await stt.transcribe(audio)
     } catch (err) {
       console.error('[ConversationMode] Transcription failed:', err)
       useNotificationStore.getState().addNotification({
@@ -315,68 +303,50 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         title: 'Transcription failed',
         message: "Couldn't transcribe audio — check the console for details.",
       })
+      setSttInFlight(false)
       if (activeRef.current) {
-        // On STT failure, err on the destructive side: tear down so the
-        // user isn't left with muted playback forever.
-        if (tentativeRef.current) {
-          tentativeRef.current = false
-          getActiveGroup()?.cancel('barge-cancel')
-          setActiveReader(null, 'idle')
-        }
-        consecutiveResumeRef.current = 0
-        clearResumeReset()
-        setPhase('listening')
+        // On STT failure err on the destructive side: drop the Barge and
+        // cancel the active Group so the user isn't left with muted playback.
+        controller.abandonAll()
       }
+      currentBargeRef.current = null
+      publishBargeState()
+      return
     }
-  }, [setPhase, exitStore])
+    setSttInFlight(false)
+
+    if (!activeRef.current || barge.state !== 'pending-stt') {
+      // Teardown / misfire already transitioned this Barge. Controller has
+      // already been told; nothing more to do here.
+      currentBargeRef.current = null
+      publishBargeState()
+      return
+    }
+
+    if (result.text.trim() === '') {
+      controller.resume(barge)
+    } else {
+      controller.commit(barge, result.text.trim())
+    }
+    currentBargeRef.current = null
+    publishBargeState()
+  }, [controller, exitStore, publishBargeState, setSttInFlight])
 
   // Silero fires onSpeechStart on any loud-enough frame — including brief
   // non-speech noise (chair creaks, keyboard clicks) that later turns out to
   // be a misfire. Reacting immediately would cut off playback for those
   // bursts. Instead we defer the barge by BARGE_DELAY_MS; if a misfire
   // arrives inside that window, the pending barge is cancelled and playback
-  // continues untouched. Real speech typically lasts longer than this, so
-  // the barge still fires for genuine interruptions with only a small delay.
+  // continues untouched. Real speech typically lasts longer than this.
   const BARGE_DELAY_MS = 150
   const pendingBargeRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Monotonic counter that identifies the current barge cycle. Incremented
-  // every time a new speech-start is accepted (past the 150 ms misfire
-  // window). Any async result (STT promise) that carries a stale bargeId is
-  // ignored. This is the serialisation primitive for Tentative Barge.
-  const bargeIdRef = useRef(0)
-  // True while we are in TENTATIVE_BARGE — i.e. audio is muted but not yet
-  // torn down. Used by handleSpeechStart to tell a "fresh" barge from a
-  // repeat VAD re-trigger during the same user utterance.
-  const tentativeRef = useRef(false)
-
-  // Feedback-loop guard for tentative barges. When TTS audio bleeds through
-  // the speakers into the mic, VAD may false-trigger on our own playback; STT
-  // then returns empty ('resume'), we replay the muted segment from the
-  // start, the same bleed re-triggers VAD, and we loop. After
-  // MAX_CONSECUTIVE_RESUMES consecutive resume outcomes we instead DISCARD
-  // the muted segment and let the queue carry on. A confirmed barge or a
-  // quiet window of RESUME_RESET_MS resets the counter.
-  const MAX_CONSECUTIVE_RESUMES = 3
-  const RESUME_RESET_MS = 5000
-  const consecutiveResumeRef = useRef(0)
-  const resumeResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const clearResumeReset = () => {
-    if (resumeResetTimerRef.current) {
-      clearTimeout(resumeResetTimerRef.current)
-      resumeResetTimerRef.current = null
-    }
-  }
 
   // True while Silero is tracking an utterance (between speech-start and the
   // matching speech-end / misfire). Read by the release useEffect to decide
   // whether to dispatch immediately or wait for the final speech-end.
   const vadActiveRef = useRef(false)
 
-  // Safety fallback after hold release when VAD is still active: if Silero
-  // never delivers its final speech-end (shouldn't happen, but guards against
-  // a stuck VAD state), this timer flushes whatever is buffered so the user
-  // isn't left waiting forever. See release useEffect below.
+  // Safety fallback after hold release when VAD is still active.
   const RELEASE_SAFETY_MS = 3000
   const releaseFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -388,58 +358,40 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   }, [])
 
   /**
-   * Enter TENTATIVE_BARGE: mute playback instantly, but leave the TTS
-   * synthesis pipeline, the sentence queue, and the LLM stream alone.
-   * The fate of the barge is decided once STT returns.
-   *
-   * If we are already in TENTATIVE_BARGE (user re-triggered VAD mid-
-   * utterance), we only bump bargeId so any in-flight STT becomes stale;
-   * the earliest pause/anchor is kept (Group.pause is idempotent).
+   * Create a new Barge via the controller. The controller handles pausing
+   * the active Group internally. Captures the Barge in a ref so the later
+   * STT path (and handleMisfire) can hand it back for commit/resume/stale.
    */
   const executeBarge = useCallback(() => {
     pendingBargeRef.current = null
-    bargeIdRef.current += 1
-    const current = phaseRef.current
-    if (current === 'thinking' || current === 'speaking') {
-      getActiveGroup()?.pause()
-      tentativeRef.current = true
-    }
-    setPhase('user-speaking')
-  }, [setPhase])
+    currentBargeRef.current = controller.start()
+    publishBargeState()
+  }, [controller, publishBargeState])
 
   /**
-   * VAD speech-start handler. If the user speaks while the LLM is thinking
-   * or a reply is playing, this schedules a Tentative Barge after
-   * BARGE_DELAY_MS (the 150 ms misfire window). On fire, `executeBarge`
-   * mutes playback without tearing down synthesis or the LLM stream; the
-   * tear-down only happens once STT confirms a non-empty transcript (see
-   * `transcribeAndSend`). If Silero retracts via `onVADMisfire` inside the
-   * window, the pending barge is cancelled and nothing is muted.
+   * VAD speech-start handler. Schedules a deferred barge after
+   * BARGE_DELAY_MS; if Silero retracts via `onVADMisfire` inside the window,
+   * the pending barge is cancelled and nothing is muted.
    */
   const handleSpeechStart = useCallback(() => {
     vadActiveRef.current = true
+    setVadActive(true)
     if (!activeRef.current) return
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
     // Start the utterance recorder on the first speech-start of a cycle.
     // If a hold-begin already started it, this is a no-op.
     ensureRecorderStarted()
-  }, [executeBarge, clearPendingBarge, ensureRecorderStarted])
+  }, [executeBarge, clearPendingBarge, ensureRecorderStarted, setVadActive])
 
   /**
    * VAD speech-end handler. Two cases:
-   *   (a) user is holding — we buffer the audio and stay in "user-speaking"
-   *       so the UI keeps showing the hold button. Next speech-start is
-   *       treated as a continuation of the same utterance.
-   *   (b) user is NOT holding — concatenate any previously-held chunks with
-   *       the final chunk and ship it off to STT.
-   *
-   * If a deferred barge is still pending (short but real speech that ended
-   * inside the delay window), fire it now before handling the utterance so
-   * playback stops before we transition to "transcribing".
+   *   (a) user is holding — buffer the audio, stay in user-speaking.
+   *   (b) user is NOT holding — concatenate + ship off to STT.
    */
   const handleSpeechEnd = useCallback((audio: CapturedAudio) => {
     vadActiveRef.current = false
+    setVadActive(false)
     if (!activeRef.current) return
     if (pendingBargeRef.current) {
       clearPendingBarge()
@@ -447,9 +399,6 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     }
     if (holdingRef.current) {
       if (audio.pcm.length > 0) heldAudioRef.current.push(audio.pcm)
-      // Stay in user-speaking; VAD will re-fire speech-start on the next
-      // utterance and we'll continue accumulating. The utterance recorder
-      // keeps running across the gap — one blob per hold-cycle.
       return
     }
     if (releaseFallbackRef.current) {
@@ -457,45 +406,38 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       releaseFallbackRef.current = null
     }
     const merged = flushHeldAudio(audio.pcm)
-    // Finalise the hold-cycle/utterance recorder and bundle before handing
-    // to STT. When there was no recorder (no MediaRecorder support), this
-    // falls through to the Tier-3 WAV built from the PCM.
     void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
-  }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge, finaliseRecorderAndBundle])
+  }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge, finaliseRecorderAndBundle, setVadActive])
 
   /**
-   * VAD misfire handler. Silero optimistically emits speech-start on any
-   * loud-enough frame, then aborts via onVADMisfire (without ever firing
-   * speech-end) if the burst was too short to qualify as speech. If the
-   * deferred barge is still pending, drop it — the noise burst never
-   * became real speech. Otherwise fall back to the listening phase so the
-   * "Hold to keep talking" overlay doesn't linger. If the user is actively
-   * holding, keep the overlay visible — a misfire during hold is just
-   * noise between utterances.
+   * VAD misfire handler. If the deferred barge is still pending, drop it —
+   * the noise burst never became real speech. If the Barge has already been
+   * created (150 ms elapsed before Silero retracted), tell the controller to
+   * mark it stale; the controller will un-pause the Group iff it still
+   * matches the one we paused. During hold we keep the overlay visible —
+   * misfires between utterances are expected.
    */
   const handleMisfire = useCallback(() => {
     vadActiveRef.current = false
+    setVadActive(false)
     if (pendingBargeRef.current) {
       clearPendingBarge()
       return
     }
     if (!activeRef.current) return
     if (holdingRef.current) return
-    // If executeBarge already fired (150 ms elapsed before Silero retracted),
-    // undo the tentative mute so audio resumes instead of staying silent.
-    if (tentativeRef.current) {
-      tentativeRef.current = false
-      getActiveGroup()?.resume()
-      setPhase('speaking')
-      return
+    const barge = currentBargeRef.current
+    if (barge) {
+      controller.stale(barge)
+      currentBargeRef.current = null
+      publishBargeState()
     }
-    setPhase('listening')
-  }, [setPhase, clearPendingBarge])
+  }, [controller, clearPendingBarge, publishBargeState, setVadActive])
 
   /**
-   * Teardown — stop VAD, stop playback, restore session settings. Safe to
-   * call unconditionally; `exit()` on the store short-circuits if we're
-   * already idle.
+   * Teardown — stop VAD, cancel the active Group via the controller, and
+   * restore session settings. `abandonAll` handles both the Barge transition
+   * and the Group cancel in one step.
    */
   const teardown = useCallback(async (restoreSid: string | null) => {
     // Abort any in-flight utterance recorder BEFORE stopContinuous tears down
@@ -508,15 +450,13 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       clearTimeout(releaseFallbackRef.current)
       releaseFallbackRef.current = null
     }
-    clearResumeReset()
-    consecutiveResumeRef.current = 0
-    // Tentative barges are torn down as if confirmed (conservative): when
-    // the user leaves conv-mode or the session is disposed, we do NOT want
-    // a muted audio source sitting around waiting for an STT result that
-    // may never land.
-    tentativeRef.current = false
-    bargeIdRef.current += 1
-    getActiveGroup()?.cancel('teardown')
+    // abandonAll covers: marking the Barge abandoned, clearing the
+    // controller slot, and cancelling the active Group with reason 'teardown'.
+    controller.abandonAll()
+    currentBargeRef.current = null
+    publishBargeState()
+    setSttInFlight(false)
+    setVadActive(false)
 
     const prev = useConversationModeStore.getState().previousReasoningOverride
     if (restoreSid) {
@@ -529,7 +469,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     useChatStore.getState().setReasoningOverride(prev)
 
     heldAudioRef.current = []
-  }, [clearPendingBarge, abortRecorder])
+  }, [clearPendingBarge, abortRecorder, controller, publishBargeState, setSttInFlight, setVadActive])
 
   // Entry effect: when `active` flips on, snapshot reasoning, force it off,
   // and start the VAD. When it flips off, tear everything down.
@@ -563,10 +503,9 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         onMisfire: handleMisfire,
       }, {
         threshold: voiceActivationThresholdRef.current,
-        // We drive our own per-hold-cycle MediaRecorder lifecycle (see
-        // ensureRecorderStarted / finaliseRecorderAndBundle). The blob
-        // delivered by audioCapture in external-recorder mode is the
-        // Tier-3 WAV fallback and is ignored here.
+        // We drive our own per-hold-cycle MediaRecorder lifecycle. The blob
+        // delivered by audioCapture in external-recorder mode is the Tier-3
+        // WAV fallback and is ignored here.
         externalRecorder: true,
       }).catch((err: unknown) => {
         console.error('[ConversationMode] Failed to start VAD:', err)
@@ -594,7 +533,6 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
   // Hold-release: on release we check VAD's tracking state. If idle, dispatch
   // immediately. If active (user released mid-utterance), wait for the next
   // speech-end event which will merge the buffered chunks with the final one.
-  // A longer safety fallback guards against VAD never delivering speech-end.
   const prevHoldingRef = useRef(false)
   useEffect(() => {
     const wasHolding = prevHoldingRef.current
@@ -602,8 +540,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
 
     if (!wasHolding && isHolding) {
       // Hold-begin: make sure a recorder is running so the whole hold-cycle
-      // is captured as one blob. If VAD hasn't fired speech-start yet, this
-      // still grabs the mic stream via audioCapture.getMediaStream().
+      // is captured as one blob.
       ensureRecorderStarted()
       return
     }
@@ -614,17 +551,12 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         releaseFallbackRef.current = null
       }
       if (!vadActiveRef.current) {
-        // VAD idle — the last speech-end has already landed. Dispatch whatever
-        // we have buffered right away.
         if (heldAudioRef.current.length > 0 || utteranceRecorderRef.current) {
           const merged = flushHeldAudio(null)
           void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
         }
         return
       }
-      // VAD still tracking an utterance — wait for its speech-end, which will
-      // merge the buffered chunks with the final one. The safety timer only
-      // fires if that never happens.
       releaseFallbackRef.current = setTimeout(() => {
         releaseFallbackRef.current = null
         if (heldAudioRef.current.length > 0 || utteranceRecorderRef.current) {
@@ -634,51 +566,6 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       }, RELEASE_SAFETY_MS)
     }
   }, [isHolding, flushHeldAudio, transcribeAndSend, finaliseRecorderAndBundle, ensureRecorderStarted])
-
-  // Observe chat stream to advance phase. `isWaitingForResponse` (set by
-  // handleSend) + `isStreaming` (set when tokens arrive) together map to
-  // thinking → speaking → listening.
-  useEffect(() => {
-    if (!active) return
-    const current = phaseRef.current
-
-    if (isStreaming || isWaitingForResponse) {
-      if (current !== 'thinking' && current !== 'speaking') {
-        setPhase('thinking')
-      }
-      return
-    }
-
-    // Not streaming and not waiting. If we were in the middle of a reply,
-    // return to listening. Don't clobber user-speaking / held / transcribing.
-    if (current === 'thinking' || current === 'speaking') {
-      setPhase('listening')
-    }
-  }, [active, isStreaming, isWaitingForResponse, setPhase])
-
-  // Reflect playback state: as soon as audioPlayback starts a segment we
-  // should be in "speaking"; when the stream finishes and audio is quiet
-  // we go back to listening. We poll audioPlayback.isPlaying() lightly —
-  // it's a simple boolean read and avoids wiring new callbacks into the
-  // playback module.
-  useEffect(() => {
-    if (!active) return
-    const tick = window.setInterval(() => {
-      const current = phaseRef.current
-      if (!activeRef.current) return
-      const playing = audioPlayback.isPlaying()
-      if (playing && (current === 'thinking' || current === 'listening')) {
-        setPhase('speaking')
-      } else if (!playing && current === 'speaking') {
-        // Only flip back if the chat stream is also finished.
-        const cs = useChatStore.getState()
-        if (!cs.isStreaming && !cs.isWaitingForResponse) {
-          setPhase('listening')
-        }
-      }
-    }, 150)
-    return () => window.clearInterval(tick)
-  }, [active, setPhase])
 
   // On unmount or session change: if conv-mode is active, exit cleanly.
   useEffect(() => {

@@ -94,9 +94,11 @@ import { useNotificationStore } from '../../../../core/store/notificationStore'
 function resetConvModeStore() {
   useConversationModeStore.setState({
     active: false,
-    phase: 'idle',
     isHolding: false,
     previousReasoningOverride: null,
+    currentBargeState: null,
+    sttInFlight: false,
+    vadActive: false,
   })
 }
 
@@ -137,7 +139,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
   })
 
   it('merges late VAD speech-end (arriving after hold release) with the buffered chunk into one transcription', async () => {
-    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage: vi.fn(),
+    }))
 
     // Enter conv-mode and let startContinuous resolve.
     await act(async () => {
@@ -188,7 +195,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
   })
 
   it('dispatches buffered audio immediately when VAD is idle at release time', async () => {
-    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage: vi.fn(),
+    }))
 
     await act(async () => {
       useConversationModeStore.getState().enter()
@@ -218,7 +230,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
   })
 
   it('release with VAD idle (all speech-ends already fired) dispatches synchronously, no timer', async () => {
-    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage: vi.fn(),
+    }))
 
     await act(async () => {
       useConversationModeStore.getState().enter()
@@ -243,7 +260,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
   })
 
   it('release mid-utterance merges with late speech-end beyond the original 500 ms window', async () => {
-    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage: vi.fn(),
+    }))
 
     await act(async () => {
       useConversationModeStore.getState().enter()
@@ -289,7 +311,12 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
   })
 
   it('safety fallback dispatches buffer if no speech-end arrives within 3 s', async () => {
-    renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage: vi.fn(),
+    }))
 
     await act(async () => {
       useConversationModeStore.getState().enter()

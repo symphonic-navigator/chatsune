@@ -12,13 +12,13 @@ import type { BargeState } from '../bargeController'
  *   thinking      ← LLM is generating tokens (pre-first audio chunk)
  *   speaking      ← TTS audio is playing
  *
- * Transitions are driven by the controller hook (useConversationMode).
- * The store holds only state — not orchestration.
+ * The phase itself is no longer stored. It is derived by `usePhase()` from:
+ *   - the `active` / `isHolding` flags on this store
+ *   - the three reactive-source fields below (currentBargeState,
+ *     sttInFlight, vadActive), written by `useConversationMode`
+ *   - the active Group's state, read via `subscribeActiveGroup`
  *
- * The three reactive-source fields (currentBargeState, sttInFlight,
- * vadActive) are written by useConversationMode and read by usePhase to
- * derive the phase purely. They coexist with the legacy `phase` / `setPhase`
- * pair until Task 4 removes the old pathway.
+ * The store holds only state — not orchestration.
  */
 export type ConversationPhase =
   | 'idle'
@@ -31,7 +31,6 @@ export type ConversationPhase =
 
 export interface ConversationModeState {
   active: boolean
-  phase: ConversationPhase
   isHolding: boolean
   /** Session reasoning_override captured on entry, so we can restore on exit. */
   previousReasoningOverride: boolean | null
@@ -44,7 +43,6 @@ export interface ConversationModeState {
 
   enter: () => void
   exit: () => void
-  setPhase: (phase: ConversationPhase) => void
   setHolding: (holding: boolean) => void
   setPreviousReasoning: (value: boolean | null) => void
   setCurrentBargeState: (state: BargeState | null) => void
@@ -54,23 +52,20 @@ export interface ConversationModeState {
 
 export const useConversationModeStore = create<ConversationModeState>((set) => ({
   active: false,
-  phase: 'idle',
   isHolding: false,
   previousReasoningOverride: null,
   currentBargeState: null,
   sttInFlight: false,
   vadActive: false,
 
-  enter: () => set({ active: true, phase: 'listening' }),
+  enter: () => set({ active: true }),
   exit: () => set({
     active: false,
-    phase: 'idle',
     isHolding: false,
     currentBargeState: null,
     sttInFlight: false,
     vadActive: false,
   }),
-  setPhase: (phase) => set({ phase }),
   setHolding: (isHolding) => set({ isHolding }),
   setPreviousReasoning: (value) => set({ previousReasoningOverride: value }),
   setCurrentBargeState: (currentBargeState) => set({ currentBargeState }),

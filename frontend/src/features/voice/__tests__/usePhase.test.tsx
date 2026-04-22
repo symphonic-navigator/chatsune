@@ -27,7 +27,6 @@ function mockChild(): GroupChild {
 function resetStore() {
   useConversationModeStore.setState({
     active: false,
-    phase: 'idle',
     isHolding: false,
     previousReasoningOverride: null,
     currentBargeState: null,

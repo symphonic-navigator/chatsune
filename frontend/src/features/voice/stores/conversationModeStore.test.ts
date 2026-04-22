@@ -4,7 +4,6 @@ import { useConversationModeStore } from './conversationModeStore'
 function resetStore() {
   useConversationModeStore.setState({
     active: false,
-    phase: 'idle',
     isHolding: false,
     previousReasoningOverride: null,
     currentBargeState: null,
@@ -16,10 +15,9 @@ function resetStore() {
 describe('conversationModeStore', () => {
   beforeEach(resetStore)
 
-  it('starts inactive in the idle phase', () => {
+  it('starts inactive with all reactive-source flags at their defaults', () => {
     const state = useConversationModeStore.getState()
     expect(state.active).toBe(false)
-    expect(state.phase).toBe('idle')
     expect(state.isHolding).toBe(false)
     expect(state.previousReasoningOverride).toBeNull()
     expect(state.currentBargeState).toBeNull()
@@ -27,22 +25,18 @@ describe('conversationModeStore', () => {
     expect(state.vadActive).toBe(false)
   })
 
-  it('enter() flips active and jumps to listening', () => {
+  it('enter() flips active on', () => {
     useConversationModeStore.getState().enter()
-    const state = useConversationModeStore.getState()
-    expect(state.active).toBe(true)
-    expect(state.phase).toBe('listening')
+    expect(useConversationModeStore.getState().active).toBe(true)
   })
 
-  it('exit() resets active/phase/holding to defaults', () => {
+  it('exit() resets active/holding to defaults', () => {
     const s = useConversationModeStore.getState()
     s.enter()
-    s.setPhase('speaking')
     s.setHolding(true)
     s.exit()
     const state = useConversationModeStore.getState()
     expect(state.active).toBe(false)
-    expect(state.phase).toBe('idle')
     expect(state.isHolding).toBe(false)
   })
 
@@ -87,30 +81,11 @@ describe('conversationModeStore', () => {
     expect(useConversationModeStore.getState().previousReasoningOverride).toBe(true)
   })
 
-  it('setPhase transitions through the state machine', () => {
+  it('setHolding toggles independently of other state', () => {
     const s = useConversationModeStore.getState()
     s.enter()
-    const transitions: Array<import('./conversationModeStore').ConversationPhase> = [
-      'user-speaking',
-      'held',
-      'transcribing',
-      'thinking',
-      'speaking',
-      'listening',
-    ]
-    for (const p of transitions) {
-      s.setPhase(p)
-      expect(useConversationModeStore.getState().phase).toBe(p)
-    }
-  })
-
-  it('setHolding toggles independently of phase', () => {
-    const s = useConversationModeStore.getState()
-    s.enter()
-    s.setPhase('user-speaking')
     s.setHolding(true)
     expect(useConversationModeStore.getState().isHolding).toBe(true)
-    expect(useConversationModeStore.getState().phase).toBe('user-speaking')
     s.setHolding(false)
     expect(useConversationModeStore.getState().isHolding).toBe(false)
   })

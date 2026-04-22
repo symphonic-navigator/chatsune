@@ -49,6 +49,7 @@ import { resolveModulation } from '../voice/pipeline/applyModulation'
 import type { NarratorMode } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
+import { usePhase } from '../voice/usePhase'
 import { createResponseTaskGroup, registerActiveGroup, getActiveGroup } from './responseTaskGroup'
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
@@ -488,7 +489,7 @@ export function ChatView({ persona }: ChatViewProps) {
   // Conversation-mode active state — read once here so we can override
   // auto_read while the user is in a live conversation.
   const conversationActive = useConversationModeStore((s) => s.active)
-  const conversationPhase = useConversationModeStore((s) => s.phase)
+  const conversationPhase = usePhase()
   const conversationIsHolding = useConversationModeStore((s) => s.isHolding)
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
   const enterConversationMode = useConversationModeStore((s) => s.enter)
@@ -559,8 +560,12 @@ export function ChatView({ persona }: ChatViewProps) {
     return group
   }, [conversationActive, persona, intDefinitions, intConfigs])
 
-  const handleSend = useCallback(
-    (text: string) => {
+  // Optimistically append the user message and dispatch the WS send. Factored
+  // out so voice-mode's bargeController can call it directly on commit — the
+  // controller registers the new Group, then asks us to send for the matching
+  // correlation id. Used by both handleSend (text path) and the voice path.
+  const insertOptimisticAndSend = useCallback(
+    (correlationId: string, text: string) => {
       if (!effectiveSessionId) return
       const clientMessageId = `optimistic-${crypto.randomUUID()}`
       const optimisticMsg: ChatMessageDto = {
@@ -577,9 +582,6 @@ export function ChatView({ persona }: ChatViewProps) {
       }
       useChatStore.getState().appendMessage(optimisticMsg)
       useChatStore.getState().setWaitingForResponse(true)
-
-      const correlationId = crypto.randomUUID()
-      createAndRegisterGroup(correlationId, effectiveSessionId)
 
       if (isIncognito) {
         const allMessages = useChatStore.getState().messages
@@ -605,7 +607,17 @@ export function ChatView({ persona }: ChatViewProps) {
       }
       setTimeout(() => scrollToBottom(), 50)
     },
-    [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments, createAndRegisterGroup],
+    [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments],
+  )
+
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!effectiveSessionId) return
+      const correlationId = crypto.randomUUID()
+      createAndRegisterGroup(correlationId, effectiveSessionId)
+      insertOptimisticAndSend(correlationId, text)
+    },
+    [effectiveSessionId, createAndRegisterGroup, insertOptimisticAndSend],
   )
 
   const handleCancel = useCallback(() => {
@@ -841,10 +853,19 @@ export function ChatView({ persona }: ChatViewProps) {
   const conversationAvailable = sttEnabled && ttsConfigured
 
   // Conv-mode controller: owns VAD + auto-send + barge on speech-start.
+  // The voice path goes through bargeController, which asks ChatView to
+  // build + register a Group and then to dispatch the WS send — both reuse
+  // the same primitives the text path uses.
   useConversationMode({
     sessionId: effectiveSessionId ?? null,
     available: conversationAvailable,
-    onSend: handleSend,
+    buildAndRegisterGroup: (correlationId, _transcript) => {
+      const sid = effectiveSessionId ?? ''
+      const g = createAndRegisterGroup(correlationId, sid)
+      return g.id
+    },
+    sendChatMessage: (correlationId, transcript) =>
+      insertOptimisticAndSend(correlationId, transcript),
   })
   useWakeLock(conversationActive)
 
