@@ -7,6 +7,9 @@ function resetStore() {
     phase: 'idle',
     isHolding: false,
     previousReasoningOverride: null,
+    currentBargeState: null,
+    sttInFlight: false,
+    vadActive: false,
   })
 }
 
@@ -19,6 +22,9 @@ describe('conversationModeStore', () => {
     expect(state.phase).toBe('idle')
     expect(state.isHolding).toBe(false)
     expect(state.previousReasoningOverride).toBeNull()
+    expect(state.currentBargeState).toBeNull()
+    expect(state.sttInFlight).toBe(false)
+    expect(state.vadActive).toBe(false)
   })
 
   it('enter() flips active and jumps to listening', () => {
@@ -38,6 +44,37 @@ describe('conversationModeStore', () => {
     expect(state.active).toBe(false)
     expect(state.phase).toBe('idle')
     expect(state.isHolding).toBe(false)
+  })
+
+  it('exit() resets currentBargeState/sttInFlight/vadActive to defaults', () => {
+    const s = useConversationModeStore.getState()
+    s.enter()
+    s.setCurrentBargeState('pending-stt')
+    s.setSttInFlight(true)
+    s.setVadActive(true)
+    s.exit()
+    const state = useConversationModeStore.getState()
+    expect(state.currentBargeState).toBeNull()
+    expect(state.sttInFlight).toBe(false)
+    expect(state.vadActive).toBe(false)
+  })
+
+  it('setCurrentBargeState / setSttInFlight / setVadActive update their fields', () => {
+    const s = useConversationModeStore.getState()
+    s.setCurrentBargeState('confirmed')
+    expect(useConversationModeStore.getState().currentBargeState).toBe('confirmed')
+    s.setCurrentBargeState(null)
+    expect(useConversationModeStore.getState().currentBargeState).toBeNull()
+
+    s.setSttInFlight(true)
+    expect(useConversationModeStore.getState().sttInFlight).toBe(true)
+    s.setSttInFlight(false)
+    expect(useConversationModeStore.getState().sttInFlight).toBe(false)
+
+    s.setVadActive(true)
+    expect(useConversationModeStore.getState().vadActive).toBe(true)
+    s.setVadActive(false)
+    expect(useConversationModeStore.getState().vadActive).toBe(false)
   })
 
   it('exit() leaves the captured previous-reasoning so the controller can restore it', () => {
