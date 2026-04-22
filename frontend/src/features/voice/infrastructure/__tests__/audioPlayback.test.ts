@@ -280,6 +280,19 @@ describe('audioPlayback — pause/resume', () => {
     expect(() => audioPlayback.enqueue(new Float32Array(10), SEGMENT)).not.toThrow()
     expect(audioPlayback.isPlaying()).toBe(true)
   })
+
+  it('clearScope resets paused so the next group can auto-play', () => {
+    // Simulate a barge-cancel hand-off: pause was active on the old group,
+    // then clearScope runs while the token still matches, then a new group
+    // sets its own token and enqueues — that enqueue must auto-play.
+    audioPlayback.setCurrentToken('old-group')
+    audioPlayback.pause()
+    audioPlayback.clearScope('old-group')
+    audioPlayback.setCurrentToken('new-group')
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT, 'new-group')
+    expect(audioPlayback.isPlaying()).toBe(true)
+  })
 })
 
 describe('audioPlayback — subscribe API', () => {

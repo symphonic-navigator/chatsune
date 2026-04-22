@@ -82,6 +82,10 @@ class AudioPlaybackImpl {
   /**
    * Drops the queue and stops the current source if `token` matches the
    * active scope token. No-op when the tokens differ.
+   *
+   * Also resets the `paused` flag — with the queue gone, paused carries no
+   * meaning, and leaving it set would block the next group's enqueues from
+   * auto-playing after a barge-cancel hand-off.
    */
   clearScope(token: string): void {
     if (this.currentToken !== token) return
@@ -96,6 +100,7 @@ class AudioPlaybackImpl {
       this.currentSource = null
     }
     this.playing = false
+    this.paused = false
     this.emit()
   }
 
