@@ -13,14 +13,19 @@ function makeChild(overrides: Partial<GroupChild> = {}): GroupChild & {
   onDelta: Mock; onStreamEnd: Mock; onCancel: Mock; teardown: Mock
   onPause?: Mock; onResume?: Mock
 } {
-  return {
+  const base = {
     name: overrides.name ?? 'mock',
     onDelta: vi.fn(),
     onStreamEnd: vi.fn().mockResolvedValue(undefined),
     onCancel: vi.fn(),
     teardown: vi.fn(),
-    ...overrides,
-  } as any
+    onPause: vi.fn(),
+    onResume: vi.fn(),
+  }
+  return { ...base, ...overrides } as GroupChild & {
+    onDelta: Mock; onStreamEnd: Mock; onCancel: Mock; teardown: Mock
+    onPause: Mock; onResume: Mock
+  }
 }
 
 function makeGroup(correlationId: string, extraChildOverrides: Partial<GroupChild> = {}): {
@@ -54,17 +59,19 @@ function makeDeps(overrides: Partial<BargeControllerDeps> = {}): BargeController
   buildAndRegisterGroup: Mock
   sendChatMessage: Mock
 } {
-  return {
+  const base = {
     buildAndRegisterGroup: vi.fn((correlationId: string, _transcript: string) => {
-      // Default: build a fresh Group and register it.
       const { group } = makeGroup(correlationId)
       registerActiveGroup(group)
       return group.id
     }),
     sendChatMessage: vi.fn(),
     logger: makeLogger(),
-    ...overrides,
-  } as any
+  }
+  return { ...base, ...overrides } as BargeControllerDeps & {
+    buildAndRegisterGroup: Mock
+    sendChatMessage: Mock
+  }
 }
 
 describe('bargeController', () => {
