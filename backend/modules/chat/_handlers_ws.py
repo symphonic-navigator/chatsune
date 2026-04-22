@@ -104,7 +104,7 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             ]
 
         token_count = count_tokens(text)
-        correlation_id = str(uuid4())
+        correlation_id = data.get("correlation_id") or str(uuid4())
         saved_msg = await repo.save_message(
             session_id,
             role="user",
@@ -240,7 +240,7 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             await _reject("invalid_edit", "Cannot save an empty message.")
             return
 
-        correlation_id = str(uuid4())
+        correlation_id = data.get("correlation_id") or str(uuid4())
         now = datetime.now(timezone.utc)
         event_bus = get_event_bus()
 
@@ -317,7 +317,7 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
         if last_msg["role"] not in ("assistant", "user"):
             return
 
-        correlation_id = str(uuid4())
+        correlation_id = data.get("correlation_id") or str(uuid4())
         now = datetime.now(timezone.utc)
         event_bus = get_event_bus()
 
@@ -437,7 +437,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             cache_hint=session_id,
         )
 
-        correlation_id = str(uuid4())
+        correlation_id = data.get("correlation_id") or str(uuid4())
         cancel_event = asyncio.Event()
         _cancel_events[correlation_id] = cancel_event
         _cancel_user_ids[correlation_id] = user_id
