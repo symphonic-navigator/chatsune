@@ -579,9 +579,11 @@ export function useConversationMode({
   }, [exitStore, teardown])
 
   useEffect(() => {
-    if (active) exitStore()
-    // Intentionally only on sessionId change; `active` is read to trigger
-    // a synchronous exit when the user navigates mid-conversation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId])
+    // Read live from the store rather than the render-time closure: if
+    // the user enters conv-mode and switches session in the same batch,
+    // the closure would still see `active=false` even though the store
+    // has already flipped true, leaving the new session in a half-entered
+    // state.
+    if (useConversationModeStore.getState().active) exitStore()
+  }, [sessionId, exitStore])
 }
