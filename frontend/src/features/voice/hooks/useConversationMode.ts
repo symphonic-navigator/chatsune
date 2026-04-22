@@ -3,7 +3,7 @@ import { useConversationModeStore } from '../stores/conversationModeStore'
 import { voicePipeline } from '../pipeline/voicePipeline'
 import { audioCapture } from '../infrastructure/audioCapture'
 import { audioPlayback } from '../infrastructure/audioPlayback'
-import { cancelStreamingAutoRead } from '../pipeline/streamingAutoReadControl'
+import { getActiveGroup } from '../../chat/responseTaskGroup'
 import { useChatStore } from '../../../core/store/chatStore'
 import { chatApi } from '../../../core/api/chat'
 import { useNotificationStore } from '../../../core/store/notificationStore'
@@ -236,7 +236,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       // return to listening.
       if (tentativeRef.current) {
         tentativeRef.current = false
-        audioPlayback.resumeFromMute()
+        getActiveGroup()?.resume()
         setPhase('speaking')
       } else {
         setPhase('listening')
@@ -280,11 +280,11 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
           if (consecutiveResumeRef.current >= MAX_CONSECUTIVE_RESUMES) {
             // Likely TTS-bleed feedback loop — skip past the muted segment
             // instead of replaying it yet again.
-            audioPlayback.discardMuted()
+            getActiveGroup()?.cancel('barge-cancel')
             consecutiveResumeRef.current = 0
             clearResumeReset()
           } else {
-            audioPlayback.resumeFromMute()
+            getActiveGroup()?.resume()
             clearResumeReset()
             resumeResetTimerRef.current = setTimeout(() => {
               resumeResetTimerRef.current = null
@@ -303,7 +303,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
       clearResumeReset()
       if (tentativeRef.current) {
         tentativeRef.current = false
-        cancelStreamingAutoRead()   // kills sentencer session + stopAll internally
+        getActiveGroup()?.cancel('barge-cancel')
         setActiveReader(null, 'idle')
       }
       setPhase('thinking')
@@ -320,7 +320,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
         // user isn't left with muted playback forever.
         if (tentativeRef.current) {
           tentativeRef.current = false
-          cancelStreamingAutoRead()
+          getActiveGroup()?.cancel('barge-cancel')
           setActiveReader(null, 'idle')
         }
         consecutiveResumeRef.current = 0
@@ -401,7 +401,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     bargeIdRef.current += 1
     const current = phaseRef.current
     if (current === 'thinking' || current === 'speaking') {
-      audioPlayback.mute()
+      getActiveGroup()?.pause()
       tentativeRef.current = true
     }
     setPhase('user-speaking')
@@ -485,7 +485,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     // undo the tentative mute so audio resumes instead of staying silent.
     if (tentativeRef.current) {
       tentativeRef.current = false
-      audioPlayback.resumeFromMute()
+      getActiveGroup()?.resume()
       setPhase('speaking')
       return
     }
@@ -516,7 +516,7 @@ export function useConversationMode({ sessionId, available, onSend }: UseConvers
     // may never land.
     tentativeRef.current = false
     bargeIdRef.current += 1
-    cancelStreamingAutoRead()
+    getActiveGroup()?.cancel('teardown')
 
     const prev = useConversationModeStore.getState().previousReasoningOverride
     if (restoreSid) {

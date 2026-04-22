@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { useIntegrationsStore } from './store'
 import { getPlugin } from './registry'
 import { useAudioPlaybackActive } from '../voice/infrastructure/useAudioPlaybackActive'
-import { cancelStreamingAutoRead } from '../voice/pipeline/streamingAutoReadControl'
-import { setActiveReader } from '../voice/components/ReadAloudButton'
+import { getActiveGroup } from '../chat/responseTaskGroup'
 import { resolveTTSIntegrationId } from '../voice/engines/resolver'
 import type { PersonaDto } from '../../core/types/persona'
 
@@ -86,8 +85,7 @@ export function ChatIntegrationsPanel({ persona }: Props = {}) {
       // (per-provider: chip is only rendered for the active one, so this
       // cannot double-cancel someone else's playback).
       if (ttsProviderIds.has(integrationId)) {
-        cancelStreamingAutoRead()
-        setActiveReader(null, 'idle')
+        getActiveGroup()?.cancel('teardown')
       }
       const plugin = getPlugin(integrationId)
       const config = configs[integrationId]?.config ?? {}

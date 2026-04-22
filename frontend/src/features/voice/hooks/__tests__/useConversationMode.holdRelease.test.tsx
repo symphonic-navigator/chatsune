@@ -56,8 +56,8 @@ vi.mock('../../pipeline/voicePipeline', () => ({
   },
 }))
 
-vi.mock('../../pipeline/streamingAutoReadControl', () => ({
-  cancelStreamingAutoRead: vi.fn(),
+vi.mock('../../../chat/responseTaskGroup', () => ({
+  getActiveGroup: () => ({ pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() }),
 }))
 
 vi.mock('../../components/ReadAloudButton', () => ({

@@ -34,18 +34,10 @@ function captureFromPcm(pcm: Float32Array): CapturedAudio {
   }
 }
 
-// NOTE: we intentionally do NOT mock the audioPlayback module — the spec
-// requires spying on the real methods via vi.spyOn so the real discardMuted
-// implementation is exercised where reachable.
-
 vi.mock('../../pipeline/voicePipeline', () => ({
   voicePipeline: {
     stopRecording: vi.fn(),
   },
-}))
-
-vi.mock('../../pipeline/streamingAutoReadControl', () => ({
-  cancelStreamingAutoRead: vi.fn(),
 }))
 
 vi.mock('../../components/ReadAloudButton', () => ({
@@ -71,6 +63,17 @@ vi.mock('../../../../core/api/chat', () => ({
   chatApi: {
     updateSessionReasoning: vi.fn(async () => ({})),
   },
+}))
+
+// Provide a fake active group so the hook can call group verbs.
+const fakeGroup = {
+  pause: vi.fn(),
+  resume: vi.fn(),
+  cancel: vi.fn(),
+}
+
+vi.mock('../../../chat/responseTaskGroup', () => ({
+  getActiveGroup: () => fakeGroup,
 }))
 
 import { useConversationMode } from '../useConversationMode'
@@ -113,7 +116,7 @@ async function flushMicrotasks() {
  */
 async function driveBargeCycle(transcript: string): Promise<void> {
   transcribeMock.mockResolvedValueOnce({ text: transcript })
-  // executeBarge only mutes + sets tentativeRef when phase is thinking or
+  // executeBarge only pauses + sets tentativeRef when phase is thinking or
   // speaking. Force it before firing speech-start so the deferred barge
   // picks up the right phase.
   act(() => { useConversationModeStore.getState().setPhase('speaking') })
@@ -127,36 +130,28 @@ async function driveBargeCycle(transcript: string): Promise<void> {
 }
 
 describe('useConversationMode — tentative-barge safety cap', () => {
-  let muteSpy: ReturnType<typeof vi.spyOn>
-  let resumeSpy: ReturnType<typeof vi.spyOn>
-  let discardSpy: ReturnType<typeof vi.spyOn>
   let isPlayingSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     vi.useFakeTimers()
     captured = null
     transcribeMock.mockReset()
+    fakeGroup.pause.mockClear()
+    fakeGroup.resume.mockClear()
+    fakeGroup.cancel.mockClear()
     resetConvModeStore()
     resetChatStore()
     resetNotifications()
-    // Stub only the methods the hook touches; let the spies observe calls
-    // without running the real audio context.
-    muteSpy = vi.spyOn(audioPlayback, 'mute').mockImplementation(() => {})
-    resumeSpy = vi.spyOn(audioPlayback, 'resumeFromMute').mockImplementation(() => {})
-    discardSpy = vi.spyOn(audioPlayback, 'discardMuted').mockImplementation(() => {})
     isPlayingSpy = vi.spyOn(audioPlayback, 'isPlaying').mockReturnValue(false)
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    muteSpy.mockRestore()
-    resumeSpy.mockRestore()
-    discardSpy.mockRestore()
     isPlayingSpy.mockRestore()
     vi.clearAllMocks()
   })
 
-  it('after 3 consecutive resume outcomes, discardMuted is called instead of resumeFromMute', async () => {
+  it('after 3 consecutive resume outcomes, group.cancel is called instead of group.resume', async () => {
     renderHook(() => useConversationMode({ sessionId: 's1', available: true, onSend: vi.fn() }))
     await act(async () => {
       useConversationModeStore.getState().enter()
@@ -169,8 +164,9 @@ describe('useConversationMode — tentative-barge safety cap', () => {
     await driveBargeCycle('')
     await driveBargeCycle('')
 
-    expect(resumeSpy).toHaveBeenCalledTimes(2)
-    expect(discardSpy).toHaveBeenCalledTimes(1)
+    // First two resume outcomes call group.resume(); third exceeds cap and calls group.cancel.
+    expect(fakeGroup.resume).toHaveBeenCalledTimes(2)
+    expect(fakeGroup.cancel).toHaveBeenCalledWith('barge-cancel')
   })
 
   it('a confirm outcome resets the counter', async () => {
@@ -182,16 +178,19 @@ describe('useConversationMode — tentative-barge safety cap', () => {
     })
     expect(captured).not.toBeNull()
 
-    // 2 resumes, 1 confirm, then 1 more resume — should still resume (not discard).
+    // 2 resumes, 1 confirm, then 1 more resume — should still resume (not cancel).
     await driveBargeCycle('')
     await driveBargeCycle('')
     await driveBargeCycle('hello there')
     await driveBargeCycle('')
 
     expect(onSend).toHaveBeenCalledTimes(1)
-    expect(discardSpy).not.toHaveBeenCalled()
+    // The confirm called cancel('barge-cancel'); the 4th cycle is a resume, not a cancel.
+    // cancel was called exactly once (for the confirm barge).
+    const cancelCalls = fakeGroup.cancel.mock.calls.filter(([reason]) => reason !== 'teardown')
+    expect(cancelCalls).toHaveLength(1)
     // Resumes: two before the confirm, one after → three total.
-    expect(resumeSpy).toHaveBeenCalledTimes(3)
+    expect(fakeGroup.resume).toHaveBeenCalledTimes(3)
   })
 
   it('RESUME_RESET_MS elapsing resets the counter', async () => {
@@ -204,16 +203,17 @@ describe('useConversationMode — tentative-barge safety cap', () => {
 
     // 1 resume.
     await driveBargeCycle('')
-    expect(resumeSpy).toHaveBeenCalledTimes(1)
+    expect(fakeGroup.resume).toHaveBeenCalledTimes(1)
 
     // Advance past the 5 s reset window.
     await act(async () => { vi.advanceTimersByTime(5_100) })
 
-    // Two more resumes in quick succession — should still resume, not discard.
+    // Two more resumes in quick succession — should still resume, not cancel.
     await driveBargeCycle('')
     await driveBargeCycle('')
 
-    expect(discardSpy).not.toHaveBeenCalled()
-    expect(resumeSpy).toHaveBeenCalledTimes(3)
+    const cancelBargeCalls = fakeGroup.cancel.mock.calls.filter(([reason]) => reason === 'barge-cancel')
+    expect(cancelBargeCalls).toHaveLength(0)
+    expect(fakeGroup.resume).toHaveBeenCalledTimes(3)
   })
 })

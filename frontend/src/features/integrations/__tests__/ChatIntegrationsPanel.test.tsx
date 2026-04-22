@@ -11,13 +11,10 @@ vi.mock('../../voice/infrastructure/useAudioPlaybackActive', () => ({
   useAudioPlaybackActive: () => false,
 }))
 
-const cancelStreamingAutoRead = vi.fn()
-const setActiveReader = vi.fn()
-vi.mock('../../voice/pipeline/streamingAutoReadControl', () => ({
-  cancelStreamingAutoRead: (...args: unknown[]) => cancelStreamingAutoRead(...args),
-}))
-vi.mock('../../voice/components/ReadAloudButton', () => ({
-  setActiveReader: (...args: unknown[]) => setActiveReader(...args),
+const fakeGroupCancel = vi.fn()
+const fakeGroup = { cancel: fakeGroupCancel, pause: vi.fn(), resume: vi.fn() }
+vi.mock('../../chat/responseTaskGroup', () => ({
+  getActiveGroup: () => fakeGroup,
 }))
 
 function makeDef(id: string, name: string): IntegrationDefinition {
@@ -41,8 +38,7 @@ function makeConfig(id: string): UserIntegrationConfig {
 }
 
 beforeEach(() => {
-  cancelStreamingAutoRead.mockClear()
-  setActiveReader.mockClear()
+  fakeGroupCancel.mockClear()
 })
 
 afterEach(() => {
@@ -78,7 +74,6 @@ describe('ChatIntegrationsPanel', () => {
     expect(lovenseStop).toHaveBeenCalledTimes(1)
     expect(mistralStop).not.toHaveBeenCalled()
     // Clicking Lovense must not trigger TTS-cancel logic.
-    expect(cancelStreamingAutoRead).not.toHaveBeenCalled()
-    expect(setActiveReader).not.toHaveBeenCalled()
+    expect(fakeGroupCancel).not.toHaveBeenCalled()
   })
 })
