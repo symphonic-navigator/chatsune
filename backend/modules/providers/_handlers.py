@@ -219,80 +219,31 @@ async def test_account(
     errors. Always HTTP 200 unless the provider or account is
     unknown (then 404).
     """
-    import httpx
-    from typing import Literal
-
-    from backend.modules.providers._registry import get as get_definition
-    from backend.modules.providers._repository import (
-        PremiumProviderAccountRepository,
+    from backend.modules.providers._probe import (
+        PremiumProviderProbeAccountMissing,
+        PremiumProviderProbeSecretMissing,
+        PremiumProviderProbeUnknownProvider,
+        probe_provider_account,
     )
-    from backend.ws.event_bus import get_event_bus
-    from shared.events.providers import PremiumProviderAccountTestedEvent
-    from shared.topics import Topics
 
-    defn = get_definition(provider_id)
-    if defn is None:
+    try:
+        result = await probe_provider_account(user["sub"], provider_id)
+    except PremiumProviderProbeUnknownProvider:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Unknown provider",
         )
-
-    repo = PremiumProviderAccountRepository(get_db())
-    doc = await repo.find(user["sub"], provider_id)
-    if doc is None:
+    except PremiumProviderProbeAccountMissing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No account configured",
         )
-    api_key = repo.get_decrypted_secret(doc, "api_key")
-    if api_key is None:
+    except PremiumProviderProbeSecretMissing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No API key stored",
         )
 
-    probe_status: Literal["ok", "error"] = "error"
-    probe_error: str | None = None
-    timeout = httpx.Timeout(10.0)
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as c:
-            resp = await c.request(
-                defn.probe_method,
-                defn.probe_url,
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-        if resp.status_code == 200:
-            probe_status = "ok"
-            probe_error = None
-        elif resp.status_code in (401, 403):
-            probe_error = f"API key rejected by {defn.display_name}"
-        else:
-            probe_error = (
-                f"{defn.display_name} returned {resp.status_code}"
-            )
-    except Exception as exc:  # noqa: BLE001 — surface to the frontend
-        probe_error = str(exc) or exc.__class__.__name__
-
-    await repo.update_test_status(
-        user["sub"], provider_id,
-        status=probe_status, error=probe_error,
-    )
-
-    bus = get_event_bus()
-    await bus.publish(
-        Topics.PREMIUM_PROVIDER_ACCOUNT_TESTED,
-        PremiumProviderAccountTestedEvent(
-            provider_id=provider_id,
-            status=probe_status,
-            error=probe_error,
-        ),
-        target_user_ids=[user["sub"]],
-    )
-    _log.info(
-        "premium probe provider=%s user=%s status=%s",
-        provider_id, user["sub"], probe_status,
-    )
-
     return PremiumProviderTestResultDto(
-        status=probe_status, error=probe_error,
+        status=result.status, error=result.error,
     )

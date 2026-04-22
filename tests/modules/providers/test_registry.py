@@ -15,9 +15,11 @@ def test_xai_registered():
     assert "xai_voice" in defn.linked_integrations
 
 
-def test_mistral_registered_as_voice_only():
+def test_mistral_registered_as_voice_and_llm():
     defn = get("mistral")
-    assert set(defn.capabilities) == {Capability.TTS, Capability.STT}
+    assert set(defn.capabilities) == {
+        Capability.LLM, Capability.TTS, Capability.STT,
+    }
     assert "mistral_voice" in defn.linked_integrations
 
 

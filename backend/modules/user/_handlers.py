@@ -1,6 +1,14 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+)
 
 from backend.config import settings
 from backend.database import get_db, get_redis
@@ -89,6 +97,16 @@ def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(**kwargs)
 
 
+def _schedule_premium_provider_auto_tests(
+    background_tasks: BackgroundTasks, user_id: str,
+) -> None:
+    from backend.modules.providers._probe import (
+        auto_test_untested_provider_accounts,
+    )
+
+    background_tasks.add_task(auto_test_untested_provider_accounts, user_id)
+
+
 # --- Auth Status ---
 
 
@@ -166,7 +184,12 @@ async def setup(
 
 
 @router.post("/auth/login")
-async def login(body: LoginRequestDto, response: Response, request: Request):
+async def login(
+    body: LoginRequestDto,
+    response: Response,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     client_ip = get_client_ip(request)
     if not await check_login_rate_limit(client_ip):
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
@@ -195,6 +218,7 @@ async def login(body: LoginRequestDto, response: Response, request: Request):
     await store.store(refresh_token, user_id=user["_id"], session_id=session_id)
 
     _set_refresh_cookie(response, refresh_token)
+    _schedule_premium_provider_auto_tests(background_tasks, user["_id"])
 
     return TokenResponseDto(
         access_token=access_token,
@@ -205,6 +229,7 @@ async def login(body: LoginRequestDto, response: Response, request: Request):
 @router.post("/auth/refresh")
 async def refresh(
     response: Response,
+    background_tasks: BackgroundTasks,
     refresh_token: str | None = Cookie(default=None),
 ):
     if not refresh_token:
@@ -233,6 +258,7 @@ async def refresh(
     )
 
     _set_refresh_cookie(response, new_refresh_token)
+    _schedule_premium_provider_auto_tests(background_tasks, user["_id"])
 
     return TokenResponseDto(
         access_token=access_token,
