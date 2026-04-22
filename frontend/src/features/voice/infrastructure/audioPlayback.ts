@@ -23,6 +23,7 @@ class AudioPlaybackImpl {
   private currentEntry: QueueEntry | null = null
   private mutedEntry: QueueEntry | null = null
   private muted = false
+  private currentToken: string | null = null
   private callbacks: AudioPlaybackCallbacks | null = null
   private playing = false
   private streamClosed = false
@@ -57,7 +58,41 @@ class AudioPlaybackImpl {
     }
   }
 
-  enqueue(audio: Float32Array, segment: SpeechSegment): void {
+  setCurrentToken(token: string | null): void {
+    this.currentToken = token
+  }
+
+  /**
+   * Drops the queue and stops the current source if `token` matches the
+   * active scope token. No-op when the tokens differ. During the shim period
+   * (Tasks 8-14) this does not touch the mute-shim state; that is cleaned up
+   * once all call sites have migrated to the token-aware API.
+   */
+  clearScope(token: string): void {
+    if (this.currentToken !== token) return
+    this.queue = []
+    if (this.pendingGapTimer !== null) {
+      clearTimeout(this.pendingGapTimer)
+      this.pendingGapTimer = null
+    }
+    if (this.currentSource) {
+      this.currentSource.onended = null
+      try { this.currentSource.stop() } catch { /* already stopped */ }
+      this.currentSource = null
+    }
+    this.currentEntry = null
+    this.playing = false
+    this.emit()
+  }
+
+  enqueue(audio: Float32Array, segment: SpeechSegment, token?: string): void {
+    // When a token is supplied and a current scope token is set, drop the chunk
+    // if they do not match. Callers that pass no token (shim-period call sites)
+    // are always accepted so backwards compatibility is preserved.
+    if (token !== undefined && this.currentToken !== null && token !== this.currentToken) {
+      console.debug(`[audioPlayback] drop chunk (token mismatch: got=${token}, current=${this.currentToken})`)
+      return
+    }
     this.queue.push({ audio, segment })
     if (!this.playing && this.pendingGapTimer === null && !this.muted) this.playNext()
     this.emit()

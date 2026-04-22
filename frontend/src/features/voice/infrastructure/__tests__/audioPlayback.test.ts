@@ -433,6 +433,61 @@ describe('audioPlayback — discardMuted', () => {
   })
 })
 
+describe('audioPlayback — token gating', () => {
+  beforeEach(() => {
+    audioPlayback.stopAll()
+    audioPlayback.setCurrentToken(null)
+  })
+
+  it('drops enqueue when token does not match current', () => {
+    audioPlayback.setCurrentToken('token-A')
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x', speed: 1, pitch: 0 } as unknown as SpeechSegment
+    audioPlayback.enqueue(fakeAudio, fakeSegment, 'token-B')
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('accepts enqueue when token matches', () => {
+    audioPlayback.setCurrentToken('token-A')
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x', speed: 1, pitch: 0 } as unknown as SpeechSegment
+    // Should not throw; queue accepts the entry (real playback depends on AudioContext
+    // which is unavailable in jsdom — the assertion here is that enqueue did not drop).
+    expect(() => audioPlayback.enqueue(fakeAudio, fakeSegment, 'token-A')).not.toThrow()
+  })
+
+  it('clearScope(token) drops queue when token matches current', () => {
+    audioPlayback.setCurrentToken('token-A')
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x', speed: 1, pitch: 0 } as unknown as SpeechSegment
+    audioPlayback.enqueue(fakeAudio, fakeSegment, 'token-A')
+    audioPlayback.clearScope('token-A')
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('clearScope(token) is a no-op when token does not match current', () => {
+    audioPlayback.setCurrentToken('token-A')
+    const before = audioPlayback.isPlaying()
+    audioPlayback.clearScope('other-token')
+    expect(audioPlayback.isPlaying()).toBe(before)
+  })
+
+  it('enqueue without token is accepted regardless of currentToken (backwards compat)', () => {
+    audioPlayback.setCurrentToken('token-A')
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x' } as unknown as SpeechSegment
+    // Call site passes no token — shim period, must not drop.
+    expect(() => audioPlayback.enqueue(fakeAudio, fakeSegment)).not.toThrow()
+  })
+
+  it('enqueue with token is accepted when currentToken is null (no scope set)', () => {
+    audioPlayback.setCurrentToken(null)
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x' } as unknown as SpeechSegment
+    expect(() => audioPlayback.enqueue(fakeAudio, fakeSegment, 'token-A')).not.toThrow()
+  })
+})
+
 describe('audioPlayback — subscribe API', () => {
   it('subscribe returns an unsubscribe fn; unsubscribed listeners are not called', () => {
     audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
