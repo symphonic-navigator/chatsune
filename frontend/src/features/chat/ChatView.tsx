@@ -50,7 +50,7 @@ import type { NarratorMode } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
 import { usePhase } from '../voice/usePhase'
-import { createResponseTaskGroup, registerActiveGroup, getActiveGroup } from './responseTaskGroup'
+import { createResponseTaskGroup, registerActiveGroup, getActiveGroup, cancelCurrentActiveGroup } from './responseTaskGroup'
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
@@ -498,6 +498,13 @@ export function ChatView({ persona }: ChatViewProps) {
   // Build and register a ResponseTaskGroup for a new response. Must be called
   // BEFORE the WS message is sent so the Group is ready to receive events.
   const createAndRegisterGroup = useCallback((correlationId: string, sessionId: string) => {
+    // Cancel any running predecessor BEFORE building the new children so the
+    // old playbackChild's clearScope fires while audioPlayback.currentToken
+    // still matches the old correlationId. If we built children first, the
+    // new playbackChild's setCurrentToken would preempt the old child's
+    // clearScope, leaving paused=true stuck.
+    cancelCurrentActiveGroup()
+
     const mode: Mode = conversationActive ? 'voice' : 'text'
     const ttsEngine = mode === 'voice' ? resolveTTSEngine(persona) : null
 

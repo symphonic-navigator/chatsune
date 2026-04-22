@@ -199,6 +199,20 @@ export function registerActiveGroup(g: ResponseTaskGroup): void {
   notifyActiveGroup()
 }
 
+/**
+ * Cancel the current active Group (if any) without immediately installing a
+ * replacement. Used by callers that need to cancel the predecessor BEFORE
+ * building the successor's children — otherwise the new playbackChild's
+ * setCurrentToken preempts the old child's clearScope, leaving audioPlayback
+ * stuck at paused=true after a voice-barge supersede. See
+ * devdocs/voice-barge-structural-redesign.md §5 for the wider architecture.
+ */
+export function cancelCurrentActiveGroup(reason: CancelReason = 'superseded'): void {
+  if (activeGroup && activeGroup.state !== 'done' && activeGroup.state !== 'cancelled') {
+    activeGroup.cancel(reason)
+  }
+}
+
 export function getActiveGroup(): ResponseTaskGroup | null {
   return activeGroup
 }
