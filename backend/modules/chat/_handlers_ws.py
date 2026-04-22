@@ -104,6 +104,7 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             ]
 
         token_count = count_tokens(text)
+        correlation_id = str(uuid4())
         saved_msg = await repo.save_message(
             session_id,
             role="user",
@@ -111,10 +112,11 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             token_count=token_count,
             attachment_ids=attachment_ids,
             attachment_refs=attachment_refs,
+            correlation_id=correlation_id,
+            user_id=user_id,
         )
 
         event_bus = get_event_bus()
-        correlation_id = str(uuid4())
         await event_bus.publish(
             Topics.CHAT_MESSAGE_CREATED,
             ChatMessageCreatedEvent(

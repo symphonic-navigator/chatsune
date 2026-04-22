@@ -32,11 +32,10 @@ class ChatRepository:
             name="content_text",
         )
         # Sparse index for correlation_id lookups (retract flow).
-        # Keyed on session_id so the lookup can be scoped to sessions owned
-        # by the requesting user without storing user_id on every message row.
+        # Keyed on user_id so the lookup is a single find_one with no session fan-out.
         await self._messages.create_index(
-            [("session_id", 1), ("correlation_id", 1)],
-            name="session_id_correlation_id",
+            [("user_id", 1), ("correlation_id", 1)],
+            name="user_id_correlation_id",
             sparse=True,
         )
 
@@ -347,23 +346,9 @@ class ChatRepository:
 
         Used by handle_chat_retract to locate the user message to delete when
         a response is aborted before its first content delta.
-
-        Messages do not store user_id directly, so we first resolve the set of
-        session IDs for the user, then look up the message by session + correlation.
         """
-        session_docs = await self._sessions.find(
-            {"user_id": user_id},
-            {"_id": 1},
-        ).to_list(length=10000)
-        session_ids = [doc["_id"] for doc in session_docs]
-        if not session_ids:
-            return None
         doc = await self._messages.find_one(
-            {
-                "session_id": {"$in": session_ids},
-                "correlation_id": correlation_id,
-                "role": "user",
-            },
+            {"user_id": user_id, "correlation_id": correlation_id, "role": "user"},
             projection={"_id": 1},
         )
         return doc["_id"] if doc else None
@@ -386,6 +371,7 @@ class ChatRepository:
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
         correlation_id: str | None = None,
+        user_id: str | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -399,6 +385,8 @@ class ChatRepository:
             "status": status,
             "correlation_id": correlation_id,
         }
+        if user_id:
+            doc["user_id"] = user_id
         if web_search_context:
             doc["web_search_context"] = web_search_context
         if knowledge_context:
