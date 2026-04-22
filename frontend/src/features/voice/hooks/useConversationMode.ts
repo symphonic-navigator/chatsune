@@ -9,7 +9,7 @@ import { resolveSTTEngine } from '../engines/resolver'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { pickRecordingMimeType, createRecorder } from '../infrastructure/audioRecording'
 import { float32ToWavBlob } from '../infrastructure/wavEncoder'
-import { createBargeController, type Barge, type BargeController } from '../bargeController'
+import { createBargeController, type BargeController } from '../bargeController'
 import type { CapturedAudio } from '../types'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
@@ -140,11 +140,6 @@ export function useConversationMode({
   }
   const controller = controllerRef.current
 
-  // Direct reference to the in-flight Barge so handleMisfire can mark it
-  // stale and transcribeAndSend can call commit/resume on it. Referential
-  // identity is how the controller detects staleness, so we never copy this.
-  const currentBargeRef = useRef<Barge | null>(null)
-
   // Helper that pushes the controller's current Barge state into the store
   // so usePhase picks it up reactively.
   const publishBargeState = useCallback(() => {
@@ -267,13 +262,11 @@ export function useConversationMode({
     // 150 ms pending-barge window — e.g. an ultra-short utterance. Create a
     // Barge now so the controller sees a consistent lifecycle and picks up
     // the currently-active Group as its pause target.
-    const barge = currentBargeRef.current ?? controller.start()
-    currentBargeRef.current = barge
+    const barge = controller.current ?? controller.start()
     publishBargeState()
 
     if (!activeRef.current) {
       controller.abandonAll()
-      currentBargeRef.current = null
       publishBargeState()
       return
     }
@@ -282,7 +275,6 @@ export function useConversationMode({
       // No audio captured (e.g. held-release with nothing buffered). Treat
       // as "no barge confirmed" — resume the paused Group (if any).
       controller.resume(barge)
-      currentBargeRef.current = null
       publishBargeState()
       return
     }
@@ -295,7 +287,6 @@ export function useConversationMode({
         message: 'No transcription engine is available.',
       })
       controller.abandonAll()
-      currentBargeRef.current = null
       publishBargeState()
       exitStore()
       return
@@ -319,7 +310,6 @@ export function useConversationMode({
         // cancel the active Group so the user isn't left with muted playback.
         controller.abandonAll()
       }
-      currentBargeRef.current = null
       publishBargeState()
       return
     }
@@ -328,7 +318,6 @@ export function useConversationMode({
     if (!activeRef.current || barge.state !== 'pending-stt') {
       // Teardown / misfire already transitioned this Barge. Controller has
       // already been told; nothing more to do here.
-      currentBargeRef.current = null
       publishBargeState()
       return
     }
@@ -338,7 +327,6 @@ export function useConversationMode({
     } else {
       controller.commit(barge, result.text.trim())
     }
-    currentBargeRef.current = null
     publishBargeState()
   }, [controller, exitStore, publishBargeState, setSttInFlight])
 
@@ -365,7 +353,7 @@ export function useConversationMode({
    */
   const executeBarge = useCallback(() => {
     pendingBargeRef.current = null
-    currentBargeRef.current = controller.start()
+    controller.start()
     publishBargeState()
   }, [controller, publishBargeState])
 
@@ -427,10 +415,9 @@ export function useConversationMode({
     }
     if (!activeRef.current) return
     if (holdingRef.current) return
-    const barge = currentBargeRef.current
+    const barge = controller.current
     if (barge) {
       controller.stale(barge)
-      currentBargeRef.current = null
       publishBargeState()
     }
   }, [controller, clearPendingBarge, publishBargeState, setVadActive])
@@ -454,7 +441,6 @@ export function useConversationMode({
     // abandonAll covers: marking the Barge abandoned, clearing the
     // controller slot, and cancelling the active Group with reason 'teardown'.
     controller.abandonAll()
-    currentBargeRef.current = null
     publishBargeState()
     setSttInFlight(false)
     setVadActive(false)

@@ -3,11 +3,16 @@ import { useAuthStore } from "../store/authStore"
 import { authApi } from "../api/auth"
 import { meApi } from "../api/meApi"
 import { disconnect } from "../websocket/connection"
+import { useIntegrationsStore } from "../../features/integrations/store"
 import type {
   LoginRequest,
   SetupRequest,
   ChangePasswordRequest,
 } from "../types/auth"
+
+function loadAuthenticatedIntegrationState(): void {
+  void useIntegrationsStore.getState().load()
+}
 
 export function useAuth() {
   const { user, isAuthenticated, accessToken, setToken, setUser, clear } =
@@ -27,6 +32,7 @@ export function useAuth() {
       } catch {
         // getMe failed — user stays authenticated with fallback display name
       }
+      loadAuthenticatedIntegrationState()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
       throw err
@@ -42,6 +48,7 @@ export function useAuth() {
       const res = await authApi.setup(data)
       setToken(res.access_token)
       setUser(res.user)
+      loadAuthenticatedIntegrationState()
       return res
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed")

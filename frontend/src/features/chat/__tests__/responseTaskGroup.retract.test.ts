@@ -12,7 +12,7 @@ describe('ResponseTaskGroup retract path', () => {
     g.cancel('barge-retract')
     expect(sendWs).toHaveBeenCalledTimes(1)
     expect(sendWs).toHaveBeenCalledWith({
-      type: 'chat.retract', correlation_id: 'c1',
+      type: 'chat.retract', correlation_id: 'c1', session_id: 's1',
     })
   })
 

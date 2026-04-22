@@ -71,7 +71,7 @@ function hash8(id: string): string {
 }
 
 export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTaskGroup {
-  const { correlationId, sessionId, userId: _userId, children, sendWsMessage, logger } = deps
+  const { correlationId, sessionId, children, sendWsMessage, logger } = deps
   const prefix = `[group ${hash8(correlationId)}]`
   let state: GroupState = 'before-first-delta'
 
@@ -87,6 +87,10 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
     if (state === 'done' || state === 'cancelled') {
       clearActiveGroup(group)
     }
+  }
+
+  function isState(expected: GroupState): boolean {
+    return state === expected
   }
 
   const group: ResponseTaskGroup = {
@@ -112,17 +116,15 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
         return
       }
       transition('tailing')
-      const drains = children.map((c) => {
-        try { return Promise.resolve(c.onStreamEnd(correlationId)) }
-        catch (err) {
-          logger.error(`${prefix} child ${c.name} onStreamEnd threw`, err)
-          return Promise.resolve()
+      void (async () => {
+        for (const child of children) {
+          if (!isState('tailing')) return
+          try { await Promise.resolve(child.onStreamEnd(correlationId)) }
+          catch (err) { logger.error(`${prefix} child ${child.name} onStreamEnd threw`, err) }
         }
-      })
-      void Promise.allSettled(drains).then(() => {
-        if (state !== 'tailing') return
+        if (!isState('tailing')) return
         transition('done')
-      })
+      })()
     },
 
     pause(): void {
@@ -148,6 +150,7 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
       sendWsMessage({
         type: wasBeforeDelta ? 'chat.retract' : 'chat.cancel',
         correlation_id: correlationId,
+        ...(wasBeforeDelta ? { session_id: sessionId } : {}),
       })
       void Promise.allSettled(children.map(async (c) => {
         try { await c.teardown() }

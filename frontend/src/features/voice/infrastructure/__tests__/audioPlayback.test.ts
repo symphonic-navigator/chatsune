@@ -97,6 +97,23 @@ describe('audioPlayback — streamClosed semantics', () => {
     finishPlayback(1)
     expect(onFinished2).not.toHaveBeenCalled()
   })
+
+  it('setCurrentToken starts a fresh scoped stream after a previous scope closed', () => {
+    const onFinished = vi.fn()
+    audioPlayback.setCurrentToken('group-1')
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT, 'group-1')
+    audioPlayback.closeStream()
+    finishPlayback(0)
+    expect(onFinished).toHaveBeenCalledTimes(1)
+
+    const onFinished2 = vi.fn()
+    audioPlayback.setCurrentToken('group-2')
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: onFinished2 })
+    audioPlayback.enqueue(new Float32Array(10), SEGMENT, 'group-2')
+    finishPlayback(1)
+    expect(onFinished2).not.toHaveBeenCalled()
+  })
 })
 
 describe('audioPlayback — gap timer', () => {

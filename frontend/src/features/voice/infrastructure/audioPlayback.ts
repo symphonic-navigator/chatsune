@@ -46,6 +46,9 @@ class AudioPlaybackImpl {
   }
 
   setCurrentToken(token: string | null): void {
+    if (token !== null && token !== this.currentToken) {
+      this.streamClosed = false
+    }
     this.currentToken = token
   }
 
@@ -90,6 +93,7 @@ class AudioPlaybackImpl {
   clearScope(token: string): void {
     if (this.currentToken !== token) return
     this.queue = []
+    this.streamClosed = false
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null

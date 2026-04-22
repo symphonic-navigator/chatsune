@@ -7,6 +7,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
@@ -77,11 +78,60 @@ _cancel_events: dict[str, asyncio.Event] = {}
 # cleaned up in their respective finally blocks.
 _cancel_user_ids: dict[str, str] = {}
 
+# Cancels can arrive before run_inference has finished resolving prompt/model
+# setup and registered its cancel_event. Keep a short tombstone so the event is
+# set immediately once the run reaches registration.
+_PENDING_CANCEL_TTL_SECONDS = 30.0
+_pending_cancels: dict[str, tuple[str | None, float]] = {}
+
 # In-flight idle extraction timers keyed by "user_id:persona_id"
 _idle_extraction_tasks: dict[str, asyncio.Task] = {}
 
 _DEFAULT_CONTEXT_WINDOW = 8192
 _IDLE_EXTRACTION_DELAY_SECONDS = 300  # 5 minutes
+
+
+def _prune_pending_cancels() -> None:
+    now = time.monotonic()
+    expired = [
+        cid for cid, (_, ts) in _pending_cancels.items()
+        if now - ts > _PENDING_CANCEL_TTL_SECONDS
+    ]
+    for cid in expired:
+        _pending_cancels.pop(cid, None)
+
+
+def request_cancel(correlation_id: str, user_id: str | None = None) -> bool:
+    """Signal a correlation cancel now, or remember it until registration.
+
+    Returns True if an already-registered inference was signalled, False if a
+    pending tombstone was stored.
+    """
+    if not correlation_id:
+        return False
+    event = _cancel_events.get(correlation_id)
+    if event is not None:
+        owner = _cancel_user_ids.get(correlation_id)
+        if user_id is None or owner is None or owner == user_id:
+            event.set()
+            return True
+    _prune_pending_cancels()
+    _pending_cancels[correlation_id] = (user_id, time.monotonic())
+    return False
+
+
+def _consume_pending_cancel(correlation_id: str, user_id: str) -> bool:
+    item = _pending_cancels.get(correlation_id)
+    if not item:
+        return False
+    owner, ts = item
+    if time.monotonic() - ts > _PENDING_CANCEL_TTL_SECONDS:
+        _pending_cancels.pop(correlation_id, None)
+        return False
+    if owner is not None and owner != user_id:
+        return False
+    _pending_cancels.pop(correlation_id, None)
+    return True
 
 
 async def cancel_all_for_user(user_id: str) -> int:
@@ -442,6 +492,8 @@ async def run_inference(
     cancel_event = asyncio.Event()
     _cancel_events[correlation_id] = cancel_event
     _cancel_user_ids[correlation_id] = user_id
+    if _consume_pending_cancel(correlation_id, user_id):
+        cancel_event.set()
 
     manager = get_manager()
     event_bus = get_event_bus()

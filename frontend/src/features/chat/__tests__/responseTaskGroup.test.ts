@@ -7,9 +7,12 @@ import {
   type GroupChild,
 } from '../responseTaskGroup'
 
-function makeChild(overrides: Partial<GroupChild> = {}): GroupChild & {
+type MockChild = GroupChild & {
   onDelta: Mock; onStreamEnd: Mock; onCancel: Mock; teardown: Mock
-} {
+  onPause?: Mock; onResume?: Mock
+}
+
+function makeChild(overrides: Partial<MockChild> = {}): MockChild {
   return {
     name: overrides.name ?? 'mock',
     onDelta: vi.fn(),
@@ -17,7 +20,7 @@ function makeChild(overrides: Partial<GroupChild> = {}): GroupChild & {
     onCancel: vi.fn(),
     teardown: vi.fn(),
     ...overrides,
-  } as any
+  }
 }
 
 describe('ResponseTaskGroup', () => {
@@ -63,6 +66,46 @@ describe('ResponseTaskGroup', () => {
     expect(child.onStreamEnd).toHaveBeenCalledWith('c1')
   })
 
+  it('drains children sequentially on stream end', async () => {
+    let resolveFirst: () => void = () => {
+      throw new Error('first drain promise was not started')
+    }
+    const calls: string[] = []
+    const first = makeChild({
+      name: 'first',
+      onStreamEnd: vi.fn(() => new Promise<void>((resolve) => {
+        calls.push('first:start')
+        resolveFirst = () => {
+          calls.push('first:resolve')
+          resolve()
+        }
+      })),
+    })
+    const second = makeChild({
+      name: 'second',
+      onStreamEnd: vi.fn(() => {
+        calls.push('second:start')
+        return Promise.resolve()
+      }),
+    })
+    const g = createResponseTaskGroup({
+      correlationId: 'c1', sessionId: 's1', userId: 'u1',
+      children: [first, second], sendWsMessage: sendWs, logger,
+    })
+
+    g.onDelta('hi')
+    g.onStreamEnd()
+
+    expect(calls).toEqual(['first:start'])
+    expect(second.onStreamEnd).not.toHaveBeenCalled()
+
+    resolveFirst()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(calls).toEqual(['first:start', 'first:resolve', 'second:start'])
+    expect(g.state).toBe('done')
+  })
+
   it('cancel from before-first-delta sends chat.retract', () => {
     const child = makeChild()
     const g = createResponseTaskGroup({
@@ -72,7 +115,7 @@ describe('ResponseTaskGroup', () => {
     g.cancel('barge-retract')
     expect(g.state).toBe('cancelled')
     expect(sendWs).toHaveBeenCalledWith({
-      type: 'chat.retract', correlation_id: 'c1',
+      type: 'chat.retract', correlation_id: 'c1', session_id: 's1',
     })
     expect(child.onCancel).toHaveBeenCalledWith('barge-retract', 'c1')
   })
@@ -104,26 +147,29 @@ describe('ResponseTaskGroup', () => {
   })
 
   it('pause/resume dispatch optional callbacks to children', () => {
-    const child = makeChild({ onPause: vi.fn(), onResume: vi.fn() })
+    const onPause = vi.fn()
+    const onResume = vi.fn()
+    const child = makeChild({ onPause, onResume })
     const g = createResponseTaskGroup({
       correlationId: 'c1', sessionId: 's1', userId: 'u1',
       children: [child], sendWsMessage: sendWs, logger,
     })
     g.onDelta('hi')
     g.pause()
-    expect((child as any).onPause).toHaveBeenCalled()
+    expect(onPause).toHaveBeenCalled()
     g.resume()
-    expect((child as any).onResume).toHaveBeenCalled()
+    expect(onResume).toHaveBeenCalled()
   })
 
   it('pause is no-op outside streaming/tailing', () => {
-    const child = makeChild({ onPause: vi.fn() })
+    const onPause = vi.fn()
+    const child = makeChild({ onPause })
     const g = createResponseTaskGroup({
       correlationId: 'c1', sessionId: 's1', userId: 'u1',
       children: [child], sendWsMessage: sendWs, logger,
     })
     g.pause()
-    expect((child as any).onPause).not.toHaveBeenCalled()
+    expect(onPause).not.toHaveBeenCalled()
   })
 })
 

@@ -5,6 +5,7 @@ Internal module — must not be imported from outside ``backend.modules.chat``.
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -12,9 +13,11 @@ from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._orchestrator import (
     _cancel_events,
     _cancel_user_ids,
+    _consume_pending_cancel,
     _make_tool_executor,
     cancel_all_for_user,
     emit_session_expired,
+    request_cancel,
     run_inference,
     track_extraction_trigger,
 )
@@ -48,6 +51,60 @@ _log = logging.getLogger(__name__)
 # Local runner instance for incognito sessions (stateless inference path)
 _runner = InferenceRunner()
 
+# Retracts can overtake their original chat.send because the websocket router
+# runs chat.send in a background task. Keep a short-lived tombstone so a late
+# send for the same correlation_id does not save or infer after the user has
+# already barged it away.
+_PENDING_RETRACT_TTL_SECONDS = 30.0
+_pending_retracts: dict[str, tuple[str, str | None, float]] = {}
+
+
+def _remember_retract(user_id: str, correlation_id: str, session_id: str | None) -> None:
+    now = time.monotonic()
+    expired = [
+        cid for cid, (_, _, ts) in _pending_retracts.items()
+        if now - ts > _PENDING_RETRACT_TTL_SECONDS
+    ]
+    for cid in expired:
+        _pending_retracts.pop(cid, None)
+    _pending_retracts[correlation_id] = (user_id, session_id, now)
+
+
+def _consume_retract(user_id: str, correlation_id: str) -> tuple[bool, str | None]:
+    item = _pending_retracts.get(correlation_id)
+    if not item:
+        return False, None
+    owner_id, session_id, ts = item
+    if time.monotonic() - ts > _PENDING_RETRACT_TTL_SECONDS:
+        _pending_retracts.pop(correlation_id, None)
+        return False, None
+    if owner_id != user_id:
+        return False, None
+    _pending_retracts.pop(correlation_id, None)
+    return True, session_id
+
+
+async def _publish_message_deleted(
+    *,
+    user_id: str,
+    session_id: str,
+    message_id: str,
+    correlation_id: str,
+) -> None:
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_MESSAGE_DELETED,
+        ChatMessageDeletedEvent(
+            session_id=session_id,
+            message_id=message_id,
+            correlation_id=correlation_id,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
 
 async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | None = None) -> None:
     """Handle a chat.send WebSocket message — save user message, run inference."""
@@ -66,6 +123,32 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             await emit_session_expired(user_id, session_id)
             return
 
+        text = "".join(
+            part.get("text", "") for part in content_parts if part.get("type") == "text"
+        ).strip()
+        if not text:
+            return
+
+        correlation_id = data.get("correlation_id") or str(uuid4())
+
+        was_retracted, retract_session_id = _consume_retract(user_id, correlation_id)
+        if was_retracted:
+            # The user barged before this background chat.send task reached
+            # persistence/inference. Drop the send and delete the optimistic
+            # client bubble so the UI does not keep a prompt that never ran.
+            if client_message_id:
+                await _publish_message_deleted(
+                    user_id=user_id,
+                    session_id=retract_session_id or session_id,
+                    message_id=client_message_id,
+                    correlation_id=correlation_id,
+                )
+            _log.info(
+                "chat.send dropped because correlation_id=%s was already retracted",
+                correlation_id,
+            )
+            return
+
         # Per-user single-stream policy: a new user action cancels any
         # in-flight inference the user still has running. The old run's
         # finally block will release the per-user inference lock shortly
@@ -78,12 +161,6 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
                 "chat.send cancelled %d in-flight inference(s) for user=%s",
                 cancelled, user_id,
             )
-
-        text = "".join(
-            part.get("text", "") for part in content_parts if part.get("type") == "text"
-        ).strip()
-        if not text:
-            return
 
         # Resolve attachments if provided
         attachment_ids = data.get("attachment_ids")
@@ -104,7 +181,6 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             ]
 
         token_count = count_tokens(text)
-        correlation_id = data.get("correlation_id") or str(uuid4())
         saved_msg = await repo.save_message(
             session_id,
             role="user",
@@ -115,6 +191,21 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             correlation_id=correlation_id,
             user_id=user_id,
         )
+
+        was_retracted, retract_session_id = _consume_retract(user_id, correlation_id)
+        if was_retracted:
+            await repo.delete_message(saved_msg["_id"])
+            await _publish_message_deleted(
+                user_id=user_id,
+                session_id=retract_session_id or session_id,
+                message_id=client_message_id or saved_msg["_id"],
+                correlation_id=correlation_id,
+            )
+            _log.info(
+                "chat.send saved then dropped because correlation_id=%s was retracted",
+                correlation_id,
+            )
+            return
 
         event_bus = get_event_bus()
         await event_bus.publish(
@@ -134,6 +225,17 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             correlation_id=correlation_id,
         )
 
+        was_retracted, _ = _consume_retract(user_id, correlation_id)
+        if was_retracted:
+            # handle_chat_retract already deleted the persisted message and
+            # published the real-id delete event. Stop before extraction or
+            # inference can resurrect work for the cancelled prompt.
+            _log.info(
+                "chat.send stopped before inference because correlation_id=%s was retracted",
+                correlation_id,
+            )
+            return
+
         # Track extraction trigger — skip for incognito sessions
         persona_id = session.get("persona_id")
         is_incognito = session.get("incognito", False) or (
@@ -143,6 +245,14 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             await track_extraction_trigger(
                 user_id, persona_id, session_id,
             )
+
+        was_retracted, _ = _consume_retract(user_id, correlation_id)
+        if was_retracted:
+            _log.info(
+                "chat.send stopped after extraction tracking because correlation_id=%s was retracted",
+                correlation_id,
+            )
+            return
 
         await run_inference(user_id, session_id, repo, session, connection_id=connection_id, correlation_id=correlation_id)
     except Exception:
@@ -349,8 +459,8 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
 def handle_chat_cancel(user_id: str, data: dict) -> None:
     """Handle a chat.cancel WebSocket message — signal cancellation."""
     correlation_id = data.get("correlation_id")
-    if correlation_id and correlation_id in _cancel_events:
-        _cancel_events[correlation_id].set()
+    if correlation_id:
+        request_cancel(correlation_id, user_id)
 
 
 async def handle_chat_retract(user_id: str, data: dict) -> None:
@@ -365,9 +475,12 @@ async def handle_chat_retract(user_id: str, data: dict) -> None:
     if not correlation_id:
         return
 
-    # Signal cancel first — stops in-flight inference even if the message is gone
-    if correlation_id in _cancel_events:
-        _cancel_events[correlation_id].set()
+    session_id = data.get("session_id")
+    _remember_retract(user_id, correlation_id, session_id)
+    # Signal cancel first — stops in-flight inference even if the message is gone.
+    # If run_inference has not registered its cancel_event yet, request_cancel
+    # stores a pending tombstone that is consumed at registration time.
+    request_cancel(correlation_id, user_id)
 
     try:
         db = get_db()
@@ -381,21 +494,12 @@ async def handle_chat_retract(user_id: str, data: dict) -> None:
             )
             return
 
-        session_id = data.get("session_id", "")
-
         await repo.delete_message(user_message_id)
 
-        event_bus = get_event_bus()
-        await event_bus.publish(
-            Topics.CHAT_MESSAGE_DELETED,
-            ChatMessageDeletedEvent(
-                session_id=session_id,
-                message_id=user_message_id,
-                correlation_id=correlation_id,
-                timestamp=datetime.now(timezone.utc),
-            ),
-            scope=f"session:{session_id}",
-            target_user_ids=[user_id],
+        await _publish_message_deleted(
+            user_id=user_id,
+            session_id=session_id or "",
+            message_id=user_message_id,
             correlation_id=correlation_id,
         )
     except Exception:
@@ -490,6 +594,8 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         cancel_event = asyncio.Event()
         _cancel_events[correlation_id] = cancel_event
         _cancel_user_ids[correlation_id] = user_id
+        if _consume_pending_cancel(correlation_id, user_id):
+            cancel_event.set()
 
         event_bus = get_event_bus()
 
