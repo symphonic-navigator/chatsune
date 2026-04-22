@@ -239,6 +239,49 @@ describe('audioPlayback — token gating', () => {
   })
 })
 
+describe('audioPlayback — pause/resume', () => {
+  beforeEach(() => {
+    audioPlayback.stopAll()
+    audioPlayback.setCurrentToken(null)
+  })
+
+  it('pause stops current source without clearing queue', () => {
+    audioPlayback.setCurrentToken('t1')
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x', speed: 1, pitch: 0 } as unknown as SpeechSegment
+    audioPlayback.enqueue(fakeAudio, fakeSegment, 't1')
+    audioPlayback.pause()
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('enqueue does not auto-play while paused', () => {
+    audioPlayback.setCurrentToken('t1')
+    audioPlayback.pause()
+    const fakeAudio = new Float32Array(24000)
+    const fakeSegment = { text: 'x', speed: 1, pitch: 0 } as unknown as SpeechSegment
+    audioPlayback.enqueue(fakeAudio, fakeSegment, 't1')
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('pause is idempotent', () => {
+    audioPlayback.pause()
+    audioPlayback.pause()
+    expect(audioPlayback.isPlaying()).toBe(false)
+  })
+
+  it('resume is a no-op when not paused', () => {
+    expect(() => audioPlayback.resume()).not.toThrow()
+  })
+
+  it('stopAll resets paused so a subsequent enqueue can play', () => {
+    audioPlayback.pause()
+    audioPlayback.stopAll()
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    expect(() => audioPlayback.enqueue(new Float32Array(10), SEGMENT)).not.toThrow()
+    expect(audioPlayback.isPlaying()).toBe(true)
+  })
+})
+
 describe('audioPlayback — subscribe API', () => {
   it('subscribe returns an unsubscribe fn; unsubscribed listeners are not called', () => {
     audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })

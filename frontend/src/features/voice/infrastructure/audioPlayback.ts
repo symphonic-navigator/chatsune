@@ -23,6 +23,7 @@ class AudioPlaybackImpl {
   private currentToken: string | null = null
   private callbacks: AudioPlaybackCallbacks | null = null
   private playing = false
+  private paused = false
   private streamClosed = false
   private pendingGapTimer: ReturnType<typeof setTimeout> | null = null
   // Listeners observing playing-state changes. Used by the React hook so
@@ -46,6 +47,36 @@ class AudioPlaybackImpl {
 
   setCurrentToken(token: string | null): void {
     this.currentToken = token
+  }
+
+  /**
+   * Silences audio immediately without discarding the queue. A paired
+   * resume() call re-kicks playback from wherever the queue left off.
+   * Token-agnostic — applies to the whole playback scope.
+   */
+  pause(): void {
+    if (this.paused) return
+    this.paused = true
+    if (this.pendingGapTimer !== null) {
+      clearTimeout(this.pendingGapTimer)
+      this.pendingGapTimer = null
+    }
+    if (this.currentSource) {
+      this.currentSource.onended = null   // don't advance the queue
+      try { this.currentSource.stop() } catch { /* already stopped */ }
+      this.currentSource = null
+    }
+    this.playing = false
+    this.emit()
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    if (!this.playing && this.pendingGapTimer === null && this.queue.length > 0) {
+      this.playNext()
+    }
+    this.emit()
   }
 
   /**
@@ -77,7 +108,7 @@ class AudioPlaybackImpl {
       return
     }
     this.queue.push({ audio, segment })
-    if (!this.playing && this.pendingGapTimer === null) this.playNext()
+    if (!this.playing && this.pendingGapTimer === null && !this.paused) this.playNext()
     this.emit()
   }
 
@@ -91,6 +122,7 @@ class AudioPlaybackImpl {
   stopAll(): void {
     this.queue = []
     this.streamClosed = false
+    this.paused = false
     if (this.pendingGapTimer !== null) {
       clearTimeout(this.pendingGapTimer)
       this.pendingGapTimer = null

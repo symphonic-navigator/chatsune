@@ -42,7 +42,11 @@ export function createChatStoreSink(opts: ChatStoreSinkOpts): GroupChild {
 
     onCancel(_reason, token: string): void {
       if (token !== opts.correlationId) return
-      opts.chatStore.cancelStreaming()
+      // Deliberately a no-op. The CHAT_STREAM_ENDED handler in useChatStream is
+      // authoritative for finalize-vs-cancel — it decides based on the backend's
+      // persisted partial content (message_id + content). Calling cancelStreaming()
+      // here would erase streamingContent before the handler can read it, causing
+      // the partial message to be lost.
     },
 
     teardown(): void {},

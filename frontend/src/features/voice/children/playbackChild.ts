@@ -42,14 +42,18 @@ export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
 
     onCancel(_reason, token): void {
       if (token !== correlationId) return
-      audioPlayback.setCurrentToken(null)
-      audioPlayback.clearScope(correlationId)
+      audioPlayback.clearScope(correlationId)   // first, while token still matches
+      audioPlayback.setCurrentToken(null)        // then null out the token
       drainResolve?.()
       drainResolve = null
     },
 
-    onPause(): void {},
-    onResume(): void {},
+    onPause(): void {
+      audioPlayback.pause()
+    },
+    onResume(): void {
+      audioPlayback.resume()
+    },
 
     teardown(): void {
       audioPlayback.setCurrentToken(null)

@@ -29,13 +29,13 @@ describe('chatStoreSink', () => {
     expect(store.appendStreamingContent).not.toHaveBeenCalled()
   })
 
-  it('onCancel calls cancelStreaming when token matches', () => {
+  it('onCancel does NOT call cancelStreaming (CHAT_STREAM_ENDED is authoritative)', () => {
     const store = makeStore()
     const sink = createChatStoreSink({
       sessionId: 's1', correlationId: 'c1', chatStore: store as any,
     })
     sink.onCancel('user-stop', 'c1')
-    expect(store.cancelStreaming).toHaveBeenCalled()
+    expect(store.cancelStreaming).not.toHaveBeenCalled()
   })
 
   it('onCancel drops when token does not match', () => {
