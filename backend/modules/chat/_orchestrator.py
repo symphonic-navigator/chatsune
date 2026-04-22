@@ -307,6 +307,7 @@ async def run_inference(
     session: dict,
     *,
     connection_id: str | None = None,
+    correlation_id: str | None = None,
 ) -> None:
     """Shared inference path used by send, edit, and regenerate."""
     persona_id = session.get("persona_id")
@@ -434,7 +435,10 @@ async def run_inference(
     # Set up correlation ID and event emission BEFORE building messages so
     # that _resolve_image_attachments_for_inference can emit vision
     # description events from inside the attachment loop.
-    correlation_id = str(uuid4())
+    # Use the caller-supplied correlation_id (threaded from the handler so
+    # all stream events share the same id as the user message event) or
+    # generate a new one for backwards compatibility.
+    correlation_id = correlation_id or str(uuid4())
     cancel_event = asyncio.Event()
     _cancel_events[correlation_id] = cancel_event
     _cancel_user_ids[correlation_id] = user_id

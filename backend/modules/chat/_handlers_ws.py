@@ -144,7 +144,7 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
                 user_id, persona_id, session_id,
             )
 
-        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id, correlation_id=correlation_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_send for user %s", user_id)
 
@@ -283,7 +283,7 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
         )
 
         # Run inference
-        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id, correlation_id=correlation_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_edit for user %s", user_id)
 
@@ -341,7 +341,7 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
         # If last_msg is a user message, nothing to delete — just re-infer below.
 
         # Run inference using existing last user message
-        await run_inference(user_id, session_id, repo, session, connection_id=connection_id)
+        await run_inference(user_id, session_id, repo, session, connection_id=connection_id, correlation_id=correlation_id)
     except Exception:
         _log.exception("Unhandled error in handle_chat_regenerate for user %s", user_id)
 
