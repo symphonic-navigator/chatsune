@@ -8,6 +8,7 @@ import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef } from '../../core/api/chat'
 import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
+import { getActiveGroup } from './responseTaskGroup'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
 
@@ -37,10 +38,15 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_CONTENT_DELTA: {
-      if (event.correlation_id !== getStore().correlationId) return
+      const g = getActiveGroup()
+      if (!g || g.id !== event.correlation_id) {
+        console.debug(`[useChatStream] drop CHAT_CONTENT_DELTA (no matching group, id=${event.correlation_id})`)
+        return
+      }
       const rawDelta = p.delta as string
+      // Tag buffer still lives here — it transforms deltas before storage.
       const visibleDelta = activeTagBuffer ? activeTagBuffer.process(rawDelta) : rawDelta
-      getStore().appendStreamingContent(visibleDelta)
+      g.onDelta(visibleDelta)
       break
     }
     case Topics.CHAT_THINKING_DELTA: {
@@ -91,6 +97,8 @@ export function handleChatEvent(
     }
     case Topics.CHAT_STREAM_ENDED: {
       if (p.session_id !== sessionId) return
+      const g = getActiveGroup()
+      if (g && g.id === event.correlation_id) g.onStreamEnd()
       // Flush incomplete tag buffer
       if (activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
