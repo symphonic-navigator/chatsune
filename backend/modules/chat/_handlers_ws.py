@@ -353,6 +353,55 @@ def handle_chat_cancel(user_id: str, data: dict) -> None:
         _cancel_events[correlation_id].set()
 
 
+async def handle_chat_retract(user_id: str, data: dict) -> None:
+    """Handle chat.retract — cancel in-flight inference and delete its user message.
+
+    Used when the frontend cancels a response before any CONTENT_DELTA
+    has arrived (the barge-before-delta case). The user message itself
+    should disappear from history so the user is not left with a stray
+    prompt bubble.
+    """
+    correlation_id = data.get("correlation_id")
+    if not correlation_id:
+        return
+
+    # Signal cancel first — stops in-flight inference even if the message is gone
+    if correlation_id in _cancel_events:
+        _cancel_events[correlation_id].set()
+
+    try:
+        db = get_db()
+        repo = ChatRepository(db)
+
+        user_message_id = await repo.user_message_by_correlation(user_id, correlation_id)
+        if not user_message_id:
+            _log.info(
+                "chat.retract: no user message for correlation_id=%s",
+                correlation_id,
+            )
+            return
+
+        session_id = data.get("session_id", "")
+
+        await repo.delete_message(user_message_id)
+
+        event_bus = get_event_bus()
+        await event_bus.publish(
+            Topics.CHAT_MESSAGE_DELETED,
+            ChatMessageDeletedEvent(
+                session_id=session_id,
+                message_id=user_message_id,
+                correlation_id=correlation_id,
+                timestamp=datetime.now(timezone.utc),
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+    except Exception:
+        _log.exception("Unhandled error in handle_chat_retract for user %s", user_id)
+
+
 async def update_session_title(session_id: str, title: str, user_id: str, correlation_id: str) -> None:
     """Update a session's title and publish the change event."""
     db = get_db()

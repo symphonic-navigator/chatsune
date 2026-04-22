@@ -15,6 +15,7 @@ from backend.modules.chat import (
     handle_chat_cancel,
     handle_chat_edit,
     handle_chat_regenerate,
+    handle_chat_retract,
     handle_chat_send,
     handle_incognito_send,
     trigger_disconnect_extraction,
@@ -198,6 +199,8 @@ async def websocket_endpoint(
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.cancel":
                 handle_chat_cancel(user_id, data)
+            elif msg_type == "chat.retract":
+                await handle_chat_retract(user_id, data)
             elif msg_type == "chat.edit":
                 task = asyncio.create_task(handle_chat_edit(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)

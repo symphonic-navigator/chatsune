@@ -15,6 +15,7 @@ from backend.modules.chat._handlers_ws import (
     handle_chat_cancel,
     handle_chat_edit,
     handle_chat_regenerate,
+    handle_chat_retract,
     handle_chat_send,
     handle_incognito_send,
     update_session_title,
@@ -295,7 +296,7 @@ async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[st
 __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
-    "handle_chat_cancel",
+    "handle_chat_cancel", "handle_chat_retract",
     "handle_incognito_send", "update_session_title",
     "trigger_disconnect_extraction", "cancel_all_for_user",
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
