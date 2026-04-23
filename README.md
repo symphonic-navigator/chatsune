@@ -87,6 +87,8 @@ Edit `.env` and set at minimum:
 - `JWT_SECRET` — generate with `openssl rand -hex 32`
 - `ENCRYPTION_KEY` — generate with
   `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+- `KDF_PEPPER` — generate with
+  `python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"`
 
 ### 2. Start infrastructure (MongoDB + Redis)
 
@@ -169,6 +171,7 @@ because of hot reload.
 | `MASTER_ADMIN_PIN` | PIN for initial master admin setup | `change-me-1234` |
 | `JWT_SECRET` | Secret for signing JWTs (`openssl rand -hex 32`) | random hex string |
 | `ENCRYPTION_KEY` | Fernet key for encrypting per-user API keys at rest | Fernet key |
+| `KDF_PEPPER` | 32-byte pepper (urlsafe-base64) for the `/kdf-params` user-enumeration defence | urlsafe-base64 string |
 | `MONGODB_URI` | MongoDB connection string — must include `replicaSet=rs0` | `mongodb://mongodb:27017/chatsune?replicaSet=rs0` |
 | `REDIS_URI` | Redis connection string | `redis://redis:6379/0` |
 | `UPLOAD_ROOT` | Root path for file uploads | `/data/uploads` |
@@ -181,6 +184,22 @@ because of hot reload.
 
 For the LLM test harness, place your Ollama Cloud key in `.llm-test-key`
 (plain text, gitignored) in the project root.
+
+### Per-user key infrastructure environment
+
+Chatsune requires an additional pepper used to keep the `POST /api/auth/kdf-params` endpoint indistinguishable between real and unknown usernames:
+
+- `KDF_PEPPER` — 32-byte pepper, urlsafe-base64. Generate with:
+
+  ```bash
+  python -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+  ```
+
+  This is separate from `ENCRYPTION_KEY` (which covers operational secrets like integration API keys). Losing `KDF_PEPPER` does not decrypt any user data — it only weakens the user-enumeration defence.
+
+### Authentication & end-to-end encryption foundations
+
+Chatsune uses client-side Argon2id (Web Worker) + HKDF to derive separate auth and key-wrapping hashes from the user password. Every account carries a per-user Data Encryption Key (DEK) wrapped twice — once under a password-derived key, once under a client-generated recovery key. See `E2EE_PHASE_1_ANNOUNCEMENT.md` in the repo root for a user-facing explanation. No user data is encrypted in this release; the key-management plumbing is in place for collection-by-collection rollout in later releases.
 
 ### Safeguards (background jobs)
 

@@ -731,3 +731,20 @@ Planned as a small follow-up iteration after the xAI adapter ships. Goals:
 
 **What NOT to do:**
 Do not bake provider-specific fields into `ChatStreamEndedEvent` (no `xai_cached_prompt_tokens`). Keep the outward contract provider-agnostic; per-provider mapping stays inside each adapter, same pattern as `supports_reasoning`.
+
+---
+
+## INS-025 — Per-user key infrastructure (2026-04-23)
+
+Added a `user_keys` MongoDB collection and a client-side Argon2id → HKDF → server-side H_auth/H_kek login flow. No data is encrypted by this change; the plumbing is in place for later rollout, collection by collection. Key design choices:
+
+- **Client-derived hashes:** the server never sees the plaintext password. `H_auth` is sent in place of the password and bcrypt-hashed server-side; `H_kek` unwraps the DEK and is not stored. The operator holding `ENCRYPTION_KEY` in `.env` gains nothing against a user's data — the DEK is sealed under the user's password-derived key, not the operator's master key.
+- **Double-wrap with recovery key:** the DEK is wrapped with AES-256-GCM twice — once under `H_kek`, once under a key derived from a 32-character Crockford-Base32 recovery key. The recovery key is generated client-side, displayed once, and only transits once during signup (or once in the legacy-migration response body). Neither is ever persisted.
+- **`deks` as a version-keyed map:** the `user_keys` document stores wrapped keys in `deks: {"1": {...}}` so rotation is an additive schema-compatible change: new rotation adds `"2": {...}` and bumps `current_dek_version`. Nothing to migrate when we add rotation later.
+- **Reserved `dek_version` field on per-document payloads:** convention defined but not yet applied. Absent/null = plaintext (legacy or pre-rollout); N ≥ 1 = encrypted with DEK version N for that user. This lets future rollouts be collection-by-collection rather than flag-days.
+- **Admin-reset uses a `$SENTINEL$` password hash** that no bcrypt input can match. The login handler detects the sentinel and forces the recovery flow regardless of `H_auth`. After `/recover-dek` succeeds, the sentinel is replaced with a real bcrypt hash derived from the new `H_auth` the user supplied.
+- **Legacy users migrate lazily** on their first post-upgrade login via `/login-legacy` — the single path that still accepts a plaintext password, and only once per user. After migration the row looks identical to a freshly signed-up user.
+- **User-enumeration defence at `/kdf-params`:** for unknown usernames the server returns a deterministic pseudo-salt derived as `HMAC-SHA256(kdf_pepper, username.lower().strip())`. Indistinguishable from a real user's salt; login then fails at bcrypt as usual. `kdf_pepper` is a new env var, distinct from `encryption_key`.
+- **Session-DEK in Redis under `session_dek:{session_id}`** with TTL = access-token TTL. Logout deletes it; refresh extends the TTL. For Phase 1, a refresh that finds an expired Redis DEK still succeeds (logs a warning). Once data is actually encrypted, this will need a design decision — currently tracked as a follow-up.
+
+Follow-ups tracked in `devdocs/superpowers/specs/2026-04-23-per-user-key-infrastructure-design.md` §16.
