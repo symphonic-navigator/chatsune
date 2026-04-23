@@ -11,18 +11,21 @@ from backend.modules.llm._registry import (
 )
 
 
-def test_nano_gpt_http_registered_as_user_configurable():
-    assert "nano_gpt_http" in ADAPTER_REGISTRY
-    assert ADAPTER_REGISTRY["nano_gpt_http"] is NanoGptHttpAdapter
+def test_nano_gpt_http_is_premium_only():
+    # Nano-GPT is a Premium Provider: users configure a BYOK account through
+    # the Premium Provider panel, not as a regular Connection. The adapter
+    # class must therefore be gated behind ``_PREMIUM_ONLY_ADAPTERS`` so no
+    # user can create a stray Connection with ``adapter_type="nano_gpt_http"``.
+    assert "nano_gpt_http" in _PREMIUM_ONLY_ADAPTERS
+    assert _PREMIUM_ONLY_ADAPTERS["nano_gpt_http"] is NanoGptHttpAdapter
 
 
-def test_nano_gpt_http_not_in_premium_only():
-    # Nano-GPT is user-configurable (BYOK via Connection) — must not be
-    # gated behind the Premium Provider resolver path.
-    assert "nano_gpt_http" not in _PREMIUM_ONLY_ADAPTERS
+def test_nano_gpt_http_not_user_configurable():
+    assert "nano_gpt_http" not in ADAPTER_REGISTRY
 
 
 def test_get_adapter_class_returns_nano_gpt_http():
+    # Still resolvable by adapter_type string — Premium resolver uses this.
     assert get_adapter_class("nano_gpt_http") is NanoGptHttpAdapter
 
 
