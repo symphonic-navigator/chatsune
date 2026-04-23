@@ -21,8 +21,10 @@ from backend.modules.user._auth import (
     generate_refresh_token,
     generate_session_id,
     hash_password,
+    verify_h_auth,
     verify_password,
 )
+from backend.modules.user._key_service import DekUnlockError
 from backend.modules.user._crypto import pseudo_salt_for_unknown_user
 from backend.modules.user._key_service import UserKeyService
 from backend.modules.user._audit import AuditRepository
@@ -42,6 +44,8 @@ from shared.dtos.auth import (
     KdfParamsRequestDto,
     KdfParamsResponseDto,
     LoginRequestDto,
+    LoginRequestV2Dto,
+    RecoveryRequiredResponseDto,
     ResetPasswordResponseDto,
     SetupRequestDto,
     SetupResponseDto,
@@ -195,7 +199,7 @@ async def setup(
 
 @router.post("/auth/login")
 async def login(
-    body: LoginRequestDto,
+    body: LoginRequestV2Dto,
     response: Response,
     request: Request,
     background_tasks: BackgroundTasks,
@@ -205,16 +209,31 @@ async def login(
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.")
 
     repo = _user_repo()
-    user = await repo.find_by_username(body.username)
+    svc = _key_service()
+    user = await repo.find_by_username_case_insensitive(body.username)
 
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Reject unknown users and legacy users (password_hash_version != 1).
+    if user is None or user.get("password_hash_version") != 1:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
 
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
-    if not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not verify_h_auth(body.h_auth, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    keys_doc = await svc.get_keys_doc(user["_id"])
+    if keys_doc is None:
+        raise HTTPException(status_code=500, detail="dek_integrity_error")
+
+    if keys_doc.dek_recovery_required:
+        return RecoveryRequiredResponseDto()
+
+    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    try:
+        dek = await svc.unlock_with_password(user_id=user["_id"], h_kek=h_kek_bytes)
+    except DekUnlockError:
+        raise HTTPException(status_code=500, detail="dek_integrity_error")
 
     session_id = generate_session_id()
     access_token = create_access_token(
@@ -226,6 +245,12 @@ async def login(
     refresh_token = generate_refresh_token()
     store = _refresh_store()
     await store.store(refresh_token, user_id=user["_id"], session_id=session_id)
+
+    await svc.store_session_dek(
+        session_id=session_id,
+        dek=dek,
+        ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+    )
 
     _set_refresh_cookie(response, refresh_token)
     _schedule_premium_provider_auto_tests(background_tasks, user["_id"])

@@ -1,3 +1,4 @@
+import base64
 import secrets
 import string
 from datetime import datetime, timedelta, timezone
@@ -71,3 +72,17 @@ def generate_refresh_token() -> str:
 
 def generate_session_id() -> str:
     return str(uuid4())
+
+
+def hash_h_auth(h_auth_b64: str) -> str:
+    """bcrypt-hash the base64url-encoded 32-byte H_auth from the client."""
+    raw = base64.urlsafe_b64decode(h_auth_b64)
+    if len(raw) != 32:
+        raise ValueError("h_auth must decode to 32 bytes")
+    return bcrypt.hashpw(raw, bcrypt.gensalt(rounds=12)).decode()
+
+
+def verify_h_auth(h_auth_b64: str, stored_hash: str) -> bool:
+    """Verify base64url H_auth against stored bcrypt."""
+    raw = base64.urlsafe_b64decode(h_auth_b64)
+    return bcrypt.checkpw(raw, stored_hash.encode())

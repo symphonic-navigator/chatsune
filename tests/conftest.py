@@ -1,4 +1,9 @@
+import base64
+import secrets
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from datetime import datetime, UTC
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -10,6 +15,15 @@ from backend.database import connect_db, disconnect_db, get_redis
 from backend.main import app
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
+
+
+@dataclass
+class SeededUser:
+    id: str
+    username: str
+    h_auth_raw: bytes
+    h_kek_raw: bytes
+    recovery_key: str
 
 
 def _make_test_uri(base: str) -> str:
@@ -92,3 +106,47 @@ async def redis_client():
         async for key in client.scan_iter("ratelimit:recovery:*"):
             await client.delete(key)
         await client.aclose()
+
+
+@pytest_asyncio.fixture
+async def user_key_service(db, redis_client):
+    from backend.modules.user import UserKeyService
+    svc = UserKeyService(db=db, redis=redis_client)
+    await svc.ensure_indexes()
+    return svc
+
+
+@pytest_asyncio.fixture
+async def seeded_user(db, user_key_service) -> SeededUser:
+    from backend.modules.user._auth import hash_h_auth
+    from backend.modules.user._recovery_key import generate_recovery_key
+
+    h_auth = secrets.token_bytes(32)
+    h_kek = secrets.token_bytes(32)
+    recovery_key = generate_recovery_key()
+    user_id = str(uuid4())
+    username = f"test-{user_id[:6]}"
+    now = datetime.now(UTC)
+    await db["users"].insert_one({
+        "_id": user_id,
+        "username": username,
+        "email": f"{user_id[:6]}@example.com",
+        "display_name": "Test User",
+        "password_hash": hash_h_auth(base64.urlsafe_b64encode(h_auth).decode()),
+        "password_hash_version": 1,
+        "role": "user",
+        "is_active": True,
+        "must_change_password": False,
+        "created_at": now,
+        "updated_at": now,
+    })
+    await user_key_service.provision_for_new_user(
+        user_id=user_id, h_kek=h_kek, recovery_key=recovery_key, kdf_salt=b"s" * 32
+    )
+    return SeededUser(
+        id=user_id,
+        username=username,
+        h_auth_raw=h_auth,
+        h_kek_raw=h_kek,
+        recovery_key=recovery_key,
+    )
