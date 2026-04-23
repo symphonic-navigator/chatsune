@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 from datetime import datetime, timezone
 
@@ -82,6 +83,8 @@ from shared.events.auth import (
 from shared.events.user_keys import UserKeyProvisionedEvent, UserKeyRecoveredEvent, UserKeyRecoveryDeclinedEvent, UserKeyRecoveryRequiredEvent
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -563,6 +566,20 @@ async def refresh(
         new_refresh_token, user_id=user["_id"], session_id=session_id
     )
 
+    svc = _key_service()
+    extended = await svc.extend_session_dek_ttl(
+        session_id=session_id,
+        ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+    )
+    if not extended:
+        # DEK expired in Redis (user was idle longer than the access-token TTL).
+        # For Phase 1 no data is encrypted yet, so we allow the refresh to
+        # succeed. In a later phase this will need a re-login to re-prime the DEK.
+        _log.warning(
+            "auth.refresh.dek_expired session_id=%s user_id=%s",
+            session_id, str(user["_id"]),
+        )
+
     _set_refresh_cookie(response, new_refresh_token)
     _schedule_premium_provider_auto_tests(background_tasks, user["_id"])
 
@@ -581,6 +598,10 @@ async def logout(
     if refresh_token:
         store = _refresh_store()
         await store.consume(refresh_token)
+    session_id = user.get("session_id")
+    if session_id:
+        svc = _key_service()
+        await svc.delete_session_dek(session_id)
     _clear_refresh_cookie(response)
     return {"status": "ok"}
 
