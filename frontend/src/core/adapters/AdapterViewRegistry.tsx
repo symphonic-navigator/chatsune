@@ -3,7 +3,6 @@ import type { Connection } from '../types/llm'
 import { OllamaHttpView } from '../../app/components/llm-providers/adapter-views/OllamaHttpView'
 import { CommunityView } from '../../app/components/llm-providers/adapter-views/CommunityView'
 import { XaiHttpView } from '../../app/components/llm-providers/adapter-views/XaiHttpView'
-import { NanoGptHttpView } from '../../app/components/llm-providers/adapter-views/NanoGptHttpView'
 
 export interface AdapterViewProps {
   connection: Connection
@@ -22,7 +21,6 @@ export const ADAPTER_VIEW_REGISTRY: Record<string, ComponentType<AdapterViewProp
   ollama_http: OllamaHttpView,
   community: CommunityView,
   xai_http: XaiHttpView,
-  nano_gpt_http: NanoGptHttpView,
 }
 
 export function resolveAdapterView(viewId: string): ComponentType<AdapterViewProps> | null {

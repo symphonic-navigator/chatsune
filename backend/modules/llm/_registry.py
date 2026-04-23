@@ -23,7 +23,6 @@ from backend.modules.llm._adapters._xai_http import XaiHttpAdapter
 ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "ollama_http": OllamaHttpAdapter,
     "community": CommunityAdapter,
-    "nano_gpt_http": NanoGptHttpAdapter,
 }
 
 # Premium-only adapter types — not user-createable, but instantiable by the
@@ -34,6 +33,7 @@ ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
 _PREMIUM_ONLY_ADAPTERS: dict[str, type[BaseAdapter]] = {
     "xai_http": XaiHttpAdapter,
     "mistral_http": MistralHttpAdapter,
+    "nano_gpt_http": NanoGptHttpAdapter,
 }
 
 
