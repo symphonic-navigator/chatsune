@@ -68,6 +68,15 @@ async def test_fetch_models_returns_one_grok_4_1_fast():
     assert m.connection_slug == "chris-xai"
 
 
+@pytest.mark.asyncio
+async def test_fetch_models_labels_billing_category_as_pay_per_token():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    assert metas, "expected at least one model"
+    for m in metas:
+        assert m.billing_category == "pay_per_token"
+
+
 from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
 from backend.modules.llm._adapters._xai_http import _translate_message
 

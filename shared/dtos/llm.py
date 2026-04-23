@@ -26,6 +26,12 @@ class ModelMetaDto(BaseModel):
     # Default False keeps pre-existing cached documents readable — see
     # CLAUDE.md §Data-Model Migrations.
     is_deprecated: bool = False
+    # Billing category — "free" (self-hosted / community-shared), "subscription"
+    # (covered by a user's upstream plan, e.g. Ollama Cloud or nano-gpt in-plan),
+    # or "pay_per_token" (charged per-request, e.g. xAI, Mistral, nano-gpt
+    # out-of-plan). Default ``None`` keeps pre-existing cached documents
+    # readable — see CLAUDE.md §Data-Model Migrations.
+    billing_category: Literal["free", "subscription", "pay_per_token"] | None = None
 
     @computed_field
     @property

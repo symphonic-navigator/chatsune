@@ -1,0 +1,16 @@
+{
+  "object": "list",
+  "data": [
+    {"id": "z-ai/glm-4.6", "object": "model", "name": "GLM 4.6", "context_length": 200000, "capabilities": {"vision": null, "tool_calling": true, "reasoning": true}, "subscription": {"included": true, "note": ""}},
+    {"id": "z-ai/glm-4.6:thinking", "object": "model", "name": "GLM 4.6 Thinking", "context_length": 200000, "capabilities": {"vision": null, "tool_calling": true, "reasoning": true}, "subscription": {"included": true, "note": ""}},
+    {"id": "claude-haiku-4-5-20251001", "object": "model", "name": "Claude Haiku 4.5", "context_length": 200000, "capabilities": {"vision": true, "tool_calling": true, "reasoning": null}},
+    {"id": "claude-haiku-4-5-20251001-thinking", "object": "model", "name": "Claude Haiku 4.5 Thinking", "context_length": 200000, "capabilities": {"vision": true, "tool_calling": true, "reasoning": true}},
+    {"id": "gemini-2.5-flash", "object": "model", "name": "Gemini 2.5 Flash", "context_length": 1048756, "capabilities": {"vision": true, "tool_calling": null, "reasoning": true}},
+    {"id": "gemini-2.5-flash-nothinking", "object": "model", "name": "Gemini 2.5 Flash (no thinking)", "context_length": 1048756, "capabilities": {"vision": true, "tool_calling": null, "reasoning": null}},
+    {"id": "openai/gpt-5", "object": "model", "name": "GPT-5", "context_length": 400000, "capabilities": {"vision": true, "tool_calling": true, "reasoning": true}},
+    {"id": "openai/o1", "object": "model", "context_length": 200000, "capabilities": {"reasoning": true}},
+    {"id": "claude-opus-4-1-thinking:8192", "object": "model", "context_length": 200000, "capabilities": {"reasoning": true}},
+    {"id": "exa-research", "object": "model", "context_length": null, "capabilities": {}},
+    {"id": "glm-zero-preview", "object": "model", "context_length": 8000, "capabilities": {}}
+  ]
+}

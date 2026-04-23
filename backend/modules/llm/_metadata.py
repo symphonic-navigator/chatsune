@@ -19,6 +19,7 @@ from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._types import ResolvedConnection
+from backend.modules.llm._registry import _instantiate_adapter
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ async def _fetch_and_cache(
     c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
     """Fetch from upstream and write to Redis. Raises adapter exceptions."""
-    adapter = adapter_cls()
+    adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _cache_key(c.id),
@@ -83,7 +84,7 @@ async def _fetch_and_cache_premium(
     provider_id: str,
 ) -> list[ModelMetaDto]:
     """Fetch from upstream and write to the user-scoped premium cache."""
-    adapter = adapter_cls()
+    adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _premium_cache_key(user_id, provider_id),

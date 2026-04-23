@@ -1,0 +1,6 @@
+[
+  {"id": "claude-opus-4-1-thinking:8192", "object": "model", "context_length": 200000, "capabilities": {"reasoning": true}},
+  {"id": "claude-sonnet-4-thinking:32768", "object": "model", "context_length": 1000000, "capabilities": {"reasoning": true}},
+  {"id": "anthropic/claude-opus-4.6:thinking:low", "object": "model", "context_length": 1000000, "capabilities": {"reasoning": true}},
+  {"id": "anthropic/claude-opus-4.6:thinking:max", "object": "model", "context_length": 1000000, "capabilities": {"reasoning": true}}
+]

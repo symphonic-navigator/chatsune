@@ -308,6 +308,7 @@ def _dedup_models(
             supports_vision=bool(caps.get("vision")),
             supports_tool_calls=bool(caps.get("function_calling")),
             is_deprecated=deprecation is not None,
+            billing_category="pay_per_token",
         ))
     return metas
 

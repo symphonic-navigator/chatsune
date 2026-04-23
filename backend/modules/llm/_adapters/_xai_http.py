@@ -305,6 +305,7 @@ class XaiHttpAdapter(BaseAdapter):
                 supports_reasoning=True,
                 supports_vision=True,
                 supports_tool_calls=True,
+                billing_category="pay_per_token",
             ),
         ]
 

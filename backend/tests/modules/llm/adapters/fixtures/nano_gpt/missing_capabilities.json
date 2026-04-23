@@ -1,0 +1,14 @@
+[
+  {
+    "id": "mistralai/mistral-medium-3",
+    "object": "model",
+    "name": "Mistral Medium 3",
+    "context_length": 131072,
+    "capabilities": {"vision": true, "tool_calling": null, "reasoning": null}
+  },
+  {
+    "id": "amazon/nova-pro-v1",
+    "object": "model",
+    "context_length": 300000
+  }
+]

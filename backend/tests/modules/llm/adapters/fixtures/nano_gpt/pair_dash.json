@@ -1,0 +1,16 @@
+[
+  {
+    "id": "claude-haiku-4-5-20251001",
+    "object": "model",
+    "name": "Claude Haiku 4.5",
+    "context_length": 200000,
+    "capabilities": {"vision": true, "tool_calling": true, "reasoning": null}
+  },
+  {
+    "id": "claude-haiku-4-5-20251001-thinking",
+    "object": "model",
+    "name": "Claude Haiku 4.5 Thinking",
+    "context_length": 200000,
+    "capabilities": {"vision": true, "tool_calling": true, "reasoning": true}
+  }
+]
