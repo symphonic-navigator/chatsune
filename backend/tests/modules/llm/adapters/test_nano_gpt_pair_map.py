@@ -13,6 +13,7 @@ from fakeredis import aioredis as fake_aioredis
 
 from backend.modules.llm._adapters._nano_gpt_pair_map import (
     PAIR_MAP_TTL_SECONDS,
+    _key,
     load_pair_map,
     save_pair_map,
 )
@@ -57,7 +58,7 @@ async def test_save_pair_map_sets_ttl(redis_client):
         connection_id="c2",
         pair_map={"m": {"non_thinking_slug": "m", "thinking_slug": None}},
     )
-    ttl = await redis_client.ttl("nano_gpt:pair_map:c2")
+    ttl = await redis_client.ttl(_key("c2"))
     assert 0 < ttl <= PAIR_MAP_TTL_SECONDS
 
 
