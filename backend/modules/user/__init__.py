@@ -5,6 +5,11 @@ Public API: import only from this file.
 
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._key_repository import UserKeysRepository
+from backend.modules.user._key_service import (
+    DekUnlockError,
+    UserKeyNotFoundError,
+    UserKeyService,
+)
 from backend.modules.user._auth import (
     create_access_token,
     decode_access_token,
@@ -119,4 +124,7 @@ __all__ = [
     "get_admin_mcp_gateways",
     "cascade_delete_user",
     "DeletionReportStore",
+    "UserKeyService",
+    "DekUnlockError",
+    "UserKeyNotFoundError",
 ]
