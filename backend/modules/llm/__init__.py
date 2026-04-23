@@ -55,7 +55,11 @@ from backend.modules.llm._metadata import (
     refresh_connection_models,
     refresh_premium_models,
 )
-from backend.modules.llm._registry import ADAPTER_REGISTRY, get_adapter_class
+from backend.modules.llm._registry import (
+    ADAPTER_REGISTRY,
+    _instantiate_adapter,
+    get_adapter_class,
+)
 from backend.modules.llm._resolver import (
     resolve_for_model,
     resolve_owned_connection_by_slug,
@@ -149,7 +153,7 @@ async def stream_completion(
     adapter_cls = get_adapter_class(c.adapter_type)
     if adapter_cls is None:
         raise LlmConnectionNotFoundError(model_unique_id)
-    adapter = adapter_cls()
+    adapter = _instantiate_adapter(adapter_cls, get_redis())
     max_parallel = int(c.config.get("max_parallel") or 1)
     sem = get_semaphore_registry().get(c.id, max_parallel)
 
