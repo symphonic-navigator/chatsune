@@ -17,6 +17,8 @@ from backend.database import get_db, get_redis
 from backend.dependencies import get_current_user, require_admin, require_active_session
 from backend.ws.event_bus import EventBus, get_event_bus
 from backend.modules.user._auth import (
+    SENTINEL_HASH,
+    SENTINEL_PREFIX,
     create_access_token,
     generate_random_password,
     generate_refresh_token,
@@ -77,7 +79,7 @@ from shared.events.auth import (
     UserUpdatedEvent,
     UserProfileUpdatedEvent,
 )
-from shared.events.user_keys import UserKeyProvisionedEvent, UserKeyRecoveredEvent, UserKeyRecoveryDeclinedEvent
+from shared.events.user_keys import UserKeyProvisionedEvent, UserKeyRecoveredEvent, UserKeyRecoveryDeclinedEvent, UserKeyRecoveryRequiredEvent
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
 
@@ -269,6 +271,11 @@ async def login(
     if not user["is_active"]:
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
+    # If admin-reset installed the sentinel, force the recovery flow regardless
+    # of what H_auth the client sends — no password can match the sentinel.
+    if user["password_hash"].startswith(SENTINEL_PREFIX):
+        return RecoveryRequiredResponseDto()
+
     if not verify_h_auth(body.h_auth, user["password_hash"]):
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
@@ -453,8 +460,12 @@ async def recover_dek(
     user = await users_repo.find_by_username_case_insensitive(body.username)
     if user is None or user.get("password_hash_version") != 1:
         raise HTTPException(status_code=401, detail="invalid_credentials")
-    if not verify_h_auth(body.h_auth, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    # After admin-reset the stored hash is the sentinel — skip bcrypt verification
+    # and rely on the recovery key to authenticate the user instead.
+    if not user["password_hash"].startswith(SENTINEL_PREFIX):
+        if not verify_h_auth(body.h_auth, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="invalid_credentials")
 
     user_id = str(user["_id"])
     new_h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
@@ -466,6 +477,14 @@ async def recover_dek(
         )
     except (DekUnlockError, InvalidRecoveryKeyError, UserKeyNotFoundError):
         raise HTTPException(status_code=401, detail="invalid_recovery_key")
+
+    # Replace the sentinel (or old hash) with a real bcrypt of the new H_auth,
+    # and clear must_change_password since the user has chosen new credentials.
+    new_password_hash = hash_h_auth(body.h_auth)
+    await users_repo.set_password_hash_and_version(
+        user_id=user_id, password_hash=new_password_hash, version=1
+    )
+    await users_repo.clear_must_change_password(user_id)
 
     session_id = generate_session_id()
     access_token = create_access_token(
@@ -1042,11 +1061,12 @@ async def reset_password(
             status_code=403, detail="Only master admin can reset admin passwords"
         )
 
-    password = generate_random_password()
-    password_hash = hash_password(password)
-    updated = await repo.update(
-        user_id, {"password_hash": password_hash, "must_change_password": True}
+    svc = _key_service()
+    await repo.set_password_hash_and_version(
+        user_id=user_id, password_hash=SENTINEL_HASH, version=1
     )
+    await repo.set_must_change_password(user_id, value=True)
+    await svc.mark_recovery_required(user_id)
 
     audit = _audit_repo()
     await audit.log(
@@ -1062,14 +1082,16 @@ async def reset_password(
         target_user_ids=[user_id],
     )
     await event_bus.publish(
+        Topics.USER_KEY_RECOVERY_REQUIRED,
+        UserKeyRecoveryRequiredEvent(user_id=user_id, triggered_by_admin_id=str(user["sub"])),
+        target_user_ids=[user_id],
+    )
+    await event_bus.publish(
         Topics.AUDIT_LOGGED,
         AuditLoggedEvent(actor_id=user["sub"], action="user.password_reset", resource_type="user", resource_id=user_id),
     )
 
-    return ResetPasswordResponseDto(
-        user=UserRepository.to_dto(updated),
-        generated_password=password,
-    )
+    return {"status": "reset"}
 
 
 # --- Audit Log ---

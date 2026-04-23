@@ -12,6 +12,9 @@ from backend.config import settings
 JWT_ISSUER = "chatsune"
 JWT_AUDIENCE = "chatsune"
 
+SENTINEL_PREFIX = "$SENTINEL$"
+SENTINEL_HASH = "$SENTINEL$reset$no-password-can-match$"
+
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(
@@ -83,6 +86,12 @@ def hash_h_auth(h_auth_b64: str) -> str:
 
 
 def verify_h_auth(h_auth_b64: str, stored_hash: str) -> bool:
-    """Verify base64url H_auth against stored bcrypt."""
+    """Verify base64url H_auth against stored bcrypt.
+
+    Returns False immediately if ``stored_hash`` is the admin-reset sentinel —
+    no password can ever match it, and bcrypt would error on the non-hash format.
+    """
+    if stored_hash.startswith(SENTINEL_PREFIX):
+        return False
     raw = base64.urlsafe_b64decode(h_auth_b64)
     return bcrypt.checkpw(raw, stored_hash.encode())

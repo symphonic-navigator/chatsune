@@ -150,3 +150,37 @@ async def seeded_user(db, user_key_service) -> SeededUser:
         h_kek_raw=h_kek,
         recovery_key=recovery_key,
     )
+
+
+@pytest_asyncio.fixture
+async def seeded_admin_token(db, user_key_service) -> tuple[str, str]:
+    """Creates a master-admin user and returns (user_id, access_token)."""
+    from backend.modules.user._auth import hash_h_auth, create_access_token, generate_session_id
+    from backend.modules.user._recovery_key import generate_recovery_key
+
+    h_auth = secrets.token_bytes(32)
+    h_kek = secrets.token_bytes(32)
+    user_id = str(uuid4())
+    now = datetime.now(UTC)
+    await db["users"].insert_one({
+        "_id": user_id,
+        "username": f"admin-{user_id[:6]}",
+        "email": f"admin-{user_id[:6]}@example.com",
+        "display_name": "Test Admin",
+        "password_hash": hash_h_auth(base64.urlsafe_b64encode(h_auth).decode()),
+        "password_hash_version": 1,
+        "role": "master_admin",
+        "is_active": True,
+        "must_change_password": False,
+        "created_at": now,
+        "updated_at": now,
+    })
+    await user_key_service.provision_for_new_user(
+        user_id=user_id,
+        h_kek=h_kek,
+        recovery_key=generate_recovery_key(),
+        kdf_salt=b"a" * 32,
+    )
+    session_id = generate_session_id()
+    token = create_access_token(user_id=user_id, role="master_admin", session_id=session_id)
+    return user_id, token
