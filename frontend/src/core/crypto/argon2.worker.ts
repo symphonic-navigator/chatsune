@@ -1,4 +1,8 @@
 /// <reference lib="webworker" />
+// The bundled build embeds the wasm as base64 so vite does not need to emit a
+// separate .wasm asset or chunk-split it — this avoids the wasm-loader issues
+// hit with the plain `argon2-browser` import path.
+import argon2 from 'argon2-browser/dist/argon2-bundled.min.js'
 
 export interface Argon2Request {
   password: string
@@ -15,13 +19,9 @@ export interface Argon2Response {
 self.onmessage = async (e: MessageEvent<Argon2Request>) => {
   const { password, salt, memoryKib, iterations, parallelism } = e.data
   try {
-    // Dynamically import argon2-browser to avoid bundling wasm at build time
-    // eslint-disable-next-line import/no-extraneous-dependencies
-    const argon2Module = await (globalThis as any).importArgon2?.() ?? import(/* @vite-ignore */ 'argon2-browser')
-    const argon2 = argon2Module.default || argon2Module
     const result = await argon2.hash({
       pass: password,
-      salt: salt,
+      salt,
       type: argon2.ArgonType.Argon2id,
       mem: memoryKib,
       time: iterations,

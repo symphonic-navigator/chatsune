@@ -31,3 +31,8 @@ declare module 'argon2-browser' {
   const argon2: Argon2Static
   export default argon2
 }
+
+declare module 'argon2-browser/dist/argon2-bundled.min.js' {
+  const argon2: import('argon2-browser').default extends infer T ? T : never
+  export default argon2
+}
