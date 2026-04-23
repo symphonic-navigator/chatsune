@@ -32,7 +32,7 @@ from backend.modules.user._auth import (
 from backend.modules.user._models import Argon2Params
 from backend.modules.user._recovery_key import generate_recovery_key
 from backend.modules.user._key_service import DekUnlockError, UserKeyNotFoundError
-from backend.modules.user._crypto import pseudo_salt_for_unknown_user
+from backend.modules.user._crypto import decode_base64url, pseudo_salt_for_unknown_user
 from backend.modules.user._key_service import UserKeyService
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._rate_limit import check_login_rate_limit, check_recovery_rate_limit, get_client_ip
@@ -185,7 +185,7 @@ async def setup(
 
     # Generate a fresh per-user kdf_salt and provision the DEK.
     kdf_salt = os.urandom(32)
-    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    h_kek_bytes = decode_base64url(body.h_kek)
     await svc.provision_for_new_user(
         user_id=user_id,
         h_kek=h_kek_bytes,
@@ -289,7 +289,7 @@ async def login(
     if keys_doc.dek_recovery_required:
         return RecoveryRequiredResponseDto()
 
-    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    h_kek_bytes = decode_base64url(body.h_kek)
     try:
         dek = await svc.unlock_with_password(user_id=user["_id"], h_kek=h_kek_bytes)
     except DekUnlockError:
@@ -398,7 +398,7 @@ async def login_legacy(
     # Provision key material for the migrated user.
     recovery_key = generate_recovery_key()
     kdf_salt = pseudo_salt_for_unknown_user(body.username, settings.kdf_pepper_bytes)
-    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    h_kek_bytes = decode_base64url(body.h_kek)
     await svc.provision_for_new_user(
         user_id=user_id,
         h_kek=h_kek_bytes,
@@ -471,7 +471,7 @@ async def recover_dek(
             raise HTTPException(status_code=401, detail="invalid_credentials")
 
     user_id = str(user["_id"])
-    new_h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    new_h_kek_bytes = decode_base64url(body.h_kek)
     try:
         dek = await svc.unlock_with_recovery_and_rewrap(
             user_id=user_id,
@@ -623,8 +623,8 @@ async def change_password(
     if not verify_h_auth(body.h_auth_old, doc["password_hash"]):
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
-    h_kek_old = base64.urlsafe_b64decode(body.h_kek_old)
-    h_kek_new = base64.urlsafe_b64decode(body.h_kek_new)
+    h_kek_old = decode_base64url(body.h_kek_old)
+    h_kek_new = decode_base64url(body.h_kek_new)
 
     # Rewrap the DEK under the new H_kek — this also verifies the old H_kek is correct.
     try:

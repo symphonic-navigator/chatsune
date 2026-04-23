@@ -6,6 +6,7 @@ from backend.modules.user._crypto import (
     aes_gcm_wrap,
     aes_gcm_unwrap,
     pseudo_salt_for_unknown_user,
+    decode_base64url,
     AesGcmUnwrapError,
 )
 
@@ -57,3 +58,24 @@ def test_pseudo_salt_is_deterministic_per_username():
 def test_pseudo_salt_is_case_insensitive_and_trimmed():
     pepper = secrets.token_bytes(32)
     assert pseudo_salt_for_unknown_user("Chris", pepper) == pseudo_salt_for_unknown_user("  chris ", pepper)
+
+
+def test_decode_base64url_accepts_stripped_padding():
+    """The JS client produces base64url without trailing `=` padding;
+    the decoder must tolerate it since Python's stdlib does not."""
+    import base64
+    raw = secrets.token_bytes(32)
+    padded = base64.urlsafe_b64encode(raw).decode()
+    unpadded = padded.rstrip("=")
+    assert padded != unpadded, "test precondition: 32 bytes → padded form needs a padding char"
+    assert decode_base64url(padded) == raw
+    assert decode_base64url(unpadded) == raw
+
+
+def test_decode_base64url_handles_varying_padding_amounts():
+    import base64
+    # 1-byte, 2-byte, 3-byte inputs exercise the three distinct padding lengths.
+    for size in (1, 2, 3, 4, 5, 32):
+        raw = secrets.token_bytes(size)
+        unpadded = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+        assert decode_base64url(unpadded) == raw

@@ -79,7 +79,8 @@ def generate_session_id() -> str:
 
 def hash_h_auth(h_auth_b64: str) -> str:
     """bcrypt-hash the base64url-encoded 32-byte H_auth from the client."""
-    raw = base64.urlsafe_b64decode(h_auth_b64)
+    from backend.modules.user._crypto import decode_base64url
+    raw = decode_base64url(h_auth_b64)
     if len(raw) != 32:
         raise ValueError("h_auth must decode to 32 bytes")
     return bcrypt.hashpw(raw, bcrypt.gensalt(rounds=12)).decode()
@@ -93,5 +94,6 @@ def verify_h_auth(h_auth_b64: str, stored_hash: str) -> bool:
     """
     if stored_hash.startswith(SENTINEL_PREFIX):
         return False
-    raw = base64.urlsafe_b64decode(h_auth_b64)
+    from backend.modules.user._crypto import decode_base64url
+    raw = decode_base64url(h_auth_b64)
     return bcrypt.checkpw(raw, stored_hash.encode())

@@ -10,6 +10,7 @@ All byte quantities are raw ``bytes`` (not base64); callers choose encoding.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import os
@@ -26,6 +27,18 @@ _TAG_LEN = 16
 
 class AesGcmUnwrapError(Exception):
     """Raised when AES-GCM authentication fails on unwrap."""
+
+
+def decode_base64url(s: str) -> bytes:
+    """``base64.urlsafe_b64decode`` tolerant of missing ``=`` padding.
+
+    The JavaScript ``btoa``-based base64url encoder on the client strips
+    trailing padding per RFC 4648 §5, but Python's stdlib decoder requires
+    it. This helper re-adds the padding before decoding so callers do not
+    need to care about which side produced the string.
+    """
+    padding = "=" * (-len(s) % 4)
+    return base64.urlsafe_b64decode(s + padding)
 
 
 def derive_wrap_key(input_material: bytes, *, info: bytes, length: int = 32) -> bytes:
