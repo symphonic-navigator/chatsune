@@ -1,15 +1,22 @@
-"""Tests for the Nano-GPT HTTP adapter skeleton — identity, templates,
-config schema, and the Phase-2 stub behaviour of ``stream_completion``.
+"""Tests for the Nano-GPT HTTP adapter — identity, templates,
+config schema, the wired ``fetch_models`` pipeline, and the Phase-2
+stub behaviour of ``stream_completion``.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+import pytest_asyncio
+from fakeredis import aioredis as fake_aioredis
 
 from backend.modules.llm._adapters._nano_gpt_http import NanoGptHttpAdapter
 from backend.modules.llm._adapters._types import ResolvedConnection
+
+FIXTURES = Path(__file__).parent / "fixtures" / "nano_gpt"
 
 
 def _resolved_conn(
@@ -31,6 +38,15 @@ def _resolved_conn(
         created_at=now,
         updated_at=now,
     )
+
+
+@pytest_asyncio.fixture
+async def redis_client():
+    client = fake_aioredis.FakeRedis()
+    try:
+        yield client
+    finally:
+        await client.aclose()
 
 
 def test_adapter_identity():
@@ -72,10 +88,75 @@ def test_config_schema_has_expected_fields():
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_is_not_implemented_stub():
+async def test_fetch_models_without_redis_raises():
     adapter = NanoGptHttpAdapter()
-    with pytest.raises(NotImplementedError, match="Task 8"):
+    with pytest.raises(RuntimeError, match="Redis"):
         await adapter.fetch_models(_resolved_conn())
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_canonical_dtos_with_connection_fields(
+    redis_client, monkeypatch,
+):
+    # ``mini_dump.json`` is stored in the upstream envelope shape
+    # ``{"object": "list", "data": [...]}``; the real ``_http_get_models``
+    # peels off ``data`` before returning. Mirror that here.
+    envelope = json.loads((FIXTURES / "mini_dump.json").read_text())
+    raw_data = envelope["data"]
+
+    async def _fake_get(**kwargs):
+        return raw_data
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http._http_get_models",
+        _fake_get,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    conn = _resolved_conn()
+    metas = await adapter.fetch_models(conn)
+
+    assert metas, "mini_dump should yield at least one canonical model"
+    for m in metas:
+        assert m.connection_id == conn.id
+        assert m.connection_slug == conn.slug
+        assert m.connection_display_name == conn.display_name
+        # billing_category is populated by the adapter from is_subscription
+        assert m.billing_category in {"subscription", "pay_per_token"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_persists_pair_map_in_redis(
+    redis_client, monkeypatch,
+):
+    envelope = json.loads((FIXTURES / "mini_dump.json").read_text())
+    raw_data = envelope["data"]
+
+    async def _fake_get(**kwargs):
+        return raw_data
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http._http_get_models",
+        _fake_get,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    conn = _resolved_conn()
+    await adapter.fetch_models(conn)
+
+    # Load the pair map through the real helper to prove the key schema
+    # and JSON encoding stay consistent with the persistence layer.
+    from backend.modules.llm._adapters._nano_gpt_pair_map import load_pair_map
+    pair_map = await load_pair_map(redis_client, connection_id=conn.id)
+
+    assert pair_map, "mini_dump contains pairs; the pair_map must be non-empty"
+    # Sanity-check the shape of one entry
+    for model_id, pair in pair_map.items():
+        assert "non_thinking_slug" in pair
+        assert "thinking_slug" in pair
+        # At least one model should have a thinking_slug set (mini_dump has pairs)
+    assert any(p["thinking_slug"] is not None for p in pair_map.values()), \
+        "mini_dump should produce at least one pair with a thinking_slug"
 
 
 @pytest.mark.asyncio

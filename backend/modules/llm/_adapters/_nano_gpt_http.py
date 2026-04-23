@@ -17,8 +17,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+import httpx
+from redis.asyncio import Redis
+
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import ProviderStreamEvent
+from backend.modules.llm._adapters._nano_gpt_catalog import build_catalogue
+from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
@@ -27,12 +32,37 @@ from backend.modules.llm._adapters._types import (
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
+_DEFAULT_BASE_URL = "https://api.nano-gpt.com/v1"
+_TIMEOUT = 30.0
+
+
+async def _http_get_models(
+    *, base_url: str, api_key: str, timeout: float = _TIMEOUT,
+) -> list[dict]:
+    """Fetch the raw nano-gpt model list.
+
+    Nano-GPT exposes ``/v1/models?detailed=true`` in the OpenAI-compatible
+    envelope ``{"data": [...]}``. Returns the ``data`` list verbatim.
+    """
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(
+            f"{base_url.rstrip('/')}/models",
+            params={"detailed": "true"},
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+    return payload.get("data", [])
+
 
 class NanoGptHttpAdapter(BaseAdapter):
     adapter_type = "nano_gpt_http"
     display_name = "Nano-GPT"
     view_id = "nano_gpt_http"
     secret_fields = frozenset({"api_key"})
+
+    def __init__(self, *, redis: Redis | None = None) -> None:
+        self._redis = redis
 
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
@@ -78,9 +108,47 @@ class NanoGptHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        raise NotImplementedError(
-            "wired in Task 8 of the nano-gpt port plan",
+        if self._redis is None:
+            raise RuntimeError(
+                "NanoGptHttpAdapter requires a Redis client for pair-map "
+                "persistence — construct with redis= kwarg",
+            )
+        base_url = connection.config.get("base_url") or _DEFAULT_BASE_URL
+        api_key = connection.config["api_key"]
+
+        raw = await _http_get_models(base_url=base_url, api_key=api_key)
+        result = build_catalogue(raw)
+
+        # ``build_catalogue`` returns adapter-internal "block" dicts, not
+        # ``ModelMetaDto`` instances — billing_category and the connection
+        # fields are the adapter's responsibility to fill in here. Billing
+        # derives from the block's ``is_subscription`` flag.
+        dtos: list[ModelMetaDto] = []
+        for block in result.canonical:
+            billing_category = (
+                "subscription" if block.get("is_subscription") else "pay_per_token"
+            )
+            dtos.append(
+                ModelMetaDto(
+                    connection_id=connection.id,
+                    connection_slug=connection.slug,
+                    connection_display_name=connection.display_name,
+                    model_id=block["model_id"],
+                    display_name=block["display_name"],
+                    context_window=block["context_window"],
+                    supports_reasoning=block["supports_reasoning"],
+                    supports_vision=block["supports_vision"],
+                    supports_tool_calls=block["supports_tool_calls"],
+                    billing_category=billing_category,
+                )
+            )
+
+        await save_pair_map(
+            self._redis,
+            connection_id=connection.id,
+            pair_map=result.pair_map,
         )
+        return dtos
 
     async def stream_completion(
         self, connection: ResolvedConnection, request: CompletionRequest,
