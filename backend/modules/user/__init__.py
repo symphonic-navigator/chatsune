@@ -4,6 +4,7 @@ Public API: import only from this file.
 """
 
 from backend.modules.user._audit import AuditRepository
+from backend.modules.user._key_repository import UserKeysRepository
 from backend.modules.user._auth import (
     create_access_token,
     decode_access_token,
@@ -23,6 +24,7 @@ async def init_indexes(db) -> None:
     """Create MongoDB indexes for user module collections."""
     await UserRepository(db).create_indexes()
     await AuditRepository(db).create_indexes()
+    await UserKeysRepository(db).ensure_indexes()
 
 
 async def perform_token_refresh(refresh_token: str, redis) -> dict | None:

@@ -65,3 +65,30 @@ async def clean_db():
     await redis_client.flushdb()
     await redis_client.aclose()
     yield
+
+
+@pytest_asyncio.fixture
+async def db(clean_db) -> AsyncGenerator:
+    """Motor database handle against the test DB, already cleaned."""
+    client = AsyncIOMotorClient(settings.mongodb_uri)
+    database = client.get_database()
+    try:
+        yield database
+    finally:
+        client.close()
+
+
+@pytest_asyncio.fixture
+async def redis_client():
+    from redis.asyncio import Redis
+
+    client = Redis.from_url(settings.redis_uri, decode_responses=False)
+    try:
+        yield client
+    finally:
+        # Flush only the key spaces we use in tests so we don't nuke other tests' seeds.
+        async for key in client.scan_iter("session_dek:*"):
+            await client.delete(key)
+        async for key in client.scan_iter("ratelimit:recovery:*"):
+            await client.delete(key)
+        await client.aclose()
