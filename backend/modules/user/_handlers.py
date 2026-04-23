@@ -1,3 +1,4 @@
+import base64
 from datetime import datetime, timezone
 
 from fastapi import (
@@ -22,6 +23,8 @@ from backend.modules.user._auth import (
     hash_password,
     verify_password,
 )
+from backend.modules.user._crypto import pseudo_salt_for_unknown_user
+from backend.modules.user._key_service import UserKeyService
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._rate_limit import check_login_rate_limit, get_client_ip
 from backend.modules.user._refresh import RefreshTokenStore
@@ -30,11 +33,14 @@ from shared.dtos.mcp import McpGatewayConfigDto
 from backend.modules.tools import invalidate_mcp_registries
 from backend.modules.tools._namespace import normalise_namespace, validate_namespace
 from shared.dtos.auth import (
+    Argon2ParamsDto,
     ChangePasswordRequestDto,
     CreateUserRequestDto,
     CreateUserResponseDto,
     DeleteAccountRequestDto,
     DeleteAccountResponseDto,
+    KdfParamsRequestDto,
+    KdfParamsResponseDto,
     LoginRequestDto,
     ResetPasswordResponseDto,
     SetupRequestDto,
@@ -72,6 +78,10 @@ def _audit_repo() -> AuditRepository:
 
 def _refresh_store() -> RefreshTokenStore:
     return RefreshTokenStore(get_redis())
+
+
+def _key_service() -> UserKeyService:
+    return UserKeyService(db=get_db(), redis=get_redis())
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -223,6 +233,45 @@ async def login(
     return TokenResponseDto(
         access_token=access_token,
         expires_in=settings.jwt_access_token_expire_minutes * 60,
+    )
+
+
+@router.post("/auth/kdf-params", response_model=KdfParamsResponseDto)
+async def kdf_params(body: KdfParamsRequestDto) -> KdfParamsResponseDto:
+    """Return the KDF salt and parameters needed before the client can derive keys.
+
+    For unknown or legacy users a deterministic pseudo-salt is returned so that
+    the response is indistinguishable from a real user's response, defeating
+    user-enumeration probes.
+    """
+    repo = _user_repo()
+    user = await repo.find_by_username_case_insensitive(body.username)
+
+    if user is not None:
+        key_svc = _key_service()
+        keys_doc = await key_svc.get_keys_doc(str(user["_id"]))
+        if keys_doc is not None:
+            return KdfParamsResponseDto(
+                kdf_salt=base64.urlsafe_b64encode(keys_doc.kdf_salt).decode(),
+                kdf_params=Argon2ParamsDto(**keys_doc.kdf_params.model_dump()),
+                password_hash_version=user.get("password_hash_version"),
+            )
+        # Legacy user (pre-migration): exists in the users collection but has no
+        # user_keys document yet. Return a pseudo-salt so the client cannot tell
+        # the difference from a ghost user.
+        salt = pseudo_salt_for_unknown_user(body.username, settings.kdf_pepper_bytes)
+        return KdfParamsResponseDto(
+            kdf_salt=base64.urlsafe_b64encode(salt).decode(),
+            kdf_params=Argon2ParamsDto(memory_kib=65536, iterations=3, parallelism=4),
+            password_hash_version=None,
+        )
+
+    # Unknown user: deterministic pseudo-salt, indistinguishable from a legacy user.
+    salt = pseudo_salt_for_unknown_user(body.username, settings.kdf_pepper_bytes)
+    return KdfParamsResponseDto(
+        kdf_salt=base64.urlsafe_b64encode(salt).decode(),
+        kdf_params=Argon2ParamsDto(memory_kib=65536, iterations=3, parallelism=4),
+        password_hash_version=None,
     )
 
 

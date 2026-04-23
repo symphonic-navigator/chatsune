@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -21,6 +22,16 @@ class UserRepository:
 
     async def find_by_username(self, username: str) -> dict | None:
         return await self._collection.find_one({"username": username})
+
+    async def find_by_username_case_insensitive(self, username: str) -> dict | None:
+        """Look up a user by username, ignoring case.
+
+        Returns the raw document dict (same shape as :meth:`find_by_username`),
+        or ``None`` if no match is found.
+        """
+        return await self._collection.find_one(
+            {"username": {"$regex": f"^{re.escape(username)}$", "$options": "i"}}
+        )
 
     async def find_by_id(self, user_id: str) -> dict | None:
         return await self._collection.find_one({"_id": user_id})
