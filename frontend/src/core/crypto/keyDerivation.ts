@@ -35,9 +35,13 @@ async function runArgon2id(password: string, salt: Uint8Array, params: KdfParams
 }
 
 async function hkdfSha256(ikm: Uint8Array, info: string, length: number): Promise<Uint8Array> {
-  const baseKey = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits'])
+  // Copy into a fresh ArrayBuffer-backed Uint8Array to satisfy BufferSource expectations.
+  const ikmCopy = new Uint8Array(ikm.length)
+  ikmCopy.set(ikm)
+  const infoBytes = new TextEncoder().encode(info)
+  const baseKey = await crypto.subtle.importKey('raw', ikmCopy.buffer as ArrayBuffer, 'HKDF', false, ['deriveBits'])
   const derived = await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new TextEncoder().encode(info) },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: infoBytes },
     baseKey,
     length * 8,
   )

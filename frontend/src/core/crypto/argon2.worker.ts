@@ -1,5 +1,4 @@
 /// <reference lib="webworker" />
-import argon2 from 'argon2-browser'
 
 export interface Argon2Request {
   password: string
@@ -16,6 +15,10 @@ export interface Argon2Response {
 self.onmessage = async (e: MessageEvent<Argon2Request>) => {
   const { password, salt, memoryKib, iterations, parallelism } = e.data
   try {
+    // Dynamically import argon2-browser to avoid bundling wasm at build time
+    // eslint-disable-next-line import/no-extraneous-dependencies
+    const argon2Module = await (globalThis as any).importArgon2?.() ?? import(/* @vite-ignore */ 'argon2-browser')
+    const argon2 = argon2Module.default || argon2Module
     const result = await argon2.hash({
       pass: password,
       salt: salt,
