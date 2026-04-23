@@ -1,6 +1,6 @@
 """Tests for the Nano-GPT HTTP adapter — identity, templates,
-config schema, the wired ``fetch_models`` pipeline, and the Phase-2
-stub behaviour of ``stream_completion``.
+config schema, the wired ``fetch_models`` pipeline, and the SSE
+streaming loop of ``stream_completion``.
 """
 
 from __future__ import annotations
@@ -159,14 +159,391 @@ async def test_fetch_models_persists_pair_map_in_redis(
         "mini_dump should produce at least one pair with a thinking_slug"
 
 
+# ---------------------------------------------------------------------------
+# SSE helper unit tests — ported from the xAI adapter, minus xAI-specific bits.
+# ---------------------------------------------------------------------------
+
+from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
+from backend.modules.llm._adapters._nano_gpt_http import _translate_message
+
+
+def test_translate_message_plain_text_becomes_string():
+    msg = CompletionMessage(
+        role="user",
+        content=[ContentPart(type="text", text="hi")],
+    )
+    out = _translate_message(msg)
+    assert out == {"role": "user", "content": "hi"}
+
+
+def test_translate_message_with_image_becomes_list_of_parts():
+    msg = CompletionMessage(
+        role="user",
+        content=[
+            ContentPart(type="text", text="look at this"),
+            ContentPart(type="image", data="BASE64DATA", media_type="image/png"),
+        ],
+    )
+    out = _translate_message(msg)
+    assert out["role"] == "user"
+    assert out["content"] == [
+        {"type": "text", "text": "look at this"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,BASE64DATA"}},
+    ]
+
+
+def test_translate_message_tool_call_round_trip():
+    msg = CompletionMessage(
+        role="assistant",
+        content=[ContentPart(type="text", text="")],
+        tool_calls=[ToolCallResult(id="c1", name="f", arguments='{"x":1}')],
+    )
+    out = _translate_message(msg)
+    assert out["tool_calls"] == [
+        {"id": "c1", "type": "function",
+         "function": {"name": "f", "arguments": '{"x":1}'}},
+    ]
+
+
+def test_translate_message_tool_response_carries_tool_call_id():
+    msg = CompletionMessage(
+        role="tool",
+        content=[ContentPart(type="text", text="result")],
+        tool_call_id="c1",
+    )
+    out = _translate_message(msg)
+    assert out["tool_call_id"] == "c1"
+    assert out["content"] == "result"
+
+
+from backend.modules.llm._adapters._nano_gpt_http import _parse_sse_line, _SSE_DONE
+
+
+def test_parse_sse_line_ignores_blank():
+    assert _parse_sse_line("") is None
+    assert _parse_sse_line("   ") is None
+
+
+def test_parse_sse_line_ignores_non_data_frames():
+    assert _parse_sse_line("event: ping") is None
+    assert _parse_sse_line(":keepalive") is None
+
+
+def test_parse_sse_line_done_sentinel():
+    assert _parse_sse_line("data: [DONE]") is _SSE_DONE
+
+
+def test_parse_sse_line_valid_json():
+    assert _parse_sse_line('data: {"x":1}') == {"x": 1}
+
+
+def test_parse_sse_line_malformed_json_returns_none():
+    assert _parse_sse_line("data: {bad json") is None
+
+
+from backend.modules.llm._adapters._nano_gpt_http import (
+    _ToolCallAccumulator, _chunk_to_events,
+)
+from backend.modules.llm._adapters._events import (
+    ContentDelta, ThinkingDelta, StreamDone, StreamRefused, ToolCallEvent,
+)
+
+
+def test_tool_call_accumulator_merges_fragments():
+    acc = _ToolCallAccumulator()
+    acc.ingest([{"index": 0, "id": "c_1", "function": {"name": "sum", "arguments": '{"a":1'}}])
+    acc.ingest([{"index": 0, "function": {"arguments": ',"b":2}'}}])
+    calls = acc.finalised()
+    assert calls == [{"id": "c_1", "name": "sum", "arguments": '{"a":1,"b":2}'}]
+
+
+def test_chunk_to_events_content_delta():
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events(
+        {"choices": [{"delta": {"content": "hello"}}]}, acc,
+    )
+    assert events == [ContentDelta(delta="hello")]
+
+
+def test_chunk_to_events_thinking_delta_from_reasoning_content():
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events(
+        {"choices": [{"delta": {"reasoning_content": "thinking…"}}]}, acc,
+    )
+    assert events == [ThinkingDelta(delta="thinking…")]
+
+
+def test_chunk_to_events_usage_only_emits_stream_done_with_tokens():
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events(
+        {"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 34}}, acc,
+    )
+    assert events == [StreamDone(input_tokens=12, output_tokens=34)]
+
+
+def test_chunk_to_events_tool_call_finish():
+    acc = _ToolCallAccumulator()
+    # fragment chunk
+    _chunk_to_events({"choices": [{"delta": {
+        "tool_calls": [{"index": 0, "id": "c1",
+                         "function": {"name": "f", "arguments": '{"x":1}'}}],
+    }}]}, acc)
+    # finish chunk
+    events = _chunk_to_events({"choices": [{
+        "delta": {}, "finish_reason": "tool_calls",
+    }]}, acc)
+    assert events == [ToolCallEvent(id="c1", name="f", arguments='{"x":1}')]
+
+
+def test_chunk_to_events_refusal():
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events({"choices": [{
+        "delta": {"refusal": "blocked"},
+        "finish_reason": "content_filter",
+    }]}, acc)
+    assert events == [StreamRefused(reason="content_filter", refusal_text="blocked")]
+
+
+# ---------------------------------------------------------------------------
+# _pick_upstream_slug unit tests
+# ---------------------------------------------------------------------------
+
+from backend.modules.llm._adapters._nano_gpt_http import _pick_upstream_slug
+
+
+def test_pick_upstream_slug_reasoning_off_returns_non_thinking():
+    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": "m1:thinking"}}
+    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=False) == "m1"
+
+
+def test_pick_upstream_slug_reasoning_on_returns_thinking():
+    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": "m1:thinking"}}
+    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=True) == "m1:thinking"
+
+
+def test_pick_upstream_slug_reasoning_on_but_no_thinking_falls_back():
+    # Model has no thinking variant — fall back to non-thinking slug
+    # instead of refusing the request. Matches the frontend's
+    # capability-gated UI behaviour.
+    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": None}}
+    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=True) == "m1"
+
+
+def test_pick_upstream_slug_unknown_model_returns_none():
+    assert _pick_upstream_slug({}, model_id="nope", reasoning_enabled=False) is None
+
+
+# ---------------------------------------------------------------------------
+# stream_completion end-to-end SSE tests
+# ---------------------------------------------------------------------------
+
+from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
+from shared.dtos.inference import CompletionRequest
+
+
+def _make_request(model_id: str, *, reasoning_enabled: bool = False) -> CompletionRequest:
+    return CompletionRequest(
+        model=model_id,
+        messages=[CompletionMessage(
+            role="user",
+            content=[ContentPart(type="text", text="hi")],
+        )],
+        reasoning_enabled=reasoning_enabled,
+    )
+
+
+class _FakeResponse:
+    """Minimal httpx.Response lookalike for client.stream(...) context."""
+    def __init__(self, status_code: int, lines: list[str], body: bytes = b""):
+        self.status_code = status_code
+        self._lines = lines
+        self._body = body
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
+
+    async def aread(self):
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakeClient:
+    def __init__(self, response: _FakeResponse):
+        self._response = response
+        self.posted_url: str | None = None
+        self.posted_payload: dict | None = None
+        self.posted_headers: dict | None = None
+
+    def stream(self, method, url, *, json=None, headers=None):
+        self.posted_url = url
+        self.posted_payload = json
+        self.posted_headers = headers
+        return self._response
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+async def _populate_pair_map(redis_client, conn_id: str):
+    await save_pair_map(
+        redis_client, connection_id=conn_id,
+        pair_map={
+            "anthropic/claude-opus-4.6": {
+                "non_thinking_slug": "anthropic/claude-opus-4.6",
+                "thinking_slug": "anthropic/claude-opus-4.6:thinking",
+            },
+            "free/phi-small": {
+                "non_thinking_slug": "free/phi-small",
+                "thinking_slug": None,
+            },
+        },
+    )
+
+
 @pytest.mark.asyncio
-async def test_stream_completion_raises_phase_2_not_implemented():
-    adapter = NanoGptHttpAdapter()
+async def test_stream_completion_happy_path_non_thinking(redis_client, monkeypatch):
     conn = _resolved_conn()
-    # stream_completion yields events — to trigger the raise we must
-    # start iterating. The NotImplementedError is raised on the first
-    # __anext__() call.
-    agen = adapter.stream_completion(conn, request=None)  # type: ignore[arg-type]
-    with pytest.raises(NotImplementedError, match="Phase 2"):
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"content":"hel"}}]}',
+        'data: {"choices":[{"delta":{"content":"lo"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    events = []
+    async for ev in adapter.stream_completion(
+        conn, _make_request("anthropic/claude-opus-4.6"),
+    ):
+        events.append(ev)
+
+    from backend.modules.llm._adapters._events import ContentDelta, StreamDone
+    assert [type(e) for e in events] == [ContentDelta, ContentDelta, StreamDone]
+    assert events[0].delta == "hel"
+    assert events[1].delta == "lo"
+    assert events[2].input_tokens == 3
+    assert events[2].output_tokens == 2
+
+    # Upstream slug used is the non-thinking variant; Authorization header set.
+    assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6"
+    assert "reasoning" not in fake.posted_payload
+    assert "thinking" not in fake.posted_payload
+    assert fake.posted_headers["Authorization"] == "Bearer nano-test-key"
+    assert fake.posted_url.endswith("/chat/completions")
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_thinking_picks_thinking_slug(redis_client, monkeypatch):
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"reasoning_content":"…"}}]}',
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    events = []
+    async for ev in adapter.stream_completion(
+        conn, _make_request("anthropic/claude-opus-4.6", reasoning_enabled=True),
+    ):
+        events.append(ev)
+
+    from backend.modules.llm._adapters._events import ThinkingDelta
+    assert any(isinstance(e, ThinkingDelta) for e in events)
+    assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6:thinking"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_unknown_model_emits_model_not_found(redis_client, monkeypatch):
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    events = [
+        ev async for ev in adapter.stream_completion(
+            conn, _make_request("not/in/map"),
+        )
+    ]
+    assert len(events) == 1
+    from backend.modules.llm._adapters._events import StreamError
+    assert isinstance(events[0], StreamError)
+    assert events[0].error_code == "model_not_found"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_401_emits_invalid_api_key(redis_client, monkeypatch):
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    fake = _FakeClient(_FakeResponse(401, [], body=b"unauthorized"))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    events = [
+        ev async for ev in adapter.stream_completion(
+            conn, _make_request("anthropic/claude-opus-4.6"),
+        )
+    ]
+    from backend.modules.llm._adapters._events import StreamError
+    assert len(events) == 1
+    assert events[0].error_code == "invalid_api_key"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_500_emits_provider_unavailable(redis_client, monkeypatch):
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    fake = _FakeClient(_FakeResponse(500, [], body=b"boom"))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    events = [
+        ev async for ev in adapter.stream_completion(
+            conn, _make_request("anthropic/claude-opus-4.6"),
+        )
+    ]
+    from backend.modules.llm._adapters._events import StreamError
+    assert len(events) == 1
+    assert events[0].error_code == "provider_unavailable"
+    assert "500" in events[0].message
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_requires_redis():
+    adapter = NanoGptHttpAdapter()  # no redis
+    conn = _resolved_conn()
+    agen = adapter.stream_completion(conn, _make_request("m1"))
+    with pytest.raises(RuntimeError, match="Redis"):
         async for _ in agen:
-            break
+            pass
