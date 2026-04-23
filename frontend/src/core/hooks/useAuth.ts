@@ -24,8 +24,13 @@ export function useAuth() {
     setError(null)
     try {
       const result = await authApi.login(data.username, data.password)
-      // Save token immediately for ok and legacy_upgrade (both have an accessToken)
-      if (result.kind === 'ok' || result.kind === 'legacy_upgrade') {
+      // For 'ok' we finalise auth immediately. For 'legacy_upgrade' we must
+      // NOT call setToken here — it would flip isAuthenticated to true and
+      // App.tsx's <PublicRoute> would redirect to /personas before the
+      // caller gets a chance to show the one-shot recovery-key modal. The
+      // caller is responsible for calling finaliseLogin(accessToken) after
+      // the user acknowledges the modal.
+      if (result.kind === 'ok') {
         setToken(result.accessToken!)
         try {
           const me = await meApi.getMe()
@@ -42,6 +47,17 @@ export function useAuth() {
     } finally {
       setIsLoading(false)
     }
+  }, [setToken, setUser])
+
+  const finaliseLogin = useCallback(async (accessToken: string): Promise<void> => {
+    setToken(accessToken)
+    try {
+      const me = await meApi.getMe()
+      setUser(me)
+    } catch {
+      // getMe failed — user stays authenticated with fallback display name
+    }
+    loadAuthenticatedIntegrationState()
   }, [setToken, setUser])
 
   const setup = useCallback(async (data: SetupRequest): Promise<SetupResult> => {
@@ -132,6 +148,7 @@ export function useAuth() {
     isLoading,
     error,
     login,
+    finaliseLogin,
     setup,
     changePassword,
     logout,

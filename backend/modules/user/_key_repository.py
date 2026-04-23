@@ -71,6 +71,26 @@ class UserKeysRepository:
             },
         )
 
+    async def replace_wrapped_by_recovery(
+        self, user_id: str, *, version: int, blob: bytes
+    ) -> None:
+        """Replace the recovery-wrapped DEK blob for a specific DEK version.
+
+        The password-wrapped blob is left untouched. Used when the user
+        regenerates their recovery key without changing the password.
+        """
+        now = datetime.now(UTC)
+        await self._collection.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    f"deks.{version}.wrapped_by_recovery": blob,
+                    f"deks.{version}.created_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+
     async def replace_both_wraps(
         self,
         user_id: str,

@@ -598,6 +598,37 @@ async def refresh(
     )
 
 
+@router.post("/auth/regenerate-recovery-key")
+async def regenerate_recovery_key(
+    user: dict = Depends(get_current_user),
+):
+    """Generate a fresh recovery key, rewrap the recovery side of the user's
+    DEK with it, and return the plaintext key exactly once.
+
+    Requires an active session (the DEK must still be live in Redis under the
+    session_id from the caller's access token). Used for:
+    (a) Users who lost sight of their recovery key during signup/migration
+        (e.g. the one-shot modal was suppressed by a bug).
+    (b) Routine rotation — the user wants a new recovery key for hygiene.
+
+    The password-wrapped blob is left untouched, so the user's password
+    continues to work and no re-login is needed afterwards.
+    """
+    session_id = user.get("session_id")
+    user_id = user["sub"]
+    if not session_id:
+        raise HTTPException(status_code=401, detail="session_required")
+    svc = _key_service()
+    dek = await svc.fetch_session_dek(session_id)
+    if dek is None:
+        # DEK not in Redis — either the TTL expired or the session was never
+        # E2EE-provisioned. Either way the user cannot prove they know the
+        # password without reauthentication.
+        raise HTTPException(status_code=401, detail="session_dek_unavailable")
+    new_recovery_key = await svc.regenerate_recovery_key(user_id=user_id, dek=dek)
+    return {"recovery_key": new_recovery_key}
+
+
 @router.post("/auth/logout")
 async def logout(
     response: Response,

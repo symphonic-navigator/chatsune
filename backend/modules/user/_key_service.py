@@ -199,6 +199,34 @@ class UserKeyService:
         )
         return dek
 
+    async def regenerate_recovery_key(
+        self, *, user_id: str, dek: bytes
+    ) -> str:
+        """Rewrap the recovery side of the user's DEK with a fresh recovery
+        key, persist the new wrap, and return the plaintext recovery key —
+        once, to the caller.
+
+        The caller supplies the plaintext DEK explicitly (typically fetched
+        from Redis via :meth:`fetch_session_dek`) so this method does not
+        need to unlock via password or recovery. The password-wrapped blob
+        is left untouched.
+
+        The server holds the plaintext recovery key only for the duration
+        of this call. It is the caller's responsibility to ship it to the
+        user exactly once and then drop its reference.
+        """
+        from backend.modules.user._recovery_key import generate_recovery_key
+        if len(dek) != 32:
+            raise ValueError("dek must be 32 bytes")
+        doc = await self._require_keys_doc(user_id)
+        new_recovery_key = generate_recovery_key()
+        key_rec = derive_wrap_key(decode_recovery_key(new_recovery_key), info=b"dek-wrap")
+        new_wrapped_by_recovery = aes_gcm_wrap(key_rec, dek)
+        await self._repo.replace_wrapped_by_recovery(
+            user_id, version=doc.current_dek_version, blob=new_wrapped_by_recovery
+        )
+        return new_recovery_key
+
     # ------------------------------------------------------------------
     # Redis session-DEK store
     # ------------------------------------------------------------------

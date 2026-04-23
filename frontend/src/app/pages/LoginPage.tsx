@@ -74,7 +74,7 @@ function extractFieldErrors(err: unknown): { fields: FieldErrors; general: strin
 type LoginPhase =
   | { kind: 'form' }
   | { kind: 'recovery_required'; username: string }
-  | { kind: 'legacy_upgrade'; recoveryKey: string }
+  | { kind: 'legacy_upgrade'; recoveryKey: string; accessToken: string }
   | { kind: 'declined' }
 
 function LoginForm() {
@@ -87,7 +87,7 @@ function LoginForm() {
   const [capsLock, setCapsLock] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [phase, setPhase] = useState<LoginPhase>({ kind: 'form' })
-  const { login } = useAuth()
+  const { login, finaliseLogin } = useAuth()
   const navigate = useNavigate()
 
   function handlePasswordKey(e: KeyboardEvent<HTMLInputElement>) {
@@ -111,7 +111,11 @@ function LoginForm() {
       } else if (result.kind === 'recovery_required') {
         setPhase({ kind: 'recovery_required', username })
       } else if (result.kind === 'legacy_upgrade') {
-        setPhase({ kind: 'legacy_upgrade', recoveryKey: result.recoveryKey! })
+        setPhase({
+          kind: 'legacy_upgrade',
+          recoveryKey: result.recoveryKey!,
+          accessToken: result.accessToken!,
+        })
       }
     } catch (err) {
       const { fields, general } = extractFieldErrors(err)
@@ -165,12 +169,20 @@ function LoginForm() {
     )
   }
 
-  // Legacy upgrade — token already saved; show recovery key modal before navigating
+  // Legacy upgrade — the migration already succeeded server-side and the
+  // access token is in hand, but we deliberately did NOT save it to the auth
+  // store yet: that would flip isAuthenticated to true and App.tsx's
+  // PublicRoute would redirect to /personas before the modal could render.
+  // So we hold the token in phase state and only call finaliseLogin once the
+  // user has acknowledged the recovery key.
   if (phase.kind === 'legacy_upgrade') {
     return (
       <RecoveryKeyModal
         recoveryKey={phase.recoveryKey}
-        onAcknowledged={navigateHome}
+        onAcknowledged={async () => {
+          await finaliseLogin(phase.accessToken)
+          navigateHome()
+        }}
       />
     )
   }
