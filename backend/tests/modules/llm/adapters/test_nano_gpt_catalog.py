@@ -76,7 +76,8 @@ def test_filter_context_boundary_at_80k():
     assert {r["id"] for r in rejected} == {"just-below"}
 
 
-assert MIN_CONTEXT == 80000
+def test_min_context_sentinel():
+    assert MIN_CONTEXT == 80000
 
 
 def test_filter_budget_variants_drops_all(load_fixture):
