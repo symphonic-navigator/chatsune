@@ -120,14 +120,12 @@ class NanoGptHttpAdapter(BaseAdapter):
         result = build_catalogue(raw)
 
         # ``build_catalogue`` returns adapter-internal "block" dicts, not
-        # ``ModelMetaDto`` instances — billing_category and the connection
-        # fields are the adapter's responsibility to fill in here. Billing
-        # derives from the block's ``is_subscription`` flag.
+        # ``ModelMetaDto`` instances — the adapter rehydrates them into
+        # DTOs and overlays the connection fields. ``billing_category``
+        # is set by ``to_model_meta`` and passed through via ``_block``,
+        # so no derivation happens here.
         dtos: list[ModelMetaDto] = []
         for block in result.canonical:
-            billing_category = (
-                "subscription" if block.get("is_subscription") else "pay_per_token"
-            )
             dtos.append(
                 ModelMetaDto(
                     connection_id=connection.id,
@@ -139,7 +137,7 @@ class NanoGptHttpAdapter(BaseAdapter):
                     supports_reasoning=block["supports_reasoning"],
                     supports_vision=block["supports_vision"],
                     supports_tool_calls=block["supports_tool_calls"],
-                    billing_category=billing_category,
+                    billing_category=block["billing_category"],
                 )
             )
 

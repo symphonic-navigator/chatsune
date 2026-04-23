@@ -330,6 +330,7 @@ def _block(meta: ModelMetaDto, extras: dict[str, Any]) -> dict[str, Any]:
         "supports_reasoning": meta.supports_reasoning,
         "supports_vision": meta.supports_vision,
         "supports_tool_calls": meta.supports_tool_calls,
+        "billing_category": meta.billing_category,
         "is_subscription": extras["is_subscription"],
         "pair": {
             "non_thinking_slug": extras["non_thinking_slug"],
