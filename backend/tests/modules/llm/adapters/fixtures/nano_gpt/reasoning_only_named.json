@@ -1,0 +1,7 @@
+[
+  {"id": "deepseek-reasoner", "object": "model", "context_length": 64000, "capabilities": {"reasoning": null}},
+  {"id": "kimi-thinking-preview", "object": "model", "context_length": 128000, "capabilities": {"reasoning": null}},
+  {"id": "allenai/olmo-3-32b-think", "object": "model", "context_length": 128000, "capabilities": {"reasoning": true}},
+  {"id": "claude-3-7-sonnet-reasoner", "object": "model", "context_length": 128000, "capabilities": {"reasoning": null}},
+  {"id": "LLM360/K2-Think", "object": "model", "context_length": 128000, "capabilities": {"reasoning": null}}
+]

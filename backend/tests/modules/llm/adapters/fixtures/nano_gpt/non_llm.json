@@ -1,0 +1,5 @@
+[
+  {"id": "exa-research", "object": "model", "context_length": null, "capabilities": {}},
+  {"id": "brave", "object": "model", "context_length": null, "capabilities": {}},
+  {"id": "fastgpt", "object": "model", "context_length": null, "capabilities": {}}
+]

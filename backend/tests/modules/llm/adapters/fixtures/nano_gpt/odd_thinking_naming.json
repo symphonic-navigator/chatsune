@@ -1,0 +1,4 @@
+[
+  {"id": "Qwen/Qwen3-235B-A22B-Thinking-2507", "object": "model", "context_length": 256000, "capabilities": {"reasoning": null}},
+  {"id": "qwen3-vl-235b-a22b-thinking", "object": "model", "context_length": null, "capabilities": {"reasoning": true}}
+]

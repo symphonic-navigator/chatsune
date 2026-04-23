@@ -1,0 +1,16 @@
+[
+  {
+    "id": "nousresearch/hermes-4-70b",
+    "object": "model",
+    "name": "Hermes 4 70B",
+    "context_length": 128000,
+    "capabilities": {"vision": null, "tool_calling": null, "reasoning": null}
+  },
+  {
+    "id": "NousResearch/Hermes-4-70B:thinking",
+    "object": "model",
+    "name": "Hermes 4 70B Thinking",
+    "context_length": 128000,
+    "capabilities": {"vision": null, "tool_calling": null, "reasoning": null}
+  }
+]

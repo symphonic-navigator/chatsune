@@ -1,0 +1,5 @@
+[
+  {"id": "glm-zero-preview", "object": "model", "context_length": 8000, "capabilities": {}},
+  {"id": "yi-lightning", "object": "model", "context_length": 12000, "capabilities": {}},
+  {"id": "step-2-mini", "object": "model", "context_length": 8000, "capabilities": {}}
+]

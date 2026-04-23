@@ -1,0 +1,16 @@
+[
+  {
+    "id": "gemini-2.5-flash",
+    "object": "model",
+    "name": "Gemini 2.5 Flash",
+    "context_length": 1048756,
+    "capabilities": {"vision": true, "tool_calling": null, "reasoning": true}
+  },
+  {
+    "id": "gemini-2.5-flash-nothinking",
+    "object": "model",
+    "name": "Gemini 2.5 Flash (no thinking)",
+    "context_length": 1048756,
+    "capabilities": {"vision": true, "tool_calling": null, "reasoning": null}
+  }
+]
