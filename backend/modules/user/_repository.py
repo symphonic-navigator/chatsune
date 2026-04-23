@@ -145,6 +145,13 @@ class UserRepository:
             }},
         )
 
+    async def clear_must_change_password(self, user_id: str) -> None:
+        """Clear the must_change_password flag after a successful user-initiated password change."""
+        await self._collection.update_one(
+            {"_id": user_id},
+            {"$set": {"must_change_password": False, "updated_at": datetime.now(UTC)}},
+        )
+
     async def set_active(self, user_id: str, *, value: bool) -> None:
         """Set the is_active flag for a user."""
         await self._collection.update_one(

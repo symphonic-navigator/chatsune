@@ -41,6 +41,7 @@ from backend.modules.tools._namespace import normalise_namespace, validate_names
 from shared.dtos.auth import (
     Argon2ParamsDto,
     ChangePasswordRequestDto,
+    ChangePasswordRequestV2Dto,
     CreateUserRequestDto,
     CreateUserResponseDto,
     DeclineRecoveryRequestDto,
@@ -525,42 +526,42 @@ async def logout(
     return {"status": "ok"}
 
 
-@router.patch("/auth/password")
+@router.post("/auth/change-password")
 async def change_password(
-    body: ChangePasswordRequestDto,
-    response: Response,
+    body: ChangePasswordRequestV2Dto,
     user: dict = Depends(get_current_user),
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    repo = _user_repo()
-    doc = await repo.find_by_id(user["sub"])
+    users_repo = _user_repo()
+    svc = _key_service()
+
+    doc = await users_repo.find_by_id(user["sub"])
     if not doc:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not verify_password(body.current_password, doc["password_hash"]):
-        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    # Verify old H_auth against the stored bcrypt hash.
+    if not verify_h_auth(body.h_auth_old, doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
 
-    new_hash = hash_password(body.new_password)
-    await repo.update(
-        doc["_id"],
-        {"password_hash": new_hash, "must_change_password": False},
+    h_kek_old = base64.urlsafe_b64decode(body.h_kek_old)
+    h_kek_new = base64.urlsafe_b64decode(body.h_kek_new)
+
+    # Rewrap the DEK under the new H_kek — this also verifies the old H_kek is correct.
+    try:
+        await svc.rewrap_password(
+            user_id=str(doc["_id"]), h_kek_old=h_kek_old, h_kek_new=h_kek_new
+        )
+    except DekUnlockError:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    # Persist the new H_auth bcrypt hash at version 1.
+    new_password_hash = hash_h_auth(body.h_auth_new)
+    await users_repo.set_password_hash_and_version(
+        str(doc["_id"]), password_hash=new_password_hash, version=1
     )
 
-    # Issue new token pair without mcp claim
-    session_id = generate_session_id()
-    access_token = create_access_token(
-        user_id=doc["_id"],
-        role=doc["role"],
-        session_id=session_id,
-        must_change_password=False,
-    )
-    refresh_token_new = generate_refresh_token()
-    store = _refresh_store()
-    await store.store(
-        refresh_token_new, user_id=doc["_id"], session_id=session_id
-    )
-
-    _set_refresh_cookie(response, refresh_token_new)
+    # If the admin-reset flow set must_change_password, clear it now.
+    await users_repo.clear_must_change_password(str(doc["_id"]))
 
     audit = _audit_repo()
     await audit.log(
@@ -572,13 +573,15 @@ async def change_password(
 
     await event_bus.publish(
         Topics.AUDIT_LOGGED,
-        AuditLoggedEvent(actor_id=doc["_id"], action="user.password_changed", resource_type="user", resource_id=doc["_id"]),
+        AuditLoggedEvent(
+            actor_id=doc["_id"],
+            action="user.password_changed",
+            resource_type="user",
+            resource_id=doc["_id"],
+        ),
     )
 
-    return TokenResponseDto(
-        access_token=access_token,
-        expires_in=settings.jwt_access_token_expire_minutes * 60,
-    )
+    return {"status": "ok"}
 
 
 # --- Account self-deletion ---
