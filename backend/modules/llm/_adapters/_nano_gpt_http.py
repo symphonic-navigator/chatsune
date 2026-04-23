@@ -116,7 +116,7 @@ def _chunk_to_events(
 
     ``acc`` is mutated in-place for tool-call fragment accumulation.
 
-    xAI's SSE flow:
+    OpenAI-compatible SSE flow:
         delta chunks -> finish_reason chunk (choices present, no usage)
         -> usage chunk (choices empty, usage present) -> [DONE]
     We emit StreamDone on the usage chunk, not on finish_reason, so tokens
