@@ -145,6 +145,13 @@ class UserRepository:
             }},
         )
 
+    async def set_active(self, user_id: str, *, value: bool) -> None:
+        """Set the is_active flag for a user."""
+        await self._collection.update_one(
+            {"_id": user_id},
+            {"$set": {"is_active": value, "updated_at": datetime.now(UTC)}},
+        )
+
     async def delete_user_document(self, user_id: str) -> bool:
         """Delete the user document itself. Returns True if a row was removed.
 

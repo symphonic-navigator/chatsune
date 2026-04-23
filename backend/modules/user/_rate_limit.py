@@ -1,9 +1,13 @@
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from backend.database import get_redis
 
 _LOGIN_RATE_LIMIT = 10  # max attempts
 _LOGIN_RATE_WINDOW = 300  # 5 minutes in seconds
+
+RECOVERY_BUCKET_KEY_PREFIX = "ratelimit:recovery:"
+RECOVERY_MAX_ATTEMPTS = 5
+RECOVERY_WINDOW_SECONDS = 15 * 60
 
 
 def get_client_ip(request: Request) -> str:
@@ -20,6 +24,16 @@ def get_client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+async def check_recovery_rate_limit(username: str, redis) -> None:
+    """Raise HTTP 429 if the recovery bucket for this username is exhausted."""
+    key = RECOVERY_BUCKET_KEY_PREFIX + username.lower()
+    count = await redis.incr(key)
+    if count == 1:
+        await redis.expire(key, RECOVERY_WINDOW_SECONDS)
+    if count > RECOVERY_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="too_many_recovery_attempts")
 
 
 async def check_login_rate_limit(ip: str) -> bool:

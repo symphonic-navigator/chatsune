@@ -27,11 +27,12 @@ from backend.modules.user._auth import (
 )
 from backend.modules.user._models import Argon2Params
 from backend.modules.user._recovery_key import generate_recovery_key
-from backend.modules.user._key_service import DekUnlockError
+from backend.modules.user._key_service import DekUnlockError, UserKeyNotFoundError
 from backend.modules.user._crypto import pseudo_salt_for_unknown_user
 from backend.modules.user._key_service import UserKeyService
 from backend.modules.user._audit import AuditRepository
-from backend.modules.user._rate_limit import check_login_rate_limit, get_client_ip
+from backend.modules.user._rate_limit import check_login_rate_limit, check_recovery_rate_limit, get_client_ip
+from backend.modules.user._recovery_key import InvalidRecoveryKeyError
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from shared.dtos.mcp import McpGatewayConfigDto
@@ -42,6 +43,7 @@ from shared.dtos.auth import (
     ChangePasswordRequestDto,
     CreateUserRequestDto,
     CreateUserResponseDto,
+    DeclineRecoveryRequestDto,
     DeleteAccountRequestDto,
     DeleteAccountResponseDto,
     KdfParamsRequestDto,
@@ -50,6 +52,7 @@ from shared.dtos.auth import (
     LoginLegacyResponseDto,
     LoginRequestDto,
     LoginRequestV2Dto,
+    RecoverDekRequestDto,
     RecoveryRequiredResponseDto,
     ResetPasswordResponseDto,
     SetupRequestDto,
@@ -71,7 +74,7 @@ from shared.events.auth import (
     UserUpdatedEvent,
     UserProfileUpdatedEvent,
 )
-from shared.events.user_keys import UserKeyProvisionedEvent
+from shared.events.user_keys import UserKeyProvisionedEvent, UserKeyRecoveredEvent, UserKeyRecoveryDeclinedEvent
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
 
@@ -393,6 +396,80 @@ async def login_legacy(
         expires_in=settings.jwt_access_token_expire_minutes * 60,
         recovery_key=recovery_key,
     )
+
+
+@router.post("/auth/recover-dek")
+async def recover_dek(
+    body: RecoverDekRequestDto,
+    response: Response,
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    redis = get_redis()
+    await check_recovery_rate_limit(body.username, redis)
+
+    users_repo = _user_repo()
+    svc = _key_service()
+    user = await users_repo.find_by_username_case_insensitive(body.username)
+    if user is None or user.get("password_hash_version") != 1:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+    if not verify_h_auth(body.h_auth, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    user_id = str(user["_id"])
+    new_h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    try:
+        dek = await svc.unlock_with_recovery_and_rewrap(
+            user_id=user_id,
+            recovery_key=body.recovery_key,
+            new_h_kek=new_h_kek_bytes,
+        )
+    except (DekUnlockError, InvalidRecoveryKeyError, UserKeyNotFoundError):
+        raise HTTPException(status_code=401, detail="invalid_recovery_key")
+
+    session_id = generate_session_id()
+    access_token = create_access_token(
+        user_id=user_id,
+        role=user["role"],
+        session_id=session_id,
+    )
+    refresh_token = generate_refresh_token()
+    store = _refresh_store()
+    await store.store(refresh_token, user_id=user_id, session_id=session_id)
+    await svc.store_session_dek(
+        session_id=session_id,
+        dek=dek,
+        ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+    )
+    _set_refresh_cookie(response, refresh_token)
+
+    await event_bus.publish(
+        Topics.USER_KEY_RECOVERED,
+        UserKeyRecoveredEvent(user_id=user_id),
+        target_user_ids=[user_id],
+    )
+    return {
+        "access_token": access_token,
+        "expires_in": settings.jwt_access_token_expire_minutes * 60,
+    }
+
+
+@router.post("/auth/decline-recovery")
+async def decline_recovery(
+    body: DeclineRecoveryRequestDto,
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    users_repo = _user_repo()
+    user = await users_repo.find_by_username_case_insensitive(body.username)
+    if user is None:
+        return {"status": "acknowledged"}
+    user_id = str(user["_id"])
+    await users_repo.set_active(user_id, value=False)
+    await event_bus.publish(
+        Topics.USER_KEY_RECOVERY_DECLINED,
+        UserKeyRecoveryDeclinedEvent(user_id=user_id),
+        target_user_ids=[user_id],
+    )
+    return {"status": "acknowledged"}
 
 
 @router.post("/auth/refresh")
