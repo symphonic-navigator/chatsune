@@ -8,6 +8,8 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
+from typing import Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -51,6 +53,22 @@ GUTTER_ABORT_SECONDS: float = float(os.environ.get("LLM_STREAM_ABORT_SECONDS", "
 
 
 # ----- helpers (moved from _ollama_base.py) -----
+
+
+def _billing_category_for_url(url: str) -> Literal["free", "subscription"]:
+    """Classify an Ollama connection URL by billing model.
+
+    Ollama Cloud (the hosted service at ``ollama.com``) runs on a paid
+    subscription; every other Ollama-compatible endpoint is a self-hosted
+    instance the user runs themselves, which is free at the point of use.
+    The leading dot in the suffix check guards against look-alike domains
+    such as ``ollamafake.com``.
+    """
+    host = urlparse(url).hostname or ""
+    if host == "ollama.com" or host.endswith(".ollama.com"):
+        return "subscription"
+    return "free"
+
 
 def _is_refusal_reason(reason: str | None) -> bool:
     if not reason:
@@ -150,6 +168,8 @@ def _auth_headers(api_key: str | None) -> dict:
 def _map_to_dto(
     connection_id: str, connection_display_name: str, connection_slug: str,
     model_name: str, detail: dict,
+    *,
+    billing: Literal["free", "subscription"],
 ) -> ModelMetaDto:
     capabilities = detail.get("capabilities", [])
     model_info = detail.get("model_info", {})
@@ -183,6 +203,7 @@ def _map_to_dto(
         parameter_count=_format_parameter_count(raw_params),
         raw_parameter_count=raw_params,
         quantisation_level=details.get("quantization_level"),
+        billing_category=billing,
     )
 
 
@@ -281,8 +302,10 @@ class OllamaHttpAdapter(BaseAdapter):
             results = await asyncio.gather(
                 *(_fetch_one(e["name"]) for e in tag_entries),
             )
+        billing = _billing_category_for_url(c.config["url"])
         metas = [
-            _map_to_dto(c.id, c.display_name, c.slug, name, detail)
+            _map_to_dto(c.id, c.display_name, c.slug, name, detail,
+                        billing=billing)
             for name, detail in results if detail is not None
         ]
         return _filter_unusable(metas)
