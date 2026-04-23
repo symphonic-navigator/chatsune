@@ -4,10 +4,9 @@ import { usersApi } from "../../../core/api/users"
 import { useAuthStore } from "../../../core/store/authStore"
 import { NewUserForm } from "./NewUserForm"
 
-interface GeneratedPassword {
+interface ResetConfirm {
+  userId: string
   username: string
-  password: string
-  expiresAt: number
 }
 
 export function UsersTab() {
@@ -21,12 +20,14 @@ export function UsersTab() {
   const [showNewForm, setShowNewForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const [generatedPw, setGeneratedPw] = useState<GeneratedPassword | null>(null)
+  const [generatedPw, setGeneratedPw] = useState<{ username: string; password: string; expiresAt: number } | null>(null)
   const [pwCountdown, setPwCountdown] = useState(0)
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [resetConfirm, setResetConfirm] = useState<ResetConfirm | null>(null)
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null)
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -129,13 +130,22 @@ export function UsersTab() {
     }
   }
 
-  // Reset password
-  async function handleResetPassword(user: UserDto) {
+  // Reset password — first step: open confirmation dialog
+  function handleResetPasswordStart(user: UserDto) {
     if (user.id === currentUser?.id) return
+    setResetConfirm({ userId: user.id, username: user.username })
+  }
+
+  // Reset password — confirmed: call API
+  async function handleResetPasswordConfirm() {
+    if (!resetConfirm) return
+    const { userId, username } = resetConfirm
+    setResetConfirm(null)
     try {
-      const res = await usersApi.resetPassword(user.id)
+      const res = await usersApi.resetPassword(userId)
       setUsers((prev) => prev.map((u) => (u.id === res.user.id ? res.user : u)))
-      showPassword(res.user.username, res.generated_password)
+      setResetSuccess(username)
+      setTimeout(() => setResetSuccess(null), 8000)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password")
     }
@@ -200,7 +210,7 @@ export function UsersTab() {
         />
       )}
 
-      {/* Generated password banner */}
+      {/* Generated password banner (new-user creation only) */}
       {generatedPw && (
         <div className="flex flex-col gap-1 border-b border-green-400/20 bg-green-400/5 px-4 py-2.5">
           <div className="flex items-center gap-3">
@@ -235,6 +245,51 @@ export function UsersTab() {
               {copyError}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Reset-password confirmation dialog */}
+      {resetConfirm && (
+        <div className="flex flex-col gap-2 border-b border-amber-400/20 bg-amber-400/5 px-4 py-3">
+          <p className="text-[12px] text-amber-300 leading-relaxed">
+            <span className="font-semibold">Warning</span> — This reset does not recover the
+            user&apos;s data. If <span className="font-mono">{resetConfirm.username}</span> does
+            not have their recovery key, all their encrypted data will become permanently
+            inaccessible.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetPasswordConfirm}
+              className="rounded bg-amber-400/20 border border-amber-400/30 px-2.5 py-1 text-[11px] font-medium text-amber-300 hover:bg-amber-400/30 transition-colors cursor-pointer"
+            >
+              Yes, reset
+            </button>
+            <button
+              type="button"
+              onClick={() => setResetConfirm(null)}
+              className="rounded px-2.5 py-1 text-[11px] text-white/60 hover:text-white/80 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset-password success banner */}
+      {resetSuccess && (
+        <div className="flex items-center justify-between border-b border-green-400/20 bg-green-400/5 px-4 py-2.5">
+          <span className="text-[11px] text-green-400">
+            Password reset for <span className="font-medium">{resetSuccess}</span>. The user will
+            need their recovery key to sign in.
+          </span>
+          <button
+            type="button"
+            onClick={() => setResetSuccess(null)}
+            className="ml-4 text-[10px] text-green-400/60 hover:text-green-400 transition-colors cursor-pointer"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -291,7 +346,7 @@ export function UsersTab() {
                 confirmDeleteId={confirmDeleteId}
                 onToggleRole={() => handleToggleRole(user)}
                 onToggleLock={() => handleToggleLock(user)}
-                onResetPassword={() => handleResetPassword(user)}
+                onResetPassword={() => handleResetPasswordStart(user)}
                 onDeactivateStart={() => setConfirmDeleteId(user.id)}
                 onDeactivateConfirm={() => handleDeactivate(user.id)}
                 onDeactivateCancel={() => setConfirmDeleteId(null)}

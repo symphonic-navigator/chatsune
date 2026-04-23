@@ -20,6 +20,7 @@ export interface SetupRequest {
   username: string
   email: string
   password: string
+  display_name?: string
 }
 
 export interface ChangePasswordRequest {
@@ -60,8 +61,8 @@ export interface CreateUserResponse {
 }
 
 export interface ResetPasswordResponse {
+  status: "reset"
   user: UserDto
-  generated_password: string
 }
 
 export interface UsersListResponse {

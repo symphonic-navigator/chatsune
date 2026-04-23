@@ -69,9 +69,9 @@ describe('useAuth', () => {
 
   it('loads integrations after explicit login so voice plugins can activate', async () => {
     vi.mocked(authApi.login).mockResolvedValueOnce({
-      access_token: tokenFor(),
-      token_type: 'bearer',
-      expires_in: 3600,
+      kind: 'ok',
+      accessToken: tokenFor(),
+      expiresIn: 900,
     })
     vi.mocked(meApi.getMe).mockResolvedValueOnce(user)
 
@@ -87,9 +87,9 @@ describe('useAuth', () => {
 
   it('loads integrations after initial setup login', async () => {
     vi.mocked(authApi.setup).mockResolvedValueOnce({
-      access_token: tokenFor(),
-      token_type: 'bearer',
-      expires_in: 3600,
+      accessToken: tokenFor(),
+      expiresIn: 900,
+      recoveryKey: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
       user,
     })
 

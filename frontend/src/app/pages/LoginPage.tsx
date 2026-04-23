@@ -3,7 +3,10 @@ import type { KeyboardEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../core/hooks/useAuth"
 import { useAuthStore } from "../../core/store/authStore"
+import { authApi } from "../../core/api/auth"
 import { safeLocalStorage } from "../../core/utils/safeStorage"
+import { RecoveryKeyPrompt } from "../../features/auth/RecoveryKeyPrompt"
+import { RecoveryKeyModal } from "../../features/auth/RecoveryKeyModal"
 
 export default function LoginPage() {
   const isSetupComplete = useAuthStore((s) => s.isSetupComplete)
@@ -68,6 +71,12 @@ function extractFieldErrors(err: unknown): { fields: FieldErrors; general: strin
   return { fields: {}, general: "Unknown error" }
 }
 
+type LoginPhase =
+  | { kind: 'form' }
+  | { kind: 'recovery_required'; username: string }
+  | { kind: 'legacy_upgrade'; recoveryKey: string }
+  | { kind: 'declined' }
+
 function LoginForm() {
   const usernameId = useId()
   const passwordId = useId()
@@ -77,11 +86,17 @@ function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [capsLock, setCapsLock] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [phase, setPhase] = useState<LoginPhase>({ kind: 'form' })
   const { login } = useAuth()
   const navigate = useNavigate()
 
   function handlePasswordKey(e: KeyboardEvent<HTMLInputElement>) {
     setCapsLock(e.getModifierState("CapsLock"))
+  }
+
+  function navigateHome() {
+    const last = safeLocalStorage.getItem("chatsune_last_route")
+    navigate(last ?? "/personas", { replace: true })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -90,9 +105,14 @@ function LoginForm() {
     setFieldErrors({})
     setIsLoading(true)
     try {
-      await login({ username, password })
-      const last = safeLocalStorage.getItem("chatsune_last_route")
-      navigate(last ?? "/personas", { replace: true })
+      const result = await login({ username, password })
+      if (result.kind === 'ok') {
+        navigateHome()
+      } else if (result.kind === 'recovery_required') {
+        setPhase({ kind: 'recovery_required', username })
+      } else if (result.kind === 'legacy_upgrade') {
+        setPhase({ kind: 'legacy_upgrade', recoveryKey: result.recoveryKey! })
+      }
     } catch (err) {
       const { fields, general } = extractFieldErrors(err)
       setFieldErrors(fields)
@@ -100,6 +120,59 @@ function LoginForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // Recovery required — user must supply their recovery key to set a new password
+  if (phase.kind === 'recovery_required') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
+          <RecoveryKeyPrompt
+            username={phase.username}
+            onRecover={async (newPassword, recoveryKey) => {
+              const res = await authApi.recoverDek(phase.username, newPassword, recoveryKey)
+              // authApi.recoverDek returns the token; wire it up via the store directly
+              useAuthStore.getState().setToken(res.accessToken)
+              navigateHome()
+            }}
+            onDecline={async () => {
+              await authApi.declineRecovery(phase.username)
+              setPhase({ kind: 'declined' })
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Account declined / deactivated after recovery refusal
+  if (phase.kind === 'declined') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8 text-center space-y-3">
+          <p className="text-[14px] text-white/70">
+            Your account has been deactivated. Please contact an administrator if you need access restored.
+          </p>
+          <button
+            type="button"
+            onClick={() => setPhase({ kind: 'form' })}
+            className="text-[12px] text-white/40 underline hover:text-white/60 transition-colors"
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Legacy upgrade — token already saved; show recovery key modal before navigating
+  if (phase.kind === 'legacy_upgrade') {
+    return (
+      <RecoveryKeyModal
+        recoveryKey={phase.recoveryKey}
+        onAcknowledged={navigateHome}
+      />
+    )
   }
 
   return (
@@ -217,6 +290,7 @@ function SetupForm() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [capsLock, setCapsLock] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [recoveryKey, setRecoveryKey] = useState<string | null>(null)
   const { setup } = useAuth()
   const setSetupComplete = useAuthStore((s) => s.setSetupComplete)
   const navigate = useNavigate()
@@ -239,9 +313,10 @@ function SetupForm() {
     }
     setIsLoading(true)
     try {
-      await setup({ pin, username, email, password })
+      const res = await setup({ pin, username, email, password })
       setSetupComplete(true)
-      navigate("/personas", { replace: true })
+      // Show recovery key modal before navigating — user must acknowledge it
+      setRecoveryKey(res.recoveryKey)
     } catch (err) {
       const { fields, general } = extractFieldErrors(err)
       setFieldErrors(fields)
@@ -249,6 +324,16 @@ function SetupForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // After setup, require the user to acknowledge their recovery key before proceeding
+  if (recoveryKey) {
+    return (
+      <RecoveryKeyModal
+        recoveryKey={recoveryKey}
+        onAcknowledged={() => navigate("/personas", { replace: true })}
+      />
+    )
   }
 
   return (

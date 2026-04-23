@@ -1,14 +1,13 @@
 import { useCallback, useState } from "react"
 import { useAuthStore } from "../store/authStore"
 import { authApi } from "../api/auth"
+import type { LoginResult, SetupResult } from "../api/auth"
 import { meApi } from "../api/meApi"
 import { disconnect } from "../websocket/connection"
 import { useIntegrationsStore } from "../../features/integrations/store"
-import type {
-  LoginRequest,
-  SetupRequest,
-  ChangePasswordRequest,
-} from "../types/auth"
+import type { LoginRequest, SetupRequest } from "../types/auth"
+
+export type { LoginResult, SetupResult }
 
 function loadAuthenticatedIntegrationState(): void {
   void useIntegrationsStore.getState().load()
@@ -20,19 +19,23 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const login = useCallback(async (data: LoginRequest) => {
+  const login = useCallback(async (data: LoginRequest): Promise<LoginResult> => {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await authApi.login(data)
-      setToken(res.access_token)
-      try {
-        const me = await meApi.getMe()
-        setUser(me)
-      } catch {
-        // getMe failed — user stays authenticated with fallback display name
+      const result = await authApi.login(data.username, data.password)
+      // Save token immediately for ok and legacy_upgrade (both have an accessToken)
+      if (result.kind === 'ok' || result.kind === 'legacy_upgrade') {
+        setToken(result.accessToken!)
+        try {
+          const me = await meApi.getMe()
+          setUser(me)
+        } catch {
+          // getMe failed — user stays authenticated with fallback display name
+        }
+        loadAuthenticatedIntegrationState()
       }
-      loadAuthenticatedIntegrationState()
+      return result
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed")
       throw err
@@ -41,12 +44,18 @@ export function useAuth() {
     }
   }, [setToken, setUser])
 
-  const setup = useCallback(async (data: SetupRequest) => {
+  const setup = useCallback(async (data: SetupRequest): Promise<SetupResult> => {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await authApi.setup(data)
-      setToken(res.access_token)
+      const res = await authApi.setup({
+        username: data.username,
+        email: data.email,
+        displayName: data.display_name ?? data.username,
+        pin: data.pin,
+        password: data.password,
+      })
+      setToken(res.accessToken)
       setUser(res.user)
       loadAuthenticatedIntegrationState()
       return res
@@ -58,19 +67,18 @@ export function useAuth() {
     }
   }, [setToken, setUser])
 
-  const changePassword = useCallback(async (data: ChangePasswordRequest) => {
+  const changePassword = useCallback(async (data: { username: string; current_password: string; new_password: string }): Promise<void> => {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await authApi.changePassword(data)
-      setToken(res.access_token)
+      await authApi.changePassword(data.username, data.current_password, data.new_password)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Password change failed")
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [setToken])
+  }, [])
 
   const logout = useCallback(async () => {
     try {

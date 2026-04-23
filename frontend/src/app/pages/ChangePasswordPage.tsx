@@ -2,6 +2,7 @@ import { useId, useState } from "react"
 import type { KeyboardEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../core/hooks/useAuth"
+import { useAuthStore } from "../../core/store/authStore"
 import { safeLocalStorage } from "../../core/utils/safeStorage"
 
 const inputClass =
@@ -70,6 +71,7 @@ export default function ChangePasswordPage() {
   const [capsLock, setCapsLock] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const { changePassword } = useAuth()
+  const username = useAuthStore((s) => s.user?.username ?? "")
   const navigate = useNavigate()
 
   const newTooShort = newPassword.length > 0 && newPassword.length < 8
@@ -103,6 +105,7 @@ export default function ChangePasswordPage() {
     setIsLoading(true)
     try {
       await changePassword({
+        username,
         current_password: currentPassword,
         new_password: newPassword,
       })
