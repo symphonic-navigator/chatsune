@@ -16,6 +16,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@ricky0123/vad-web": "^0.0.30",
     "@soundtouchjs/audio-worklet": "^1.0.10",
+    "argon2-browser": "1.18.0",
     "katex": "^0.16.45",
     "mermaid": "^11.14.0",
     "react": "^19.2.4",
