@@ -1,10 +1,11 @@
 """Nano-GPT HTTP adapter.
 
 Implements the model catalogue (filter / pair / map via
-``_nano_gpt_catalog``) and persists the pair map to Redis
-(``_nano_gpt_pair_map``). ``stream_completion`` is deliberately a
-Phase-2 stub — the upstream routing logic lives in a follow-up
-session alongside the full SSE loop.
+``_nano_gpt_catalog``), persists the pair map to Redis
+(``_nano_gpt_pair_map``), and drives an OpenAI-compatible SSE
+streaming loop in ``stream_completion`` that picks the correct
+upstream slug (thinking vs non-thinking) from the pair map at
+request time.
 
 Key design note — **do not** send ``reasoning`` or ``thinking`` flags
 in the request body. Nano-GPT does not honour them; thinking is
@@ -263,6 +264,25 @@ def _build_chat_payload(request: CompletionRequest, upstream_slug: str) -> dict:
     return payload
 
 
+def _pick_upstream_slug(
+    pair_map: dict[str, dict[str, str | None]],
+    *, model_id: str, reasoning_enabled: bool,
+) -> str | None:
+    """Return the upstream slug to dispatch to, or ``None`` if unknown.
+
+    When ``reasoning_enabled`` is true but the model has no thinking
+    variant, fall back to the non-thinking slug. This matches the
+    frontend's capability-gated UI: if the user toggles reasoning on a
+    model that lacks it, we continue rather than refuse.
+    """
+    pair = pair_map.get(model_id)
+    if pair is None:
+        return None
+    if reasoning_enabled and pair.get("thinking_slug"):
+        return pair["thinking_slug"]
+    return pair["non_thinking_slug"]
+
+
 async def _http_get_models(
     *, base_url: str, api_key: str, timeout: float = _TIMEOUT,
 ) -> list[dict]:
@@ -378,8 +398,153 @@ class NanoGptHttpAdapter(BaseAdapter):
     async def stream_completion(
         self, connection: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        raise NotImplementedError(
-            "Nano-GPT stream_completion is Phase 2 — see "
-            "devdocs/superpowers/plans/2026-04-23-nano-gpt-adapter-port.md",
+        if self._redis is None:
+            raise RuntimeError(
+                "NanoGptHttpAdapter requires a Redis client for pair-map "
+                "lookup — construct with redis= kwarg",
+            )
+
+        base_url = (connection.config.get("base_url") or _DEFAULT_BASE_URL).rstrip("/")
+        api_key = connection.config.get("api_key") or ""
+
+        # Load the pair map. ``fetch_models`` populates this; if the user has
+        # never fetched models for this connection, the map is empty and we
+        # signal model_not_found rather than attempting a blind upstream call.
+        from backend.modules.llm._adapters._nano_gpt_pair_map import load_pair_map
+        pair_map = await load_pair_map(self._redis, connection_id=connection.id)
+
+        upstream_slug = _pick_upstream_slug(
+            pair_map, model_id=request.model,
+            reasoning_enabled=request.reasoning_enabled,
         )
-        yield  # pragma: no cover — makes the function an async generator
+        if upstream_slug is None:
+            yield StreamError(
+                error_code="model_not_found",
+                message=(
+                    f"Model {request.model!r} is not in the nano-gpt pair map "
+                    f"for connection {connection.id}. Refresh the model list "
+                    f"and retry."
+                ),
+            )
+            return
+
+        payload = _build_chat_payload(request, upstream_slug)
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        acc = _ToolCallAccumulator()
+        seen_done = False
+        pending_next: asyncio.Task | None = None
+
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=nano-gpt-out url=%s payload=%s",
+                base_url, json.dumps(payload, default=str, sort_keys=True),
+            )
+
+        async with httpx.AsyncClient(timeout=_STREAM_TIMEOUT) as client:
+            try:
+                async with client.stream(
+                    "POST", f"{base_url}/chat/completions",
+                    json=payload, headers=headers,
+                ) as resp:
+                    if resp.status_code in (401, 403):
+                        yield StreamError(
+                            error_code="invalid_api_key",
+                            message="Nano-GPT rejected the API key",
+                        )
+                        return
+                    if resp.status_code == 429:
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message="Nano-GPT rate limit hit",
+                        )
+                        return
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        detail = body.decode("utf-8", errors="replace")[:500]
+                        _log.error(
+                            "nano_gpt_http upstream %d: %s",
+                            resp.status_code, detail,
+                        )
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message=f"Nano-GPT returned {resp.status_code}: {detail}",
+                        )
+                        return
+
+                    stream_iter = resp.aiter_lines().__aiter__()
+                    line_start = time.monotonic()
+                    slow_fired = False
+
+                    while True:
+                        elapsed = time.monotonic() - line_start
+                        budget = (
+                            GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                            else GUTTER_SLOW_SECONDS - elapsed
+                        )
+                        if budget <= 0:
+                            if not slow_fired:
+                                _log.info(
+                                    "nano_gpt_http.gutter_slow model=%s idle=%.1fs",
+                                    upstream_slug, elapsed,
+                                )
+                                yield StreamSlow()
+                                slow_fired = True
+                                continue
+                            _log.warning(
+                                "nano_gpt_http.gutter_abort model=%s idle=%.1fs",
+                                upstream_slug, elapsed,
+                            )
+                            if pending_next is not None:
+                                pending_next.cancel()
+                            yield StreamAborted(reason="gutter_timeout")
+                            return
+                        if pending_next is None:
+                            pending_next = asyncio.ensure_future(
+                                stream_iter.__anext__(),
+                            )
+                        done, _ = await asyncio.wait(
+                            {pending_next}, timeout=budget,
+                        )
+                        if not done:
+                            continue
+                        task = done.pop()
+                        pending_next = None
+                        try:
+                            line = task.result()
+                        except StopAsyncIteration:
+                            break
+                        line_start = time.monotonic()
+                        slow_fired = False
+
+                        parsed = _parse_sse_line(line)
+                        if parsed is None:
+                            continue
+                        if parsed is _SSE_DONE:
+                            break
+
+                        for event in _chunk_to_events(parsed, acc):
+                            if isinstance(event, StreamDone):
+                                seen_done = True
+                            yield event
+                            if isinstance(event, (StreamDone,
+                                                   StreamRefused,
+                                                   StreamError)):
+                                return
+
+            except asyncio.CancelledError:
+                if pending_next is not None and not pending_next.done():
+                    pending_next.cancel()
+                raise
+            except httpx.ConnectError:
+                yield StreamError(
+                    error_code="provider_unavailable",
+                    message="Cannot connect to Nano-GPT",
+                )
+                return
+
+        if not seen_done:
+            yield StreamDone()
