@@ -12,6 +12,7 @@ Two flavours live here side by side:
   never leak one user's model list into another user's cache.
 """
 
+import inspect
 import json
 import logging
 
@@ -33,11 +34,28 @@ def _premium_cache_key(user_id: str, provider_id: str) -> str:
     return f"llm:models:premium:{user_id}:{provider_id}"
 
 
+def _instantiate_adapter(
+    adapter_cls: type[BaseAdapter], redis: Redis,
+) -> BaseAdapter:
+    """Construct an adapter, passing ``redis`` only if the ``__init__`` accepts it.
+
+    Most adapters are stateless and take no constructor arguments; the
+    Nano-GPT adapter needs a Redis client for its pair-map persistence.
+    Keeping the selection here avoids sprinkling adapter-specific branches
+    through the call sites and lets future redis-consuming adapters opt in
+    just by declaring a ``redis`` keyword parameter.
+    """
+    params = inspect.signature(adapter_cls).parameters
+    if "redis" in params:
+        return adapter_cls(redis=redis)
+    return adapter_cls()
+
+
 async def _fetch_and_cache(
     c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
     """Fetch from upstream and write to Redis. Raises adapter exceptions."""
-    adapter = adapter_cls()
+    adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _cache_key(c.id),
@@ -83,7 +101,7 @@ async def _fetch_and_cache_premium(
     provider_id: str,
 ) -> list[ModelMetaDto]:
     """Fetch from upstream and write to the user-scoped premium cache."""
-    adapter = adapter_cls()
+    adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _premium_cache_key(user_id, provider_id),
