@@ -640,3 +640,34 @@ async def test_fetch_models_returns_empty_on_auth_failure(monkeypatch):
     adapter = MistralHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
     assert metas == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_labels_billing_category_as_pay_per_token(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, json={
+            "object": "list",
+            "data": [
+                {
+                    "id": "mistral-medium-latest",
+                    "name": "mistral-medium-2508",
+                    "max_context_length": 131_072,
+                    "capabilities": _cap(function_calling=True, vision=True),
+                    "deprecation": None,
+                },
+                {
+                    "id": "pixtral-large-latest",
+                    "name": "pixtral-large-2411",
+                    "max_context_length": 131_072,
+                    "capabilities": _cap(function_calling=True, vision=True),
+                    "deprecation": None,
+                },
+            ],
+        })
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = MistralHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    assert metas, "expected at least one model"
+    for m in metas:
+        assert m.billing_category == "pay_per_token"

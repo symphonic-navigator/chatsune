@@ -147,6 +147,7 @@ def _model_meta_to_dto(
             int(raw_params) if isinstance(raw_params, int) else None
         ),
         quantisation_level=raw.get("quantisation"),
+        billing_category="free",
     )
 
 

@@ -161,6 +161,48 @@ async def test_fetch_models_empty_when_config_missing(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_models_labels_billing_category_as_free(monkeypatch):
+    from backend.modules.llm._adapters import _community
+
+    fake_sidecar = MagicMock()
+    fake_sidecar.rpc_list_models = AsyncMock(
+        return_value=[
+            {
+                "slug": "llama3.2:8b",
+                "display_name": "Llama 3.2 8B",
+                "context_length": 131072,
+                "capabilities": ["chat"],
+            },
+            {
+                "slug": "mistral:7b",
+                "display_name": "Mistral 7B",
+                "context_length": 32768,
+                "capabilities": ["chat"],
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        _community,
+        "get_sidecar_registry",
+        lambda: MagicMock(get=lambda _hid: fake_sidecar),
+    )
+    fake_svc = MagicMock()
+    fake_svc.validate_consumer_access_key = AsyncMock(
+        return_value={"allowed_model_slugs": ["llama3.2:8b", "mistral:7b"]}
+    )
+    fake_svc.find_homelab_by_id = AsyncMock(
+        return_value={"max_concurrent_requests": 3},
+    )
+    monkeypatch.setattr(_community, "_homelab_service", lambda: fake_svc)
+
+    adapter = _community.CommunityAdapter()
+    out = await adapter.fetch_models(_resolved_conn())
+    assert out, "expected at least one model"
+    for m in out:
+        assert m.billing_category == "free"
+
+
+@pytest.mark.asyncio
 async def test_fetch_models_returns_empty_when_rpc_raises(monkeypatch):
     from backend.modules.llm._adapters import _community
 
