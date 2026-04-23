@@ -554,6 +554,15 @@ async def refresh(
     if not user or not user["is_active"]:
         raise HTTPException(status_code=401, detail="User not found or inactive")
 
+    # Legacy users (pre-E2EE-phase-1 accounts with no user_keys document yet)
+    # must not slip in through the refresh backdoor — they bypassed the
+    # /login-legacy migration and would end up in an inconsistent state
+    # (no DEK in Redis, no user_keys row, no recovery key shown). Force them
+    # back to an explicit login by clearing the cookie and failing with 401.
+    if user.get("password_hash_version") != 1:
+        _clear_refresh_cookie(response)
+        raise HTTPException(status_code=401, detail="migration_required")
+
     session_id = data["session_id"]
     access_token = create_access_token(
         user_id=user["_id"],
