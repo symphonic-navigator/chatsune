@@ -1,4 +1,5 @@
 import base64
+import os
 from datetime import datetime, timezone
 
 from fastapi import (
@@ -57,6 +58,7 @@ from shared.dtos.auth import (
     RecoveryRequiredResponseDto,
     ResetPasswordResponseDto,
     SetupRequestDto,
+    SetupRequestV2Dto,
     SetupResponseDto,
     TokenResponseDto,
     UpdateAboutMeDto,
@@ -144,64 +146,102 @@ async def auth_status():
 # --- Setup ---
 
 
-@router.post("/setup", status_code=201)
+@router.post("/auth/setup")
 async def setup(
-    body: SetupRequestDto,
+    body: SetupRequestV2Dto,
     response: Response,
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    repo = _user_repo()
+    # PIN check is the first line of defence — fail fast before any DB access.
+    if body.pin != settings.master_admin_pin:
+        raise HTTPException(status_code=401, detail="invalid_pin")
+
+    users_repo = _user_repo()
+    svc = _key_service()
     audit = _audit_repo()
 
-    existing = await repo.find_by_role("master_admin")
-    if existing:
-        raise HTTPException(status_code=409, detail="Master admin already exists")
+    existing = await users_repo.find_by_role("master_admin")
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="master_admin_exists")
 
-    if body.pin != settings.master_admin_pin:
-        raise HTTPException(status_code=403, detail="Invalid PIN")
-
-    password_hash = hash_password(body.password)
-    doc = await repo.create(
+    # Create the user document without a password_hash_version first, then
+    # upgrade it so the field is set to 1 (H_auth scheme) in one atomic write.
+    password_hash = hash_h_auth(body.h_auth)
+    doc = await users_repo.create(
         username=body.username,
         email=body.email,
-        display_name=body.username,
+        display_name=body.display_name,
         password_hash=password_hash,
         role="master_admin",
         must_change_password=False,
     )
+    user_id = str(doc["_id"])
+    await users_repo.set_password_hash_and_version(user_id, password_hash=password_hash, version=1)
 
+    # Generate a fresh per-user kdf_salt and provision the DEK.
+    kdf_salt = os.urandom(32)
+    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    await svc.provision_for_new_user(
+        user_id=user_id,
+        h_kek=h_kek_bytes,
+        recovery_key=body.recovery_key,
+        kdf_salt=kdf_salt,
+    )
+
+    # Unlock the freshly provisioned DEK and open an immediate session.
+    dek = await svc.unlock_with_password(user_id=user_id, h_kek=h_kek_bytes)
     session_id = generate_session_id()
     access_token = create_access_token(
-        user_id=doc["_id"], role="master_admin", session_id=session_id
+        user_id=user_id, role="master_admin", session_id=session_id
     )
     refresh_token = generate_refresh_token()
     store = _refresh_store()
-    await store.store(refresh_token, user_id=doc["_id"], session_id=session_id)
-
+    await store.store(refresh_token, user_id=user_id, session_id=session_id)
+    await svc.store_session_dek(
+        session_id=session_id,
+        dek=dek,
+        ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+    )
     _set_refresh_cookie(response, refresh_token)
 
     await audit.log(
-        actor_id=doc["_id"],
+        actor_id=user_id,
         action="user.created",
         resource_type="user",
-        resource_id=doc["_id"],
+        resource_id=user_id,
         detail={"role": "master_admin", "method": "setup"},
     )
 
     await event_bus.publish(
         Topics.USER_CREATED,
-        UserCreatedEvent(user_id=doc["_id"], username=doc["username"], role="master_admin", timestamp=doc["created_at"]),
+        UserCreatedEvent(
+            user_id=user_id,
+            username=doc["username"],
+            role="master_admin",
+            timestamp=doc["created_at"],
+        ),
     )
     await event_bus.publish(
         Topics.AUDIT_LOGGED,
-        AuditLoggedEvent(actor_id=doc["_id"], action="user.created", resource_type="user", resource_id=doc["_id"], detail={"role": "master_admin", "method": "setup"}),
+        AuditLoggedEvent(
+            actor_id=user_id,
+            action="user.created",
+            resource_type="user",
+            resource_id=user_id,
+            detail={"role": "master_admin", "method": "setup"},
+        ),
+    )
+    await event_bus.publish(
+        Topics.USER_KEY_PROVISIONED,
+        UserKeyProvisionedEvent(user_id=user_id, reason="signup"),
+        target_user_ids=[user_id],
     )
 
-    return SetupResponseDto(
-        user=UserRepository.to_dto(doc),
-        access_token=access_token,
-        expires_in=settings.jwt_access_token_expire_minutes * 60,
-    )
+    # Recovery key is NOT echoed — the client generated it and already holds it.
+    return {
+        "access_token": access_token,
+        "expires_in": settings.jwt_access_token_expire_minutes * 60,
+    }
 
 
 # --- Auth ---
