@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 from backend.modules.llm._adapters._community import CommunityAdapter
 from backend.modules.llm._adapters._nano_gpt_http import NanoGptHttpAdapter
 from backend.modules.llm._adapters._ollama_http import OllamaHttpAdapter
-from backend.modules.llm._metadata import _instantiate_adapter
 from backend.modules.llm._registry import (
     _PREMIUM_ONLY_ADAPTERS,
+    _instantiate_adapter,
     ADAPTER_REGISTRY,
     get_adapter_class,
 )

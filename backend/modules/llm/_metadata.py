@@ -12,7 +12,6 @@ Two flavours live here side by side:
   never leak one user's model list into another user's cache.
 """
 
-import inspect
 import json
 import logging
 
@@ -20,6 +19,7 @@ from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._types import ResolvedConnection
+from backend.modules.llm._registry import _instantiate_adapter
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -32,23 +32,6 @@ def _cache_key(connection_id: str) -> str:
 
 def _premium_cache_key(user_id: str, provider_id: str) -> str:
     return f"llm:models:premium:{user_id}:{provider_id}"
-
-
-def _instantiate_adapter(
-    adapter_cls: type[BaseAdapter], redis: Redis,
-) -> BaseAdapter:
-    """Construct an adapter, passing ``redis`` only if the ``__init__`` accepts it.
-
-    Most adapters are stateless and take no constructor arguments; the
-    Nano-GPT adapter needs a Redis client for its pair-map persistence.
-    Keeping the selection here avoids sprinkling adapter-specific branches
-    through the call sites and lets future redis-consuming adapters opt in
-    just by declaring a ``redis`` keyword parameter.
-    """
-    params = inspect.signature(adapter_cls).parameters
-    if "redis" in params:
-        return adapter_cls(redis=redis)
-    return adapter_cls()
 
 
 async def _fetch_and_cache(
