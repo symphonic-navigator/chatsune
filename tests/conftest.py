@@ -96,7 +96,11 @@ async def db(clean_db) -> AsyncGenerator:
 async def redis_client():
     from redis.asyncio import Redis
 
-    client = Redis.from_url(settings.redis_uri, decode_responses=False)
+    # Match the production client config — the shared app Redis uses
+    # decode_responses=True, which means UserKeyService must base64-encode
+    # DEK bytes before storing. If the test fixture uses a different flag,
+    # we would silently exercise a different code path than production.
+    client = Redis.from_url(settings.redis_uri, decode_responses=True)
     try:
         yield client
     finally:

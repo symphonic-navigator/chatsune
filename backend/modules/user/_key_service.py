@@ -14,6 +14,7 @@ encoding at this layer.
 
 from __future__ import annotations
 
+import base64
 import os
 from datetime import UTC, datetime
 
@@ -234,14 +235,31 @@ class UserKeyService:
     async def store_session_dek(
         self, *, session_id: str, dek: bytes, ttl_seconds: int
     ) -> None:
-        """Store ``dek`` in Redis under the session key with a TTL."""
+        """Store ``dek`` in Redis under the session key with a TTL.
+
+        The DEK is base64-encoded before the write because the shared
+        application Redis client is configured with ``decode_responses=True``
+        and would crash on UTF-8-decoding raw key bytes during read-back.
+        """
         key = _SESSION_DEK_PREFIX + session_id
-        await self._redis.set(key, dek, ex=ttl_seconds)
+        encoded = base64.b64encode(dek).decode("ascii")
+        await self._redis.set(key, encoded, ex=ttl_seconds)
 
     async def fetch_session_dek(self, session_id: str) -> bytes | None:
-        """Retrieve the session DEK from Redis, or None if absent / expired."""
+        """Retrieve the session DEK from Redis, or None if absent / expired.
+
+        Accepts both ``str`` (from a ``decode_responses=True`` client, the
+        standard case) and ``bytes`` (from a ``decode_responses=False``
+        client, used in unit tests) on read. The stored value is always a
+        base64 string — see :meth:`store_session_dek`.
+        """
         key = _SESSION_DEK_PREFIX + session_id
-        return await self._redis.get(key)
+        raw = await self._redis.get(key)
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("ascii")
+        return base64.b64decode(raw)
 
     async def extend_session_dek_ttl(
         self, session_id: str, ttl_seconds: int
