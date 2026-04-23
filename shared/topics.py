@@ -171,3 +171,8 @@ class Topics:
     INTEGRATION_SECRETS_CLEARED = TopicDefinition(
         "integration.secrets.cleared", persist=False,
     )
+    # --- Per-user key lifecycle ---
+    USER_KEY_PROVISIONED = "user.key.provisioned"
+    USER_KEY_RECOVERY_REQUIRED = "user.key.recovery_required"
+    USER_KEY_RECOVERED = "user.key.recovered"
+    USER_KEY_RECOVERY_DECLINED = "user.key.recovery_declined"

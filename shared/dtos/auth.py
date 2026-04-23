@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -134,3 +135,84 @@ class DeleteAccountResponseDto(BaseModel):
 
     slug: str
     success: bool
+
+
+# ---------------------------------------------------------------------------
+# Per-user key infrastructure — Tasks 9/12/13 will wire these into handlers.
+# The *V2Dto suffix is intentional: the plain-name variants already exist
+# above and are still consumed by live endpoints. Swapping happens per-task.
+# ---------------------------------------------------------------------------
+
+
+class KdfParamsRequestDto(BaseModel):
+    username: str
+
+
+class Argon2ParamsDto(BaseModel):
+    memory_kib: int
+    iterations: int
+    parallelism: int
+
+
+class KdfParamsResponseDto(BaseModel):
+    kdf_salt: str   # urlsafe-base64
+    kdf_params: Argon2ParamsDto
+    password_hash_version: int | None = None  # None signals legacy-user path
+
+
+class LoginRequestV2Dto(BaseModel):
+    """New-format login request. Replaces LoginRequestDto once Task 9 rewires the handler."""
+
+    username: str
+    h_auth: str     # urlsafe-base64, 32 bytes
+    h_kek: str      # urlsafe-base64, 32 bytes
+
+
+class LoginLegacyRequestDto(BaseModel):
+    username: str
+    password: str   # plaintext, last time it is accepted — upgrades the row
+    h_auth: str
+    h_kek: str
+
+
+class RecoveryRequiredResponseDto(BaseModel):
+    status: Literal["recovery_required"] = "recovery_required"
+
+
+class RecoverDekRequestDto(BaseModel):
+    username: str
+    h_auth: str
+    h_kek: str
+    recovery_key: str
+
+
+class DeclineRecoveryRequestDto(BaseModel):
+    username: str
+
+
+class ChangePasswordRequestV2Dto(BaseModel):
+    """New-format change-password request. Replaces ChangePasswordRequestDto once Task 12 rewires the handler."""
+
+    h_auth_old: str
+    h_kek_old: str
+    h_auth_new: str
+    h_kek_new: str
+
+
+class SetupRequestV2Dto(BaseModel):
+    """New-format setup request. Replaces SetupRequestDto once Task 13 rewires the handler."""
+
+    username: str
+    email: str
+    display_name: str
+    pin: str
+    h_auth: str
+    h_kek: str
+    recovery_key: str
+
+
+class LoginLegacyResponseDto(BaseModel):
+    access_token: str
+    refresh_token: str | None = None
+    expires_in: int
+    recovery_key: str   # returned exactly once on migration
