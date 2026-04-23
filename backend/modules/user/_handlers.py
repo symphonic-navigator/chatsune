@@ -20,10 +20,13 @@ from backend.modules.user._auth import (
     generate_random_password,
     generate_refresh_token,
     generate_session_id,
+    hash_h_auth,
     hash_password,
     verify_h_auth,
     verify_password,
 )
+from backend.modules.user._models import Argon2Params
+from backend.modules.user._recovery_key import generate_recovery_key
 from backend.modules.user._key_service import DekUnlockError
 from backend.modules.user._crypto import pseudo_salt_for_unknown_user
 from backend.modules.user._key_service import UserKeyService
@@ -43,6 +46,8 @@ from shared.dtos.auth import (
     DeleteAccountResponseDto,
     KdfParamsRequestDto,
     KdfParamsResponseDto,
+    LoginLegacyRequestDto,
+    LoginLegacyResponseDto,
     LoginRequestDto,
     LoginRequestV2Dto,
     RecoveryRequiredResponseDto,
@@ -66,6 +71,7 @@ from shared.events.auth import (
     UserUpdatedEvent,
     UserProfileUpdatedEvent,
 )
+from shared.events.user_keys import UserKeyProvisionedEvent
 from shared.events.audit import AuditLoggedEvent
 from shared.topics import Topics
 
@@ -297,6 +303,95 @@ async def kdf_params(body: KdfParamsRequestDto) -> KdfParamsResponseDto:
         kdf_salt=base64.urlsafe_b64encode(salt).decode(),
         kdf_params=Argon2ParamsDto(memory_kib=65536, iterations=3, parallelism=4),
         password_hash_version=None,
+    )
+
+
+@router.post("/auth/login-legacy", response_model=LoginLegacyResponseDto)
+async def login_legacy(
+    body: LoginLegacyRequestDto,
+    response: Response,
+    event_bus: EventBus = Depends(get_event_bus),
+):
+    """One-time migration endpoint for pre-key-infrastructure users.
+
+    Accepts the legacy plaintext password, provisions key material for the
+    user, upgrades their password hash to the H_auth scheme, and returns an
+    immediate session alongside the recovery key.  The recovery key is
+    returned exactly once — it is never stored in plaintext.
+
+    Returns 409 if the user has already been migrated (password_hash_version == 1).
+    """
+    users_repo = _user_repo()
+    svc = _key_service()
+    user = await users_repo.find_by_username_case_insensitive(body.username)
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    if user.get("password_hash_version") == 1:
+        raise HTTPException(status_code=409, detail="already_migrated")
+
+    if not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="invalid_credentials")
+
+    user_id = str(user["_id"])
+
+    # Upgrade password hash: replace the bcrypt-over-raw-password with
+    # bcrypt-over-H_auth, and bump the version to 1.
+    new_hash = hash_h_auth(body.h_auth)
+    await users_repo.set_password_hash_and_version(user_id, password_hash=new_hash, version=1)
+
+    # Provision key material for the migrated user.
+    recovery_key = generate_recovery_key()
+    kdf_salt = pseudo_salt_for_unknown_user(body.username, settings.kdf_pepper_bytes)
+    h_kek_bytes = base64.urlsafe_b64decode(body.h_kek)
+    await svc.provision_for_new_user(
+        user_id=user_id,
+        h_kek=h_kek_bytes,
+        recovery_key=recovery_key,
+        kdf_salt=kdf_salt,
+        kdf_params=Argon2Params(),
+    )
+
+    # Unlock the DEK we just provisioned and open an immediate session.
+    dek = await svc.unlock_with_password(user_id=user_id, h_kek=h_kek_bytes)
+    session_id = generate_session_id()
+    access_token = create_access_token(
+        user_id=user_id,
+        role=user["role"],
+        session_id=session_id,
+        must_change_password=user.get("must_change_password", False),
+    )
+    refresh_token = generate_refresh_token()
+    store = _refresh_store()
+    await store.store(refresh_token, user_id=user_id, session_id=session_id)
+    await svc.store_session_dek(
+        session_id=session_id,
+        dek=dek,
+        ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+    )
+
+    _set_refresh_cookie(response, refresh_token)
+
+    audit = _audit_repo()
+    await audit.log(
+        actor_id=user_id,
+        action="user.migrated_to_key_infrastructure",
+        resource_type="user",
+        resource_id=user_id,
+    )
+
+    await event_bus.publish(
+        Topics.USER_KEY_PROVISIONED,
+        UserKeyProvisionedEvent(user_id=user_id, reason="migration"),
+        target_user_ids=[user_id],
+    )
+
+    return LoginLegacyResponseDto(
+        access_token=access_token,
+        refresh_token=None,
+        expires_in=settings.jwt_access_token_expire_minutes * 60,
+        recovery_key=recovery_key,
     )
 
 

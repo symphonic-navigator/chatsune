@@ -132,6 +132,19 @@ class UserRepository:
         )
         return result.modified_count > 0
 
+    async def set_password_hash_and_version(
+        self, user_id: str, *, password_hash: str, version: int
+    ) -> None:
+        """Atomically update the password hash and set the hash version field."""
+        await self._collection.update_one(
+            {"_id": user_id},
+            {"$set": {
+                "password_hash": password_hash,
+                "password_hash_version": version,
+                "updated_at": datetime.now(UTC),
+            }},
+        )
+
     async def delete_user_document(self, user_id: str) -> bool:
         """Delete the user document itself. Returns True if a row was removed.
 
