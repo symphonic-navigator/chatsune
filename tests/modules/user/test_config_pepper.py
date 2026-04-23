@@ -4,7 +4,7 @@ from pydantic import ValidationError
 from backend.config import Settings
 
 
-def test_kdf_pepper_required_32_bytes(monkeypatch):
+def test_kdf_pepper_rejects_empty_string(monkeypatch):
     monkeypatch.setenv("kdf_pepper", "")
     with pytest.raises(ValidationError):
         Settings()
