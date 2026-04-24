@@ -6,7 +6,7 @@ function makeModel(
   billing: 'free' | 'subscription' | 'pay_per_token' | null | undefined,
   overrides: Partial<EnrichedModelDto> = {},
 ): EnrichedModelDto {
-  return {
+  const base: EnrichedModelDto = {
     connection_id: 'c1',
     connection_slug: 's',
     connection_display_name: 'D',
@@ -20,10 +20,10 @@ function makeModel(
     raw_parameter_count: null,
     quantisation_level: null,
     unique_id: 's:m1',
-    billing_category: billing === undefined ? undefined : billing,
+    billing_category: billing ?? null,
     user_config: null,
-    ...overrides,
-  } as EnrichedModelDto
+  }
+  return { ...base, ...overrides }
 }
 
 describe('applyModelFilters — billing', () => {
@@ -69,6 +69,19 @@ describe('applyModelFilters — billing', () => {
       const result = applyModelFilters([unknown], { billing })
       expect(result, `filter=${billing}`).toEqual([])
     }
+  })
+
+  it.each<[BillingFilter, Array<'free' | 'subscription' | 'pay_per_token' | null>, string[]]>([
+    // [filter, categories present in input, expected model_ids in output]
+    ['all',           ['free', 'subscription', 'pay_per_token', null], ['free-m', 'sub-m', 'pay-m', 'unk-m']],
+    ['no_per_token',  ['free', 'subscription', 'pay_per_token', null], ['free-m', 'sub-m']],
+    ['free',          ['free', 'subscription', 'pay_per_token', null], ['free-m']],
+    ['subscription',  ['free', 'subscription', 'pay_per_token', null], ['sub-m']],
+    ['pay_per_token', ['free', 'subscription', 'pay_per_token', null], ['pay-m']],
+  ])('billing=%s matrix over all categories', (billing, _cats, expectedIds) => {
+    const input = [free, sub, pay, unknown]
+    const result = applyModelFilters(input, { billing })
+    expect(result.map((m) => m.model_id).sort()).toEqual([...expectedIds].sort())
   })
 
   it('billing filter composes with capability filters', () => {
