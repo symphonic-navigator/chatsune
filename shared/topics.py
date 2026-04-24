@@ -88,8 +88,8 @@ class Topics:
     CHAT_TOOL_CALL_COMPLETED = "chat.tool_call.completed"
     CHAT_CLIENT_TOOL_DISPATCH = "chat.client_tool.dispatch"
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
-    # Tool group toggles
-    CHAT_SESSION_TOOLS_UPDATED = "chat.session.tools_updated"
+    # Session toggles (tools_enabled, auto_read, reasoning_override)
+    CHAT_SESSION_TOGGLES_UPDATED = "chat.session.toggles_updated"
     CHAT_SESSION_PINNED_UPDATED = "chat.session.pinned_updated"
     # MCP gateways
     MCP_TOOLS_REGISTER = "mcp.tools.register"

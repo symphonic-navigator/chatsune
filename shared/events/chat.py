@@ -178,10 +178,12 @@ class ChatWebSearchContextEvent(BaseModel):
     items: list[WebSearchContextItem]
 
 
-class ChatSessionToolsUpdatedEvent(BaseModel):
-    type: str = "chat.session.tools_updated"
+class ChatSessionTogglesUpdatedEvent(BaseModel):
+    type: str = "chat.session.toggles_updated"
     session_id: str
-    disabled_tool_groups: list[str]
+    tools_enabled: bool
+    auto_read: bool
+    reasoning_override: bool | None
     correlation_id: str
     timestamp: datetime
 
