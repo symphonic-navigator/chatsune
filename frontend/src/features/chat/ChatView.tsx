@@ -913,18 +913,21 @@ export function ChatView({ persona }: ChatViewProps) {
   ]
 
   // Active persona integrations for the IntegrationsButton. An integration is
-  // considered "active for the chat" when it is globally effective-enabled —
-  // this mirrors how the tools list treats them and matches user intent: if
-  // Lovense is plugged in and reachable, it belongs in the integrations popover.
+  // considered "active for the chat" when it is globally effective-enabled.
+  // TTS / STT integrations are excluded — they have their own dedicated buttons
+  // (the magic voice button, the live button).
   const activePersonaIntegrationIds = intDefinitions
-    .filter((d) => intConfigs[d.id]?.effective_enabled)
+    .filter((d) => {
+      if (!intConfigs[d.id]?.effective_enabled) return false
+      const caps = d.capabilities ?? []
+      return !caps.includes('tts_provider') && !caps.includes('stt_provider')
+    })
     .map((d) => d.id)
 
-  // Voice summary for VoiceButton / MobileInfoModal.
-  // tts_provider_id is optional in the persona DTO — null means "fall back to
-  // the first enabled TTS provider", so it is not a requirement for having a
-  // voice. A dialogue_voice is what makes the persona speakable.
-  const personaHasVoice = Boolean(persona?.voice_config?.dialogue_voice)
+  // Voice summary for VoiceButton / MobileInfoModal. Reuse the authoritative
+  // gate the rest of the UI already uses: the TTS engine must be resolvable,
+  // ready, and the persona must have a voice id stored in integration_configs.
+  const personaHasVoice = ttsConfigured
   const voiceSummary: {
     ttsProvider: string
     voice: string

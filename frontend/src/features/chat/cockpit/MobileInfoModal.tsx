@@ -36,20 +36,30 @@ export function MobileInfoModal({ open, onClose, sections }: Props) {
         </div>
         {sections.map((s) => {
           const isOpen = !!expanded[s.id]
+          const toggle = () => setExpanded((e) => ({ ...e, [s.id]: !isOpen }))
           return (
-            <div key={s.id} className="border-b border-white/5 py-2.5">
-              <button
-                type="button"
-                onClick={() => setExpanded((e) => ({ ...e, [s.id]: !isOpen }))}
-                className="w-full flex justify-between items-center text-sm"
-              >
+            <div
+              key={s.id}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onClick={toggle}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  toggle()
+                }
+              }}
+              className="border-b border-white/5 py-2.5 cursor-pointer select-none"
+            >
+              <div className="w-full flex justify-between items-center text-sm">
                 <span className={s.active ? 'text-white/90' : 'text-white/70'}>
                   {s.icon} {s.title}
                 </span>
                 <span className="text-xs text-white/50">
                   {s.statusLine} {isOpen ? '▴' : '▾'}
                 </span>
-              </button>
+              </div>
               {isOpen && <div className="mt-2 pl-1 text-xs text-white/75">{s.body}</div>}
             </div>
           )

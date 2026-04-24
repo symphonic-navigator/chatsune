@@ -34,11 +34,11 @@ export function LiveButton({ canEnterLive, disabledReason }: Props) {
       icon="🎙"
       state={active ? 'active' : 'idle'}
       accent="green"
-      label={active ? 'Live · on' : 'Live · off'}
+      label={active ? 'Voice chat · on' : 'Voice chat · off'}
       onClick={() => (active ? exit() : enter())}
       panel={
         <div className="text-white/80">
-          <div className="font-semibold text-[#4ade80] mb-1">Continuous voice mode</div>
+          <div className="font-semibold text-[#4ade80] mb-1">Voice chat</div>
           <p className="text-xs leading-relaxed">
             Hands-free conversation. The mic stays open, the assistant speaks answers
             aloud. You can interrupt by clicking the voice button. Best for long sessions.
