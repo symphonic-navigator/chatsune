@@ -12,6 +12,7 @@ build/
 # LLM test harness API key
 .llm-test-key
 .xai-test-key
+.nano-test-key
 
 # Docker
 docker-compose.override.yml
@@ -52,3 +53,4 @@ backend/backend/logs
 
 # tidesson-net deployment
 tidesson-net/
+scratch/

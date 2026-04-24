@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -29,6 +30,12 @@ from shared.events.chat import (
 )
 
 _log = logging.getLogger(__name__)
+
+# Opt-in per-chunk delta tracing. Enable via LLM_TRACE_DELTAS=1 in the
+# environment. Mirrors the adapter-side switch so we can see both sides
+# of the pipeline (what arrived from the provider vs. what was emitted
+# to the client) when diagnosing "TTFT then long pause" issues.
+_TRACE_DELTAS = os.environ.get("LLM_TRACE_DELTAS") == "1"
 
 _MAX_TOOL_ITERATIONS = 5
 _REFUSAL_FALLBACK_TEXT = "The model declined this request."
@@ -147,6 +154,12 @@ class InferenceRunner:
                             if t_first_token is None:
                                 t_first_token = time.monotonic()
                             iter_content += delta
+                            if _TRACE_DELTAS:
+                                _log.info(
+                                    "LLM_TRACE path=inference-emit kind=content "
+                                    "correlation_id=%s len=%d preview=%r",
+                                    correlation_id, len(delta), delta[:40],
+                                )
                             await emit_fn(ChatContentDeltaEvent(
                                 correlation_id=correlation_id, delta=delta,
                             ))
@@ -155,6 +168,12 @@ class InferenceRunner:
                             if t_first_token is None:
                                 t_first_token = time.monotonic()
                             iter_thinking += delta
+                            if _TRACE_DELTAS:
+                                _log.info(
+                                    "LLM_TRACE path=inference-emit kind=thinking "
+                                    "correlation_id=%s len=%d preview=%r",
+                                    correlation_id, len(delta), delta[:40],
+                                )
                             await emit_fn(ChatThinkingDeltaEvent(
                                 correlation_id=correlation_id, delta=delta,
                             ))
