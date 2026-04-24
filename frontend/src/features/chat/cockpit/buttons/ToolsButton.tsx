@@ -38,12 +38,12 @@ export function ToolsButton({ sessionId, availableGroups }: Props) {
     <CockpitButton
       icon="🔧"
       state={on ? 'active' : 'idle'}
-      accent="neutral"
+      accent="gold"
       label={on ? `Tools · on · ${availableGroups.length} available` : 'Tools · off'}
       onClick={() => setTools(sessionId, !on)}
       panel={
         <div className="text-white/80">
-          <div className="font-semibold mb-2">
+          <div className="font-semibold text-[#d4af37] mb-2">
             Tools · {on ? 'on' : 'off'} · {availableGroups.length} available
           </div>
           <ul className="text-xs space-y-1">

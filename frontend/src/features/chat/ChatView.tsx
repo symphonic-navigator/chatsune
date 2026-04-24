@@ -1279,7 +1279,7 @@ export function ChatView({ persona }: ChatViewProps) {
             />
           )}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
-            onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))} onToggleBrowser={() => setShowUploadBrowser((v) => !v)}
+            onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
             sttEnabled={sttEnabled}
             voicePhase={pipelineState.phase}

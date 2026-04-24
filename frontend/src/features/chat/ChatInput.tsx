@@ -10,7 +10,6 @@ interface ChatInputProps {
   onSend: (text: string) => void
   onCancel: () => void
   onFilesSelected: (files: File[]) => void
-  onToggleBrowser: () => void
   isStreaming: boolean
   disabled: boolean
   hasPendingUploads: boolean
@@ -36,7 +35,7 @@ export interface ChatInputHandle {
 }
 
 export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function ChatInput(
-  { onSend, onCancel, onFilesSelected, onToggleBrowser, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip, sttEnabled, voicePhase, volumeLevel, onMicPress, onMicRelease, onStopRecording }, ref,
+  { onSend, onCancel, onFilesSelected, isStreaming, disabled, hasPendingUploads, toolBar, attachmentStrip, sttEnabled, voicePhase, volumeLevel, onMicPress, onMicRelease, onStopRecording }, ref,
 ) {
   const { isMobile } = useViewport()
   const [text, setText] = useState('')
@@ -179,30 +178,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
         </div>
       )}
       <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={isStreaming || disabled}
-          className="hidden h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30 lg:flex"
-          title="Attach file"
-          aria-label="Attach file"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M7.5 2C5 2 3 4 3 6.5V11C3 13.5 5 15.5 7.5 15.5C10 15.5 12 13.5 12 11V5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={onToggleBrowser}
-          disabled={isStreaming || disabled}
-          className="hidden h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-white/60 transition-colors hover:text-white/85 disabled:opacity-30 lg:flex"
-          title="Browse uploads"
-          aria-label="Browse uploads"
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-          </svg>
-        </button>
         <textarea
           ref={textareaRef}
           value={text}

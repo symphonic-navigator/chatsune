@@ -9,6 +9,8 @@ import { LiveButton } from './buttons/LiveButton'
 import { AttachButton, CameraButton, BrowseButton } from './buttons/AttachmentButtons'
 import { MobileInfoModal } from './MobileInfoModal'
 import { CockpitButton } from './CockpitButton'
+import { CockpitGroupButton } from './CockpitGroupButton'
+import { useCockpitSession } from './cockpitStore'
 
 type VoiceSummary = {
   ttsProvider: string
@@ -42,47 +44,84 @@ function Sep() {
 export function CockpitBar(props: Props) {
   const { isMobile } = useViewport()
   const [infoOpen, setInfoOpen] = useState(false)
+  const cockpit = useCockpitSession(props.sessionId)
+
+  const attachGroupChildren = (
+    <>
+      <AttachButton onClick={props.handlers.attach} />
+      <CameraButton onClick={props.handlers.camera} />
+      <BrowseButton onClick={props.handlers.browse} />
+    </>
+  )
+
+  const toolsGroupChildren = (
+    <>
+      <ToolsButton
+        sessionId={props.sessionId}
+        availableGroups={props.availableToolGroups}
+      />
+      <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
+    </>
+  )
+
+  const toolsActive = Boolean(cockpit?.tools) || props.activePersonaIntegrationIds.length > 0
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-[#0f0d16] rounded-lg">
-      <AttachButton onClick={props.handlers.attach} />
-      {isMobile && <CameraButton onClick={props.handlers.camera} />}
-      <BrowseButton onClick={props.handlers.browse} />
-      <Sep />
+      {isMobile ? (
+        <CockpitGroupButton icon="📎" label="Attach, camera, browse">
+          {attachGroupChildren}
+        </CockpitGroupButton>
+      ) : (
+        <>
+          <AttachButton onClick={props.handlers.attach} />
+          <BrowseButton onClick={props.handlers.browse} />
+          <Sep />
+        </>
+      )}
       <ThinkingButton
         sessionId={props.sessionId}
         modelSupportsReasoning={props.modelSupportsReasoning}
         personaReasoningDefault={props.personaReasoningDefault}
       />
-      <ToolsButton
-        sessionId={props.sessionId}
-        availableGroups={props.availableToolGroups}
-      />
-      <Sep />
-      <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
-      <Sep />
+      {isMobile ? (
+        <CockpitGroupButton
+          icon="🔧"
+          label="Tools and integrations"
+          hasActiveChild={toolsActive}
+        >
+          {toolsGroupChildren}
+        </CockpitGroupButton>
+      ) : (
+        <>
+          <ToolsButton
+            sessionId={props.sessionId}
+            availableGroups={props.availableToolGroups}
+          />
+          <Sep />
+          <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
+          <Sep />
+        </>
+      )}
       <VoiceButton
         sessionId={props.sessionId}
         personaHasVoice={props.personaHasVoice}
         voiceSummary={props.voiceSummary}
         onOpenVoiceSettings={props.handlers.openPersonaVoiceSettings}
       />
-      <Sep />
+      {!isMobile && <Sep />}
       <LiveButton
         canEnterLive={props.liveAvailability.canEnterLive}
         disabledReason={props.liveAvailability.reason}
       />
       {isMobile && (
-        <>
-          <Sep />
-          <CockpitButton
-            icon="ⓘ"
-            state="idle"
-            accent="neutral"
-            label="Status info"
-            onClick={() => setInfoOpen(true)}
-          />
-        </>
+        <CockpitButton
+          icon="ⓘ"
+          state="idle"
+          accent="neutral"
+          label="Status info"
+          onClick={() => setInfoOpen(true)}
+        />
       )}
 
       {isMobile && (
