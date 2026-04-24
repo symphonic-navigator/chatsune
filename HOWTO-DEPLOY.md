@@ -116,9 +116,12 @@ JWT_SECRET=$(openssl rand -hex 32)
 
 # Fernet key for encrypting stored API keys at rest
 ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+
+# 32-byte pepper for /kdf-params user-enumeration defence
+KDF_PEPPER=$(python3 -c "import secrets, base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())")
 ```
 
-These four values must be set. Everything else in the template is optional.
+These five values must be set. Everything else in the template is optional.
 
 Lock down the file:
 
@@ -287,6 +290,18 @@ docker run --rm \
 ```bash
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
+
+### Backend crashes on startup with `kdf_pepper Field required` or `must decode to exactly 32 bytes`
+
+`KDF_PEPPER` is missing or malformed. Generate a fresh one and add it to `.env`:
+
+```bash
+python3 -c "import secrets, base64; print('KDF_PEPPER=' + base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+Set once and keep the value stable across deploys — rotating it invalidates
+the deterministic pseudo-salts and shifts the user-enumeration defence
+boundary. Losing the value does not decrypt any user data.
 
 ### Frontend loads but all API calls 404
 
