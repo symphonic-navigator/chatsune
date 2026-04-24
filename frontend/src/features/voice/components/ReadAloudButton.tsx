@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCockpitStore } from '../../chat/cockpit/cockpitStore'
 import { useOutletContext } from 'react-router-dom'
 import { resolveTTSEngine, resolveTTSIntegrationId } from '../engines/resolver'
@@ -239,10 +239,18 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   // into cockpitStore.pendingAutoReadMessageId. We consume it here.
   const pendingAutoReadId = useCockpitStore((s) => s.pendingAutoReadMessageId)
   const clearAutoReadRequest = useCockpitStore((s) => s.clearAutoReadRequest)
+  // Ref guard against React.StrictMode's intentional double-invoke of effects
+  // in dev: without it the mount → cleanup → mount simulation fires handleClick
+  // twice because the captured snapshot of pendingAutoReadId stays the same
+  // across the two setups (clearAutoReadRequest runs between them, but the
+  // local variable does not update without a new render).
+  const firedForMessageRef = useRef<string | null>(null)
   useEffect(() => {
     if (pendingAutoReadId !== messageId) return
+    if (firedForMessageRef.current === messageId) return
     if (!ttsReady || !voiceId) return
     if (isActive) return
+    firedForMessageRef.current = messageId
     clearAutoReadRequest()
     void handleClick()
   }, [pendingAutoReadId, messageId, ttsReady, voiceId, isActive, handleClick, clearAutoReadRequest])
