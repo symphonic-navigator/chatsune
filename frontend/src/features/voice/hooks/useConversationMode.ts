@@ -96,6 +96,13 @@ export function useConversationMode({
   const micMutedRef = useRef(micMuted)
   useEffect(() => { micMutedRef.current = micMuted }, [micMuted])
 
+  // Tracks whether the CURRENT utterance (between VAD speech-start and
+  // speech-end) began while the mic was muted. If the user unmutes mid-
+  // utterance, the speech-end callback would otherwise see micMuted=false
+  // and dispatch whatever was spoken during the muted window. Reset on
+  // each speech-end.
+  const utteranceStartedWhileMutedRef = useRef(false)
+
   // Buffered PCM from VAD speech-end events. Multiple sub-segments accumulate
   // while the user holds "keep talking"; on release (or a later non-held
   // speech-end) the full buffer is concatenated into a single Float32Array
@@ -373,7 +380,13 @@ export function useConversationMode({
     if (!activeRef.current) return
     // Mic muted: VAD keeps running (so the UI sees the indicator), but no
     // barge fires, no utterance is recorded, no STT pipeline is triggered.
-    if (micMutedRef.current) return
+    // Mark the utterance as muted-origin so speech-end drops it even if the
+    // user unmutes before the VAD detects the silence boundary.
+    if (micMutedRef.current) {
+      utteranceStartedWhileMutedRef.current = true
+      return
+    }
+    utteranceStartedWhileMutedRef.current = false
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
     // Start the utterance recorder on the first speech-start of a cycle.
@@ -390,9 +403,11 @@ export function useConversationMode({
     vadActiveRef.current = false
     setVadActive(false)
     if (!activeRef.current) return
-    // Mic muted: drop the captured audio and reset any held buffer. No STT,
-    // no message dispatch.
-    if (micMutedRef.current) {
+    // Mic muted OR this utterance began during mute: drop the audio and
+    // reset held buffers. Without the started-while-muted check, an unmute
+    // that happened mid-utterance would leak the whole thing through.
+    if (micMutedRef.current || utteranceStartedWhileMutedRef.current) {
+      utteranceStartedWhileMutedRef.current = false
       heldAudioRef.current = []
       return
     }
