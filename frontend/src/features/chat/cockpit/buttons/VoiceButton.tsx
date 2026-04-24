@@ -1,7 +1,11 @@
+import type { ReactNode } from 'react'
 import { CockpitButton } from '../CockpitButton'
 import { useCockpitSession, useCockpitStore } from '../cockpitStore'
 import { useVoicePipeline } from '@/features/voice/stores/voicePipelineStore'
 import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
+import { useIsReadingAloud, stopActiveReadAloud } from '@/features/voice/components/ReadAloudButton'
+import { usePhase } from '@/features/voice/usePhase'
+import { getActiveGroup } from '@/features/chat/responseTaskGroup'
 import { deriveVoiceUIState } from './_voiceState'
 import type { VoiceUIState } from './_voiceState'
 
@@ -21,13 +25,18 @@ type Props = {
 export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVoiceSettings }: Props) {
   const cockpit = useCockpitSession(sessionId)
   const setAutoRead = useCockpitStore((s) => s.setAutoRead)
-  const pipelinePhase = useVoicePipeline((s) => s.state.phase)
   const stopPlayback = useVoicePipeline((s) => s.stopPlayback)
   const liveActive = useConversationModeStore((s) => s.active)
   const micMuted = useConversationModeStore((s) => s.micMuted)
   const setMicMuted = useConversationModeStore((s) => s.setMicMuted)
+  const isReadingAloud = useIsReadingAloud()
+  const livePhase = usePhase()
 
-  const ttsPlaying = pipelinePhase === 'speaking'
+  // Two distinct playback paths feed this button: the live ResponseTaskGroup
+  // (usePhase === 'speaking' — Group in streaming/tailing) in continuous-voice
+  // mode, and the read-aloud path (auto-read or manual ReadAloudButton) in
+  // normal chat. Either one puts the cockpit into the "stop playback" state.
+  const ttsPlaying = isReadingAloud || (liveActive && livePhase === 'speaking')
   const autoRead = cockpit?.autoRead ?? false
 
   const ui = deriveVoiceUIState({
@@ -38,24 +47,44 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
     micMuted,
   })
 
-  const iconFor: Record<VoiceUIState['kind'], string> = {
+  // Emoji for every state except the mic pair — there we render an SVG so
+  // muted is unambiguously the same mic shape plus a diagonal slash. Keeping
+  // the glyph identical across on/off states is what makes the muted state
+  // instantly readable; swapping emojis (🎤 vs 🎙) drops that signal.
+  const iconFor: Record<Exclude<VoiceUIState['kind'], 'live-mic-on' | 'live-mic-muted'>, ReactNode> = {
     'disabled': '🔈',
     'normal-off': '🔈',
     'normal-on': '🔊',
     'normal-playing': '⏹',
-    'live-mic-on': '🎤',
-    'live-mic-muted': '🎙',
     'live-playing': '⏹',
+  }
+  const iconNode: ReactNode =
+    ui.kind === 'live-mic-on'     ? <MicIcon muted={false} /> :
+    ui.kind === 'live-mic-muted'  ? <MicIcon muted={true}  /> :
+    iconFor[ui.kind]
+
+  const stopAnyPlayback = () => {
+    // Three playback paths to silence, in order of specificity:
+    //  1. Read-aloud (normal chat, manual or auto) — clears the module-local
+    //     active-reader state alongside the audio.
+    //  2. Live-mode ResponseTaskGroup — cancel with 'user-stop' so the server
+    //     tears down LLM generation and the synth/playback children drain.
+    //  3. Fall-through stopAll on any audio that slipped through both paths
+    //     (belt-and-suspenders).
+    stopActiveReadAloud()
+    const group = getActiveGroup()
+    if (group) group.cancel('user-stop')
+    stopPlayback()
   }
 
   const onClick = () => {
     switch (ui.kind) {
       case 'normal-off':      return setAutoRead(sessionId, true)
       case 'normal-on':       return setAutoRead(sessionId, false)
-      case 'normal-playing':  return stopPlayback()
+      case 'normal-playing':  return stopAnyPlayback()
       case 'live-mic-on':     return setMicMuted(true)
       case 'live-mic-muted':  return setMicMuted(false)
-      case 'live-playing':    return stopPlayback()
+      case 'live-playing':    return stopAnyPlayback()
       case 'disabled':        return
     }
   }
@@ -88,7 +117,7 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
 
   return (
     <CockpitButton
-      icon={iconFor[ui.kind]}
+      icon={iconNode}
       state={stateClass}
       accent="blue"
       label={labelFor(ui.kind)}
@@ -129,4 +158,33 @@ function statusFor(kind: VoiceUIState['kind'], autoRead: boolean): string {
   if (kind === 'live-mic-muted') return 'Mic is muted'
   if (kind === 'live-playing') return 'Interrupt'
   return ''
+}
+
+/**
+ * Microphone glyph shared by mic-on and mic-muted states. The muted variant
+ * overlays a diagonal slash — same shape, same size, so the user reads the
+ * difference at a glance instead of parsing two distinct icons.
+ */
+function MicIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="6" y="2" width="4" height="7" rx="2" fill="currentColor" />
+      <path
+        d="M4 7.5V8a4 4 0 0 0 8 0v-.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <path d="M8 12v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M5.5 14h5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      {muted && (
+        <path
+          d="M2 2 14 14"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  )
 }

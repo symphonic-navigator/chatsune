@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { useViewport } from '@/core/hooks/useViewport'
 
 export type CockpitButtonState =
   | 'active'        // feature is on / running
@@ -28,21 +29,27 @@ const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
 export function CockpitButton({
   icon, state, accent = 'neutral', label, panel, onClick, ariaLabel,
 }: Props) {
+  const { isMobile } = useViewport()
   const [panelOpen, setPanelOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const closeTimer = useRef<number | null>(null)
+
+  // Panels are a hover affordance — meaningless on touch, where they fire
+  // as phantom mouseenter on tap. Mobile discovery routes through the (i)
+  // info modal instead, so we suppress panel rendering entirely here.
+  const panelEnabled = Boolean(panel) && !isMobile
 
   useEffect(() => () => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
   }, [])
 
   const open = () => {
-    if (!panel) return
+    if (!panelEnabled) return
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     setPanelOpen(true)
   }
   const scheduleClose = () => {
-    if (!panel) return
+    if (!panelEnabled) return
     closeTimer.current = window.setTimeout(() => setPanelOpen(false), 120)
   }
 
@@ -77,7 +84,7 @@ export function CockpitButton({
       >
         {icon}
       </button>
-      {panel && panelOpen && (
+      {panelEnabled && panelOpen && (
         <div
           className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-40 min-w-[260px] max-w-[360px] rounded-lg border border-white/10 bg-[#1a1625] p-3 text-sm shadow-xl"
           onMouseEnter={open}

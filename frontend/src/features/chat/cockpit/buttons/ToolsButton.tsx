@@ -46,16 +46,22 @@ export function ToolsButton({ sessionId, availableGroups }: Props) {
           <div className="font-semibold text-[#d4af37] mb-2">
             Tools · {on ? 'on' : 'off'} · {availableGroups.length} available
           </div>
-          <ul className="text-xs space-y-1">
-            {availableGroups.map((g) => (
-              <li key={g.id}>
-                <span className="text-white/40 uppercase tracking-wider text-[10px] mr-2">
-                  {g.kind}
-                </span>
-                {g.label}
-              </li>
-            ))}
-          </ul>
+          {on ? (
+            <ul className="text-xs space-y-1">
+              {availableGroups.map((g) => (
+                <li key={g.id}>
+                  <span className="text-white/40 uppercase tracking-wider text-[10px] mr-2">
+                    {g.kind}
+                  </span>
+                  {g.label}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-white/50">
+              Toggle on to let the model call these tools.
+            </p>
+          )}
         </div>
       }
     />

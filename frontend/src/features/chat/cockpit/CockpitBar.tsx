@@ -145,9 +145,11 @@ export function CockpitBar(props: Props) {
               id: 'tools',
               icon: '🔧',
               title: 'Tools',
-              statusLine: `${props.availableToolGroups.length} available`,
-              active: props.availableToolGroups.length > 0,
-              body: (
+              statusLine: cockpit?.tools
+                ? `on · ${props.availableToolGroups.length} available`
+                : 'off',
+              active: Boolean(cockpit?.tools),
+              body: cockpit?.tools ? (
                 <ul className="space-y-1">
                   {props.availableToolGroups.map((g) => (
                     <li key={g.id}>
@@ -158,6 +160,10 @@ export function CockpitBar(props: Props) {
                     </li>
                   ))}
                 </ul>
+              ) : (
+                <p className="text-white/50">
+                  Tools are off for this chat. Toggle on to let the model call them.
+                </p>
               ),
             },
             {

@@ -55,6 +55,34 @@ function useActiveReader(messageId: string): { isActive: boolean; state: ReadSta
   return snapshot
 }
 
+/**
+ * Subscribes to the global read-aloud active state. Returns true while any
+ * message is synthesising or playing via the read-aloud path (manual click
+ * or auto-read). The cockpit voice button uses this to decide whether to
+ * render the "stop playback" variant in normal chat mode, where playback
+ * does not flow through the live voice pipeline.
+ */
+export function useIsReadingAloud(): boolean {
+  const [active, setActive] = useState(() => activeMessageId !== null && activeState !== 'idle')
+  useEffect(() => {
+    const update = () => setActive(activeMessageId !== null && activeState !== 'idle')
+    listeners.add(update)
+    update()
+    return () => { listeners.delete(update) }
+  }, [])
+  return active
+}
+
+/**
+ * Stop any in-flight read-aloud: cancel audio playback and clear the global
+ * active-reader state so every subscriber flips back to idle. Safe to call
+ * when nothing is playing — it's a no-op in that case.
+ */
+export function stopActiveReadAloud(): void {
+  audioPlayback.stopAll()
+  setActiveReader(null, 'idle')
+}
+
 // ── LRU cache ──
 
 interface CachedAudio {
