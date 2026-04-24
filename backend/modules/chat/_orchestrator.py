@@ -536,40 +536,42 @@ async def run_inference(
         messages.append(CompletionMessage(role=last_msg["role"], content=last_msg_parts))
 
     # Resolve active tool definitions based on session toggle state
-    disabled_tool_groups = session.get("disabled_tool_groups", [])
+    tools_enabled = session.get("tools_enabled", False)
 
-    # MCP registry: populated eagerly on WebSocket connect (eager_discover_mcp).
-    # Fallback: if the eager task hasn't finished yet, run discovery inline.
-    mcp_registry = get_mcp_registry(connection_id) if connection_id else None
-    if (
-        connection_id
-        and "mcp" not in set(disabled_tool_groups)
-        and (mcp_registry is None or not mcp_registry.backend_discovered)
-    ):
-        from backend.modules.tools import eager_discover_mcp
-        await eager_discover_mcp(connection_id, user_id)
-        mcp_registry = get_mcp_registry(connection_id)
+    if not tools_enabled:
+        active_tools = None
+    else:
+        # MCP registry: populated eagerly on WebSocket connect (eager_discover_mcp).
+        # Fallback: if the eager task hasn't finished yet, run discovery inline.
+        mcp_registry = get_mcp_registry(connection_id) if connection_id else None
+        if (
+            connection_id
+            and (mcp_registry is None or not mcp_registry.backend_discovered)
+        ):
+            from backend.modules.tools import eager_discover_mcp
+            await eager_discover_mcp(connection_id, user_id)
+            mcp_registry = get_mcp_registry(connection_id)
 
-    # Extract persona MCP config for tool filtering
-    persona_mcp_config = None
-    if persona and persona.get("mcp_config"):
-        from shared.dtos.mcp import PersonaMcpConfig
-        persona_mcp_config = PersonaMcpConfig(**persona["mcp_config"])
+        # Extract persona MCP config for tool filtering
+        persona_mcp_config = None
+        if persona and persona.get("mcp_config"):
+            from shared.dtos.mcp import PersonaMcpConfig
+            persona_mcp_config = PersonaMcpConfig(**persona["mcp_config"])
 
-    active_tools = get_active_definitions(
-        disabled_tool_groups,
-        mcp_registry=mcp_registry,
-        persona_mcp_config=persona_mcp_config,
-    ) or None
+        active_tools = get_active_definitions(
+            [],  # empty disabled-list — all groups active; tools_enabled is the master switch
+            mcp_registry=mcp_registry,
+            persona_mcp_config=persona_mcp_config,
+        ) or None
 
-    # Merge integration tools (independent of MCP/tool group toggles)
-    from backend.modules.integrations import get_integration_tools
-    integration_tools = await get_integration_tools(user_id, persona_id if persona_id else None)
-    if integration_tools:
-        if active_tools is None:
-            active_tools = integration_tools
-        else:
-            active_tools = list(active_tools) + integration_tools
+        # Merge integration tools (independent of MCP/tool group toggles)
+        from backend.modules.integrations import get_integration_tools
+        integration_tools = await get_integration_tools(user_id, persona_id if persona_id else None)
+        if integration_tools:
+            if active_tools is None:
+                active_tools = integration_tools
+            else:
+                active_tools = list(active_tools) + integration_tools
 
     # Estimate tokens consumed by tool definitions sent with the API call
     tool_definition_tokens = 0
