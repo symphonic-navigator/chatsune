@@ -7,11 +7,25 @@ streaming loop in ``stream_completion`` that picks the correct
 upstream slug (thinking vs non-thinking) from the pair map at
 request time.
 
-Key design note — **do not** send ``reasoning`` or ``thinking`` flags
-in the request body. Nano-GPT does not honour them; thinking is
-switched exclusively by picking the ``thinking_slug`` from the pair
-map as the upstream model. This differs from the Ollama adapter's
-``"think"`` payload attachment and must not be copied here.
+Thinking activation — nano-gpt supports thinking in two ways:
+
+1. Primary: pick the ``thinking_slug`` from the pair map as the
+   upstream model. This is how every dual-slug model is routed.
+2. Defensive: when (and only when) the resolved upstream slug is
+   the thinking variant, ``_build_chat_payload`` also sets
+   ``reasoning_effort: "medium"`` in the request body. This is a
+   belt-and-braces signal for upstream routers that inspect the
+   body rather than the slug.
+
+**Non-thinking slugs must never carry a reasoning / reasoning_effort
+/ thinking field in the body.** This is gated by the ``is_thinking_slug``
+kwarg in ``_build_chat_payload`` and enforced by the test suite.
+
+SSE field names — the default ``/api/v1/chat/completions`` endpoint
+streams reasoning in ``delta.reasoning``; the legacy
+``/api/v1legacy/chat/completions`` endpoint uses
+``delta.reasoning_content``. ``_chunk_to_events`` reads both (modern
+field takes precedence) so the adapter works against either.
 """
 
 from __future__ import annotations
@@ -141,7 +155,12 @@ def _chunk_to_events(
     choice = choices[0]
     delta = choice.get("delta") or {}
 
-    reasoning = delta.get("reasoning_content") or ""
+    # Default endpoint streams reasoning in ``delta.reasoning``; the legacy
+    # endpoint (``/v1legacy``) uses ``delta.reasoning_content``. We treat
+    # the default as authoritative and fall back to the legacy field so
+    # the adapter keeps working if the endpoint ever switches. They never
+    # arrive together in a single chunk in practice.
+    reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
     if reasoning:
         events.append(ThinkingDelta(delta=reasoning))
 
@@ -234,12 +253,20 @@ def _translate_message(msg: CompletionMessage) -> dict:
     return result
 
 
-def _build_chat_payload(request: CompletionRequest, upstream_slug: str) -> dict:
+def _build_chat_payload(
+    request: CompletionRequest,
+    upstream_slug: str,
+    *,
+    is_thinking_slug: bool,
+) -> dict:
     """Build an OpenAI-compatible chat-completions request body.
 
-    Thinking capability is expressed *exclusively* via ``upstream_slug`` —
-    nano-gpt does not honour any ``reasoning`` / ``thinking`` flag in the
-    body. Do not add one here; see the module docstring.
+    Thinking capability is primarily expressed via ``upstream_slug`` —
+    nano-gpt's pair map picks the thinking variant. For thinking-capable
+    slugs we additionally set ``reasoning_effort: "medium"`` as a
+    defensive signal to upstream routers that dispatch on the body
+    rather than on the slug. Non-thinking slugs must never carry a
+    reasoning/thinking field in the body.
     """
     payload: dict = {
         "model": upstream_slug,
@@ -247,6 +274,8 @@ def _build_chat_payload(request: CompletionRequest, upstream_slug: str) -> dict:
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
+    if is_thinking_slug:
+        payload["reasoning_effort"] = "medium"
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:
@@ -428,7 +457,14 @@ class NanoGptHttpAdapter(BaseAdapter):
             )
             return
 
-        payload = _build_chat_payload(request, upstream_slug)
+        pair = pair_map.get(request.model) or {}
+        is_thinking_slug = bool(
+            pair.get("thinking_slug")
+            and upstream_slug == pair["thinking_slug"],
+        )
+        payload = _build_chat_payload(
+            request, upstream_slug, is_thinking_slug=is_thinking_slug,
+        )
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
