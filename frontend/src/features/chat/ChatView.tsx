@@ -1291,6 +1291,7 @@ export function ChatView({ persona }: ChatViewProps) {
               <CockpitBar
                 sessionId={effectiveSessionId}
                 modelSupportsReasoning={modelSupportsReasoning}
+                personaReasoningDefault={Boolean(persona?.reasoning_enabled)}
                 availableToolGroups={availableToolGroups}
                 activePersonaIntegrationIds={activePersonaIntegrationIds}
                 personaHasVoice={personaHasVoice}

@@ -1,15 +1,22 @@
 import { CockpitButton } from '../CockpitButton'
-import { useCockpitSession, useCockpitStore } from '../cockpitStore'
+import { useChatStore } from '@/core/store/chatStore'
+import { chatApi } from '@/core/api/chat'
 
 type Props = {
   sessionId: string
   modelSupportsReasoning: boolean
+  personaReasoningDefault: boolean
 }
 
-export function ThinkingButton({ sessionId, modelSupportsReasoning }: Props) {
-  const cockpit = useCockpitSession(sessionId)
-  const setThinking = useCockpitStore((s) => s.setThinking)
-  const on = cockpit?.thinking ?? false
+/**
+ * Thinking toggle. Source of truth is `chatStore.reasoningOverride` because
+ * the conversation-mode hook writes there when entering live chat (forcing
+ * reasoning off) and restoring on exit; the cockpit has to see the same
+ * value. `null` in the override means "use persona default".
+ */
+export function ThinkingButton({ sessionId, modelSupportsReasoning, personaReasoningDefault }: Props) {
+  const reasoningOverride = useChatStore((s) => s.reasoningOverride)
+  const setReasoningOverride = useChatStore((s) => s.setReasoningOverride)
 
   if (!modelSupportsReasoning) {
     return (
@@ -23,13 +30,28 @@ export function ThinkingButton({ sessionId, modelSupportsReasoning }: Props) {
     )
   }
 
+  const on = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
+
+  const toggle = async () => {
+    const next = !on
+    // Optimistic update so the UI feels instant; revert on API error.
+    const prev = reasoningOverride
+    setReasoningOverride(next)
+    try {
+      await chatApi.updateSessionReasoning(sessionId, next)
+    } catch (e) {
+      setReasoningOverride(prev)
+      throw e
+    }
+  }
+
   return (
     <CockpitButton
       icon="💡"
       state={on ? 'active' : 'idle'}
       accent="gold"
       label={on ? 'Thinking · on' : 'Thinking · off'}
-      onClick={() => setThinking(sessionId, !on)}
+      onClick={() => { void toggle() }}
       panel={
         <div className="text-white/80">
           <div className="font-semibold text-[#d4af37] mb-1">

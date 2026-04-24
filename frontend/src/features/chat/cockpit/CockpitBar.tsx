@@ -21,6 +21,7 @@ type VoiceSummary = {
 type Props = {
   sessionId: string
   modelSupportsReasoning: boolean
+  personaReasoningDefault: boolean
   availableToolGroups: ToolGroup[]
   activePersonaIntegrationIds: string[]
   personaHasVoice: boolean
@@ -51,6 +52,7 @@ export function CockpitBar(props: Props) {
       <ThinkingButton
         sessionId={props.sessionId}
         modelSupportsReasoning={props.modelSupportsReasoning}
+        personaReasoningDefault={props.personaReasoningDefault}
       />
       <ToolsButton
         sessionId={props.sessionId}

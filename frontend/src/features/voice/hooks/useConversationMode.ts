@@ -80,6 +80,7 @@ export function useConversationMode({
 }: UseConversationModeOptions): void {
   const active = useConversationModeStore((s) => s.active)
   const isHolding = useConversationModeStore((s) => s.isHolding)
+  const micMuted = useConversationModeStore((s) => s.micMuted)
   const exitStore = useConversationModeStore((s) => s.exit)
   const setPreviousReasoning = useConversationModeStore((s) => s.setPreviousReasoning)
   const setCurrentBargeState = useConversationModeStore((s) => s.setCurrentBargeState)
@@ -90,6 +91,10 @@ export function useConversationMode({
   // per listen-session) can read the current value without re-binding.
   const holdingRef = useRef(false)
   useEffect(() => { holdingRef.current = isHolding }, [isHolding])
+
+  // Same pattern for micMuted — VAD callbacks check the ref to short-circuit.
+  const micMutedRef = useRef(micMuted)
+  useEffect(() => { micMutedRef.current = micMuted }, [micMuted])
 
   // Buffered PCM from VAD speech-end events. Multiple sub-segments accumulate
   // while the user holds "keep talking"; on release (or a later non-held
@@ -366,6 +371,9 @@ export function useConversationMode({
     vadActiveRef.current = true
     setVadActive(true)
     if (!activeRef.current) return
+    // Mic muted: VAD keeps running (so the UI sees the indicator), but no
+    // barge fires, no utterance is recorded, no STT pipeline is triggered.
+    if (micMutedRef.current) return
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
     // Start the utterance recorder on the first speech-start of a cycle.
@@ -382,6 +390,12 @@ export function useConversationMode({
     vadActiveRef.current = false
     setVadActive(false)
     if (!activeRef.current) return
+    // Mic muted: drop the captured audio and reset any held buffer. No STT,
+    // no message dispatch.
+    if (micMutedRef.current) {
+      heldAudioRef.current = []
+      return
+    }
     if (pendingBargeRef.current) {
       clearPendingBarge()
       executeBarge()
@@ -397,6 +411,16 @@ export function useConversationMode({
     const merged = flushHeldAudio(audio.pcm)
     void finaliseRecorderAndBundle(merged).then((bundle) => transcribeAndSend(bundle))
   }, [flushHeldAudio, transcribeAndSend, clearPendingBarge, executeBarge, finaliseRecorderAndBundle, setVadActive])
+
+  // Mute transition: if the user mutes mid-utterance, tear down any
+  // recorder / pending barge / held audio so nothing leaks through. The VAD
+  // stream stays alive; unmuting simply resumes the existing callbacks.
+  useEffect(() => {
+    if (!micMuted) return
+    clearPendingBarge()
+    abortRecorder()
+    heldAudioRef.current = []
+  }, [micMuted, clearPendingBarge, abortRecorder])
 
   /**
    * VAD misfire handler. If the deferred barge is still pending, drop it —
