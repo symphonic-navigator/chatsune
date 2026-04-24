@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 
 type Section = {
   id: 'thinking' | 'tools' | 'integrations' | 'voice' | 'live'

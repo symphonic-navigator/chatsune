@@ -1,4 +1,5 @@
-import { ReactNode, useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import type { ReactNode } from 'react'
 
 export type CockpitButtonState =
   | 'active'        // feature is on / running

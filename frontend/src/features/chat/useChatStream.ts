@@ -297,7 +297,10 @@ export function handleChatEvent(
       if (p.session_id !== sessionId) return
       if (typeof p.tools_enabled === 'boolean') getStore().setToolsEnabled(p.tools_enabled)
       if (typeof p.auto_read === 'boolean') getStore().setAutoRead(p.auto_read)
-      if ('reasoning_override' in p) getStore().setReasoningOverride(p.reasoning_override ?? null)
+      if ('reasoning_override' in p) {
+        const ro = p.reasoning_override
+        getStore().setReasoningOverride(typeof ro === 'boolean' ? ro : null)
+      }
       break
     }
   }

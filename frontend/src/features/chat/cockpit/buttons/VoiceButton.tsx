@@ -2,7 +2,8 @@ import { CockpitButton } from '../CockpitButton'
 import { useCockpitSession, useCockpitStore } from '../cockpitStore'
 import { useVoicePipeline } from '@/features/voice/stores/voicePipelineStore'
 import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
-import { deriveVoiceUIState, VoiceUIState } from './_voiceState'
+import { deriveVoiceUIState } from './_voiceState'
+import type { VoiceUIState } from './_voiceState'
 
 type Props = {
   sessionId: string
