@@ -10,6 +10,7 @@ from shared.dtos.chat import ChatMessagesBundleDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
+from backend.modules.chat._toggle_defaults import compute_persona_toggle_defaults
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import get_event_bus
 from backend.modules.tools import get_all_groups
@@ -19,7 +20,7 @@ from shared.events.chat import (
     ChatSessionPinnedUpdatedEvent,
     ChatSessionRestoredEvent,
     ChatSessionTitleUpdatedEvent,
-    ChatSessionToolsUpdatedEvent,
+    ChatSessionTogglesUpdatedEvent,
 )
 from shared.topics import Topics
 
@@ -50,9 +51,12 @@ async def create_session(
         user_id=user["sub"], persona_id=persona["_id"],
     )
 
+    toggle_defaults = compute_persona_toggle_defaults(persona)
     doc = await repo.create_session(
         user_id=user["sub"],
         persona_id=persona["_id"],
+        tools_enabled=toggle_defaults["tools_enabled"],
+        auto_read=toggle_defaults["auto_read"],
     )
     dto = ChatRepository.session_to_dto(doc)
 
@@ -370,14 +374,15 @@ async def update_session_reasoning(
     return ChatRepository.session_to_dto(doc)
 
 
-class UpdateSessionToolsRequest(BaseModel):
-    disabled_tool_groups: list[str] = []
+class UpdateSessionTogglesRequest(BaseModel):
+    tools_enabled: bool | None = None
+    auto_read: bool | None = None
 
 
-@router.patch("/sessions/{session_id}/tools")
-async def update_session_tools(
+@router.patch("/sessions/{session_id}/toggles")
+async def update_session_toggles(
     session_id: str,
-    body: UpdateSessionToolsRequest,
+    body: UpdateSessionTogglesRequest,
     user: dict = Depends(require_active_session),
 ):
     repo = _chat_repo()
@@ -385,18 +390,21 @@ async def update_session_tools(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await repo.update_session_disabled_tool_groups(
-        session_id, body.disabled_tool_groups,
-    )
+    if body.tools_enabled is not None:
+        session = await repo.update_session_tools_enabled(session_id, body.tools_enabled)
+    if body.auto_read is not None:
+        session = await repo.update_session_auto_read(session_id, body.auto_read)
 
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
     event_bus = get_event_bus()
     await event_bus.publish(
-        Topics.CHAT_SESSION_TOOLS_UPDATED,
-        ChatSessionToolsUpdatedEvent(
+        Topics.CHAT_SESSION_TOGGLES_UPDATED,
+        ChatSessionTogglesUpdatedEvent(
             session_id=session_id,
-            disabled_tool_groups=body.disabled_tool_groups,
+            tools_enabled=session.get("tools_enabled", False),
+            auto_read=session.get("auto_read", False),
+            reasoning_override=session.get("reasoning_override"),
             correlation_id=correlation_id,
             timestamp=now,
         ),

@@ -22,7 +22,8 @@ class ChatSessionDto(BaseModel):
     persona_id: str
     state: Literal["idle", "streaming", "requires_action"]
     title: str | None = None
-    disabled_tool_groups: list[str] = []
+    tools_enabled: bool = False
+    auto_read: bool = False
     reasoning_override: bool | None = None
     pinned: bool = False
     # Last-known context window utilisation, persisted at stream-end so

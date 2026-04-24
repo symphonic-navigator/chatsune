@@ -39,13 +39,23 @@ class ChatRepository:
             sparse=True,
         )
 
-    async def create_session(self, user_id: str, persona_id: str) -> dict:
+    async def create_session(
+        self,
+        user_id: str,
+        persona_id: str,
+        *,
+        tools_enabled: bool = False,
+        auto_read: bool = False,
+    ) -> dict:
         now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
             "user_id": user_id,
             "persona_id": persona_id,
             "state": "idle",
+            "tools_enabled": tools_enabled,
+            "auto_read": auto_read,
+            "reasoning_override": None,
             "created_at": now,
             "updated_at": now,
         }
@@ -179,13 +189,23 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
-    async def update_session_disabled_tool_groups(
-        self, session_id: str, disabled_tool_groups: list[str],
+    async def update_session_tools_enabled(
+        self, session_id: str, tools_enabled: bool,
     ) -> dict | None:
         now = datetime.now(UTC)
         await self._sessions.update_one(
             {"_id": session_id},
-            {"$set": {"disabled_tool_groups": disabled_tool_groups, "updated_at": now}},
+            {"$set": {"tools_enabled": tools_enabled, "updated_at": now}},
+        )
+        return await self._sessions.find_one({"_id": session_id})
+
+    async def update_session_auto_read(
+        self, session_id: str, auto_read: bool,
+    ) -> dict | None:
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {"$set": {"auto_read": auto_read, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
 
@@ -554,7 +574,8 @@ class ChatRepository:
             persona_id=doc["persona_id"],
             state=doc["state"],
             title=doc.get("title"),
-            disabled_tool_groups=doc.get("disabled_tool_groups", []),
+            tools_enabled=doc.get("tools_enabled", False),
+            auto_read=doc.get("auto_read", False),
             reasoning_override=doc.get("reasoning_override"),
             pinned=doc.get("pinned", False),
             context_status=doc.get("context_status", "green"),
