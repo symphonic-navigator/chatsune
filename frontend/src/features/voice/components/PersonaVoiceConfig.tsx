@@ -38,9 +38,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
 
-  const [autoRead, setAutoRead] = useState<boolean>(
-    persona.voice_config?.auto_read ?? false,
-  )
   const [narratorMode, setNarratorMode] = useState<NarratorMode>(
     persona.voice_config?.narrator_mode ?? 'off',
   )
@@ -53,13 +50,11 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
 
   // Refs mirror the live state so `persistVoiceConfig` can stay stable across
   // re-renders. Without this the debounced `scheduleModulationSave` captures a
-  // stale `persistVoiceConfig` whose closure holds OLD autoRead / narratorMode
-  // / modulation values — when the timer fires after an intervening toggle
+  // stale `persistVoiceConfig` whose closure holds OLD narratorMode /
+  // modulation values — when the timer fires after an intervening toggle
   // change, the stale snapshot silently reverts the toggle.
-  const autoReadRef = useRef(autoRead)
   const narratorModeRef = useRef(narratorMode)
   const modulationRef = useRef(modulation)
-  useEffect(() => { autoReadRef.current = autoRead }, [autoRead])
   useEffect(() => { narratorModeRef.current = narratorMode }, [narratorMode])
   useEffect(() => { modulationRef.current = modulation }, [modulation])
 
@@ -81,7 +76,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
 
   const persistVoiceConfig = useCallback(
     async (patch: Partial<{
-      auto_read: boolean
       narrator_mode: NarratorMode
       dialogue_speed: number
       dialogue_pitch: number
@@ -97,12 +91,15 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
         // omitting a field here silently resets it on the next round-trip.
         // tts_provider_id in particular was jumping back to the fallback
         // (Mistral) every time a modulation slider fired a debounced save.
+        // auto_read is persona-level legacy; auto-read is now controlled per
+        // chat session via the cockpit, so we keep the prior persona value
+        // as a pass-through rather than exposing a UI knob for it.
         const prior = persona.voice_config
         await onSave(persona.id, {
           voice_config: {
             dialogue_voice: prior?.dialogue_voice ?? null,
             narrator_voice: prior?.narrator_voice ?? null,
-            auto_read: autoReadRef.current,
+            auto_read: prior?.auto_read ?? false,
             narrator_mode: narratorModeRef.current,
             dialogue_speed: mod.dialogue_speed,
             dialogue_pitch: mod.dialogue_pitch,
@@ -130,14 +127,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
   useEffect(() => {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [])
-
-  const handleAutoReadChange = useCallback(
-    async (value: boolean) => {
-      setAutoRead(value)
-      await persistVoiceConfig({ auto_read: value })
-    },
-    [persistVoiceConfig],
-  )
 
   const handleModeChange = useCallback(
     async (value: NarratorMode) => {
@@ -188,29 +177,6 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
       </p>
 
       <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-[12px] text-white/70 font-mono">Auto-Read Replies</span>
-            <p className="text-[10px] text-white/35 font-mono mt-0.5">
-              Automatically speak each reply as it arrives.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autoRead}
-            disabled={saving}
-            onClick={() => handleAutoReadChange(!autoRead)}
-            className="relative flex-shrink-0 rounded-full transition-colors duration-200 disabled:opacity-50"
-            style={{ width: 44, height: 20, background: autoRead ? chakra.hex : 'rgba(255,255,255,0.1)' }}
-          >
-            <span
-              className="absolute top-[2px] rounded-full bg-white shadow transition-transform duration-200"
-              style={{ width: 16, height: 16, left: 2, transform: autoRead ? 'translateX(24px)' : 'translateX(0)' }}
-            />
-          </button>
-        </div>
-
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <span className="text-[12px] text-white/70 font-mono">Narrator Mode</span>

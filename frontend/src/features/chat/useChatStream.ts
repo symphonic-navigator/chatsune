@@ -9,6 +9,7 @@ import type { ArtefactRef } from '../../core/api/chat'
 import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroup } from './responseTaskGroup'
+import { useCockpitStore } from './cockpit/cockpitStore'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
 
@@ -137,6 +138,20 @@ export function handleChatEvent(
       const artefactRefs = getStore().streamingArtefactRefs
       const refusalText = getStore().streamingRefusalText
       const toolCalls = getStore().activeToolCalls
+      // Auto-read trigger: if the session has auto-read on and the message
+      // completed normally with content, signal the ReadAloudButton for this
+      // messageId to start playback. Lives here (not in AssistantMessage)
+      // because the messageId changes from optimistic to backend at commit
+      // time, which remounts the component and loses any local transition.
+      if (
+        backendMessageId
+        && content
+        && messageStatus === 'completed'
+        && getStore().autoRead
+      ) {
+        useCockpitStore.getState().requestAutoRead(backendMessageId)
+      }
+
       if (backendMessageId && (content || thinking || messageStatus === 'refused')) {
         getStore().finishStreaming(
           {
