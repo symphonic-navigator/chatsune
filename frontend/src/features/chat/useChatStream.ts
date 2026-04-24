@@ -290,8 +290,17 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_SESSION_TOOLS_UPDATED: {
+      // Legacy event — no-op, superseded by CHAT_SESSION_TOGGLES_UPDATED
+      break
+    }
+    case Topics.CHAT_SESSION_TOGGLES_UPDATED: {
       if (p.session_id !== sessionId) return
-      getStore().setDisabledToolGroups(p.disabled_tool_groups as string[])
+      if (typeof p.tools_enabled === 'boolean') getStore().setToolsEnabled(p.tools_enabled)
+      if (typeof p.auto_read === 'boolean') getStore().setAutoRead(p.auto_read)
+      if ('reasoning_override' in p) {
+        const ro = p.reasoning_override
+        getStore().setReasoningOverride(typeof ro === 'boolean' ? ro : null)
+      }
       break
     }
   }

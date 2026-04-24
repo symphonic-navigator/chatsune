@@ -74,6 +74,7 @@ export const Topics = {
   CHAT_TOOL_CALL_COMPLETED: "chat.tool_call.completed",
   CHAT_WEB_SEARCH_CONTEXT: "chat.web_search.context",
   CHAT_SESSION_TOOLS_UPDATED: "chat.session.tools_updated",
+  CHAT_SESSION_TOGGLES_UPDATED: "chat.session.toggles_updated",
   CHAT_SESSION_PINNED_UPDATED: "chat.session.pinned_updated",
   BOOKMARK_CREATED: "bookmark.created",
   BOOKMARK_UPDATED: "bookmark.updated",

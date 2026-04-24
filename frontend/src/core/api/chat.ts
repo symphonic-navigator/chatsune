@@ -8,7 +8,8 @@ interface ChatSessionDto {
   persona_id: string
   state: "idle" | "streaming" | "requires_action"
   title: string | null
-  disabled_tool_groups: string[]
+  tools_enabled: boolean
+  auto_read: boolean
   reasoning_override: boolean | null
   pinned: boolean
   created_at: string
@@ -136,10 +137,11 @@ export const chatApi = {
       reasoning_override: reasoningOverride,
     }),
 
-  updateSessionTools: (sessionId: string, disabledToolGroups: string[]) =>
-    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/tools`, {
-      disabled_tool_groups: disabledToolGroups,
-    }),
+  updateSessionToggles: (
+    sessionId: string,
+    patch: { tools_enabled?: boolean; auto_read?: boolean },
+  ) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/toggles`, patch),
 
   updateSessionPinned: (sessionId: string, pinned: boolean) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),

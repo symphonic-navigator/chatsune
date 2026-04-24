@@ -10,7 +10,9 @@ import { useAutoScroll } from './useAutoScroll'
 import { useHighlighter } from './useMarkdown'
 import { MessageList } from './MessageList'
 import { ChatInput, type ChatInputHandle } from './ChatInput'
-import { ToolToggles } from './ToolToggles'
+import { CockpitBar } from './cockpit/CockpitBar'
+import type { ToolGroup } from './cockpit/buttons/ToolsButton'
+import { useCockpitStore } from './cockpit/cockpitStore'
 import { ContextStatusPill } from './ContextStatusPill'
 import { useAttachments } from './useAttachments'
 import { AttachmentStrip } from './AttachmentStrip'
@@ -24,7 +26,6 @@ import { BookmarkModal } from './BookmarkModal'
 import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
 import { KnowledgeDropdown } from './KnowledgeDropdown'
-import { ToolPopover } from './ToolPopover'
 import { useMcpStore } from '../mcp/mcpStore'
 import { useIntegrationsStore } from '../integrations/store'
 import { useMemoryEvents } from '../memory/useMemoryEvents'
@@ -35,7 +36,6 @@ import { ArtefactOverlay } from '../artefact/ArtefactOverlay'
 import { useArtefactEvents } from '../artefact/useArtefactEvents'
 import { useArtefactStore } from '../../core/store/artefactStore'
 import { artefactApi } from '../../core/api/artefact'
-import { ChatIntegrationsPanel } from '../integrations/ChatIntegrationsPanel'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useVoiceSettingsStore } from '../voice/stores/voiceSettingsStore'
 import { resolveSTTEngine, resolveTTSEngine, resolveTTSIntegrationId } from '../voice/engines/resolver'
@@ -87,17 +87,14 @@ export function ChatView({ persona }: ChatViewProps) {
   // remount that drops the imperative focus call's effect.
   const [pendingFocus, setPendingFocus] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
-  const [modelSupportsTools, setModelSupportsTools] = useState(true)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
+  const [modelSupportsAttachments, setModelSupportsAttachments] = useState(true)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
   const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const [showKnowledge, setShowKnowledge] = useState(false)
-  const [toolPopoverOpen, setToolPopoverOpen] = useState(false)
-  // Mobile-only expandable tray for Tool-Toggles (< lg:). Desktop renders them inline.
-  const [mobileToolsOpen, setMobileToolsOpen] = useState(false)
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
@@ -203,11 +200,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
-  const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
-  const reasoningOverride = useChatStore((s) => s.reasoningOverride)
-
-  const personaReasoningDefault = persona?.reasoning_enabled ?? false
-
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll()
@@ -278,8 +270,8 @@ export function ChatView({ persona }: ChatViewProps) {
     // unique_id format: "<connection_id>:<model_slug>" (see INSIGHTS.md INS-004).
     const model = findModelByUniqueId(uid)
     if (model) {
-      setModelSupportsTools(model.supports_tool_calls)
       setModelSupportsReasoning(model.supports_reasoning)
+      setModelSupportsAttachments(model.supports_vision)
       return
     }
     // No match. If the hub is still loading, hold off until it repopulates —
@@ -288,8 +280,8 @@ export function ChatView({ persona }: ChatViewProps) {
     // finished loading and still returned null, fall back to the pre-existing
     // behaviour (permissive on tools so the UI does not hide them).
     if (modelsLoading) return
-    setModelSupportsTools(true)
     setModelSupportsReasoning(false)
+    setModelSupportsAttachments(true)
   }, [findModelByUniqueId, modelsLoading])
   // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
@@ -303,18 +295,8 @@ export function ChatView({ persona }: ChatViewProps) {
   const memoryCount = memoryEntries.length
   const mcpSessionTools = useMcpStore((s) => s.sessionGateways)
   const mcpExcludedGateways = new Set(persona?.mcp_config?.excluded_gateways ?? [])
-  const mcpExcludedServers = new Set(persona?.mcp_config?.excluded_servers ?? [])
-  const mcpExcludedTools = new Set(persona?.mcp_config?.excluded_tools ?? [])
-  const mcpToolCount = mcpSessionTools
-    .filter((e) => !mcpExcludedGateways.has(e.namespace))
-    .reduce((acc, e) => acc + e.tools.filter((t) =>
-      !mcpExcludedServers.has(`${e.namespace}:${t.server_name}`) && !mcpExcludedTools.has(t.name)
-    ).length, 0)
-  // Integration tool count for the badge
   const intDefinitions = useIntegrationsStore((s) => s.definitions)
   const intConfigs = useIntegrationsStore((s) => s.configs)
-  const integrationToolCount = intDefinitions.filter((d) => intConfigs[d.id]?.effective_enabled && d.has_tools).length * 2 // get_toys + control per integration
-  const totalToolCount = mcpToolCount + integrationToolCount
   const { openPersonaOverlay, openModal } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
     openModal?: (tab: UserModalTab) => void
@@ -378,8 +360,14 @@ export function ChatView({ persona }: ChatViewProps) {
       .then((session) => {
         if (cancelled) return
         useChatStore.getState().setSessionTitle(session.title)
-        useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
+        useChatStore.getState().setToolsEnabled(session.tools_enabled ?? false)
+        useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
+        useCockpitStore.getState().hydrateFromServer(session.id, {
+          thinking: session.reasoning_override === true,
+          tools: session.tools_enabled ?? false,
+          autoRead: session.auto_read ?? false,
+        })
         applyModelCapabilities(persona?.model_unique_id)
       })
       .catch((err) => {
@@ -887,6 +875,58 @@ export function ChatView({ persona }: ChatViewProps) {
     enterConversationMode()
   }, [conversationActive, conversationAvailable, enterConversationMode, exitConversationMode])
 
+  // -- CockpitBar prop derivations --
+
+  // Build the list of available tool groups for the CockpitBar ToolsButton.
+  // Three kinds: 'mcp' (from active MCP gateways) and 'integration' (from
+  // persona-enabled integrations with tools). Web-search ('web') groups from
+  // the tool-group registry would require an extra async fetch; they are not
+  // included here yet — web search is already surfaced through the tools toggle.
+  const availableToolGroups: ToolGroup[] = [
+    ...mcpSessionTools
+      .filter((e) => !mcpExcludedGateways.has(e.namespace))
+      .map((e): ToolGroup => ({
+        id: `mcp:${e.namespace}`,
+        label: e.namespace,
+        kind: 'mcp',
+      })),
+    ...intDefinitions
+      .filter((d) => intConfigs[d.id]?.effective_enabled && d.has_tools)
+      .map((d): ToolGroup => ({
+        id: d.id,
+        label: d.display_name,
+        kind: 'integration',
+      })),
+  ]
+
+  // Voice summary for VoiceButton / MobileInfoModal.
+  const personaHasVoice = Boolean(
+    persona?.voice_config?.tts_provider_id && persona?.voice_config?.dialogue_voice,
+  )
+  const voiceSummary: {
+    ttsProvider: string
+    voice: string
+    mode: string
+    sttProvider: string
+    sensitivity: string
+  } | null = personaHasVoice && persona?.voice_config
+    ? {
+        ttsProvider: persona.voice_config.tts_provider_id ?? '–',
+        voice: persona.voice_config.dialogue_voice ?? '–',
+        mode: persona.voice_config.narrator_mode ?? 'off',
+        sttProvider: resolveSTTEngine()?.name ?? 'default',
+        sensitivity: 'default',
+      }
+    : null
+
+  // liveAvailability mirrors conversationAvailable; reason is 'no-voice' when
+  // TTS/STT not configured, otherwise null (available) or 'not-allowed' if
+  // the account explicitly blocks it (no such check currently — set null).
+  const liveAvailability = {
+    canEnterLive: conversationAvailable,
+    reason: conversationAvailable ? null : ('no-voice' as const),
+  }
+
   if (!modelsLoading && !hasAnyModel) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
@@ -1017,31 +1057,6 @@ export function ChatView({ persona }: ChatViewProps) {
             } : null}
             onConfigure={() => persona?.id && openPersonaOverlay(persona.id, 'voice')}
           />
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setToolPopoverOpen((v) => !v)}
-              className="relative rounded px-1.5 py-0.5 text-sm transition-colors hover:bg-white/5"
-              title="Active tools"
-            >
-              🔧
-              {totalToolCount > 0 && (
-                <span
-                  className="absolute -right-1.5 -top-1 rounded-full px-1 text-[8px] font-bold"
-                  style={{ backgroundColor: 'rgba(166,218,149,0.8)', color: '#0f0d16' }}
-                >
-                  {totalToolCount}
-                </span>
-              )}
-            </button>
-            {toolPopoverOpen && (
-              <ToolPopover
-                disabledToolGroups={disabledToolGroups}
-                personaMcpConfig={persona?.mcp_config ?? null}
-                onClose={() => setToolPopoverOpen(false)}
-              />
-            )}
-          </div>
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
@@ -1245,102 +1260,21 @@ export function ChatView({ persona }: ChatViewProps) {
               <AttachmentStrip attachments={attachments.pendingAttachments} onRemove={attachments.removeAttachment} />
             ) : undefined}
             toolBar={effectiveSessionId ? (
-              <>
-                {/* Desktop: inline tool toggles. */}
-                <div className="hidden lg:block">
-                  <ToolToggles
-                    sessionId={effectiveSessionId}
-                    disabledToolGroups={disabledToolGroups}
-                    onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
-                    disabled={isStreaming}
-                    modelSupportsTools={modelSupportsTools}
-                    modelSupportsReasoning={modelSupportsReasoning}
-                    reasoningOverride={reasoningOverride}
-                    personaReasoningDefault={personaReasoningDefault}
-                    onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
-                    filteredMcpToolCount={mcpToolCount}
-                    reasoningLocked={conversationActive}
-                  />
-                </div>
-                <div className="hidden lg:block">
-                  <ChatIntegrationsPanel persona={persona} />
-                </div>
-                {/* Mobile: icon-only button row + collapsible tool toggles. */}
-                <div className="lg:hidden">
-                  <div className="flex items-center gap-1.5">
-                    {/* Tools toggle */}
-                    <button
-                      type="button"
-                      onClick={() => setMobileToolsOpen((v) => !v)}
-                      className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${
-                        mobileToolsOpen
-                          ? 'border-gold/30 bg-gold/10 text-gold shadow-[0_0_8px_rgba(249,226,175,0.3)]'
-                          : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/85'
-                      }`}
-                      aria-expanded={mobileToolsOpen}
-                      aria-label="Toggle tool tray"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9.5 2.8L13.2 6.5L6.5 13.2L2.1 13.9L2.8 9.5L9.5 2.8Z" />
-                        <path d="M8.5 4L12 7.5" />
-                      </svg>
-                    </button>
-                    {/* Attach file */}
-                    <button
-                      type="button"
-                      onClick={() => chatInputRef.current?.openFilePicker()}
-                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
-                      aria-label="Attach file"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path d="M7.5 2C5 2 3 4 3 6.5V11C3 13.5 5 15.5 7.5 15.5C10 15.5 12 13.5 12 11V5.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                    {/* Camera capture */}
-                    <button
-                      type="button"
-                      onClick={() => chatInputRef.current?.openCamera()}
-                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
-                      aria-label="Take photo"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
-                        <path d="M2 5.5C2 4.95 2.45 4.5 3 4.5H5L6 3H10L11 4.5H13C13.55 4.5 14 4.95 14 5.5V12C14 12.55 13.55 13 13 13H3C2.45 13 2 12.55 2 12V5.5Z" />
-                        <circle cx="8" cy="8.5" r="2.5" />
-                      </svg>
-                    </button>
-                    {/* Browse uploads */}
-                    <button
-                      type="button"
-                      onClick={() => setShowUploadBrowser((v) => !v)}
-                      className="flex h-8 w-8 items-center justify-center rounded border border-white/10 bg-white/5 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85"
-                      aria-label="Browse uploads"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                        <path d="M2 4.5V12.5C2 13.05 2.45 13.5 3 13.5H13C13.55 13.5 14 13.05 14 12.5V6.5C14 5.95 13.55 5.5 13 5.5H8L6.5 3.5H3C2.45 3.5 2 3.95 2 4.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                  </div>
-                  <ChatIntegrationsPanel persona={persona} />
-                  {mobileToolsOpen && (
-                    <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
-                      <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-2">
-                        <ToolToggles
-                          sessionId={effectiveSessionId}
-                          disabledToolGroups={disabledToolGroups}
-                          onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
-                          disabled={isStreaming}
-                          modelSupportsTools={modelSupportsTools}
-                          modelSupportsReasoning={modelSupportsReasoning}
-                          reasoningOverride={reasoningOverride}
-                          personaReasoningDefault={personaReasoningDefault}
-                          onReasoningToggle={(override) => useChatStore.getState().setReasoningOverride(override)}
-                          filteredMcpToolCount={mcpToolCount}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
+              <CockpitBar
+                sessionId={effectiveSessionId}
+                modelSupportsAttachments={modelSupportsAttachments}
+                modelSupportsReasoning={modelSupportsReasoning}
+                availableToolGroups={availableToolGroups}
+                activePersonaIntegrationIds={persona?.integrations_config?.enabled_integration_ids ?? []}
+                personaHasVoice={personaHasVoice}
+                voiceSummary={voiceSummary}
+                liveAvailability={liveAvailability}
+                handlers={{
+                  attach: () => chatInputRef.current?.openFilePicker(),
+                  camera: () => chatInputRef.current?.openCamera(),
+                  browse: () => setShowUploadBrowser((v) => !v),
+                }}
+              />
             ) : undefined}
           />
           <ArtefactOverlay />
