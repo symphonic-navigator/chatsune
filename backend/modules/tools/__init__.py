@@ -358,9 +358,40 @@ def get_max_tool_iterations() -> int:
     return _MAX_TOOL_ITERATIONS
 
 
+def get_tool_groups_for_persona(persona: dict) -> list[dict]:
+    """Return tool-group dicts for integrations configured on a persona.
+
+    Each entry is ``{"id": str, "tools": list[ToolDefinition]}``.
+
+    Used by ``_toggle_defaults.compute_persona_toggle_defaults`` to decide
+    the initial ``tools_enabled`` value at session-create time, without
+    requiring an async DB call.
+
+    If the persona has an explicit ``integrations_config.enabled_integration_ids``
+    list, only those integrations are checked. If the list is absent or empty,
+    the full static registry is checked (conservative: the user likely has at
+    least one tool-bringing integration enabled at the user level).
+    """
+    from backend.modules.integrations._registry import get_all as _get_all_integrations
+
+    all_integrations = _get_all_integrations()
+    integrations_config = (persona.get("integrations_config") or {})
+    explicit_ids: list[str] = integrations_config.get("enabled_integration_ids") or []
+
+    candidate_ids: list[str] = explicit_ids if explicit_ids else list(all_integrations.keys())
+
+    result = []
+    for iid in candidate_ids:
+        defn = all_integrations.get(iid)
+        if defn and defn.tool_definitions:
+            result.append({"id": iid, "tools": list(defn.tool_definitions)})
+    return result
+
+
 __all__ = [
     "get_all_groups",
     "get_active_definitions",
+    "get_tool_groups_for_persona",
     "execute_tool",
     "get_max_tool_iterations",
     "get_client_dispatcher",

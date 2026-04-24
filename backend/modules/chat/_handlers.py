@@ -10,6 +10,7 @@ from shared.dtos.chat import ChatMessagesBundleDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
+from backend.modules.chat._toggle_defaults import compute_persona_toggle_defaults
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import get_event_bus
 from backend.modules.tools import get_all_groups
@@ -50,9 +51,12 @@ async def create_session(
         user_id=user["sub"], persona_id=persona["_id"],
     )
 
+    toggle_defaults = compute_persona_toggle_defaults(persona)
     doc = await repo.create_session(
         user_id=user["sub"],
         persona_id=persona["_id"],
+        tools_enabled=toggle_defaults["tools_enabled"],
+        auto_read=toggle_defaults["auto_read"],
     )
     dto = ChatRepository.session_to_dto(doc)
 

@@ -39,13 +39,23 @@ class ChatRepository:
             sparse=True,
         )
 
-    async def create_session(self, user_id: str, persona_id: str) -> dict:
+    async def create_session(
+        self,
+        user_id: str,
+        persona_id: str,
+        *,
+        tools_enabled: bool = False,
+        auto_read: bool = False,
+    ) -> dict:
         now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
             "user_id": user_id,
             "persona_id": persona_id,
             "state": "idle",
+            "tools_enabled": tools_enabled,
+            "auto_read": auto_read,
+            "reasoning_override": None,
             "created_at": now,
             "updated_at": now,
         }
