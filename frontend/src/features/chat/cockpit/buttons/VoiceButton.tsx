@@ -15,9 +15,10 @@ type Props = {
     sttProvider: string
     sensitivity: string
   } | null
+  onOpenVoiceSettings?: () => void
 }
 
-export function VoiceButton({ sessionId, personaHasVoice, voiceSummary }: Props) {
+export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVoiceSettings }: Props) {
   const cockpit = useCockpitSession(sessionId)
   const setAutoRead = useCockpitStore((s) => s.setAutoRead)
   const pipelinePhase = useVoicePipeline((s) => s.state.phase)
@@ -65,11 +66,17 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary }: Props)
         icon={iconFor[ui.kind]}
         state="disabled"
         accent="blue"
-        label="Voice unavailable"
+        label={onOpenVoiceSettings ? 'Open voice settings' : 'Voice unavailable'}
+        onClick={onOpenVoiceSettings}
         panel={
-          <p className="text-white/70">
-            This persona has no voice. Pick a TTS provider and a voice in persona settings.
-          </p>
+          <div className="text-white/70">
+            <p>
+              This persona has no voice. Pick a TTS provider and a voice in persona settings.
+            </p>
+            {onOpenVoiceSettings && (
+              <p className="mt-2 text-[11px] text-[#60a5fa]">Click to open settings →</p>
+            )}
+          </div>
         }
       />
     )

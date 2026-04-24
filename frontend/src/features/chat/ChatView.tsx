@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
-import { chatApi, type ChatMessageDto } from '../../core/api/chat'
+import { chatApi, type ChatMessageDto, type ToolGroupDto } from '../../core/api/chat'
 import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
 import { sendMessage } from '../../core/websocket/connection'
@@ -88,7 +88,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const [pendingFocus, setPendingFocus] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
   const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
-  const [modelSupportsAttachments, setModelSupportsAttachments] = useState(true)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
   const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -271,7 +270,6 @@ export function ChatView({ persona }: ChatViewProps) {
     const model = findModelByUniqueId(uid)
     if (model) {
       setModelSupportsReasoning(model.supports_reasoning)
-      setModelSupportsAttachments(model.supports_vision)
       return
     }
     // No match. If the hub is still loading, hold off until it repopulates —
@@ -281,7 +279,6 @@ export function ChatView({ persona }: ChatViewProps) {
     // behaviour (permissive on tools so the UI does not hide them).
     if (modelsLoading) return
     setModelSupportsReasoning(false)
-    setModelSupportsAttachments(true)
   }, [findModelByUniqueId, modelsLoading])
   // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
@@ -877,12 +874,28 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // -- CockpitBar prop derivations --
 
+  // Built-in tool groups (web search, journal, knowledge base, calculate_js …)
+  // come from the server-side tool registry. We fetch them once per mount —
+  // the registry contents change only when the user edits their tool config,
+  // which is rare compared to chat open/close.
+  const [builtinToolGroups, setBuiltinToolGroups] = useState<ToolGroupDto[]>([])
+  useEffect(() => {
+    chatApi.listToolGroups().then(setBuiltinToolGroups).catch(() => {
+      setBuiltinToolGroups([])
+    })
+  }, [])
+
   // Build the list of available tool groups for the CockpitBar ToolsButton.
-  // Three kinds: 'mcp' (from active MCP gateways) and 'integration' (from
-  // persona-enabled integrations with tools). Web-search ('web') groups from
-  // the tool-group registry would require an extra async fetch; they are not
-  // included here yet — web search is already surfaced through the tools toggle.
+  // Three kinds:
+  //   'builtin'     — platform-provided (web_search, journal, knowledge base, …)
+  //   'mcp'         — active MCP gateways
+  //   'integration' — persona-reachable integrations that publish tools
   const availableToolGroups: ToolGroup[] = [
+    ...builtinToolGroups.map((g): ToolGroup => ({
+      id: g.id,
+      label: g.display_name,
+      kind: 'builtin',
+    })),
     ...mcpSessionTools
       .filter((e) => !mcpExcludedGateways.has(e.namespace))
       .map((e): ToolGroup => ({
@@ -899,10 +912,19 @@ export function ChatView({ persona }: ChatViewProps) {
       })),
   ]
 
+  // Active persona integrations for the IntegrationsButton. An integration is
+  // considered "active for the chat" when it is globally effective-enabled —
+  // this mirrors how the tools list treats them and matches user intent: if
+  // Lovense is plugged in and reachable, it belongs in the integrations popover.
+  const activePersonaIntegrationIds = intDefinitions
+    .filter((d) => intConfigs[d.id]?.effective_enabled)
+    .map((d) => d.id)
+
   // Voice summary for VoiceButton / MobileInfoModal.
-  const personaHasVoice = Boolean(
-    persona?.voice_config?.tts_provider_id && persona?.voice_config?.dialogue_voice,
-  )
+  // tts_provider_id is optional in the persona DTO — null means "fall back to
+  // the first enabled TTS provider", so it is not a requirement for having a
+  // voice. A dialogue_voice is what makes the persona speakable.
+  const personaHasVoice = Boolean(persona?.voice_config?.dialogue_voice)
   const voiceSummary: {
     ttsProvider: string
     voice: string
@@ -1262,10 +1284,9 @@ export function ChatView({ persona }: ChatViewProps) {
             toolBar={effectiveSessionId ? (
               <CockpitBar
                 sessionId={effectiveSessionId}
-                modelSupportsAttachments={modelSupportsAttachments}
                 modelSupportsReasoning={modelSupportsReasoning}
                 availableToolGroups={availableToolGroups}
-                activePersonaIntegrationIds={persona?.integrations_config?.enabled_integration_ids ?? []}
+                activePersonaIntegrationIds={activePersonaIntegrationIds}
                 personaHasVoice={personaHasVoice}
                 voiceSummary={voiceSummary}
                 liveAvailability={liveAvailability}
@@ -1273,6 +1294,9 @@ export function ChatView({ persona }: ChatViewProps) {
                   attach: () => chatInputRef.current?.openFilePicker(),
                   camera: () => chatInputRef.current?.openCamera(),
                   browse: () => setShowUploadBrowser((v) => !v),
+                  openPersonaVoiceSettings: persona
+                    ? () => openPersonaOverlay(persona.id, 'voice')
+                    : undefined,
                 }}
               />
             ) : undefined}

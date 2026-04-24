@@ -20,7 +20,6 @@ type VoiceSummary = {
 
 type Props = {
   sessionId: string
-  modelSupportsAttachments: boolean
   modelSupportsReasoning: boolean
   availableToolGroups: ToolGroup[]
   activePersonaIntegrationIds: string[]
@@ -31,6 +30,7 @@ type Props = {
     attach: () => void
     camera: () => void
     browse: () => void
+    openPersonaVoiceSettings?: () => void
   }
 }
 
@@ -44,18 +44,8 @@ export function CockpitBar(props: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-[#0f0d16] rounded-lg">
-      <AttachButton
-        onClick={props.handlers.attach}
-        disabled={!props.modelSupportsAttachments}
-        disabledReason="This model does not accept attachments."
-      />
-      {isMobile && (
-        <CameraButton
-          onClick={props.handlers.camera}
-          disabled={!props.modelSupportsAttachments}
-          disabledReason="This model does not accept attachments."
-        />
-      )}
+      <AttachButton onClick={props.handlers.attach} />
+      {isMobile && <CameraButton onClick={props.handlers.camera} />}
       <BrowseButton onClick={props.handlers.browse} />
       <Sep />
       <ThinkingButton
@@ -73,6 +63,7 @@ export function CockpitBar(props: Props) {
         sessionId={props.sessionId}
         personaHasVoice={props.personaHasVoice}
         voiceSummary={props.voiceSummary}
+        onOpenVoiceSettings={props.handlers.openPersonaVoiceSettings}
       />
       <Sep />
       <LiveButton

@@ -48,8 +48,14 @@ export function CockpitButton({
 
   const base = 'inline-flex items-center justify-center h-9 w-9 rounded-md border transition'
   const disabled = state === 'disabled'
+  // A disabled button becomes an actionable "needs setup" button when the
+  // caller still provides an onClick — it keeps the muted visual but accepts
+  // clicks (e.g. open the persona voice settings).
+  const actionable = !disabled || Boolean(onClick)
   const classes = disabled
-    ? `${base} border-dashed border-white/15 bg-white/5 text-white/30 cursor-not-allowed`
+    ? `${base} border-dashed border-white/15 bg-white/5 text-white/30 ${
+        onClick ? 'cursor-pointer hover:text-white/50' : 'cursor-not-allowed'
+      }`
     : state === 'active' || state === 'playback'
       ? `${base} ${ACCENT_CLASSES[accent]}`
       : `${base} border-transparent bg-white/5 text-white/70 hover:bg-white/10`
@@ -63,7 +69,7 @@ export function CockpitButton({
     >
       <button
         type="button"
-        disabled={disabled}
+        disabled={!actionable}
         aria-label={ariaLabel ?? label}
         title={label}
         className={classes}

@@ -1,7 +1,11 @@
 import { CockpitButton } from '../CockpitButton'
 import { useCockpitSession, useCockpitStore } from '../cockpitStore'
 
-export type ToolGroup = { id: string; label: string; kind: 'web' | 'mcp' | 'integration' }
+export type ToolGroup = {
+  id: string
+  label: string
+  kind: 'builtin' | 'mcp' | 'integration'
+}
 
 type Props = {
   sessionId: string
