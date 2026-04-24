@@ -9,6 +9,13 @@ type CockpitSessionState = {
 
 type CockpitStoreShape = {
   bySession: Record<string, CockpitSessionState>
+  /**
+   * Message id for which the cockpit requests auto-read playback. The
+   * parent (AssistantMessage) writes this on the streaming→done transition
+   * when auto-read is on; the ReadAloudButton reads it, fires playback,
+   * and clears it. Single slot — only the most recent completion drives it.
+   */
+  pendingAutoReadMessageId: string | null
   hydrateFromServer: (
     sessionId: string,
     state: CockpitSessionState,
@@ -16,15 +23,21 @@ type CockpitStoreShape = {
   setThinking: (sessionId: string, value: boolean) => Promise<void>
   setTools: (sessionId: string, value: boolean) => Promise<void>
   setAutoRead: (sessionId: string, value: boolean) => Promise<void>
+  requestAutoRead: (messageId: string) => void
+  clearAutoReadRequest: () => void
 }
 
 export const useCockpitStore = create<CockpitStoreShape>((set, get) => ({
   bySession: {},
+  pendingAutoReadMessageId: null,
 
   hydrateFromServer: (sessionId, state) =>
     set((s) => ({
       bySession: { ...s.bySession, [sessionId]: state },
     })),
+
+  requestAutoRead: (messageId) => set({ pendingAutoReadMessageId: messageId }),
+  clearAutoReadRequest: () => set({ pendingAutoReadMessageId: null }),
 
   setThinking: async (sessionId, value) => {
     const prev = get().bySession[sessionId]

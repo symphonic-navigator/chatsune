@@ -5,6 +5,7 @@ import { ThinkingBubble } from './ThinkingBubble'
 import { StatsLine } from './StatsLine'
 import { ReadAloudButton } from '../voice/components/ReadAloudButton'
 import { useChatStore } from '../../core/store/chatStore'
+import { useCockpitStore } from './cockpit/cockpitStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 
@@ -63,6 +64,7 @@ function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boo
 
 function AssistantMessageBase({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
   const autoRead = useChatStore((s) => s.autoRead)
+  const requestAutoRead = useCockpitStore((s) => s.requestAutoRead)
 
   const effectiveContent = (() => {
     if (content) return content
@@ -70,6 +72,20 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
     if (status === 'refused') return REFUSAL_FALLBACK_TEXT
     return ''
   })()
+
+  // Auto-read: detect the streaming→done transition while we are still mounted
+  // (ReadAloudButton mounts only after streaming ends, so it cannot observe
+  // the transition itself). When auto-read is on, signal the matching
+  // ReadAloudButton through the cockpit store.
+  const prevStreamingRef = useRef<boolean>(isStreaming)
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = isStreaming
+    if (!wasStreaming || isStreaming) return
+    if (!autoRead || !messageId || !effectiveContent) return
+    if (status !== 'completed') return
+    requestAutoRead(messageId)
+  }, [isStreaming, autoRead, messageId, effectiveContent, status, requestAutoRead])
 
   const [copied, setCopied] = useState(false)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -178,8 +194,6 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
                   messageId={messageId}
                   content={effectiveContent}
                   persona={persona}
-                  autoRead={autoRead}
-                  isStreaming={isStreaming}
                 />
               )}
               {canRegenerate && onRegenerate && (

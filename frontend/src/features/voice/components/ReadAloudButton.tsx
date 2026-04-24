@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useCockpitStore } from '../../chat/cockpit/cockpitStore'
 import { useOutletContext } from 'react-router-dom'
 import { resolveTTSEngine, resolveTTSIntegrationId } from '../engines/resolver'
 import { resolveGapMs } from '../engines/defaults'
@@ -20,14 +21,6 @@ interface ReadAloudButtonProps {
   dialogueVoice?: VoicePreset
   narratorVoice?: VoicePreset
   mode?: NarratorMode
-  /**
-   * When true, the button auto-triggers playback on the transition from
-   * streaming → complete. Used for the cockpit "auto-read" toggle — kept as
-   * a prop so that only the latest completed message fires (not every
-   * historical message on mount).
-   */
-  autoRead?: boolean
-  isStreaming?: boolean
 }
 
 type ReadState = 'idle' | 'synthesising' | 'playing'
@@ -178,7 +171,7 @@ export async function triggerReadAloud(
 
 // ── Component ──
 
-export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, mode, autoRead, isStreaming }: ReadAloudButtonProps) {
+export function ReadAloudButton({ messageId, content, persona, dialogueVoice, narratorVoice, mode }: ReadAloudButtonProps) {
   useSecretsStore((s) => s.secrets)
   const definitions = useIntegrationsStore((s) => s.definitions)
   const configs = useIntegrationsStore((s) => s.configs)
@@ -240,20 +233,19 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
     await runReadAloud(messageId, content, primary, narrator, narratorVoiceId, resolvedMode, gapMs, modulation, persona, supportsExpressive)
   }, [messageId, content, dialogueVoice, narratorVoice, resolvedMode, isActive, state, voiceId, narratorVoiceId, gapMs, persona, ttsIntegrationId, definitions])
 
-  // Auto-read: fire handleClick once on the streaming → complete transition
-  // when the cockpit has auto-read enabled. Gated on the transition so that
-  // historical messages never replay, and so toggling auto-read on later
-  // doesn't re-read everything already on screen.
-  const prevStreamingRef = useRef<boolean>(isStreaming ?? false)
+  // Auto-read request channel. AssistantMessage detects the streaming→done
+  // transition (the ReadAloudButton itself only mounts after streaming ends,
+  // so it cannot observe the transition locally) and writes our messageId
+  // into cockpitStore.pendingAutoReadMessageId. We consume it here.
+  const pendingAutoReadId = useCockpitStore((s) => s.pendingAutoReadMessageId)
+  const clearAutoReadRequest = useCockpitStore((s) => s.clearAutoReadRequest)
   useEffect(() => {
-    const wasStreaming = prevStreamingRef.current
-    prevStreamingRef.current = isStreaming ?? false
-    if (!wasStreaming || isStreaming) return
-    if (!autoRead) return
+    if (pendingAutoReadId !== messageId) return
     if (!ttsReady || !voiceId) return
     if (isActive) return
+    clearAutoReadRequest()
     void handleClick()
-  }, [isStreaming, autoRead, ttsReady, voiceId, isActive, handleClick])
+  }, [pendingAutoReadId, messageId, ttsReady, voiceId, isActive, handleClick, clearAutoReadRequest])
 
   if (!ttsReady || !voiceId) {
     if (!personaId) return null
