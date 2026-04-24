@@ -549,13 +549,22 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
         reasoning_enabled_for_call = persona.get("reasoning_enabled", False)
 
-        # Assemble system prompt
+        # Respect session-level tool toggle (BD-038). Reading this before the
+        # prompt assembly so integration prompt extensions can be gated on it.
+        db = get_db()
+        repo = ChatRepository(db)
+        session = await repo.get_session(session_id, user_id)
+        tools_enabled = session.get("tools_enabled", False) if session else False
+        active_tools = get_active_definitions([]) if tools_enabled else None
+
+        # Assemble system prompt (integration prompt extensions follow tools_enabled)
         system_prompt = await assemble(
             user_id=user_id,
             persona_id=persona_id,
             model_unique_id=model_unique_id,
             supports_reasoning=supports_reasoning,
             reasoning_enabled_for_call=reasoning_enabled_for_call,
+            tools_enabled=tools_enabled,
         )
 
         # Build CompletionMessage list
@@ -572,13 +581,6 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 role=msg["role"],
                 content=[ContentPart(type="text", text=msg["content"])],
             ))
-
-        # Respect session-level tool toggle (BD-038)
-        db = get_db()
-        repo = ChatRepository(db)
-        session = await repo.get_session(session_id, user_id)
-        tools_enabled = session.get("tools_enabled", False) if session else False
-        active_tools = get_active_definitions([]) if tools_enabled else None
 
         request = CompletionRequest(
             model=model_slug,

@@ -4,6 +4,7 @@ import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath 
 import { ThinkingBubble } from './ThinkingBubble'
 import { StatsLine } from './StatsLine'
 import { ReadAloudButton } from '../voice/components/ReadAloudButton'
+import { useChatStore } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 
@@ -61,6 +62,8 @@ function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boo
 }
 
 function AssistantMessageBase({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
+  const autoRead = useChatStore((s) => s.autoRead)
+
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -171,7 +174,13 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
                 </button>
               )}
               {messageId && (
-                <ReadAloudButton messageId={messageId} content={effectiveContent} persona={persona} />
+                <ReadAloudButton
+                  messageId={messageId}
+                  content={effectiveContent}
+                  persona={persona}
+                  autoRead={autoRead}
+                  isStreaming={isStreaming}
+                />
               )}
               {canRegenerate && onRegenerate && (
                 <button type="button" onClick={onRegenerate}

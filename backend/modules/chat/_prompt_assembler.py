@@ -53,12 +53,16 @@ async def assemble(
     model_unique_id: str,
     supports_reasoning: bool = False,
     reasoning_enabled_for_call: bool = False,
+    tools_enabled: bool = False,
 ) -> str:
     """Assemble the full XML system prompt for LLM consumption.
 
     ``supports_reasoning`` and ``reasoning_enabled_for_call`` drive the
-    Soft-CoT visibility decision. They default to False so that legacy
-    callers (preview, scripts) retain the pre-existing behaviour.
+    Soft-CoT visibility decision. ``tools_enabled`` gates integration
+    prompt extensions: when False, the instructions that tell the model
+    how to invoke integration tools are omitted, matching the empty
+    tool list the orchestrator sends. Defaults preserve legacy behaviour
+    for callers that don't know about these layers (preview, scripts).
     """
     from backend.modules.chat._soft_cot import (
         SOFT_COT_INSTRUCTIONS,
@@ -107,11 +111,15 @@ async def assemble(
     if memory_xml:
         parts.append(memory_xml)
 
-    # Layer: Integration prompt extensions (active integrations for this persona)
-    from backend.modules.integrations import get_integration_prompt_extensions
-    integration_prompt = await get_integration_prompt_extensions(user_id, persona_id)
-    if integration_prompt:
-        parts.append(integration_prompt)
+    # Layer: Integration prompt extensions (active integrations for this persona).
+    # Skipped when the session has tools disabled — the tool list sent to the
+    # LLM is empty in that case, and the prompt extensions instruct the model
+    # how to call tools it no longer has.
+    if tools_enabled:
+        from backend.modules.integrations import get_integration_prompt_extensions
+        integration_prompt = await get_integration_prompt_extensions(user_id, persona_id)
+        if integration_prompt:
+            parts.append(integration_prompt)
 
     # Layer 4: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():

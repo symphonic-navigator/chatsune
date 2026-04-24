@@ -912,17 +912,20 @@ export function ChatView({ persona }: ChatViewProps) {
       })),
   ]
 
-  // Active persona integrations for the IntegrationsButton. An integration is
-  // considered "active for the chat" when it is globally effective-enabled.
-  // TTS / STT integrations are excluded — they have their own dedicated buttons
-  // (the magic voice button, the live button).
-  const activePersonaIntegrationIds = intDefinitions
-    .filter((d) => {
-      if (!intConfigs[d.id]?.effective_enabled) return false
-      const caps = d.capabilities ?? []
-      return !caps.includes('tts_provider') && !caps.includes('stt_provider')
-    })
-    .map((d) => d.id)
+  // Active persona integrations for the IntegrationsButton. An integration
+  // belongs in the services popover when all three hold:
+  //   - the persona has explicitly enabled it (integrations_config),
+  //   - it is globally usable (effective_enabled),
+  //   - it is not a TTS / STT provider (those have dedicated buttons).
+  const personaEnabledIntegrationIds =
+    persona?.integrations_config?.enabled_integration_ids ?? []
+  const activePersonaIntegrationIds = personaEnabledIntegrationIds.filter((id) => {
+    if (!intConfigs[id]?.effective_enabled) return false
+    const def = intDefinitions.find((d) => d.id === id)
+    if (!def) return false
+    const caps = def.capabilities ?? []
+    return !caps.includes('tts_provider') && !caps.includes('stt_provider')
+  })
 
   // Voice summary for VoiceButton / MobileInfoModal. Reuse the authoritative
   // gate the rest of the UI already uses: the TTS engine must be resolvable,

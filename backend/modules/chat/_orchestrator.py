@@ -397,12 +397,14 @@ async def run_inference(
     supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
 
     # Assemble system prompt
+    tools_enabled_flag = session.get("tools_enabled", False)
     system_prompt = await assemble(
         user_id=user_id,
         persona_id=persona_id,
         model_unique_id=model_unique_id,
         supports_reasoning=supports_reasoning,
         reasoning_enabled_for_call=reasoning_enabled,
+        tools_enabled=tools_enabled_flag,
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
