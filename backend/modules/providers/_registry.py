@@ -78,13 +78,13 @@ def _register_builtins() -> None:
         id="nano_gpt",
         display_name="Nano-GPT",
         icon="nano_gpt",
-        base_url="https://api.nano-gpt.com/v1",
+        base_url="https://nano-gpt.com/api/v1",
         capabilities=[Capability.LLM],
         config_fields=[_api_key_field("Nano-GPT API Key")],
         # Nano-GPT's ``/v1/models`` endpoint is unauthenticated — it returns
         # the full system catalogue regardless of key. Only the personalised
         # endpoint rejects an invalid key, so we probe against that.
-        probe_url="https://api.nano-gpt.com/api/personalized/v1/models",
+        probe_url="https://nano-gpt.com/api/personalized/v1/models",
         probe_method="GET",
         linked_integrations=[],
     ))

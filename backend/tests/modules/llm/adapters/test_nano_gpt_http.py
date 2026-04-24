@@ -20,7 +20,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "nano_gpt"
 
 
 def _resolved_conn(
-    *, base_url: str = "https://api.nano-gpt.com/v1",
+    *, base_url: str = "https://nano-gpt.com/api/v1",
     api_key: str = "nano-test-key",
 ) -> ResolvedConnection:
     now = datetime.now(UTC)
@@ -63,7 +63,7 @@ def test_templates_single_default():
     assert tpl.id == "nano_gpt_default"
     assert tpl.display_name == "Nano-GPT"
     assert tpl.slug_prefix == "nano"
-    assert tpl.config_defaults["base_url"] == "https://api.nano-gpt.com/v1"
+    assert tpl.config_defaults["base_url"] == "https://nano-gpt.com/api/v1"
     assert tpl.config_defaults["max_parallel"] == 3
     assert "api_key" in tpl.required_config_fields
 

@@ -63,7 +63,7 @@ from backend.modules.llm._adapters._types import (
 from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
-_DEFAULT_BASE_URL = "https://api.nano-gpt.com/v1"
+_DEFAULT_BASE_URL = "https://nano-gpt.com/api/v1"
 _TIMEOUT = 30.0
 
 _log = logging.getLogger(__name__)
@@ -348,7 +348,7 @@ class NanoGptHttpAdapter(BaseAdapter):
                 display_name="Nano-GPT",
                 slug_prefix="nano",
                 config_defaults={
-                    "base_url": "https://api.nano-gpt.com/v1",
+                    "base_url": "https://nano-gpt.com/api/v1",
                     "api_key": "",
                     "max_parallel": 3,
                 },
@@ -364,7 +364,7 @@ class NanoGptHttpAdapter(BaseAdapter):
                 type="url",
                 label="Base URL",
                 required=False,
-                placeholder="https://api.nano-gpt.com/v1",
+                placeholder="https://nano-gpt.com/api/v1",
             ),
             ConfigFieldHint(
                 name="api_key",
