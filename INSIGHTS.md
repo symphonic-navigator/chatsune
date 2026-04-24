@@ -748,3 +748,64 @@ Added a `user_keys` MongoDB collection and a client-side Argon2id → HKDF → s
 - **Session-DEK in Redis under `session_dek:{session_id}`** with TTL = access-token TTL. Logout deletes it; refresh extends the TTL. For Phase 1, a refresh that finds an expired Redis DEK still succeeds (logs a warning). Once data is actually encrypted, this will need a design decision — currently tracked as a follow-up.
 
 Follow-ups tracked in `devdocs/superpowers/specs/2026-04-23-per-user-key-infrastructure-design.md` §16.
+
+---
+
+## INS-026 — Nano-GPT: some models stop streaming (and reasoning) when `tools` are present (2026-04-24)
+
+**Observation:** For certain nano-gpt models — confirmed for `xiaomi/mimo-v2.5-pro`, suspected for others — sending a request that includes `tools: [...]` in the body causes the upstream to return the entire completion in a **single SSE frame** instead of token-by-token deltas, and additionally disables the model's reasoning output (the same model emits ~40 `delta.reasoning` chunks when called without `tools`).
+
+Verified with two curl tests against `https://nano-gpt.com/api/v1/chat/completions`, identical apart from the `tools` field:
+
+- **Without `tools`:** ~60 delta frames, reasoning + content streamed normally, `reasoning_tokens > 0`.
+- **With `tools`:** 3 frames total (role, one big content chunk, finish/usage), `reasoning_tokens: 0`.
+
+Nothing on our side changes the outcome — this is upstream routing inside nano-gpt (or the provider it proxies to) picking a different execution path when tool-calling is enabled. The adapter, inference pipeline, and WebSocket layer have all been traced chunk-by-chunk (`LLM_TRACE_DELTAS=1`) and faithfully pass through whatever the upstream sends.
+
+**Current stance — no code change.** Chatsune already gates tools by the user's tool-group toggles (`_orchestrator.py:559` via `get_active_definitions(disabled_tool_groups)`), so disabling tool groups in the session restores streaming for affected models. That is the workaround today.
+
+**Why not a capability flag yet:**
+We do not know the shape of the problem well enough to design a flag. Open questions:
+
+- Is this a property of the model, the upstream provider behind nano-gpt, or a nano-gpt routing choice?
+- Does `parallel_tool_calls` or another OpenAI-compat request property change the behaviour?
+- Which of the ~200 nano-gpt models are affected? Correlating against nano-gpt's model metadata (and hints from the nano-gpt Discord) is the next step.
+
+Adding `streams_with_tools: bool` to the model catalogue now would either require guessing per model (likely wrong for many) or a probe-call during import (extra cost, still might be wrong if upstream routing changes). Premature.
+
+**Planned exploration (separate session):**
+
+1. Pull nano-gpt's model metadata and look for correlations — in particular any tool-related capability fields the upstream advertises.
+2. Test a handful of popular models with and without `tools` to understand the breadth.
+3. Try the `parallel_tool_calls` request property as a potential opt-out for the non-streaming path.
+4. Incorporate the Discord hints on list refinement.
+
+**When to revisit:**
+Once the exploration lands, decide between (a) a per-model capability flag plus a UI hint when the user has tools enabled on a non-streaming model, or (b) leaving it as documented behaviour if it turns out to be rare enough.
+
+**What NOT to do:**
+No silent stripping of `tools` for affected models — that would violate the "no magic, uniform flows" principle. Whatever we eventually build must be visible and user-controllable.
+
+---
+
+## INS-027 — Nano-GPT three-mode reasoning switching: slug pair vs flag singleton (2026-04-24)
+
+**Decision:** The nano-gpt pair map carries a `switching_mode` discriminator with three values — `slug`, `flag`, `none` — and the adapter dispatches accordingly. Flag-mode requests carry `{"reasoning": {"enabled": <bool>}}` in the request body (the OpenRouter unified reasoning object); slug-mode requests select via the upstream slug and carry no reasoning field; plain singletons carry no reasoning field either.
+
+**Why three modes (not two):**
+Nano-gpt expresses thinking capability through two distinct mechanisms, not one. Some models arrive as a *pair* of slugs (`base` + `base:thinking`, or rare inverted `base` + `base-nothinking`); others arrive as a *singleton* with `capabilities.reasoning == true` and switch via a body flag. We discovered ~79 switchable singletons in the current dump (xiaomi/mimo-v2.5, openai/gpt-5.x, anthropic/claude-sonnet-latest, gemini-2.5/3.1, grok-4.x). Treating these as plain non-reasoning models — as the previous adapter did — silently denied users the thinking toggle on a major chunk of the catalogue.
+
+**Why the OpenRouter unified format (and not the OpenAI / Anthropic flat alternatives):**
+Empirically verified on 2026-04-24 against `xiaomi/mimo-v2.5` (probe scripts under `scratch/probe_nano_flag_mode*`). Of seven candidate body shapes — boolean `reasoning`, `reasoning_effort: minimal/medium/high/none`, boolean `thinking`, object `thinking: {"type": "disabled"}`, and the OpenRouter `{"reasoning": {"enabled": bool}}` — only the OpenRouter nested form actually toggles the model. Cross-vendor confirmation on claude-sonnet-latest and gpt-5.4-nano showed the same field works in both directions across vendors. The flat alternatives are silently ignored.
+
+**Why always send the flag in flag-mode (even when `enabled: false`):**
+Vendors disagree on the default thinking direction: gpt-5 family defaults OFF, claude-sonnet-latest defaults ON, mimo-v2.5 defaults ON. Without an explicit `enabled: false`, the user toggling reasoning OFF would have no effect on default-ON vendors. The previous "send only when on" reflex (still present in the upstream `nano-explore` reference at the time of porting) violates this invariant.
+
+**Why never send the flag in slug-mode:**
+Empirically, sending `{"reasoning": {"enabled": false}}` to a slug-mode "thinking half" (`xiaomi/mimo-v2-flash-thinking`) suppresses reasoning even though the slug itself selected the thinking variant. The body flag wins over the slug, which would silently invert the user's choice. Strict separation of mechanisms.
+
+**Cache invalidation:** Pair-map Redis key was bumped from `nano_gpt:pair_map:{conn_id}` to `nano_gpt:pair_map:v2:{conn_id}`. The value shape gained `switching_mode`, and a pre-revision entry would deserialise as a none-mode dict with `mode = "none"` (the default in `pair.get("switching_mode", "none")`), silently downgrading switchable singletons. The v2 key parallel-runs with v1; old keys expire on their own 30-minute TTL. A defensive read also rejects any v2-keyed value that lacks `switching_mode` and treats the whole map as a cache miss.
+
+**Frontend impact:** None. `ModelMetaDto.supports_reasoning=True` now covers both "we'll route to a thinking sibling slug" and "we'll set the body flag" — the UI sees the same toggle either way.
+
+**Reference:** Empirical methodology and raw results live in `scratch/probe_nano_flag_mode*.{py,_results.json}` (gitignored). Three-mode pipeline ported from `/home/chris/projects/nano-explore` — that exploration repo carries the model-by-model audit and the canonical mini fixtures used by the chatsune tests.

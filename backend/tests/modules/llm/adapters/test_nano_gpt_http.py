@@ -154,9 +154,13 @@ async def test_fetch_models_persists_pair_map_in_redis(
     for model_id, pair in pair_map.items():
         assert "non_thinking_slug" in pair
         assert "thinking_slug" in pair
-        # At least one model should have a thinking_slug set (mini_dump has pairs)
-    assert any(p["thinking_slug"] is not None for p in pair_map.values()), \
-        "mini_dump should produce at least one pair with a thinking_slug"
+        assert pair["switching_mode"] in {"slug", "flag", "none"}
+    assert any(
+        p["switching_mode"] == "slug" for p in pair_map.values()
+    ), "mini_dump should produce at least one slug-switched pair"
+    assert any(
+        p["switching_mode"] == "flag" for p in pair_map.values()
+    ), "mini_dump should produce at least one switchable singleton (gpt-5)"
 
 
 # ---------------------------------------------------------------------------
@@ -327,32 +331,76 @@ def test_chunk_to_events_refusal():
 
 
 # ---------------------------------------------------------------------------
-# _pick_upstream_slug unit tests
+# _resolve_call unit tests — three switching modes
 # ---------------------------------------------------------------------------
 
-from backend.modules.llm._adapters._nano_gpt_http import _pick_upstream_slug
+from backend.modules.llm._adapters._nano_gpt_http import _resolve_call
 
 
-def test_pick_upstream_slug_reasoning_off_returns_non_thinking():
-    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": "m1:thinking"}}
-    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=False) == "m1"
+def test_resolve_call_slug_mode_off_returns_non_thinking():
+    pair = {
+        "non_thinking_slug": "m1",
+        "thinking_slug": "m1:thinking",
+        "switching_mode": "slug",
+    }
+    out = _resolve_call(pair, "m1", reasoning_enabled=False)
+    assert out == {"slug": "m1", "send_reasoning_flag": False}
 
 
-def test_pick_upstream_slug_reasoning_on_returns_thinking():
-    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": "m1:thinking"}}
-    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=True) == "m1:thinking"
+def test_resolve_call_slug_mode_on_returns_thinking():
+    pair = {
+        "non_thinking_slug": "m1",
+        "thinking_slug": "m1:thinking",
+        "switching_mode": "slug",
+    }
+    out = _resolve_call(pair, "m1", reasoning_enabled=True)
+    assert out == {"slug": "m1:thinking", "send_reasoning_flag": False}
 
 
-def test_pick_upstream_slug_reasoning_on_but_no_thinking_falls_back():
-    # Model has no thinking variant — fall back to non-thinking slug
-    # instead of refusing the request. Matches the frontend's
-    # capability-gated UI behaviour.
-    pair_map = {"m1": {"non_thinking_slug": "m1", "thinking_slug": None}}
-    assert _pick_upstream_slug(pair_map, model_id="m1", reasoning_enabled=True) == "m1"
+def test_build_upstream_call_pair_switches_via_slug():
+    """Slug-mode happy path, both directions."""
+    pair = {
+        "non_thinking_slug": "z-ai/glm-4.6",
+        "thinking_slug": "z-ai/glm-4.6:thinking",
+        "switching_mode": "slug",
+    }
+    non = _resolve_call(pair, "z-ai/glm-4.6", reasoning_enabled=False)
+    yes = _resolve_call(pair, "z-ai/glm-4.6", reasoning_enabled=True)
+    assert non == {"slug": "z-ai/glm-4.6", "send_reasoning_flag": False}
+    assert yes == {"slug": "z-ai/glm-4.6:thinking", "send_reasoning_flag": False}
 
 
-def test_pick_upstream_slug_unknown_model_returns_none():
-    assert _pick_upstream_slug({}, model_id="nope", reasoning_enabled=False) is None
+def test_build_upstream_call_switchable_singleton_uses_flag():
+    """Flag-mode happy path: slug stays the same, the flag is always
+    sent (the body carries ``reasoning_enabled`` in both directions —
+    vendors disagree on the default direction)."""
+    pair = {
+        "non_thinking_slug": "openai/gpt-5",
+        "thinking_slug": "openai/gpt-5",
+        "switching_mode": "flag",
+    }
+    non = _resolve_call(pair, "openai/gpt-5", reasoning_enabled=False)
+    yes = _resolve_call(pair, "openai/gpt-5", reasoning_enabled=True)
+    assert non == {"slug": "openai/gpt-5", "send_reasoning_flag": True}
+    assert yes == {"slug": "openai/gpt-5", "send_reasoning_flag": True}
+
+
+def test_build_upstream_call_plain_singleton_never_sends_flag():
+    """None-mode: send_reasoning_flag stays False regardless of the toggle."""
+    pair = {
+        "non_thinking_slug": "vendor/plain-chat-model",
+        "thinking_slug": None,
+        "switching_mode": "none",
+    }
+    non = _resolve_call(pair, "vendor/plain-chat-model", reasoning_enabled=False)
+    yes = _resolve_call(pair, "vendor/plain-chat-model", reasoning_enabled=True)
+    assert non == {"slug": "vendor/plain-chat-model", "send_reasoning_flag": False}
+    assert yes == {"slug": "vendor/plain-chat-model", "send_reasoning_flag": False}
+
+
+def test_resolve_call_unknown_model_returns_passthrough():
+    out = _resolve_call(None, "vendor/unknown", reasoning_enabled=True)
+    assert out == {"slug": "vendor/unknown", "send_reasoning_flag": False}
 
 
 # ---------------------------------------------------------------------------
@@ -422,10 +470,17 @@ async def _populate_pair_map(redis_client, conn_id: str):
             "anthropic/claude-opus-4.6": {
                 "non_thinking_slug": "anthropic/claude-opus-4.6",
                 "thinking_slug": "anthropic/claude-opus-4.6:thinking",
+                "switching_mode": "slug",
             },
             "free/phi-small": {
                 "non_thinking_slug": "free/phi-small",
                 "thinking_slug": None,
+                "switching_mode": "none",
+            },
+            "openai/gpt-5": {
+                "non_thinking_slug": "openai/gpt-5",
+                "thinking_slug": "openai/gpt-5",
+                "switching_mode": "flag",
             },
         },
     )
@@ -573,7 +628,7 @@ async def test_stream_completion_requires_redis():
 
 
 # ---------------------------------------------------------------------------
-# _build_chat_payload unit tests — reasoning_effort gate
+# _build_chat_payload unit tests — reasoning-flag gate
 # ---------------------------------------------------------------------------
 
 from backend.modules.llm._adapters._nano_gpt_http import _build_chat_payload
@@ -589,36 +644,65 @@ def _basic_request(model: str = "m1") -> CompletionRequest:
     )
 
 
-def test_build_chat_payload_thinking_slug_sets_reasoning_effort():
+def test_build_chat_payload_flag_mode_on_writes_reasoning_enabled_true():
     req = _basic_request()
     payload = _build_chat_payload(
-        req, upstream_slug="m1:thinking", is_thinking_slug=True,
+        req, upstream_slug="openai/gpt-5",
+        send_reasoning_flag=True, reasoning_enabled=True,
     )
-    assert payload["reasoning_effort"] == "medium"
-    assert payload["model"] == "m1:thinking"
+    assert payload["reasoning"] == {"enabled": True}
+    assert payload["model"] == "openai/gpt-5"
 
 
-def test_build_chat_payload_non_thinking_slug_has_no_reasoning_keys():
+def test_build_chat_payload_flag_mode_off_still_writes_reasoning_enabled_false():
+    """Flag-mode invariant: even with reasoning_enabled=False, the field
+    must be on the wire (vendors disagree on the default direction)."""
     req = _basic_request()
     payload = _build_chat_payload(
-        req, upstream_slug="m1", is_thinking_slug=False,
+        req, upstream_slug="openai/gpt-5",
+        send_reasoning_flag=True, reasoning_enabled=False,
+    )
+    assert payload["reasoning"] == {"enabled": False}
+
+
+def test_build_chat_payload_slug_mode_omits_reasoning_field():
+    """Slug-mode: send_reasoning_flag=False and the body must not carry
+    any reasoning-related field. Empirically, sending one inverts the
+    user's intent (mimo-v2-flash-thinking case)."""
+    req = _basic_request()
+    payload = _build_chat_payload(
+        req, upstream_slug="m1",
+        send_reasoning_flag=False, reasoning_enabled=False,
     )
     forbidden = {"reasoning", "reasoning_effort", "reasoning_content", "thinking"}
     assert not (forbidden & set(payload.keys())), (
-        f"Non-thinking slug leaked reasoning keys: {forbidden & set(payload.keys())}"
+        f"Slug-mode leaked reasoning keys: {forbidden & set(payload.keys())}"
     )
     assert payload["model"] == "m1"
 
 
+def test_build_chat_payload_none_mode_omits_reasoning_even_if_user_toggled_on():
+    """None-mode (capability-gated fallback): user toggled reasoning ON
+    in the UI but the model is a plain singleton. send_reasoning_flag is
+    False so we still must not send the field."""
+    req = _basic_request()
+    payload = _build_chat_payload(
+        req, upstream_slug="vendor/plain",
+        send_reasoning_flag=False, reasoning_enabled=True,
+    )
+    forbidden = {"reasoning", "reasoning_effort", "reasoning_content", "thinking"}
+    assert not (forbidden & set(payload.keys()))
+
+
 # ---------------------------------------------------------------------------
-# stream_completion — reasoning_effort gate end-to-end tests
+# stream_completion — reasoning-flag gate end-to-end tests
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_stream_completion_non_thinking_omits_reasoning_effort(
+async def test_stream_completion_slug_mode_off_omits_reasoning(
     redis_client, monkeypatch,
 ):
-    """Non-thinking dispatch: body must not carry reasoning_effort."""
+    """Slug-mode dispatch (reasoning off): body must not carry the flag."""
     conn = _resolved_conn()
     await _populate_pair_map(redis_client, conn.id)
 
@@ -639,16 +723,17 @@ async def test_stream_completion_non_thinking_omits_reasoning_effort(
     ):
         pass
 
+    assert "reasoning" not in fake.posted_payload
     assert "reasoning_effort" not in fake.posted_payload
     assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6"
 
 
 @pytest.mark.asyncio
-async def test_stream_completion_thinking_sets_reasoning_effort(
+async def test_stream_completion_slug_mode_on_picks_thinking_slug_no_flag(
     redis_client, monkeypatch,
 ):
-    """Thinking dispatch on a dual-slug model: reasoning_effort=medium,
-    and the thinking_slug is used."""
+    """Slug-mode dispatch (reasoning on): thinking_slug is used and the
+    body must NOT carry the reasoning flag — the slug already selects."""
     conn = _resolved_conn()
     await _populate_pair_map(redis_client, conn.id)
 
@@ -670,19 +755,81 @@ async def test_stream_completion_thinking_sets_reasoning_effort(
     ):
         pass
 
-    assert fake.posted_payload["reasoning_effort"] == "medium"
     assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6:thinking"
+    assert "reasoning" not in fake.posted_payload
+    assert "reasoning_effort" not in fake.posted_payload
 
 
 @pytest.mark.asyncio
-async def test_stream_completion_reasoning_on_no_thinking_variant_omits_flag(
+async def test_stream_completion_flag_mode_on_sends_enabled_true(
     redis_client, monkeypatch,
 ):
-    """Model with thinking_slug=None: reasoning toggled ON in the UI
-    must still NOT send reasoning_effort, since we'd be dispatching to
-    the non-thinking slug anyway. Capability-gated fallback."""
+    """Flag-mode dispatch: same slug, body carries
+    ``{"reasoning": {"enabled": true}}``."""
     conn = _resolved_conn()
-    await _populate_pair_map(redis_client, conn.id)  # has free/phi-small with thinking_slug=None
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"reasoning":"…"}}]}',
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    async for _ in adapter.stream_completion(
+        conn, _make_request("openai/gpt-5", reasoning_enabled=True),
+    ):
+        pass
+
+    assert fake.posted_payload["model"] == "openai/gpt-5"
+    assert fake.posted_payload["reasoning"] == {"enabled": True}
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_flag_mode_off_still_sends_enabled_false(
+    redis_client, monkeypatch,
+):
+    """Flag-mode invariant: reasoning_enabled=False MUST still send the
+    flag with ``enabled: false`` (vendors disagree on default direction)."""
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    async for _ in adapter.stream_completion(
+        conn, _make_request("openai/gpt-5", reasoning_enabled=False),
+    ):
+        pass
+
+    assert fake.posted_payload["model"] == "openai/gpt-5"
+    assert fake.posted_payload["reasoning"] == {"enabled": False}
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_none_mode_with_reasoning_on_omits_flag(
+    redis_client, monkeypatch,
+):
+    """Plain singleton with no thinking option: even if the UI toggles
+    reasoning ON, the body must NOT carry the flag (capability-gated
+    fallback). Slug stays the same."""
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)  # has free/phi-small (none-mode)
 
     sse_lines = [
         'data: {"choices":[{"delta":{"content":"ok"}}]}',
@@ -701,5 +848,6 @@ async def test_stream_completion_reasoning_on_no_thinking_variant_omits_flag(
     ):
         pass
 
+    assert "reasoning" not in fake.posted_payload
     assert "reasoning_effort" not in fake.posted_payload
     assert fake.posted_payload["model"] == "free/phi-small"

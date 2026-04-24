@@ -294,6 +294,31 @@ def test_to_model_meta_with_pair_info_sets_supports_reasoning_true():
     assert extras["is_subscription"] is True
 
 
+def test_to_model_meta_switchable_singleton_via_reasoning_flag():
+    entry = {
+        "id": "xiaomi/mimo-v2.5",
+        "context_length": 1048576,
+        "capabilities": {"reasoning": True, "tool_calling": True, "vision": True},
+    }
+    meta, extras = to_model_meta(entry, pair_info=None)
+    assert meta.supports_reasoning is True
+    assert extras["switching_mode"] == "flag"
+    assert extras["non_thinking_slug"] == "xiaomi/mimo-v2.5"
+    assert extras["thinking_slug"] == "xiaomi/mimo-v2.5"
+
+
+def test_to_model_meta_plain_singleton_switching_mode_none():
+    entry = {
+        "id": "vendor/plain",
+        "context_length": 200000,
+        "capabilities": {"reasoning": False, "tool_calling": True},
+    }
+    meta, extras = to_model_meta(entry, pair_info=None)
+    assert meta.supports_reasoning is False
+    assert extras["switching_mode"] == "none"
+    assert extras["thinking_slug"] is None
+
+
 def test_to_model_meta_inverted_pair_canonical_is_non_suffix_slug():
     non_thinking_raw = {
         "id": "gemini-2.5-flash-nothinking",
@@ -353,23 +378,54 @@ def test_build_catalogue_end_to_end():
     assert "openai/o1" in rejected_ids
     assert "claude-opus-4-1-thinking:8192" in rejected_ids
 
-    # thinking pairs produce supports_reasoning=True
+    # thinking pairs produce supports_reasoning=True with switching_mode='slug'
     glm = next(c for c in result.canonical if c["model_id"] == "z-ai/glm-4.6")
     assert glm["supports_reasoning"] is True
+    assert glm["switching_mode"] == "slug"
     assert glm["pair"]["thinking_slug"] == "z-ai/glm-4.6:thinking"
+
+    # switchable singleton: gpt-5 has capabilities.reasoning=true and no pair
+    gpt5 = next(c for c in result.canonical if c["model_id"] == "openai/gpt-5")
+    assert gpt5["supports_reasoning"] is True
+    assert gpt5["switching_mode"] == "flag"
+    assert gpt5["pair"]["non_thinking_slug"] == "openai/gpt-5"
+    assert gpt5["pair"]["thinking_slug"] == "openai/gpt-5"
 
 
 def test_build_catalogue_counts_match_inputs():
     dump = json.loads((FIXTURE_DIR / "mini_dump.json").read_text())
     raw = dump["data"]
     result = build_catalogue(raw)
-    # Every raw entry is either in canonical or rejected (each pair counts
-    # its two raw entries as one canonical + zero rejected, since pair
-    # members are not in rejected).
+    # Every raw entry is either in canonical or rejected. Slug-switched
+    # pairs consume two raw entries (one canonical + zero rejected);
+    # flag- and none-mode entries consume one each.
     canonical_consumed = 0
     for c in result.canonical:
-        canonical_consumed += 2 if c["pair"]["thinking_slug"] else 1
+        canonical_consumed += 2 if c["switching_mode"] == "slug" else 1
     assert canonical_consumed + len(result.rejected) == len(raw)
+
+
+def test_build_catalogue_plain_singleton_no_switching():
+    raw = [
+        {
+            "id": "vendor/plain-chat-model",
+            "context_length": 200000,
+            "capabilities": {"reasoning": False, "tool_calling": True},
+        },
+    ]
+    result = build_catalogue(raw)
+    block = next(c for c in result.canonical if c["model_id"] == "vendor/plain-chat-model")
+    assert block["supports_reasoning"] is False
+    assert block["switching_mode"] == "none"
+    assert block["pair"]["thinking_slug"] is None
+    assert result.summary["switchable_singleton_count"] == 0
+
+
+def test_build_catalogue_counts_switchable_singletons():
+    dump = json.loads((FIXTURE_DIR / "mini_dump.json").read_text())
+    result = build_catalogue(dump["data"])
+    # gpt-5 in mini_dump qualifies as a switchable singleton.
+    assert result.summary["switchable_singleton_count"] >= 1
 
 
 def test_build_catalogue_summary_counts():

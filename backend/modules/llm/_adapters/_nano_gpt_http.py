@@ -4,22 +4,28 @@ Implements the model catalogue (filter / pair / map via
 ``_nano_gpt_catalog``), persists the pair map to Redis
 (``_nano_gpt_pair_map``), and drives an OpenAI-compatible SSE
 streaming loop in ``stream_completion`` that picks the correct
-upstream slug (thinking vs non-thinking) from the pair map at
-request time.
+upstream call (slug + body flag) from the pair map at request time.
 
-Thinking activation — nano-gpt supports thinking in two ways:
+Thinking activation — nano-gpt has three switching modes captured by
+``switching_mode`` in the pair map:
 
-1. Primary: pick the ``thinking_slug`` from the pair map as the
-   upstream model. This is how every dual-slug model is routed.
-2. Defensive: when (and only when) the resolved upstream slug is
-   the thinking variant, ``_build_chat_payload`` also sets
-   ``reasoning_effort: "medium"`` in the request body. This is a
-   belt-and-braces signal for upstream routers that inspect the
-   body rather than the slug.
+* ``slug``: classic dual-slug pair (``:thinking`` / ``-thinking`` or
+  inverted ``-nothinking``). Pick the matching half. Body MUST NOT
+  carry any reasoning flag — empirically the body flag wins over the
+  slug, which would silently invert the user's intent.
+* ``flag``: switchable singleton — same slug regardless, the toggle
+  lives in the request body as ``{"reasoning": {"enabled": …}}`` (the
+  OpenRouter unified reasoning object). Always send the field, even
+  with ``enabled: false`` — vendors disagree on the default direction.
+* ``none``: plain singleton with no reasoning option. Slug stays the
+  same, body never carries a reasoning flag. If the user toggles
+  reasoning on regardless, the request still proceeds (matches the
+  capability-gated UI behaviour).
 
-**Non-thinking slugs must never carry a reasoning / reasoning_effort
-/ thinking field in the body.** This is gated by the ``is_thinking_slug``
-kwarg in ``_build_chat_payload`` and enforced by the test suite.
+The contract surfaced to chatsune's frontend via ``ModelMetaDto``
+collapses ``slug`` and ``flag`` into ``supports_reasoning=True`` —
+both mean "this model has a reasoning toggle" from the UI's
+perspective. ``none`` maps to ``supports_reasoning=False``.
 
 SSE field names — the default ``/api/v1/chat/completions`` endpoint
 streams reasoning in ``delta.reasoning``; the legacy
@@ -71,6 +77,12 @@ _log = logging.getLogger(__name__)
 # Opt-in payload tracing for cache-miss debugging. Enable via
 # LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
 _TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
+
+# Opt-in per-chunk delta tracing. Enable via LLM_TRACE_DELTAS=1 in the
+# environment. Logs every reasoning / content delta seen on the wire
+# with length and a short preview. Temporary — intended for
+# diagnosing "TTFT then long pause" issues; keep off in production.
+_TRACE_DELTAS = os.environ.get("LLM_TRACE_DELTAS") == "1"
 
 GUTTER_SLOW_SECONDS: float = 30.0
 GUTTER_ABORT_SECONDS: float = float(
@@ -162,10 +174,20 @@ def _chunk_to_events(
     # arrive together in a single chunk in practice.
     reasoning = delta.get("reasoning") or delta.get("reasoning_content") or ""
     if reasoning:
+        if _TRACE_DELTAS:
+            _log.info(
+                "LLM_TRACE path=nano-gpt-in kind=reasoning len=%d preview=%r",
+                len(reasoning), reasoning[:40],
+            )
         events.append(ThinkingDelta(delta=reasoning))
 
     content = delta.get("content") or ""
     if content:
+        if _TRACE_DELTAS:
+            _log.info(
+                "LLM_TRACE path=nano-gpt-in kind=content len=%d preview=%r",
+                len(content), content[:40],
+            )
         events.append(ContentDelta(delta=content))
 
     tool_frags = delta.get("tool_calls") or []
@@ -257,16 +279,21 @@ def _build_chat_payload(
     request: CompletionRequest,
     upstream_slug: str,
     *,
-    is_thinking_slug: bool,
+    send_reasoning_flag: bool,
+    reasoning_enabled: bool,
 ) -> dict:
     """Build an OpenAI-compatible chat-completions request body.
 
-    Thinking capability is primarily expressed via ``upstream_slug`` —
-    nano-gpt's pair map picks the thinking variant. For thinking-capable
-    slugs we additionally set ``reasoning_effort: "medium"`` as a
-    defensive signal to upstream routers that dispatch on the body
-    rather than on the slug. Non-thinking slugs must never carry a
-    reasoning/thinking field in the body.
+    When ``send_reasoning_flag`` is True (flag-mode dispatch), the body
+    carries ``{"reasoning": {"enabled": reasoning_enabled}}`` — the
+    OpenRouter unified reasoning object. The flag is always sent for
+    flag-mode requests, including with ``enabled: false``: vendors
+    disagree on the default direction (gpt-5 default OFF, claude-sonnet
+    default ON, mimo default ON), so omitting the flag would surrender
+    control of the toggle.
+
+    For slug-mode and none-mode dispatch, ``send_reasoning_flag`` is
+    False and the body must not carry any reasoning-related field.
     """
     payload: dict = {
         "model": upstream_slug,
@@ -274,8 +301,8 @@ def _build_chat_payload(
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
-    if is_thinking_slug:
-        payload["reasoning_effort"] = "medium"
+    if send_reasoning_flag:
+        payload["reasoning"] = {"enabled": reasoning_enabled}
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:
@@ -293,23 +320,43 @@ def _build_chat_payload(
     return payload
 
 
-def _pick_upstream_slug(
-    pair_map: dict[str, dict[str, str | None]],
-    *, model_id: str, reasoning_enabled: bool,
-) -> str | None:
-    """Return the upstream slug to dispatch to, or ``None`` if unknown.
+def _resolve_call(
+    pair: dict[str, str | None] | None,
+    model_id: str,
+    reasoning_enabled: bool,
+) -> dict:
+    """Resolve the upstream slug and whether to send the reasoning flag.
 
-    When ``reasoning_enabled`` is true but the model has no thinking
-    variant, fall back to the non-thinking slug. This matches the
-    frontend's capability-gated UI: if the user toggles reasoning on a
-    model that lacks it, we continue rather than refuse.
+    Returns ``{"slug": str, "send_reasoning_flag": bool}``.
+
+    * ``mode='slug'``: pick the matching half of the pair, never send
+      the flag (the slug already selects; an extra body flag would
+      empirically invert the user's choice).
+    * ``mode='flag'``: slug stays the same, ALWAYS send the flag —
+      including with ``reasoning_enabled=False`` — because vendors
+      disagree on the default direction. The caller mirrors
+      ``reasoning_enabled`` into the body.
+    * ``mode='none'`` or unknown model: pass ``model_id`` through, no
+      flag (capability-gated fallback when the user toggles reasoning
+      on a model that doesn't support it).
     """
-    pair = pair_map.get(model_id)
     if pair is None:
-        return None
-    if reasoning_enabled and pair.get("thinking_slug"):
-        return pair["thinking_slug"]
-    return pair["non_thinking_slug"]
+        return {"slug": model_id, "send_reasoning_flag": False}
+
+    mode = pair.get("switching_mode", "none")
+    if mode == "slug":
+        slug = (
+            pair["thinking_slug"]
+            if reasoning_enabled and pair.get("thinking_slug")
+            else pair["non_thinking_slug"]
+        )
+        return {"slug": slug, "send_reasoning_flag": False}
+    if mode == "flag":
+        return {
+            "slug": pair["non_thinking_slug"],
+            "send_reasoning_flag": True,
+        }
+    return {"slug": pair["non_thinking_slug"], "send_reasoning_flag": False}
 
 
 async def _http_get_models(
@@ -442,11 +489,8 @@ class NanoGptHttpAdapter(BaseAdapter):
         from backend.modules.llm._adapters._nano_gpt_pair_map import load_pair_map
         pair_map = await load_pair_map(self._redis, connection_id=connection.id)
 
-        upstream_slug = _pick_upstream_slug(
-            pair_map, model_id=request.model,
-            reasoning_enabled=request.reasoning_enabled,
-        )
-        if upstream_slug is None:
+        pair = pair_map.get(request.model)
+        if pair is None:
             yield StreamError(
                 error_code="model_not_found",
                 message=(
@@ -457,16 +501,12 @@ class NanoGptHttpAdapter(BaseAdapter):
             )
             return
 
-        # ``_pick_upstream_slug`` above already confirmed the model is in
-        # the pair map (otherwise we'd have returned with model_not_found).
-        # Direct indexing makes that invariant explicit.
-        pair = pair_map[request.model]
-        is_thinking_slug = bool(
-            pair.get("thinking_slug")
-            and upstream_slug == pair["thinking_slug"],
-        )
+        call = _resolve_call(pair, request.model, request.reasoning_enabled)
+        upstream_slug = call["slug"]
         payload = _build_chat_payload(
-            request, upstream_slug, is_thinking_slug=is_thinking_slug,
+            request, upstream_slug,
+            send_reasoning_flag=call["send_reasoning_flag"],
+            reasoning_enabled=request.reasoning_enabled,
         )
         headers = {
             "Content-Type": "application/json",

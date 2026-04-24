@@ -193,9 +193,13 @@ def to_model_meta(
 ) -> tuple[ModelMetaDto, dict[str, Any]]:
     """Build a ModelMetaDto plus adapter-internal extras.
 
-    If pair_info is given, the canonical model_id comes from pair_info
-    (handling inverted pairs correctly); supports_reasoning = True.
-    Otherwise, the entry's own id is used and supports_reasoning = False.
+    Three cases:
+      * pair_info given           → slug-switched pair (switching_mode='slug')
+      * singleton, reasoning=True → flag-switched (switching_mode='flag')
+      * singleton, reasoning≠True → no switching   (switching_mode='none')
+
+    For ``flag`` entries ``non_thinking_slug == thinking_slug == model_id``;
+    the toggle lives in the request body rather than in the slug.
     """
     caps = entry.get("capabilities") or {}
     name = entry.get("name") or derive_display_name(entry["id"])
@@ -203,16 +207,24 @@ def to_model_meta(
     is_subscription = bool(subscription.get("included"))
     billing_category = "subscription" if is_subscription else "pay_per_token"
 
-    if pair_info is None:
-        model_id = entry["id"]
-        supports_reasoning = False
-        thinking_slug: str | None = None
-        non_thinking_slug = entry["id"]
-    else:
+    if pair_info is not None:
         model_id = pair_info.get("model_id") or pair_info["non_thinking_slug"]
         supports_reasoning = True
-        thinking_slug = pair_info["thinking_slug"]
+        thinking_slug: str | None = pair_info["thinking_slug"]
         non_thinking_slug = pair_info["non_thinking_slug"]
+        switching_mode = "slug"
+    elif caps.get("reasoning") is True:
+        model_id = entry["id"]
+        supports_reasoning = True
+        thinking_slug = entry["id"]
+        non_thinking_slug = entry["id"]
+        switching_mode = "flag"
+    else:
+        model_id = entry["id"]
+        supports_reasoning = False
+        thinking_slug = None
+        non_thinking_slug = entry["id"]
+        switching_mode = "none"
 
     meta = ModelMetaDto(
         connection_id="",
@@ -228,6 +240,7 @@ def to_model_meta(
         "non_thinking_slug": non_thinking_slug,
         "thinking_slug": thinking_slug,
         "is_subscription": is_subscription,
+        "switching_mode": switching_mode,
     }
     return meta, extras
 
@@ -265,6 +278,7 @@ def build_catalogue(raw: list[RawEntry]) -> CatalogueResult:
         pair_map[meta.model_id] = {
             "non_thinking_slug": extras["non_thinking_slug"],
             "thinking_slug": extras["thinking_slug"],
+            "switching_mode": extras["switching_mode"],
         }
 
     # Then singles.
@@ -274,7 +288,8 @@ def build_catalogue(raw: list[RawEntry]) -> CatalogueResult:
         canonical.append(block)
         pair_map[meta.model_id] = {
             "non_thinking_slug": extras["non_thinking_slug"],
-            "thinking_slug": None,
+            "thinking_slug": extras["thinking_slug"],
+            "switching_mode": extras["switching_mode"],
         }
 
     # Quality-note collection (for nano-gpt curation-team feedback).
@@ -303,6 +318,9 @@ def build_catalogue(raw: list[RawEntry]) -> CatalogueResult:
     canonical.sort(key=lambda b: b["model_id"])
     rejected.sort(key=lambda r: (r["reason"], r["id"]))
 
+    switchable_singleton_count = sum(
+        1 for v in pair_map.values() if v["switching_mode"] == "flag"
+    )
     summary = {
         "input_count": len(raw),
         "after_filter_context": len(step1),
@@ -310,6 +328,7 @@ def build_catalogue(raw: list[RawEntry]) -> CatalogueResult:
         "pair_count": len(pairs),
         "pair_inverted_count": sum(1 for p in pairs if p["inverted"]),
         "singles_after_reasoning_only": len(step3_singles),
+        "switchable_singleton_count": switchable_singleton_count,
         "canonical_count": len(canonical),
         "rejected_count": len(rejected),
     }
@@ -332,6 +351,7 @@ def _block(meta: ModelMetaDto, extras: dict[str, Any]) -> dict[str, Any]:
         "supports_tool_calls": meta.supports_tool_calls,
         "billing_category": meta.billing_category,
         "is_subscription": extras["is_subscription"],
+        "switching_mode": extras["switching_mode"],
         "pair": {
             "non_thinking_slug": extras["non_thinking_slug"],
             "thinking_slug": extras["thinking_slug"],
