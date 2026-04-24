@@ -474,6 +474,7 @@ export function ChatView({ persona }: ChatViewProps) {
   // Conversation-mode active state — read once here so we can override
   // auto_read while the user is in a live conversation.
   const conversationActive = useConversationModeStore((s) => s.active)
+  const conversationMicMuted = useConversationModeStore((s) => s.micMuted)
   const conversationPhase = usePhase()
   const conversationIsHolding = useConversationModeStore((s) => s.isHolding)
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
@@ -1268,7 +1269,9 @@ export function ChatView({ persona }: ChatViewProps) {
           )}
 
           {transcription && <TranscriptionOverlay text={transcription} autoSend={autoSendTranscription} />}
-          {conversationActive && (conversationPhase === 'user-speaking' || conversationPhase === 'held') && (
+          {conversationActive
+            && !conversationMicMuted
+            && (conversationPhase === 'user-speaking' || conversationPhase === 'held') && (
             <HoldToKeepTalking
               isHolding={conversationIsHolding}
               onHoldStart={() => setConversationHolding(true)}

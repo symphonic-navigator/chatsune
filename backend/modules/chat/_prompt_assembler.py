@@ -120,6 +120,20 @@ async def assemble(
         integration_prompt = await get_integration_prompt_extensions(user_id, persona_id)
         if integration_prompt:
             parts.append(integration_prompt)
+    else:
+        # Without an explicit "no tools available" instruction, the model
+        # answers "which tools do you have?" from its own training / the
+        # prior assistant turns in the conversation history — where
+        # previous responses may have listed tools that were once active.
+        # This layer tells it plainly that nothing is callable right now.
+        parts.append(
+            '<toolavailability priority="high">\n'
+            'You have no tools available in this conversation right now. '
+            'Do not attempt to call any tool, and do not claim to have '
+            'any — if asked about your tools, say they are disabled for '
+            'this session.\n'
+            '</toolavailability>'
+        )
 
     # Layer 4: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():
