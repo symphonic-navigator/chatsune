@@ -87,6 +87,13 @@ export interface ModelMetaDto {
    * as false. See shared/dtos/llm.py::ModelMetaDto.is_deprecated.
    */
   is_deprecated?: boolean
+  /**
+   * How this model bills the user. ``free`` = no cost, ``subscription`` =
+   * covered by an upstream plan (Ollama Cloud, nano-gpt subscription tier),
+   * ``pay_per_token`` = metered. Optional for backwards compat with older
+   * cached payloads — treat missing/null as "unknown".
+   */
+  billing_category?: 'free' | 'subscription' | 'pay_per_token' | null
   unique_id: string
 }
 
