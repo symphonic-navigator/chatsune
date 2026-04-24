@@ -32,6 +32,8 @@ export type ConversationPhase =
 export interface ConversationModeState {
   active: boolean
   isHolding: boolean
+  /** Whether the microphone is muted while in live mode. */
+  micMuted: boolean
   /** Session reasoning_override captured on entry, so we can restore on exit. */
   previousReasoningOverride: boolean | null
   /** Mirror of bargeController.current?.state; null when no Barge is in flight. */
@@ -44,6 +46,8 @@ export interface ConversationModeState {
   enter: () => void
   exit: () => void
   setHolding: (holding: boolean) => void
+  /** Mute or unmute the microphone while in live mode. */
+  setMicMuted: (muted: boolean) => void
   setPreviousReasoning: (value: boolean | null) => void
   setCurrentBargeState: (state: BargeState | null) => void
   setSttInFlight: (value: boolean) => void
@@ -53,6 +57,7 @@ export interface ConversationModeState {
 export const useConversationModeStore = create<ConversationModeState>((set) => ({
   active: false,
   isHolding: false,
+  micMuted: false,
   previousReasoningOverride: null,
   currentBargeState: null,
   sttInFlight: false,
@@ -62,11 +67,13 @@ export const useConversationModeStore = create<ConversationModeState>((set) => (
   exit: () => set({
     active: false,
     isHolding: false,
+    micMuted: false,
     currentBargeState: null,
     sttInFlight: false,
     vadActive: false,
   }),
   setHolding: (isHolding) => set({ isHolding }),
+  setMicMuted: (micMuted) => set({ micMuted }),
   setPreviousReasoning: (value) => set({ previousReasoningOverride: value }),
   setCurrentBargeState: (currentBargeState) => set({ currentBargeState }),
   setSttInFlight: (sttInFlight) => set({ sttInFlight }),
