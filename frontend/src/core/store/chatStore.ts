@@ -46,7 +46,8 @@ interface ChatState {
   error: ChatError | null
   streamingSlow: boolean
   sessionTitle: string | null
-  disabledToolGroups: string[]
+  toolsEnabled: boolean
+  autoRead: boolean
   reasoningOverride: boolean | null
   setMessages: (messages: ChatMessageDto[]) => void
   appendMessage: (message: ChatMessageDto) => void
@@ -72,7 +73,8 @@ interface ChatState {
   clearError: () => void
   setStreamingSlow: (slow: boolean) => void
   setSessionTitle: (title: string | null) => void
-  setDisabledToolGroups: (groups: string[]) => void
+  setToolsEnabled: (value: boolean) => void
+  setAutoRead: (value: boolean) => void
   setContextStatus: (status: ContextStatus) => void
   setContextFillPercentage: (percentage: number) => void
   setContextTokens: (used: number, max: number) => void
@@ -101,7 +103,8 @@ const INITIAL_STATE = {
   error: null as ChatError | null,
   streamingSlow: false,
   sessionTitle: null as string | null,
-  disabledToolGroups: [] as string[],
+  toolsEnabled: false,
+  autoRead: false,
   reasoningOverride: null as boolean | null,
   activeSessionId: null as string | null,
 }
@@ -191,7 +194,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   clearError: () => set({ error: null }),
   setStreamingSlow: (slow) => set({ streamingSlow: slow }),
   setSessionTitle: (title) => set({ sessionTitle: title }),
-  setDisabledToolGroups: (groups) => set({ disabledToolGroups: groups }),
+  setToolsEnabled: (value) => set({ toolsEnabled: value }),
+  setAutoRead: (value) => set({ autoRead: value }),
   setContextStatus: (status) => set({ contextStatus: status }),
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setContextTokens: (used, max) => set({ contextUsedTokens: used, contextMaxTokens: max }),

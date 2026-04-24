@@ -203,7 +203,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
-  const disabledToolGroups = useChatStore((s) => s.disabledToolGroups)
   const reasoningOverride = useChatStore((s) => s.reasoningOverride)
 
   const personaReasoningDefault = persona?.reasoning_enabled ?? false
@@ -378,7 +377,8 @@ export function ChatView({ persona }: ChatViewProps) {
       .then((session) => {
         if (cancelled) return
         useChatStore.getState().setSessionTitle(session.title)
-        useChatStore.getState().setDisabledToolGroups(session.disabled_tool_groups ?? [])
+        useChatStore.getState().setToolsEnabled(session.tools_enabled ?? false)
+        useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
         applyModelCapabilities(persona?.model_unique_id)
       })
@@ -1034,9 +1034,10 @@ export function ChatView({ persona }: ChatViewProps) {
                 </span>
               )}
             </button>
+            {/* TODO(cockpit): removed in Task 22 */}
             {toolPopoverOpen && (
               <ToolPopover
-                disabledToolGroups={disabledToolGroups}
+                disabledToolGroups={[]}
                 personaMcpConfig={persona?.mcp_config ?? null}
                 onClose={() => setToolPopoverOpen(false)}
               />
@@ -1247,11 +1248,12 @@ export function ChatView({ persona }: ChatViewProps) {
             toolBar={effectiveSessionId ? (
               <>
                 {/* Desktop: inline tool toggles. */}
+                {/* TODO(cockpit): removed in Task 22 */}
                 <div className="hidden lg:block">
                   <ToolToggles
                     sessionId={effectiveSessionId}
-                    disabledToolGroups={disabledToolGroups}
-                    onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                    disabledToolGroups={[]}
+                    onToggle={() => {/* noop — replaced in Task 22 */}}
                     disabled={isStreaming}
                     modelSupportsTools={modelSupportsTools}
                     modelSupportsReasoning={modelSupportsReasoning}
@@ -1321,13 +1323,14 @@ export function ChatView({ persona }: ChatViewProps) {
                     </button>
                   </div>
                   <ChatIntegrationsPanel persona={persona} />
+                  {/* TODO(cockpit): removed in Task 22 */}
                   {mobileToolsOpen && (
                     <div className="mt-2 rounded border border-white/8 bg-white/4 px-3 py-2">
                       <div className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-2">
                         <ToolToggles
                           sessionId={effectiveSessionId}
-                          disabledToolGroups={disabledToolGroups}
-                          onToggle={(groups) => useChatStore.getState().setDisabledToolGroups(groups)}
+                          disabledToolGroups={[]}
+                          onToggle={() => {/* noop — replaced in Task 22 */}}
                           disabled={isStreaming}
                           modelSupportsTools={modelSupportsTools}
                           modelSupportsReasoning={modelSupportsReasoning}
