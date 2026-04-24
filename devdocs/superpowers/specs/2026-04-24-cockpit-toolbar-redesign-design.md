@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-24
 **Status:** Approved — ready for implementation planning
-**Scope:** Frontend only
+**Scope:** Frontend, plus a small backend extension to the ChatSession state
 
 ## Summary
 
@@ -29,7 +29,7 @@ The cockpit collapses everything into one responsive row — informative at a gl
 
 ## Non-goals / deferred
 
-- **Backend changes.** The redesign is frontend-only. Existing integration, tool and voice APIs are sufficient.
+- **Backend changes beyond the ChatSession state fields described in "Backend changes" below.** LLM adapter code, integration APIs and voice APIs remain as they are.
 - **Model capability detection for reasoning + tools conflict.** We currently do not know, per model, whether reasoning and tool use can coexist. For now both toggles are independently operable; no warning, no lock. This is a known unknown, revisited after the platform answers whether per-model capability metadata is maintained by us or sourced elsewhere.
 - **Changing how integrations are activated for a persona.** Activation continues to live in the persona editor; the cockpit only surfaces active state and the emergency stop.
 
@@ -85,18 +85,20 @@ Each button component is a thin adapter that reads the right store(s), composes 
 
 ## State model
 
-`cockpitStore` (Zustand) holds three fields **per `sessionId`**:
+The authoritative state for the three session toggles lives on the **ChatSession document in the backend**. The frontend `cockpitStore` is a thin cache that mirrors those three fields for the currently open chat and writes through to the existing session-update API on toggle.
+
+`cockpitStore` (Zustand) holds, **per `sessionId`**:
 
 ```ts
 type CockpitSessionState = {
-  thinking: boolean
-  tools: boolean
-  autoRead: boolean
+  thinking: boolean     // mirrors ChatSession.reasoning_override
+  tools: boolean        // mirrors ChatSession.tools_enabled
+  autoRead: boolean     // mirrors ChatSession.auto_read
 }
 type CockpitStore = {
   bySession: Record<string, CockpitSessionState>
-  ensureSession(sessionId: string, defaults: CockpitSessionState): void
-  setThinking(sessionId: string, value: boolean): void
+  hydrateFromServer(sessionId: string, state: CockpitSessionState): void
+  setThinking(sessionId: string, value: boolean): void  // writes to server, then updates cache
   setTools(sessionId: string, value: boolean): void
   setAutoRead(sessionId: string, value: boolean): void
 }
@@ -104,20 +106,55 @@ type CockpitStore = {
 
 Rules:
 
-- The store is transient (in-memory, not persisted to localStorage). A full browser reload resets to persona defaults.
-- Switching between existing chats preserves each chat's last state inside the same browser session.
-- Switching to a brand-new chat (even of the same persona) recomputes defaults (variant α — no cross-chat carry-over).
-- Voice pipeline state, integrations config/health and conversation-mode state remain in their current stores (`voicePipelineStore`, `useIntegrationsStore`, `useConversationModeStore`). Only the three session toggles move.
+- On chat open, the frontend receives the three toggle values from the session payload and hydrates the cache.
+- Toggles persist across browser reloads and across devices, because they live on the server.
+- Switching between existing chats shows each chat's own persisted state.
+- Switching to a brand-new chat: the server computes persona-derived defaults at chat-create time (see "Backend changes"). The frontend simply receives them.
+- Voice pipeline state, integrations config/health and conversation-mode state remain in their current stores (`voicePipelineStore`, `useIntegrationsStore`, `useConversationModeStore`). Only the three session toggles move into `cockpitStore`.
 
-## Persona defaults on chat open
+## Persona defaults on chat create
 
-When a chat mounts and its persona is known, `ensureSession(sessionId, defaults)` is called with:
+Defaults are computed **on the backend at session-create time**, not on the frontend. The algorithm is:
 
-- `thinking` → always `false`. Rationale: Thinking is a deliberate per-chat choice; no persona expresses a default for it today.
-- `tools` → `true` if any active integration for this persona publishes at least one tool group; otherwise `false`. Rationale: a user who wires an integration to a persona clearly wants its tools active; making them toggle it on every chat is a support footgun.
-- `autoRead` → `true` if `persona.voice_config` has both a TTS provider and a dialogue voice; otherwise `false`.
+- `reasoning_override` → `None` (unchanged from today). Surfaced in the cockpit as `thinking = false`.
+- `tools_enabled` → `true` if any active integration on this persona publishes at least one tool group; otherwise `false`. Rationale: a user who wires an integration to a persona clearly wants its tools active; making them toggle it on every chat is a support footgun.
+- `auto_read` → `true` if `persona.voice_config` has both a TTS provider and a dialogue voice; otherwise `false`.
 
-The same function is a no-op if the session already exists in the store, so reopening a chat preserves the user's in-flight toggles.
+Once set, the user's overrides on that session are authoritative. Opening an existing chat never recomputes defaults.
+
+## Backend changes
+
+All changes are in the chat module's ChatSession Pydantic model and its API handlers.
+
+### New fields
+
+- **`tools_enabled: bool = False`** — master switch for tool use on this session. The request pipeline, when building the tool list for the LLM call, returns an empty list if `tools_enabled` is `False`, regardless of which tool groups would otherwise be available. Default `False` in the Pydantic model so pre-existing documents without the field deserialise cleanly.
+- **`auto_read: bool = False`** — master switch for auto-play of assistant TTS on this session. The voice pipeline consults this flag when deciding whether to auto-play a completed assistant message. Default `False` in the Pydantic model.
+
+### Removed field
+
+- **`disabled_tool_groups` (`list[str]`) is removed.** Per-group toggling is no longer exposed in the UI; the master switch replaces it.
+
+### Migration (no-wipe)
+
+Because we are past the wipe cut-off, removal needs a migration. The one-shot script under `backend/migrations/`:
+
+1. Iterates all ChatSession documents.
+2. For each document, `$unset`s `disabled_tool_groups` if present.
+3. Sets `tools_enabled` and `auto_read` on documents that don't have them, using the persona-default algorithm (see above), so that already-open chats carry sensible values instead of silently defaulting to `False`.
+4. Is idempotent — re-running the migration over already-migrated documents is a no-op.
+
+The Pydantic model defaults to `False` for both new fields so that a startup against an un-migrated database still deserialises without errors; the migration is a one-shot to promote existing chats to meaningful values rather than a correctness requirement for reads.
+
+### API surface
+
+No new endpoints. The existing session-update endpoint (already used for `reasoning_override`) accepts the two new fields. The frontend writes through on toggle and reads the fields out of the session payload on chat open.
+
+### Request-pipeline integration
+
+- Tool list construction: if `session.tools_enabled is False` → empty tool list to the LLM, full stop.
+- Voice pipeline auto-play: reads `session.auto_read` on each completed assistant message.
+- `session.reasoning_override` remains the authoritative flag for the LLM adapter; unchanged.
 
 ## Button behaviour
 
@@ -197,8 +234,8 @@ All UI strings in the cockpit are in English (British spelling). No German. This
 
 ## Interactions with other subsystems
 
-- **Tools on/off propagation.** When `cockpitStore.tools` is `false` for a session, the chat request pipeline must send the model a tool list of length zero (or omit the tools parameter), regardless of what integrations are active. This is how the user "experiences reasoning" on models that silently fall back to non-reasoning when tools are present. The existing request construction code already accepts an empty tool list; the cockpit simply feeds this flag.
-- **Auto-read on/off propagation.** The voice pipeline reads `cockpitStore.autoRead` for the current session when deciding whether to auto-play the next completed assistant message. Persona voice config continues to provide the *default*, not the runtime value.
+- **Tools on/off propagation.** The backend honours `session.tools_enabled`: when `False`, the tool list sent to the LLM is empty regardless of which integrations would otherwise contribute tools. This is how the user "experiences reasoning" on models that silently fall back to non-reasoning when tools are present.
+- **Auto-read on/off propagation.** The backend voice pipeline reads `session.auto_read` when deciding whether to auto-play a completed assistant message. Persona voice config continues to provide the *default*, computed at chat-create time, not the runtime value.
 - **Integrations emergency stop.** Reuses the existing `emergencyStop(config)` per plugin and the TTS audio cancel path.
 - **Live mode.** Entering or leaving live mode does not clear the session toggles. A user who had Tools on in the normal chat keeps them on when they switch to live mode.
 
@@ -221,8 +258,9 @@ Before declaring this done, perform on a real device:
 5. **Magic button cycle (live mode):** enter live mode; speak; while assistant replies, click `⏹` → playback stops, mic still in whatever state it was. Click again → mic mutes. Click again → mic unmutes.
 6. **Integrations popover:** click `🔌` → per-integration `Stop` cancels that integration; `Emergency stop — all` cancels all integrations and any in-flight TTS.
 7. **Mobile info modal:** on a phone, tap `ⓘ` → bottom sheet shows five accordion sections; Integrations section contains working stop buttons; swipe down dismisses the sheet.
-8. **Chat switching:** in browser A, set Thinking on in chat X, switch to chat Y (different persona), back to chat X → chat X still shows Thinking on, chat Y shows its own persona-derived defaults. Reload the page → chat X resets to its persona defaults.
+8. **Chat switching and persistence:** set Thinking on in chat X, switch to chat Y (different persona), back to chat X → chat X still shows Thinking on, chat Y shows its own persona-derived defaults. Reload the page → state is preserved (it is persisted server-side on the ChatSession).
 9. **Disabled explanations:** every disabled button, when hovered or tapped via the info modal, shows the correct remedial text.
+10. **Migration against pre-existing data:** run the backend against a MongoDB that still contains ChatSessions with `disabled_tool_groups` and no `tools_enabled` / `auto_read` fields → reads succeed without errors, the migration script promotes `tools_enabled` and `auto_read` to persona-derived values and removes `disabled_tool_groups`.
 
 ## Known unknowns
 
