@@ -457,7 +457,10 @@ class NanoGptHttpAdapter(BaseAdapter):
             )
             return
 
-        pair = pair_map.get(request.model) or {}
+        # ``_pick_upstream_slug`` above already confirmed the model is in
+        # the pair map (otherwise we'd have returned with model_not_found).
+        # Direct indexing makes that invariant explicit.
+        pair = pair_map[request.model]
         is_thinking_slug = bool(
             pair.get("thinking_slug")
             and upstream_slug == pair["thinking_slug"],
