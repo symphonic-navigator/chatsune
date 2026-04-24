@@ -273,6 +273,28 @@ def test_chunk_to_events_thinking_delta_from_reasoning_content():
     assert events == [ThinkingDelta(delta="thinking…")]
 
 
+def test_chunk_to_events_thinking_delta_from_reasoning_field():
+    """Default nano-gpt endpoint streams reasoning in delta.reasoning."""
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events(
+        {"choices": [{"delta": {"reasoning": "thinking…"}}]}, acc,
+    )
+    assert events == [ThinkingDelta(delta="thinking…")]
+
+
+def test_chunk_to_events_reasoning_takes_precedence_over_reasoning_content():
+    """If a single delta somehow carries both (never expected in practice),
+    ``reasoning`` wins so the modern field name is authoritative."""
+    acc = _ToolCallAccumulator()
+    events = _chunk_to_events(
+        {"choices": [{"delta": {
+            "reasoning": "modern",
+            "reasoning_content": "legacy",
+        }}]}, acc,
+    )
+    assert events == [ThinkingDelta(delta="modern")]
+
+
 def test_chunk_to_events_usage_only_emits_stream_done_with_tokens():
     acc = _ToolCallAccumulator()
     events = _chunk_to_events(
@@ -443,6 +465,7 @@ async def test_stream_completion_happy_path_non_thinking(redis_client, monkeypat
     # Upstream slug used is the non-thinking variant; Authorization header set.
     assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6"
     assert "reasoning" not in fake.posted_payload
+    assert "reasoning_effort" not in fake.posted_payload
     assert "thinking" not in fake.posted_payload
     assert fake.posted_headers["Authorization"] == "Bearer nano-test-key"
     assert fake.posted_url.endswith("/chat/completions")
@@ -547,3 +570,136 @@ async def test_stream_completion_requires_redis():
     with pytest.raises(RuntimeError, match="Redis"):
         async for _ in agen:
             pass
+
+
+# ---------------------------------------------------------------------------
+# _build_chat_payload unit tests — reasoning_effort gate
+# ---------------------------------------------------------------------------
+
+from backend.modules.llm._adapters._nano_gpt_http import _build_chat_payload
+
+
+def _basic_request(model: str = "m1") -> CompletionRequest:
+    return CompletionRequest(
+        model=model,
+        messages=[CompletionMessage(
+            role="user",
+            content=[ContentPart(type="text", text="hi")],
+        )],
+    )
+
+
+def test_build_chat_payload_thinking_slug_sets_reasoning_effort():
+    req = _basic_request()
+    payload = _build_chat_payload(
+        req, upstream_slug="m1:thinking", is_thinking_slug=True,
+    )
+    assert payload["reasoning_effort"] == "medium"
+    assert payload["model"] == "m1:thinking"
+
+
+def test_build_chat_payload_non_thinking_slug_has_no_reasoning_keys():
+    req = _basic_request()
+    payload = _build_chat_payload(
+        req, upstream_slug="m1", is_thinking_slug=False,
+    )
+    forbidden = {"reasoning", "reasoning_effort", "reasoning_content", "thinking"}
+    assert not (forbidden & set(payload.keys())), (
+        f"Non-thinking slug leaked reasoning keys: {forbidden & set(payload.keys())}"
+    )
+    assert payload["model"] == "m1"
+
+
+# ---------------------------------------------------------------------------
+# stream_completion — reasoning_effort gate end-to-end tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_stream_completion_non_thinking_omits_reasoning_effort(
+    redis_client, monkeypatch,
+):
+    """Non-thinking dispatch: body must not carry reasoning_effort."""
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    async for _ in adapter.stream_completion(
+        conn, _make_request("anthropic/claude-opus-4.6", reasoning_enabled=False),
+    ):
+        pass
+
+    assert "reasoning_effort" not in fake.posted_payload
+    assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_thinking_sets_reasoning_effort(
+    redis_client, monkeypatch,
+):
+    """Thinking dispatch on a dual-slug model: reasoning_effort=medium,
+    and the thinking_slug is used."""
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"reasoning":"…"}}]}',
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    async for _ in adapter.stream_completion(
+        conn, _make_request("anthropic/claude-opus-4.6", reasoning_enabled=True),
+    ):
+        pass
+
+    assert fake.posted_payload["reasoning_effort"] == "medium"
+    assert fake.posted_payload["model"] == "anthropic/claude-opus-4.6:thinking"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_reasoning_on_no_thinking_variant_omits_flag(
+    redis_client, monkeypatch,
+):
+    """Model with thinking_slug=None: reasoning toggled ON in the UI
+    must still NOT send reasoning_effort, since we'd be dispatching to
+    the non-thinking slug anyway. Capability-gated fallback."""
+    conn = _resolved_conn()
+    await _populate_pair_map(redis_client, conn.id)  # has free/phi-small with thinking_slug=None
+
+    sse_lines = [
+        'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        'data: [DONE]',
+    ]
+    fake = _FakeClient(_FakeResponse(200, sse_lines))
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        lambda *a, **k: fake,
+    )
+
+    adapter = NanoGptHttpAdapter(redis=redis_client)
+    async for _ in adapter.stream_completion(
+        conn, _make_request("free/phi-small", reasoning_enabled=True),
+    ):
+        pass
+
+    assert "reasoning_effort" not in fake.posted_payload
+    assert fake.posted_payload["model"] == "free/phi-small"

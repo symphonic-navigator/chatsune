@@ -3,7 +3,7 @@ import { llmApi } from '../../../core/api/llm'
 import { providersApi } from '../../../core/api/providers'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import type { EnrichedModelDto } from '../../../core/types/llm'
-import { applyModelFilters, slugWithoutConnection, sortModels, type ModelFilters } from './modelFilters'
+import { applyModelFilters, slugWithoutConnection, sortModels, type BillingFilter, type ModelFilters } from './modelFilters'
 import { ModelConfigModal } from './ModelConfigModal'
 import { useCollapsedGroups } from './modelBrowserStore'
 
@@ -36,15 +36,17 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   const [filters, setFilters] = useState<ModelFilters>({})
   const [search, setSearch] = useState('')
   const [providerFilter, setProviderFilter] = useState<string>('')
+  const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const [configModel, setConfigModel] = useState<EnrichedModelDto | null>(null)
 
   const effectiveFilters = useMemo<ModelFilters>(() => ({
     ...filters,
     search,
+    billing: billingFilter,
     capTools: filters.capTools || !!lockedFilters?.capTools,
     capVision: filters.capVision || !!lockedFilters?.capVision,
     capReason: filters.capReason || !!lockedFilters?.capReason,
-  }), [filters, search, lockedFilters])
+  }), [filters, search, billingFilter, lockedFilters])
 
   const filteredGroups = useMemo(() => {
     return groups
@@ -121,6 +123,18 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
               {g.connection.display_name} — {g.connection.slug}
             </option>
           ))}
+        </select>
+        <select
+          value={billingFilter}
+          onChange={(e) => setBillingFilter(e.target.value as BillingFilter)}
+          className="rounded border border-white/15 bg-black/30 px-2 py-1 text-[12px] text-white/80"
+          aria-label="Filter by billing category"
+        >
+          <option value="all" style={OPTION_STYLE}>All billing</option>
+          <option value="no_per_token" style={OPTION_STYLE}>No per-token cost</option>
+          <option value="free" style={OPTION_STYLE}>Free only</option>
+          <option value="subscription" style={OPTION_STYLE}>Subscription only</option>
+          <option value="pay_per_token" style={OPTION_STYLE}>Pay per token</option>
         </select>
         <Chip
           active={!!filters.favouritesOnly}

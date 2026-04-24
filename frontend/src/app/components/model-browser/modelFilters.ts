@@ -1,5 +1,12 @@
 import type { EnrichedModelDto } from '../../../core/types/llm'
 
+export type BillingFilter =
+  | 'all'
+  | 'no_per_token'
+  | 'free'
+  | 'subscription'
+  | 'pay_per_token'
+
 export interface ModelFilters {
   search?: string
   favouritesOnly?: boolean
@@ -7,6 +14,7 @@ export interface ModelFilters {
   capVision?: boolean
   capReason?: boolean
   showHidden?: boolean
+  billing?: BillingFilter
 }
 
 export type SortField = 'name' | 'context' | 'params'
@@ -42,6 +50,24 @@ export function applyModelFilters(
     if (filters.capTools && !m.supports_tool_calls) return false
     if (filters.capVision && !m.supports_vision) return false
     if (filters.capReason && !m.supports_reasoning) return false
+    if (filters.billing && filters.billing !== 'all') {
+      const cat = m.billing_category ?? null
+      if (cat === null) return false
+      switch (filters.billing) {
+        case 'no_per_token':
+          if (cat !== 'free' && cat !== 'subscription') return false
+          break
+        case 'free':
+          if (cat !== 'free') return false
+          break
+        case 'subscription':
+          if (cat !== 'subscription') return false
+          break
+        case 'pay_per_token':
+          if (cat !== 'pay_per_token') return false
+          break
+      }
+    }
     if (filters.search && !matchesSearch(m, filters.search)) return false
     return true
   })
