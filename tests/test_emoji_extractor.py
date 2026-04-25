@@ -31,3 +31,20 @@ def test_extract_emojis_returns_duplicates_in_order():
 
 def test_extract_emojis_empty_input():
     assert extract_emojis("") == []
+
+
+def test_extract_emojis_keeps_vs16_with_red_heart():
+    # ❤️ = U+2764 + U+FE0F (variation selector 16). The VS16 must stay
+    # bonded to the base — losing it would break LRU dedupe against the
+    # default set, which spells the heart with VS16.
+    assert extract_emojis("love it ❤️") == ["❤️"]
+
+
+def test_extract_emojis_handles_regional_indicator_flag_as_one_unit():
+    # 🇩🇪 = U+1F1E9 + U+1F1EA, a regional-indicator pair = Germany flag.
+    assert extract_emojis("from 🇩🇪 with love") == ["🇩🇪"]
+
+
+def test_extract_emojis_handles_two_adjacent_flags():
+    # Two flags in a row must come out as two units, not one merged.
+    assert extract_emojis("🇩🇪🇫🇷") == ["🇩🇪", "🇫🇷"]
