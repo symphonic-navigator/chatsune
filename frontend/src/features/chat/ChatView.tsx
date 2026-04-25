@@ -97,6 +97,7 @@ export function ChatView({ persona }: ChatViewProps) {
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
+  const voiceActivationThreshold = useVoiceSettingsStore((s) => s.voiceActivationThreshold)
   const sttEnabled = !!resolveSTTEngine()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
@@ -935,17 +936,37 @@ export function ChatView({ persona }: ChatViewProps) {
   const voiceSummary: {
     ttsProvider: string
     voice: string
+    narratorVoice: string | null
     mode: string
     sttProvider: string
-    sensitivity: string
+    vadThreshold: string
   } | null = personaHasVoice && persona?.voice_config
-    ? {
-        ttsProvider: persona.voice_config.tts_provider_id ?? '–',
-        voice: persona.voice_config.dialogue_voice ?? '–',
-        mode: persona.voice_config.narrator_mode ?? 'off',
-        sttProvider: resolveSTTEngine()?.name ?? 'default',
-        sensitivity: 'default',
-      }
+    ? (() => {
+        const ttsEngine = resolveTTSEngine(persona)
+        const ttsProviderId = resolveTTSIntegrationId(persona)
+        const integrationConfig =
+          (ttsProviderId ? (persona.integration_configs ?? {})[ttsProviderId] : undefined) as
+            | { voice_id?: string; narrator_voice_id?: string | null }
+            | undefined
+        const dialogueId = integrationConfig?.voice_id
+        const narratorId = integrationConfig?.narrator_voice_id ?? undefined
+        const resolveName = (id: string | undefined): string | undefined =>
+          id ? (ttsEngine?.voices.find((v) => v.id === id)?.name ?? id) : undefined
+        const narratorMode = persona.voice_config.narrator_mode ?? 'off'
+        const MODE_LABEL: Record<NarratorMode, string> = {
+          off: 'Normal',
+          play: 'Roleplay',
+          narrate: 'Narrated',
+        }
+        return {
+          ttsProvider: persona.voice_config.tts_provider_id ?? '–',
+          voice: resolveName(dialogueId) ?? '–',
+          narratorVoice: narratorMode !== 'off' ? (resolveName(narratorId) ?? '–') : null,
+          mode: MODE_LABEL[narratorMode],
+          sttProvider: resolveSTTEngine()?.name ?? 'default',
+          vadThreshold: voiceActivationThreshold,
+        }
+      })()
     : null
 
   // liveAvailability mirrors conversationAvailable; reason is 'no-voice' when

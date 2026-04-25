@@ -15,9 +15,10 @@ import { useCockpitSession } from './cockpitStore'
 type VoiceSummary = {
   ttsProvider: string
   voice: string
+  narratorVoice: string | null
   mode: string
   sttProvider: string
-  sensitivity: string
+  vadThreshold: string
 } | null
 
 type Props = {
@@ -184,9 +185,14 @@ export function CockpitBar(props: Props) {
                 <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                   <div className="text-white/50">TTS</div><div>{props.voiceSummary.ttsProvider}</div>
                   <div className="text-white/50">Voice</div><div>{props.voiceSummary.voice}</div>
+                  {props.voiceSummary.narratorVoice && (
+                    <>
+                      <div className="text-white/50">Narrator</div><div>{props.voiceSummary.narratorVoice}</div>
+                    </>
+                  )}
                   <div className="text-white/50">Mode</div><div>{props.voiceSummary.mode}</div>
                   <div className="text-white/50">STT</div><div>{props.voiceSummary.sttProvider}</div>
-                  <div className="text-white/50">Sensitivity</div><div>{props.voiceSummary.sensitivity}</div>
+                  <div className="text-white/50">VAD Threshold</div><div>{props.voiceSummary.vadThreshold}</div>
                 </div>
               ) : (
                 <p>No voice configured on this persona.</p>

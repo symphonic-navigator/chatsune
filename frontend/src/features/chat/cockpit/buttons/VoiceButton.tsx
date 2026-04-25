@@ -15,9 +15,10 @@ type Props = {
   voiceSummary: {
     ttsProvider: string
     voice: string
+    narratorVoice: string | null
     mode: string
     sttProvider: string
-    sensitivity: string
+    vadThreshold: string
   } | null
   onOpenVoiceSettings?: () => void
 }
@@ -129,9 +130,14 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
             <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
               <div className="text-white/50">TTS</div><div>{voiceSummary.ttsProvider}</div>
               <div className="text-white/50">Voice</div><div>{voiceSummary.voice}</div>
+              {voiceSummary.narratorVoice && (
+                <>
+                  <div className="text-white/50">Narrator</div><div>{voiceSummary.narratorVoice}</div>
+                </>
+              )}
               <div className="text-white/50">Mode</div><div>{voiceSummary.mode}</div>
               <div className="text-white/50">STT</div><div>{voiceSummary.sttProvider}</div>
-              <div className="text-white/50">Sensitivity</div><div>{voiceSummary.sensitivity}</div>
+              <div className="text-white/50">VAD Threshold</div><div>{voiceSummary.vadThreshold}</div>
             </div>
           )}
         </div>
