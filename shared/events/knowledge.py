@@ -81,3 +81,35 @@ class KnowledgeSearchCompletedEvent(BaseModel):
     results: list[RetrievedChunkDto]
     correlation_id: str
     timestamp: datetime
+
+
+class LibraryAttachedToSessionEvent(BaseModel):
+    type: str = "knowledge.library.attached_to_session"
+    session_id: str
+    library_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class LibraryDetachedFromSessionEvent(BaseModel):
+    type: str = "knowledge.library.detached_from_session"
+    session_id: str
+    library_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class LibraryAttachedToPersonaEvent(BaseModel):
+    type: str = "knowledge.library.attached_to_persona"
+    persona_id: str
+    library_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class LibraryDetachedFromPersonaEvent(BaseModel):
+    type: str = "knowledge.library.detached_from_persona"
+    persona_id: str
+    library_id: str
+    correlation_id: str
+    timestamp: datetime
