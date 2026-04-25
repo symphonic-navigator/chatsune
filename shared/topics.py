@@ -23,6 +23,7 @@ class Topics:
     USER_DELETED = "user.deleted"
     USER_PASSWORD_RESET = "user.password_reset"
     USER_PROFILE_UPDATED = "user.profile.updated"
+    USER_RECENT_EMOJIS_UPDATED = "user.recent_emojis.updated"
     AUDIT_LOGGED = "audit.logged"
     ERROR = "error"
     PERSONA_CREATED = "persona.created"
