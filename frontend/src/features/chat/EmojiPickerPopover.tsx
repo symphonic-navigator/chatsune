@@ -4,7 +4,10 @@ import { useRecentEmojisStore } from './recentEmojisStore'
 import { LRUBar } from './LRUBar'
 
 const Picker = lazy(() => import('@emoji-mart/react').then((m) => ({ default: m.default })))
-const dataPromise = import('@emoji-mart/data')
+
+async function loadEmojiData() {
+  return (await import('@emoji-mart/data')).default
+}
 
 interface Props {
   onSelect: (emoji: string) => void
@@ -51,7 +54,7 @@ export function EmojiPickerPopover({ onSelect, onClose }: Props) {
         <LRUBar emojis={recent} onSelect={onSelect} />
         <Suspense fallback={<PickerSkeleton />}>
           <Picker
-            data={dataPromise}
+            data={loadEmojiData}
             onEmojiSelect={(e: { native: string }) => onSelect(e.native)}
             theme="dark"
             set="native"
