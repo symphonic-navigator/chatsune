@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS
 from shared.dtos.auth import UserDto
 
 
@@ -198,4 +199,5 @@ class UserRepository:
             must_change_password=doc["must_change_password"],
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            recent_emojis=doc.get("recent_emojis") or list(DEFAULT_RECENT_EMOJIS),
         )
