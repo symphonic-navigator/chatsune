@@ -131,6 +131,36 @@ async def lifespan(app: FastAPI):
     event_bus.subscribe(Topics.EMBEDDING_BATCH_COMPLETED, handle_embedding_completed)
     event_bus.subscribe(Topics.EMBEDDING_ERROR, handle_embedding_error)
 
+    # PTI cache invalidation — invalidate-on-event, lazy rebuild on next match
+    from backend.modules.knowledge import pti_index_cache
+    from backend.modules.knowledge._pti_invalidation import (
+        on_document_created,
+        on_document_deleted,
+        on_document_updated,
+        on_library_attached_to_persona,
+        on_library_attached_to_session,
+        on_library_detached_from_persona,
+        on_library_detached_from_session,
+    )
+
+    _pti_handlers = {
+        Topics.KNOWLEDGE_DOCUMENT_CREATED: on_document_created,
+        Topics.KNOWLEDGE_DOCUMENT_UPDATED: on_document_updated,
+        Topics.KNOWLEDGE_DOCUMENT_DELETED: on_document_deleted,
+        Topics.LIBRARY_ATTACHED_TO_SESSION: on_library_attached_to_session,
+        Topics.LIBRARY_DETACHED_FROM_SESSION: on_library_detached_from_session,
+        Topics.LIBRARY_ATTACHED_TO_PERSONA: on_library_attached_to_persona,
+        Topics.LIBRARY_DETACHED_FROM_PERSONA: on_library_detached_from_persona,
+    }
+
+    def _make_pti_handler(handler):
+        async def _wrap(event: dict) -> None:
+            await handler(cache=pti_index_cache, db=get_db(), payload=event)
+        return _wrap
+
+    for _topic, _handler in _pti_handlers.items():
+        event_bus.subscribe(_topic, _make_pti_handler(_handler))
+
     _lifecycle_log = logging.getLogger("chatsune.lifecycle")
 
     # Start background job consumer
