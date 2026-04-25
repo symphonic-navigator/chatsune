@@ -1,3 +1,5 @@
+export type RefreshFrequency = 'rarely' | 'standard' | 'often'
+
 export interface KnowledgeLibraryDto {
   id: string
   name: string
@@ -6,6 +8,7 @@ export interface KnowledgeLibraryDto {
   document_count: number
   created_at: string
   updated_at: string
+  default_refresh: RefreshFrequency
 }
 
 export interface KnowledgeDocumentDto {
@@ -19,6 +22,8 @@ export interface KnowledgeDocumentDto {
   embedding_error: string | null
   created_at: string
   updated_at: string
+  trigger_phrases: string[]
+  refresh: RefreshFrequency | null
 }
 
 export interface KnowledgeDocumentDetailDto extends KnowledgeDocumentDto {

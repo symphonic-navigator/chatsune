@@ -7,7 +7,7 @@ import { useNotificationStore } from '../../../core/store/notificationStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { triggerBlobDownload } from '../../../core/utils/download'
 import type { DeletionReportDto } from '../../../core/types/deletion'
-import type { KnowledgeDocumentDto, KnowledgeLibraryDto } from '../../../core/types/knowledge'
+import type { KnowledgeDocumentDto, KnowledgeLibraryDto, RefreshFrequency } from '../../../core/types/knowledge'
 import { DocumentEditorModal } from './DocumentEditorModal'
 import { LibraryEditorModal } from './LibraryEditorModal'
 
@@ -137,7 +137,7 @@ export function KnowledgeTab() {
     ? libraries.filter((l) => !l.nsfw)
     : libraries
 
-  async function handleSaveLibrary(data: { name: string; description: string; nsfw: boolean }) {
+  async function handleSaveLibrary(data: { name: string; description: string; nsfw: boolean; default_refresh: RefreshFrequency }) {
     if (libraryModal.mode === 'create') {
       await knowledgeApi.createLibrary(data)
     } else if (libraryModal.mode === 'edit') {
@@ -169,7 +169,7 @@ export function KnowledgeTab() {
     }
   }
 
-  async function handleSaveDocument(data: { title: string; content: string; media_type: 'text/markdown' | 'text/plain' }) {
+  async function handleSaveDocument(data: { title: string; content: string; media_type: 'text/markdown' | 'text/plain'; trigger_phrases: string[]; refresh: RefreshFrequency | null }) {
     if (documentModal.mode === 'create') {
       await knowledgeApi.createDocument(documentModal.libraryId, data)
       fetchLibraries()
@@ -366,6 +366,7 @@ export function KnowledgeTab() {
                 name: libraryModal.library.name,
                 description: libraryModal.library.description ?? '',
                 nsfw: libraryModal.library.nsfw,
+                default_refresh: libraryModal.library.default_refresh,
               }
             : undefined}
           onSave={handleSaveLibrary}
@@ -375,21 +376,28 @@ export function KnowledgeTab() {
       )}
 
       {/* Document editor modal */}
-      {documentModal.mode !== 'none' && (
-        <DocumentEditorModal
-          libraryId={documentModal.libraryId}
-          initial={documentModal.mode === 'edit'
-            ? {
-                title: documentModal.doc.title,
-                content: documentModal.doc.content,
-                media_type: documentModal.doc.media_type,
-              }
-            : undefined}
-          onSave={handleSaveDocument}
-          onDelete={documentModal.mode === 'edit' ? handleDeleteDocument : undefined}
-          onClose={() => setDocumentModal({ mode: 'none' })}
-        />
-      )}
+      {documentModal.mode !== 'none' && (() => {
+        const docLibrary = libraries.find((l) => l.id === documentModal.libraryId)
+        const libraryDefaultRefresh = docLibrary?.default_refresh ?? 'standard'
+        return (
+          <DocumentEditorModal
+            libraryId={documentModal.libraryId}
+            libraryDefaultRefresh={libraryDefaultRefresh}
+            initial={documentModal.mode === 'edit'
+              ? {
+                  title: documentModal.doc.title,
+                  content: documentModal.doc.content,
+                  media_type: documentModal.doc.media_type,
+                  trigger_phrases: documentModal.doc.trigger_phrases,
+                  refresh: documentModal.doc.refresh,
+                }
+              : undefined}
+            onSave={handleSaveDocument}
+            onDelete={documentModal.mode === 'edit' ? handleDeleteDocument : undefined}
+            onClose={() => setDocumentModal({ mode: 'none' })}
+          />
+        )
+      })()}
 
       {/* Cascade-delete report — shown after the editor modal closes. */}
       <DeletionReportSheet
