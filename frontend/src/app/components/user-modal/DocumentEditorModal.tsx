@@ -253,7 +253,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
         </div>
 
         {/* PTI controls */}
-        <div className="flex flex-col gap-3 border-t border-white/6 px-5 py-3">
+        <div className="flex max-h-48 flex-col gap-3 overflow-y-auto border-t border-white/6 px-5 py-3">
           <div className="space-y-1">
             <label className="text-[11px] font-mono uppercase tracking-wider text-white/60">
               Trigger phrases

@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react"
+import type { RefreshFrequency } from "../../core/types/knowledge"
 
-export type RefreshFrequency = "rarely" | "standard" | "often"
+export type { RefreshFrequency }
 
 interface Props {
   /** Current value. `null` means inherit (only valid when `inheritFrom` is provided). */
