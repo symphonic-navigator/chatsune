@@ -5,6 +5,7 @@ import type {
   KnowledgeDocumentDetailDto,
   KnowledgeDocumentDto,
   KnowledgeLibraryDto,
+  RefreshFrequency,
 } from '../types/knowledge'
 
 function baseUrl(): string {
@@ -18,10 +19,10 @@ export const knowledgeApi = {
   listLibraries: () =>
     api.get<KnowledgeLibraryDto[]>('/api/knowledge/libraries'),
 
-  createLibrary: (body: { name: string; description?: string; nsfw?: boolean }) =>
+  createLibrary: (body: { name: string; description?: string; nsfw?: boolean; default_refresh?: RefreshFrequency }) =>
     api.post<KnowledgeLibraryDto>('/api/knowledge/libraries', body),
 
-  updateLibrary: (id: string, body: { name?: string; description?: string; nsfw?: boolean }) =>
+  updateLibrary: (id: string, body: { name?: string; description?: string; nsfw?: boolean; default_refresh?: RefreshFrequency }) =>
     api.put<KnowledgeLibraryDto>(`/api/knowledge/libraries/${id}`, body),
 
   deleteLibrary: (id: string) =>
@@ -34,10 +35,10 @@ export const knowledgeApi = {
   getDocument: (libraryId: string, docId: string) =>
     api.get<KnowledgeDocumentDetailDto>(`/api/knowledge/libraries/${libraryId}/documents/${docId}`),
 
-  createDocument: (libraryId: string, body: { title: string; content: string; media_type?: string }) =>
+  createDocument: (libraryId: string, body: { title: string; content: string; media_type?: string; trigger_phrases?: string[]; refresh?: RefreshFrequency | null }) =>
     api.post<KnowledgeDocumentDto>(`/api/knowledge/libraries/${libraryId}/documents`, body),
 
-  updateDocument: (libraryId: string, docId: string, body: { title?: string; content?: string; media_type?: string }) =>
+  updateDocument: (libraryId: string, docId: string, body: { title?: string; content?: string; media_type?: string; trigger_phrases?: string[]; refresh?: RefreshFrequency | null }) =>
     api.put<KnowledgeDocumentDto>(`/api/knowledge/libraries/${libraryId}/documents/${docId}`, body),
 
   deleteDocument: (libraryId: string, docId: string) =>

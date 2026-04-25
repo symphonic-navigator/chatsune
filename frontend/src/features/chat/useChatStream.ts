@@ -5,7 +5,7 @@ import { useNotificationStore } from '../../core/store/notificationStore'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
-import type { ArtefactRef } from '../../core/api/chat'
+import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroup } from './responseTaskGroup'
@@ -260,11 +260,17 @@ export function handleChatEvent(
     }
     case Topics.CHAT_MESSAGE_CREATED: {
       if (p.session_id !== sessionId) return
+      const knowledgeContext =
+        (p.knowledge_context as KnowledgeContextItem[] | null | undefined) ?? null
+      const ptiOverflow = (p.pti_overflow as PtiOverflow | null | undefined) ?? null
       const clientId = p.client_message_id as string | undefined
       if (clientId) {
         const idx = getStore().messages.findIndex((m) => m.id === clientId)
         if (idx !== -1) {
-          getStore().swapMessageId(clientId, p.message_id as string)
+          getStore().swapMessageId(clientId, p.message_id as string, {
+            knowledge_context: knowledgeContext,
+            pti_overflow: ptiOverflow,
+          })
           break
         }
       }
@@ -279,7 +285,8 @@ export function handleChatEvent(
         token_count: (p.token_count as number) ?? 0,
         attachments: null,
         web_search_context: null,
-        knowledge_context: null,
+        knowledge_context: knowledgeContext,
+        pti_overflow: ptiOverflow,
         created_at: new Date().toISOString(),
       })
       break

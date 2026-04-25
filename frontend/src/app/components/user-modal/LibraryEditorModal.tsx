@@ -2,10 +2,11 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { Sheet } from '../../../core/components/Sheet'
+import { RefreshFrequencySelect, type RefreshFrequency } from '../../../features/knowledge/RefreshFrequencySelect'
 
 interface LibraryEditorModalProps {
-  initial?: { name: string; description: string; nsfw: boolean }
-  onSave: (data: { name: string; description: string; nsfw: boolean }) => Promise<void>
+  initial?: { name: string; description: string; nsfw: boolean; default_refresh?: RefreshFrequency }
+  onSave: (data: { name: string; description: string; nsfw: boolean; default_refresh: RefreshFrequency }) => Promise<void>
   onDelete?: () => Promise<void>
   onClose: () => void
 }
@@ -14,6 +15,7 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [nsfw, setNsfw] = useState(initial?.nsfw ?? false)
+  const [defaultRefresh, setDefaultRefresh] = useState<RefreshFrequency>(initial?.default_refresh ?? 'standard')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -32,7 +34,8 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
   const isDirty =
     name !== (initial?.name ?? '') ||
     description !== (initial?.description ?? '') ||
-    nsfw !== (initial?.nsfw ?? false)
+    nsfw !== (initial?.nsfw ?? false) ||
+    defaultRefresh !== (initial?.default_refresh ?? 'standard')
   const { confirmingClose, attemptClose, confirmDiscard, cancelDiscard } =
     useUnsavedChangesGuard(isDirty, onClose)
 
@@ -48,7 +51,7 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
     setSaving(true)
     setError(null)
     try {
-      await onSave({ name: name.trim(), description: description.trim(), nsfw })
+      await onSave({ name: name.trim(), description: description.trim(), nsfw, default_refresh: defaultRefresh })
       onClose()
     } catch {
       setError('Failed to save library')
@@ -158,6 +161,16 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
               💋 NSFW content
             </span>
           </label>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-mono uppercase tracking-wider text-white/60">
+              Default refresh frequency for documents
+            </label>
+            <RefreshFrequencySelect
+              value={defaultRefresh}
+              onChange={(v) => v !== null && setDefaultRefresh(v)}
+            />
+          </div>
         </div>
 
         {/* Footer */}

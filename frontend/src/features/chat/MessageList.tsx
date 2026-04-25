@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatMessageDto, WebSearchContextItem } from '../../core/api/chat'
+import type { ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../../core/api/chat'
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
@@ -11,7 +11,6 @@ import { KnowledgePills } from './KnowledgePills'
 import { ToolCallPills } from './ToolCallPills'
 import { ToolCallActivity } from './ToolCallActivity'
 import { ArtefactCard } from '../artefact/ArtefactCard'
-import type { RetrievedChunkDto } from '../../core/types/knowledge'
 
 interface ActiveToolCall {
   id: string
@@ -26,7 +25,7 @@ interface MessageListProps {
   streamingContent: string
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
-  streamingKnowledgeContext: RetrievedChunkDto[]
+  streamingKnowledgeContext: KnowledgeContextItem[]
   activeToolCalls: ActiveToolCall[]
   isWaitingForResponse: boolean
   isStreaming: boolean
@@ -156,14 +155,25 @@ export function MessageList({
             )
           }
           if (msg.role === 'assistant') {
+            // PTI items live on the preceding user message but represent
+            // context the assistant used to answer — render them above the
+            // assistant bubble combined with the assistant's own retrieval
+            // results (knowledge_search). pti_overflow likewise travels with
+            // the user message that triggered it.
+            const prev = messages[i - 1]
+            const ptiItems =
+              prev && prev.role === 'user' ? (prev.knowledge_context ?? []) : []
+            const ptiOverflow =
+              prev && prev.role === 'user' ? (prev.pti_overflow ?? null) : null
+            const combinedItems = [...ptiItems, ...(msg.knowledge_context ?? [])]
             return (
               <div key={msg.id}>
                 <div id={`msg-${msg.id}`} />
                 {msg.web_search_context && msg.web_search_context.length > 0 && (
                   <WebSearchPills items={msg.web_search_context} />
                 )}
-                {msg.knowledge_context && msg.knowledge_context.length > 0 && (
-                  <KnowledgePills items={msg.knowledge_context} />
+                {(combinedItems.length > 0 || ptiOverflow) && (
+                  <KnowledgePills items={combinedItems} overflow={ptiOverflow} />
                 )}
                 {msg.tool_calls && msg.tool_calls.length > 0 && (
                   <ToolCallPills toolCalls={msg.tool_calls} />
@@ -226,7 +236,7 @@ export function MessageList({
               <WebSearchPills items={streamingWebSearchContext} />
             )}
             {streamingKnowledgeContext.length > 0 && (
-              <KnowledgePills items={streamingKnowledgeContext} />
+              <KnowledgePills items={streamingKnowledgeContext} overflow={null} />
             )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}

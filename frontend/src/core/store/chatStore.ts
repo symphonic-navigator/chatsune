@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import type { ArtefactRef, ChatMessageDto, WebSearchContextItem } from '../api/chat'
-import type { RetrievedChunkDto } from '../types/knowledge'
+import type { ArtefactRef, ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../api/chat'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -34,7 +33,7 @@ interface ChatState {
   streamingContent: string
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
-  streamingKnowledgeContext: RetrievedChunkDto[]
+  streamingKnowledgeContext: KnowledgeContextItem[]
   streamingArtefactRefs: ArtefactRef[]
   streamingRefusalText: string | null
   activeToolCalls: ActiveToolCall[]
@@ -57,7 +56,7 @@ interface ChatState {
   replaceInStreamingContent: (search: string, replacement: string) => void
   appendStreamingThinking: (delta: string) => void
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
-  setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
+  setStreamingKnowledgeContext: (items: KnowledgeContextItem[]) => void
   appendArtefactRef: (ref: ArtefactRef) => void
   setStreamingRefusalText: (text: string | null) => void
   addToolCall: (tc: ActiveToolCall) => void
@@ -67,7 +66,7 @@ interface ChatState {
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
   updateMessage: (messageId: string, content: string, tokenCount: number) => void
-  swapMessageId: (clientId: string, realId: string) => void
+  swapMessageId: (clientId: string, realId: string, patch?: Partial<ChatMessageDto>) => void
   deleteMessage: (messageId: string) => void
   setError: (error: ChatError) => void
   clearError: () => void
@@ -91,7 +90,7 @@ const INITIAL_STATE = {
   streamingContent: '',
   streamingThinking: '',
   streamingWebSearchContext: [] as WebSearchContextItem[],
-  streamingKnowledgeContext: [] as RetrievedChunkDto[],
+  streamingKnowledgeContext: [] as KnowledgeContextItem[],
   streamingArtefactRefs: [] as ArtefactRef[],
   streamingRefusalText: null as string | null,
   activeToolCalls: [] as ActiveToolCall[],
@@ -184,9 +183,11 @@ export const useChatStore = create<ChatState>((set, _get) => ({
         m.id === messageId ? { ...m, content, token_count: tokenCount } : m,
       ),
     })),
-  swapMessageId: (clientId, realId) =>
+  swapMessageId: (clientId, realId, patch) =>
     set((s) => ({
-      messages: s.messages.map((m) => m.id === clientId ? { ...m, id: realId } : m),
+      messages: s.messages.map((m) =>
+        m.id === clientId ? { ...m, id: realId, ...(patch ?? {}) } : m,
+      ),
     })),
   deleteMessage: (messageId) =>
     set((s) => ({ messages: s.messages.filter((m) => m.id !== messageId) })),

@@ -1,115 +1,120 @@
 import { useState } from 'react'
-import type { RetrievedChunkDto } from '../../core/types/knowledge'
+import type { SVGProps } from 'react'
+import type { KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 
-interface KnowledgePillsProps {
-  items: RetrievedChunkDto[]
+interface Props {
+  items: KnowledgeContextItem[]
+  overflow: PtiOverflow | null
 }
 
-function BookIcon() {
+export function KnowledgePills({ items, overflow }: Props) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
+  const [overflowOpen, setOverflowOpen] = useState(false)
+
+  if (items.length === 0 && !overflow) return null
+
   return (
-    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {items.map((item, i) => (
+          <Pill
+            key={i}
+            item={item}
+            expanded={expandedIdx === i}
+            onToggle={() => setExpandedIdx(expandedIdx === i ? null : i)}
+          />
+        ))}
+        {overflow && (
+          <button
+            type="button"
+            onClick={() => setOverflowOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-xs text-white/50"
+          >
+            +{overflow.dropped_count} limited
+          </button>
+        )}
+      </div>
+      {overflow && overflowOpen && (
+        <div className="rounded-md border border-white/10 bg-white/5 p-2 text-xs text-white/70">
+          <p className="mb-1">Documents not injected (cap reached):</p>
+          <ul className="list-disc pl-5">
+            {overflow.dropped_titles.map((t, i) => (
+              <li key={i}>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Pill({
+  item,
+  expanded,
+  onToggle,
+}: {
+  item: KnowledgeContextItem
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const Icon = item.source === 'trigger' ? SparklesIcon : BookIcon
+  return (
+    <div data-source={item.source}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-sm hover:bg-white/10"
+      >
+        <Icon className="h-3.5 w-3.5" />
+        <span className="max-w-[14rem] truncate">{item.document_title}</span>
+        {item.score != null && (
+          <span className="text-xs text-white/40">
+            {item.score.toFixed(2)}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-2 rounded-md border border-white/10 bg-white/5 p-2 text-xs text-white/80">
+          <p>
+            <span className="text-white/40">Library:</span> {item.library_name}
+          </p>
+          {item.heading_path && item.heading_path.length > 0 && (
+            <p>
+              <span className="text-white/40">Path:</span>{' '}
+              {item.heading_path.join(' › ')}
+            </p>
+          )}
+          {item.source === 'trigger' && item.triggered_by && (
+            <p className="text-white/40">
+              Triggered by:{' '}
+              <span className="font-mono text-white/80">{item.triggered_by}</span>
+            </p>
+          )}
+          {item.preroll_text && (
+            <p className="mt-2 text-white/50">{item.preroll_text}</p>
+          )}
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-white/70">
+            {item.content}
+          </pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BookIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4V4z" />
+      <path d="M4 16a4 4 0 0 1 4-4h12" />
     </svg>
   )
 }
 
-export function KnowledgePills({ items }: KnowledgePillsProps) {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null)
-
-  if (items.length === 0) return null
-
+function SparklesIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <div className="mb-2">
-      <div
-        className="mb-1 text-[10px]"
-        style={{ fontFamily: "'Courier New', monospace", color: 'rgba(255,255,255,0.3)' }}
-      >
-        RETRIEVED KNOWLEDGE
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((item, idx) => {
-          const title = item.document_title.length > 30
-            ? item.document_title.slice(0, 30) + '...'
-            : item.document_title
-          const score = (item.score * 100).toFixed(0)
-
-          return (
-            <div key={idx} className="relative">
-              <button
-                type="button"
-                onClick={() => setExpandedIdx(expandedIdx === idx ? null : idx)}
-                className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] transition-opacity hover:opacity-90"
-                style={{
-                  background: 'rgba(140,118,215,0.08)',
-                  border: '1px solid rgba(140,118,215,0.15)',
-                  color: 'rgba(140,118,215,0.9)',
-                  fontFamily: "'Courier New', monospace",
-                }}
-              >
-                <BookIcon />
-                {title}
-                <span style={{ color: 'rgba(140,118,215,0.5)', fontSize: '9px' }}>
-                  {score}%
-                </span>
-              </button>
-              {expandedIdx === idx && (
-                <div
-                  className="absolute left-0 top-full z-20 mt-1 min-w-[280px] max-w-[400px] rounded-lg p-3"
-                  style={{
-                    background: 'rgba(20,18,28,0.98)',
-                    border: '1px solid rgba(140,118,215,0.15)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <div
-                    className="mb-1 text-[10px]"
-                    style={{ fontFamily: "'Courier New', monospace" }}
-                  >
-                    <span style={{ color: 'rgba(140,118,215,0.5)' }}>{item.library_name}</span>
-                    <span style={{ color: 'rgba(140,118,215,0.3)' }}> &rsaquo; </span>
-                    <span style={{ color: 'rgba(140,118,215,0.9)' }}>{item.document_title}</span>
-                  </div>
-                  {item.heading_path.length > 0 && (
-                    <div
-                      className="mb-2 text-[10px] text-white/30"
-                      style={{ fontFamily: "'Courier New', monospace" }}
-                    >
-                      {item.heading_path.join(' / ')}
-                    </div>
-                  )}
-                  {item.preroll_text && (
-                    <div
-                      className="mb-2 text-[10px] text-white/30"
-                      style={{ fontFamily: "'Courier New', monospace" }}
-                    >
-                      {item.preroll_text}
-                    </div>
-                  )}
-                  <div
-                    className="mb-2 text-[11px] leading-relaxed text-white/70"
-                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-                  >
-                    {item.content.length > 500
-                      ? item.content.slice(0, 500) + '…'
-                      : item.content}
-                  </div>
-                  <div
-                    className="text-[10px]"
-                    style={{
-                      color: 'rgba(140,118,215,0.5)',
-                      fontFamily: "'Courier New', monospace",
-                    }}
-                  >
-                    score: {item.score.toFixed(4)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+      <path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M5 19l3-3M16 8l3-3" />
+    </svg>
   )
 }

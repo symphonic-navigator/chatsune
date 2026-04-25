@@ -2,21 +2,38 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from '../../../features/chat/markdownComponents'
 import { useHighlighter } from '../../../features/chat/useMarkdown'
+import { TriggerPhraseEditor } from '../../../features/knowledge/TriggerPhraseEditor'
+import { RefreshFrequencySelect, type RefreshFrequency } from '../../../features/knowledge/RefreshFrequencySelect'
 
 interface DocumentEditorModalProps {
   libraryId: string
-  initial?: { title: string; content: string; media_type: 'text/markdown' | 'text/plain' }
-  onSave: (data: { title: string; content: string; media_type: 'text/markdown' | 'text/plain' }) => Promise<void>
+  libraryDefaultRefresh: RefreshFrequency
+  initial?: {
+    title: string
+    content: string
+    media_type: 'text/markdown' | 'text/plain'
+    trigger_phrases?: string[]
+    refresh?: RefreshFrequency | null
+  }
+  onSave: (data: {
+    title: string
+    content: string
+    media_type: 'text/markdown' | 'text/plain'
+    trigger_phrases: string[]
+    refresh: RefreshFrequency | null
+  }) => Promise<void>
   onDelete?: () => Promise<void>
   onClose: () => void
 }
 
-export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, onDelete, onClose }: DocumentEditorModalProps) {
+export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefresh, initial, onSave, onDelete, onClose }: DocumentEditorModalProps) {
   const highlighter = useHighlighter()
   const markdownComponents = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
   const [title, setTitle] = useState(initial?.title ?? '')
   const [content, setContent] = useState(initial?.content ?? '')
   const [mediaType, setMediaType] = useState<'text/markdown' | 'text/plain'>(initial?.media_type ?? 'text/markdown')
+  const [triggerPhrases, setTriggerPhrases] = useState<string[]>(initial?.trigger_phrases ?? [])
+  const [refresh, setRefresh] = useState<RefreshFrequency | null>(initial?.refresh ?? null)
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -42,7 +59,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
   // Track changes after initial render
   useEffect(() => {
     isDirty.current = true
-  }, [title, content, mediaType])
+  }, [title, content, mediaType, triggerPhrases, refresh])
 
   // Reset dirty flag once on mount
   useEffect(() => {
@@ -50,7 +67,19 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
   }, [])
 
   function handleClose() {
-    if (isDirty.current && (title !== (initial?.title ?? '') || content !== (initial?.content ?? ''))) {
+    const initialPhrases = initial?.trigger_phrases ?? []
+    const phrasesChanged =
+      triggerPhrases.length !== initialPhrases.length ||
+      triggerPhrases.some((p, i) => p !== initialPhrases[i])
+    if (
+      isDirty.current &&
+      (
+        title !== (initial?.title ?? '') ||
+        content !== (initial?.content ?? '') ||
+        phrasesChanged ||
+        refresh !== (initial?.refresh ?? null)
+      )
+    ) {
       if (!confirmDiscard) {
         setConfirmDiscard(true)
         return
@@ -64,7 +93,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
     setSaving(true)
     setError(null)
     try {
-      await onSave({ title: title.trim(), content, media_type: mediaType })
+      await onSave({ title: title.trim(), content, media_type: mediaType, trigger_phrases: triggerPhrases, refresh })
       isDirty.current = false
       onClose()
     } catch {
@@ -221,6 +250,22 @@ export function DocumentEditorModal({ libraryId: _libraryId, initial, onSave, on
               )}
             </div>
           )}
+        </div>
+
+        {/* PTI controls */}
+        <div className="flex max-h-48 flex-col gap-3 overflow-y-auto border-t border-white/6 px-5 py-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-mono uppercase tracking-wider text-white/60">
+              Trigger phrases
+            </label>
+            <TriggerPhraseEditor value={triggerPhrases} onChange={setTriggerPhrases} />
+          </div>
+          <RefreshFrequencySelect
+            label="Refresh frequency"
+            value={refresh}
+            onChange={setRefresh}
+            inheritFrom={libraryDefaultRefresh}
+          />
         </div>
 
         {/* Footer */}

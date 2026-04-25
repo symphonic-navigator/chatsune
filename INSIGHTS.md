@@ -809,3 +809,27 @@ Empirically, sending `{"reasoning": {"enabled": false}}` to a slug-mode "thinkin
 **Frontend impact:** None. `ModelMetaDto.supports_reasoning=True` now covers both "we'll route to a thinking sibling slug" and "we'll set the body flag" — the UI sees the same toggle either way.
 
 **Reference:** Empirical methodology and raw results live in `scratch/probe_nano_flag_mode*.{py,_results.json}` (gitignored). Three-mode pipeline ported from `/home/chris/projects/nano-explore` — that exploration repo carries the model-by-model audit and the canonical mini fixtures used by the chatsune tests.
+
+---
+
+## INS-028 — PTI normalisation lives in two languages (2026-04-25)
+
+The PTI trigger-phrase / message normalisation function lives in two
+files that must be kept manually in sync:
+
+- `backend/modules/knowledge/_pti_normalisation.py` — Python authority,
+  used at save time and during runtime matching.
+- `frontend/src/features/knowledge/normalisePhrase.ts` — used for live
+  preview in the trigger-phrase editor.
+
+There is no runtime drift check. When changing the normalisation
+algorithm — adding a step, changing a Unicode behaviour, etc. — both
+files must be updated together. Pattern is identical to the xAI
+voice-expression-tags duplication (see CLAUDE.md and the existing
+`backend/modules/integrations/_voice_expression_tags.py`).
+
+**Known approximation:** JS has no exact equivalent of Python's `str.casefold()`. The TS mirror uses `toLocaleLowerCase("en")` plus an explicit `ß → ss` substitution. This covers the practical cases (German ß, uppercase ẞ via `toLocaleLowerCase` then replace). Other locale-specific casefold differences (e.g. Turkish dotted I) are not handled — the backend remains the authoritative normaliser, and the frontend value is only a UI preview.
+
+**Symptom of drift:** tag shown in the editor differs from what the backend
+matches against. Test via the existing parametrised tests on each side;
+any diff in expected outputs is the smoking gun.

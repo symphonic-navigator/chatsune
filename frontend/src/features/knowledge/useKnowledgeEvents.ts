@@ -6,6 +6,7 @@ import { useNotificationStore } from '../../core/store/notificationStore'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import type { KnowledgeLibraryDto, KnowledgeDocumentDto, RetrievedChunkDto } from '../../core/types/knowledge'
+import type { KnowledgeContextItem } from '../../core/api/chat'
 
 export function useKnowledgeEvents() {
   useEffect(() => {
@@ -62,9 +63,12 @@ export function useKnowledgeEvents() {
           break
         }
 
-        case Topics.KNOWLEDGE_SEARCH_COMPLETED:
-          chatStore().setStreamingKnowledgeContext(p.results as RetrievedChunkDto[])
+        case Topics.KNOWLEDGE_SEARCH_COMPLETED: {
+          const chunks = p.results as RetrievedChunkDto[]
+          const items: KnowledgeContextItem[] = chunks.map((c) => ({ ...c, source: 'search' as const }))
+          chatStore().setStreamingKnowledgeContext(items)
           break
+        }
       }
     }
 
