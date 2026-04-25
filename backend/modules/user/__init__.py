@@ -7,7 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._key_repository import UserKeysRepository
-from backend.modules.user._models import DEFAULT_RECENT_EMOJIS
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, RECENT_EMOJIS_MAX
 from backend.modules.user._key_service import (
     DekUnlockError,
     UserKeyNotFoundError,
@@ -161,7 +161,7 @@ class UserService:
         if doc is None:
             return
         current = doc.get("recent_emojis") or list(DEFAULT_RECENT_EMOJIS)
-        new_list = self._merge_lru(current, emojis_in_text, max_size=6)
+        new_list = self._merge_lru(current, emojis_in_text, max_size=RECENT_EMOJIS_MAX)
         if new_list == current:
             return
         await self._repository.update_recent_emojis(user_id, new_list)

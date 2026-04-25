@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 DEFAULT_RECENT_EMOJIS: tuple[str, ...] = ("👍", "❤️", "😂", "🤘", "😊", "🔥")
+RECENT_EMOJIS_MAX: int = 6
 
 
 class UserDocument(BaseModel):
