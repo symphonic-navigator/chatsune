@@ -3,6 +3,9 @@ import { useViewport } from '../../core/hooks/useViewport'
 import { hapticTap } from '../../core/utils/haptics'
 import { VoiceButton } from '../voice/components/VoiceButton'
 import type { PipelinePhase } from '../voice/types'
+import { useEmojiPickerStore } from './emojiPickerStore'
+import { EmojiPickerPopover } from './EmojiPickerPopover'
+import { insertEmojiAtCursor } from './insertEmojiAtCursor'
 
 const LONG_PASTE_THRESHOLD = 500
 
@@ -43,6 +46,19 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
+  const closePicker = useEmojiPickerStore((s) => s.close)
+
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    const ta = textareaRef.current
+    if (!ta) return
+    const { value, cursor } = insertEmojiAtCursor(ta, emoji)
+    setText(value)
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.setSelectionRange(cursor, cursor)
+    })
+  }, [])
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -185,6 +201,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            onFocus={() => closePicker()}
             placeholder="Type a message..."
             disabled={isStreaming || disabled}
             rows={1}
@@ -193,7 +210,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           {!isMobile && (
             <button
               type="button"
-              onClick={() => {}}
+              onClick={() => useEmojiPickerStore.getState().toggle()}
               title="Insert emoji"
               aria-label="Insert emoji"
               className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/8 text-white/60 transition-colors hover:bg-white/15 hover:text-white/90"
@@ -205,6 +222,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 <path d="M8.5 14.5C9.5 16 10.7 16.7 12 16.7C13.3 16.7 14.5 16 15.5 14.5" />
               </svg>
             </button>
+          )}
+          {isPickerOpen && (
+            <EmojiPickerPopover
+              onSelect={handleEmojiSelect}
+              onClose={closePicker}
+            />
           )}
         </div>
         {sttEnabled ? (
