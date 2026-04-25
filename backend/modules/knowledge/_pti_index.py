@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from threading import RLock
 
+from backend.modules.knowledge._pti_normalisation import normalise
+
 
 class TriggerIndex:
     """A per-session phrase → doc_ids map."""
@@ -63,3 +65,24 @@ class PtiIndexCache:
     def all_session_ids(self) -> list[str]:
         with self._lock:
             return list(self._per_session.keys())
+
+
+def match_phrases(
+    message: str, index: TriggerIndex
+) -> list[tuple[str, str, int]]:
+    """Find all phrase hits in `message`.
+
+    Returns a list of (doc_id, matched_phrase, position) tuples sorted
+    by position of first occurrence in the normalised message. If a
+    phrase maps to multiple docs, every doc is emitted at the same
+    position.
+    """
+    norm = normalise(message)
+    hits: list[tuple[str, str, int]] = []
+    for phrase, doc_ids in index.phrase_to_docs.items():
+        pos = norm.find(phrase)
+        if pos >= 0:
+            for doc_id in doc_ids:
+                hits.append((doc_id, phrase, pos))
+    hits.sort(key=lambda x: x[2])
+    return hits
