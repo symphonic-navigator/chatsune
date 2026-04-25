@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from backend.modules.knowledge._cascade import cascade_delete_library
 from backend.modules.knowledge._handlers import router as knowledge_router, _trigger_embedding
+from backend.modules.knowledge._pti_index import PtiIndexCache
+from backend.modules.knowledge._pti_orchestrator import get_pti_injections
 from backend.modules.knowledge._repository import KnowledgeRepository
 from backend.modules.knowledge._retrieval import search
 from backend.database import get_db
@@ -19,6 +21,9 @@ from shared.events.knowledge import (
 from shared.topics import Topics
 
 _log = logging.getLogger("chatsune.knowledge")
+
+# Process-wide singleton.
+pti_index_cache = PtiIndexCache()
 
 
 async def init_indexes(db) -> None:
@@ -171,4 +176,6 @@ __all__ = [
     "search",
     "cascade_delete_library",
     "list_library_ids_for_user",
+    "get_pti_injections",
+    "pti_index_cache",
 ]

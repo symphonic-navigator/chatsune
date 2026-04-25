@@ -19,6 +19,10 @@ class ChatMessageCreatedEvent(BaseModel):
     # entry. Echoed back so the frontend can atomically swap the optimistic
     # store entry for the real MongoDB ID.
     client_message_id: str | None = None
+    # PTI: knowledge items injected by trigger-phrase match, and overflow info
+    # when the combined context exceeds the configured token budget.
+    knowledge_context: list[dict] | None = None
+    pti_overflow: dict | None = None
 
 
 class ChatStreamStartedEvent(BaseModel):

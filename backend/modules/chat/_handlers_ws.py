@@ -183,11 +183,41 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             ]
 
         token_count = count_tokens(text)
+
+        # PTI: inject any documents whose trigger phrases match this message.
+        # Persona library IDs come from the persona doc; session library IDs
+        # are read by get_pti_injections from the session itself.
+        from backend.modules.knowledge import get_pti_injections, pti_index_cache
+
+        persona_id_for_pti = session.get("persona_id")
+        persona_library_ids: list[str] = []
+        if persona_id_for_pti:
+            persona_doc = await get_persona(persona_id_for_pti, user_id)
+            if persona_doc:
+                persona_library_ids = persona_doc.get("knowledge_library_ids") or []
+
+        pti_items, pti_overflow = await get_pti_injections(
+            db=db,
+            cache=pti_index_cache,
+            session_id=session_id,
+            message=text,
+            persona_library_ids=persona_library_ids,
+        )
+
+        knowledge_context_for_save = (
+            [item.model_dump(mode="json") for item in pti_items] if pti_items else None
+        )
+        pti_overflow_for_save = (
+            pti_overflow.model_dump(mode="json") if pti_overflow else None
+        )
+
         saved_msg = await repo.save_message(
             session_id,
             role="user",
             content=text,
             token_count=token_count,
+            knowledge_context=knowledge_context_for_save,
+            pti_overflow=pti_overflow_for_save,
             attachment_ids=attachment_ids,
             attachment_refs=attachment_refs,
             correlation_id=correlation_id,
@@ -221,6 +251,8 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
                 correlation_id=correlation_id,
                 timestamp=datetime.now(timezone.utc),
                 client_message_id=client_message_id,
+                knowledge_context=knowledge_context_for_save,
+                pti_overflow=pti_overflow_for_save,
             ),
             scope=f"session:{session_id}",
             target_user_ids=[user_id],

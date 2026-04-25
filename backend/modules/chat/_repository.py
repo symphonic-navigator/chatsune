@@ -383,6 +383,7 @@ class ChatRepository:
         usage: dict | None = None,
         web_search_context: list[dict] | None = None,
         knowledge_context: list[dict] | None = None,
+        pti_overflow: dict | None = None,
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
         vision_descriptions_used: list[dict] | None = None,
@@ -411,6 +412,8 @@ class ChatRepository:
             doc["web_search_context"] = web_search_context
         if knowledge_context:
             doc["knowledge_context"] = knowledge_context
+        if pti_overflow:
+            doc["pti_overflow"] = pti_overflow
         if attachment_ids:
             doc["attachment_ids"] = attachment_ids
         if attachment_refs:

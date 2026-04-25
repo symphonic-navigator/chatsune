@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime, timezone
+from uuid import uuid4
 
 _log = logging.getLogger(__name__)
 
@@ -223,13 +224,58 @@ async def set_persona_knowledge(
     persona_id: str,
     body: SetKnowledgeLibrariesRequest,
     user: dict = Depends(require_active_session),
+    event_bus: EventBus = Depends(get_event_bus),
 ):
     repo = _persona_repo()
+    existing = await repo.find_by_id(persona_id, user["sub"])
+    if not existing:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    old_ids = set(existing.get("knowledge_library_ids") or [])
+    new_ids = set(body.library_ids)
+
     updated = await repo.update(
         persona_id, user["sub"], {"knowledge_library_ids": body.library_ids},
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Persona not found")
+
+    attached = new_ids - old_ids
+    detached = old_ids - new_ids
+    if attached or detached:
+        from shared.events.knowledge import (
+            LibraryAttachedToPersonaEvent,
+            LibraryDetachedFromPersonaEvent,
+        )
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        for lib_id in attached:
+            await event_bus.publish(
+                Topics.LIBRARY_ATTACHED_TO_PERSONA,
+                LibraryAttachedToPersonaEvent(
+                    persona_id=persona_id,
+                    library_id=lib_id,
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"persona:{persona_id}",
+                target_user_ids=[user["sub"]],
+                correlation_id=correlation_id,
+            )
+        for lib_id in detached:
+            await event_bus.publish(
+                Topics.LIBRARY_DETACHED_FROM_PERSONA,
+                LibraryDetachedFromPersonaEvent(
+                    persona_id=persona_id,
+                    library_id=lib_id,
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"persona:{persona_id}",
+                target_user_ids=[user["sub"]],
+                correlation_id=correlation_id,
+            )
+
     return {"status": "ok"}
 
 

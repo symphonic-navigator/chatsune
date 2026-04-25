@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from shared.dtos.storage import AttachmentRefDto
 
@@ -67,6 +67,22 @@ class ToolCallRefDto(BaseModel):
     success: bool
 
 
+class KnowledgeContextItem(BaseModel):
+    library_name: str
+    document_title: str
+    heading_path: list[str] = Field(default_factory=list)
+    preroll_text: str | None = None
+    content: str
+    score: float | None = None
+    source: Literal["search", "trigger"] = "search"
+    triggered_by: str | None = None  # phrase, only when source="trigger"
+
+
+class PtiOverflow(BaseModel):
+    dropped_count: int
+    dropped_titles: list[str]
+
+
 class ChatMessageDto(BaseModel):
     id: str
     session_id: str
@@ -76,7 +92,8 @@ class ChatMessageDto(BaseModel):
     token_count: int
     attachments: list[AttachmentRefDto] | None = None
     web_search_context: list[WebSearchContextItemDto] | None = None
-    knowledge_context: list[dict] | None = None
+    knowledge_context: list[KnowledgeContextItem] | None = None
+    pti_overflow: PtiOverflow | None = None
     vision_descriptions_used: list[VisionDescriptionSnapshotDto] | None = None
     created_at: datetime
     status: Literal["completed", "aborted", "refused"] = "completed"

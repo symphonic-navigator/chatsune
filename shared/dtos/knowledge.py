@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+RefreshFrequency = Literal["rarely", "standard", "often"]
 
 
 class KnowledgeLibraryDto(BaseModel):
@@ -12,6 +14,7 @@ class KnowledgeLibraryDto(BaseModel):
     document_count: int = 0
     created_at: datetime
     updated_at: datetime
+    default_refresh: RefreshFrequency = "standard"
 
 
 class KnowledgeDocumentDto(BaseModel):
@@ -25,6 +28,8 @@ class KnowledgeDocumentDto(BaseModel):
     embedding_error: str | None = None
     created_at: datetime
     updated_at: datetime
+    trigger_phrases: list[str] = Field(default_factory=list)
+    refresh: RefreshFrequency | None = None  # None = inherit from library
 
 
 class KnowledgeDocumentDetailDto(KnowledgeDocumentDto):

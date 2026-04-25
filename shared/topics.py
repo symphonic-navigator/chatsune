@@ -155,6 +155,10 @@ class Topics:
     KNOWLEDGE_DOCUMENT_EMBEDDED = "knowledge.document.embedded"
     KNOWLEDGE_DOCUMENT_EMBED_FAILED = "knowledge.document.embed_failed"
     KNOWLEDGE_SEARCH_COMPLETED = "knowledge.search.completed"
+    LIBRARY_ATTACHED_TO_SESSION = "knowledge.library.attached_to_session"
+    LIBRARY_DETACHED_FROM_SESSION = "knowledge.library.detached_from_session"
+    LIBRARY_ATTACHED_TO_PERSONA = "knowledge.library.attached_to_persona"
+    LIBRARY_DETACHED_FROM_PERSONA = "knowledge.library.detached_from_persona"
     # Artefacts
     ARTEFACT_CREATED = "artefact.created"
     ARTEFACT_UPDATED = "artefact.updated"

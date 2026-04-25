@@ -178,7 +178,49 @@ async def set_session_knowledge(
     session = await repo.get_session(session_id, user["sub"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    old_ids = set(session.get("knowledge_library_ids") or [])
+    new_ids = set(body.library_ids)
+
     await repo.update_session_knowledge_library_ids(session_id, body.library_ids)
+
+    attached = new_ids - old_ids
+    detached = old_ids - new_ids
+    if attached or detached:
+        from shared.events.knowledge import (
+            LibraryAttachedToSessionEvent,
+            LibraryDetachedFromSessionEvent,
+        )
+        correlation_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        event_bus = get_event_bus()
+        for lib_id in attached:
+            await event_bus.publish(
+                Topics.LIBRARY_ATTACHED_TO_SESSION,
+                LibraryAttachedToSessionEvent(
+                    session_id=session_id,
+                    library_id=lib_id,
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"session:{session_id}",
+                target_user_ids=[user["sub"]],
+                correlation_id=correlation_id,
+            )
+        for lib_id in detached:
+            await event_bus.publish(
+                Topics.LIBRARY_DETACHED_FROM_SESSION,
+                LibraryDetachedFromSessionEvent(
+                    session_id=session_id,
+                    library_id=lib_id,
+                    correlation_id=correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"session:{session_id}",
+                target_user_ids=[user["sub"]],
+                correlation_id=correlation_id,
+            )
+
     return {"status": "ok"}
 
 
