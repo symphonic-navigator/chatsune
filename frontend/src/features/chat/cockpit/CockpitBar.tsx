@@ -11,6 +11,7 @@ import { MobileInfoModal } from './MobileInfoModal'
 import { CockpitButton } from './CockpitButton'
 import { CockpitGroupButton } from './CockpitGroupButton'
 import { useCockpitSession } from './cockpitStore'
+import { useEmojiPickerStore } from '../emojiPickerStore'
 
 type VoiceSummary = {
   ttsProvider: string
@@ -46,6 +47,7 @@ export function CockpitBar(props: Props) {
   const { isMobile } = useViewport()
   const [infoOpen, setInfoOpen] = useState(false)
   const cockpit = useCockpitSession(props.sessionId)
+  const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
 
   const attachGroupChildren = (
     <>
@@ -118,10 +120,10 @@ export function CockpitBar(props: Props) {
       {isMobile && (
         <CockpitButton
           icon="😊"
-          state="idle"
+          state={isPickerOpen ? 'active' : 'idle'}
           accent="neutral"
           label="Insert emoji"
-          onClick={() => {}}
+          onClick={() => useEmojiPickerStore.getState().toggle()}
         />
       )}
       {isMobile && (
