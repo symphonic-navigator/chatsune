@@ -201,7 +201,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           </div>
         </div>
       )}
-      <div className="mx-auto flex max-w-3xl items-center gap-2">
+      <div className="relative mx-auto flex max-w-3xl items-center gap-2">
         <div className="relative flex-1">
           <textarea
             ref={textareaRef}
@@ -230,12 +230,6 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 <path d="M8.5 14.5C9.5 16 10.7 16.7 12 16.7C13.3 16.7 14.5 16 15.5 14.5" />
               </svg>
             </button>
-          )}
-          {isPickerOpen && (
-            <EmojiPickerPopover
-              onSelect={handleEmojiSelect}
-              onClose={closePicker}
-            />
           )}
         </div>
         {sttEnabled ? (
@@ -283,6 +277,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
               </button>
             )}
           </>
+        )}
+        {isPickerOpen && (
+          <EmojiPickerPopover
+            onSelect={handleEmojiSelect}
+            onClose={closePicker}
+          />
         )}
       </div>
     </div>

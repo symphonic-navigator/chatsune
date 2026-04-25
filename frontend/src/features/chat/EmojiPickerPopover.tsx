@@ -60,6 +60,7 @@ export function EmojiPickerPopover({ onSelect, onClose }: Props) {
             set="native"
             previewPosition="none"
             skinTonePosition="search"
+            dynamicWidth={isMobile}
             categories={['people', 'nature', 'foods', 'activity', 'places', 'objects', 'symbols', 'flags']}
           />
         </Suspense>
