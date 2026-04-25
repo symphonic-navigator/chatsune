@@ -70,6 +70,42 @@ def _filter_usable_history(docs: list[dict]) -> list[dict]:
         if d.get("status", "completed") not in ("aborted", "refused")
     ]
 
+
+def _format_pti_knowledge_block(items: list[dict]) -> str:
+    """Format PTI-injected knowledge_context items into a hidden context
+    block prepended to the user's message text.
+
+    PTI persists matched documents on the user message, but the LLM
+    only sees plain message content unless we explicitly include them
+    here. The block is wrapped in <context>…</context> with a brief
+    instruction so the model treats it as background, not as something
+    to quote verbatim.
+    """
+    blocks: list[str] = []
+    for item in items:
+        title = item.get("document_title", "")
+        library = item.get("library_name", "")
+        triggered_by = item.get("triggered_by", "")
+        content = item.get("content", "")
+        header = f"## {title}".rstrip()
+        annot_bits: list[str] = []
+        if library:
+            annot_bits.append(f"from {library}")
+        if triggered_by:
+            annot_bits.append(f"triggered by: {triggered_by}")
+        if annot_bits:
+            header = f"{header}  _({'; '.join(annot_bits)})_"
+        blocks.append(f"{header}\n\n{content}".strip())
+    body = "\n\n---\n\n".join(blocks)
+    return (
+        "<context>\n"
+        "The following documents were automatically retrieved based on phrases "
+        "in the user's message. Use them silently as background — do not quote "
+        "this framing or the headers verbatim.\n\n"
+        f"{body}\n"
+        "</context>\n\n"
+    )
+
 # Active cancel events keyed by correlation_id
 _cancel_events: dict[str, asyncio.Event] = {}
 
@@ -516,6 +552,20 @@ async def run_inference(
     if history_docs:
         last_msg = history_docs[-1]
         last_msg_parts: list[ContentPart] = [ContentPart(type="text", text=last_msg["content"])]
+        # PTI: prepend any phrase-triggered knowledge_context items as a
+        # hidden context block so the LLM actually sees the lore. Only
+        # source="trigger" items belong here; source="search" items come
+        # from assistant-side knowledge_search tool calls and are already
+        # surfaced via tool-result messages during inference.
+        pti_items = [
+            item for item in (last_msg.get("knowledge_context") or [])
+            if item.get("source") == "trigger"
+        ]
+        if pti_items:
+            last_msg_parts.insert(
+                0,
+                ContentPart(type="text", text=_format_pti_knowledge_block(pti_items)),
+            )
         new_msg_vision_snapshots: list[dict] = []
         attachment_ids = last_msg.get("attachment_ids")
         if attachment_ids:
