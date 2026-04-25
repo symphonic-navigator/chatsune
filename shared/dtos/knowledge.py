@@ -40,24 +40,30 @@ class CreateLibraryRequest(BaseModel):
     name: str
     description: str | None = None
     nsfw: bool = False
+    default_refresh: RefreshFrequency = "standard"
 
 
 class UpdateLibraryRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     nsfw: bool | None = None
+    default_refresh: RefreshFrequency | None = None
 
 
 class CreateDocumentRequest(BaseModel):
     title: str
     content: str
     media_type: Literal["text/markdown", "text/plain"] = "text/markdown"
+    trigger_phrases: list[str] = Field(default_factory=list)
+    refresh: RefreshFrequency | None = None
 
 
 class UpdateDocumentRequest(BaseModel):
     title: str | None = None
     content: str | None = None
     media_type: Literal["text/markdown", "text/plain"] | None = None
+    trigger_phrases: list[str] | None = None
+    refresh: RefreshFrequency | None = None
 
 
 class RetrievedChunkDto(BaseModel):

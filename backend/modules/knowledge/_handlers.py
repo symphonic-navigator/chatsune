@@ -124,6 +124,7 @@ async def create_library(
         name=body.name,
         description=body.description,
         nsfw=body.nsfw,
+        default_refresh=body.default_refresh,
     )
     return dto
 
@@ -224,6 +225,8 @@ async def _create_document_internal(
     title: str,
     content: str,
     media_type: str,
+    trigger_phrases: list[str] | None = None,
+    refresh: str | None = None,
     correlation_id: str | None = None,
 ) -> KnowledgeDocumentDto:
     """Core document-upload pipeline: insert document, publish created event,
@@ -240,6 +243,8 @@ async def _create_document_internal(
         title=title,
         content=content,
         media_type=media_type,
+        trigger_phrases=trigger_phrases,
+        refresh=refresh,
     )
     await repo.increment_document_count(library_id, user_id, 1)
 
@@ -271,6 +276,7 @@ async def _create_library_internal(
     name: str,
     description: str | None,
     nsfw: bool,
+    default_refresh: str = "standard",
     correlation_id: str | None = None,
 ) -> tuple[KnowledgeLibraryDto, dict]:
     """Core library-creation pipeline: insert library and publish created event.
@@ -284,6 +290,7 @@ async def _create_library_internal(
         name=name,
         description=description,
         nsfw=nsfw,
+        default_refresh=default_refresh,
     )
     dto = KnowledgeRepository.to_library_dto(doc)
 
@@ -312,10 +319,26 @@ async def create_document(
     body: CreateDocumentRequest,
     user: dict = Depends(require_active_session),
 ):
+    from backend.modules.knowledge._pti_normalisation import normalise
+    from backend.modules.knowledge._pti_service import (
+        PtiContentTooLargeError,
+        validate_pti_eligibility,
+    )
+
     repo = _repo()
     library = await repo.get_library(library_id, user["sub"])
     if not library:
         raise HTTPException(status_code=404, detail="Library not found")
+
+    normalised_phrases = [
+        n for n in (normalise(p) for p in body.trigger_phrases) if n
+    ]
+    try:
+        validate_pti_eligibility(
+            content=body.content, trigger_phrases=normalised_phrases,
+        )
+    except PtiContentTooLargeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return await _create_document_internal(
         user_id=user["sub"],
@@ -323,6 +346,8 @@ async def create_document(
         title=body.title,
         content=body.content,
         media_type=body.media_type,
+        trigger_phrases=normalised_phrases,
+        refresh=body.refresh,
     )
 
 
@@ -351,6 +376,12 @@ async def update_document(
     body: UpdateDocumentRequest,
     user: dict = Depends(require_active_session),
 ):
+    from backend.modules.knowledge._pti_normalisation import normalise
+    from backend.modules.knowledge._pti_service import (
+        PtiContentTooLargeError,
+        validate_pti_eligibility,
+    )
+
     repo = _repo()
     library = await repo.get_library(library_id, user["sub"])
     if not library:
@@ -363,6 +394,18 @@ async def update_document(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "trigger_phrases" in updates:
+        updates["trigger_phrases"] = [
+            n for n in (normalise(p) for p in updates["trigger_phrases"]) if n
+        ]
+
+    new_content = updates.get("content", existing.get("content", ""))
+    new_phrases = updates.get("trigger_phrases", existing.get("trigger_phrases", []))
+    try:
+        validate_pti_eligibility(content=new_content, trigger_phrases=new_phrases)
+    except PtiContentTooLargeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     content_changed = "content" in updates
 

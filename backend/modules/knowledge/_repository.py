@@ -77,6 +77,7 @@ class KnowledgeRepository:
         name: str,
         description: str | None,
         nsfw: bool,
+        default_refresh: str = "standard",
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -86,6 +87,7 @@ class KnowledgeRepository:
             "description": description,
             "nsfw": nsfw,
             "document_count": 0,
+            "default_refresh": default_refresh,
             "created_at": now,
             "updated_at": now,
         }
@@ -178,6 +180,8 @@ class KnowledgeRepository:
         title: str,
         content: str,
         media_type: str,
+        trigger_phrases: list[str] | None = None,
+        refresh: str | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -192,6 +196,8 @@ class KnowledgeRepository:
             "embedding_status": "pending",
             "embedding_error": None,
             "retry_count": 0,
+            "trigger_phrases": trigger_phrases or [],
+            "refresh": refresh,
             "created_at": now,
             "updated_at": now,
         }
@@ -354,6 +360,7 @@ class KnowledgeRepository:
             document_count=doc.get("document_count", 0),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            default_refresh=doc.get("default_refresh", "standard"),
         )
 
     @staticmethod
@@ -369,6 +376,8 @@ class KnowledgeRepository:
             embedding_error=doc.get("embedding_error"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            trigger_phrases=doc.get("trigger_phrases", []),
+            refresh=doc.get("refresh"),
         )
 
     @staticmethod
@@ -385,4 +394,6 @@ class KnowledgeRepository:
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
             content=doc["content"],
+            trigger_phrases=doc.get("trigger_phrases", []),
+            refresh=doc.get("refresh"),
         )
