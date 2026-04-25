@@ -48,17 +48,25 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
   const closePicker = useEmojiPickerStore((s) => s.close)
+  const isProgrammaticFocus = useRef(false)
 
   const handleEmojiSelect = useCallback((emoji: string) => {
     const ta = textareaRef.current
     if (!ta) return
     const { value, cursor } = insertEmojiAtCursor(ta, emoji)
     setText(value)
+    isProgrammaticFocus.current = true
     requestAnimationFrame(() => {
       ta.focus()
       ta.setSelectionRange(cursor, cursor)
+      isProgrammaticFocus.current = false
     })
   }, [])
+
+  const handleTextareaFocus = useCallback(() => {
+    if (isProgrammaticFocus.current) return
+    closePicker()
+  }, [closePicker])
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
@@ -201,7 +209,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            onFocus={() => closePicker()}
+            onFocus={handleTextareaFocus}
             placeholder="Type a message..."
             disabled={isStreaming || disabled}
             rows={1}
