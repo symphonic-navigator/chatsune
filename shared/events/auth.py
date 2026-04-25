@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -53,3 +54,10 @@ class UserDeletedEvent(BaseModel):
     user_id: str
     username: str
     timestamp: datetime
+
+
+class RecentEmojisUpdatedEvent(BaseModel):
+    """Published when a user's recent-emoji LRU changes (max six entries)."""
+    type: Literal["user.recent_emojis.updated"] = "user.recent_emojis.updated"
+    user_id: str
+    emojis: list[str]

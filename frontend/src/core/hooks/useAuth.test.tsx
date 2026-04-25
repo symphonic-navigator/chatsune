@@ -43,6 +43,7 @@ const user: UserDto = {
   must_change_password: false,
   created_at: '',
   updated_at: '',
+  recent_emojis: [],
 }
 
 function tokenFor(payload: Record<string, unknown> = { sub: user.id, role: user.role, mcp: false }): string {

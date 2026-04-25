@@ -21,6 +21,7 @@ class UserDto(BaseModel):
     must_change_password: bool
     created_at: datetime
     updated_at: datetime
+    recent_emojis: list[str] = Field(default_factory=list)
 
 
 class SetupRequestDto(BaseModel):

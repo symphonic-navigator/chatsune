@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS
 from shared.dtos.auth import UserDto
 
 
@@ -163,6 +164,19 @@ class UserRepository:
             {"$set": {"is_active": value, "updated_at": datetime.now(UTC)}},
         )
 
+    async def update_recent_emojis(self, user_id: str, emojis: list[str]) -> None:
+        """Atomic replace of the user's recent_emojis list.
+
+        The caller is responsible for already deduping and capping at the
+        intended size — this method performs no validation."""
+        await self._collection.update_one(
+            {"_id": user_id},
+            {"$set": {
+                "recent_emojis": emojis,
+                "updated_at": datetime.now(UTC),
+            }},
+        )
+
     async def delete_user_document(self, user_id: str) -> bool:
         """Delete the user document itself. Returns True if a row was removed.
 
@@ -185,4 +199,5 @@ class UserRepository:
             must_change_password=doc["must_change_password"],
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            recent_emojis=doc.get("recent_emojis") or list(DEFAULT_RECENT_EMOJIS),
         )

@@ -27,6 +27,7 @@ import { InstallHint } from "../components/pwa/InstallHint"
 import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
+import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
 
 export default function AppLayout() {
   useWebSocket()
@@ -196,6 +197,24 @@ export default function AppLayout() {
     if (!current) return
     setUser({ ...current, display_name: rawName })
   }, [profileUpdate, setUser])
+
+  // Seed the recent-emojis store from the authenticated user payload. The
+  // `?? []` guards against an older backend that doesn't yet ship the field.
+  useEffect(() => {
+    if (!user) return
+    useRecentEmojisStore.getState().set(user.recent_emojis ?? [])
+  }, [user])
+
+  // Live-update the recent emojis when the user picks one in another tab or
+  // device. Mirrors the USER_PROFILE_UPDATED subscription style above.
+  const { latest: recentEmojisUpdate } = useEventBus(Topics.USER_RECENT_EMOJIS_UPDATED)
+  useEffect(() => {
+    if (!recentEmojisUpdate?.payload) return
+    const emojis = (recentEmojisUpdate.payload as { emojis?: string[] }).emojis
+    if (Array.isArray(emojis)) {
+      useRecentEmojisStore.getState().set(emojis)
+    }
+  }, [recentEmojisUpdate])
 
   // Global Alt+S hotkey: toggles sanitised mode irrespective of which modal
   // or overlay is currently open. We only bow out if the user is actively

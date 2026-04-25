@@ -8,6 +8,7 @@ export interface UserDto {
   must_change_password: boolean
   created_at: string
   updated_at: string
+  recent_emojis: string[]
 }
 
 export interface LoginRequest {

@@ -29,6 +29,8 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.USER_DELETED: (["admin", "master_admin"], False),
     Topics.USER_PASSWORD_RESET: (["admin", "master_admin"], True),
     Topics.USER_PROFILE_UPDATED: ([], True),
+    # Targeted to the user only; the LRU is private per-user state.
+    Topics.USER_RECENT_EMOJIS_UPDATED: ([], True),
     Topics.PERSONA_CREATED: ([], True),
     Topics.PERSONA_UPDATED: ([], True),
     Topics.PERSONA_DELETED: ([], True),

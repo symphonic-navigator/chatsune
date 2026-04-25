@@ -2,6 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+DEFAULT_RECENT_EMOJIS: tuple[str, ...] = ("👍", "❤️", "😂", "🤘", "😊", "🔥")
+RECENT_EMOJIS_MAX: int = 6
+
 
 class UserDocument(BaseModel):
     """Internal MongoDB document model for users. Never expose outside the user module."""
@@ -15,6 +18,7 @@ class UserDocument(BaseModel):
     role: str  # "master_admin" | "admin" | "user"
     is_active: bool = True
     must_change_password: bool = False
+    recent_emojis: list[str] = Field(default_factory=lambda: list(DEFAULT_RECENT_EMOJIS))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

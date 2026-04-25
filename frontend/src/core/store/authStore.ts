@@ -22,6 +22,7 @@ function extractUserFromToken(token: string): UserDto | null {
       must_change_password: (payload.mcp as boolean) ?? false,
       created_at: "",
       updated_at: "",
+      recent_emojis: [],
     }
   } catch {
     return null

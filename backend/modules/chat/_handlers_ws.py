@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from backend.modules.chat._emoji_extractor import extract_emojis
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._orchestrator import (
     _cancel_events,
@@ -33,6 +34,7 @@ from backend.modules.llm import (
 )
 from backend.modules.persona import get_persona
 from backend.modules.tools import get_active_definitions
+from backend.modules.user import UserService
 from backend.ws.event_bus import get_event_bus
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.chat import (
@@ -235,6 +237,20 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
                 correlation_id,
             )
             return
+
+        # Best-effort: refresh the user's recent-emoji LRU. Failures here must
+        # never block the chat send — if Mongo or the event bus blip we log
+        # and continue.
+        try:
+            emojis = extract_emojis(text)
+            if emojis:
+                user_service = UserService(db, event_bus)
+                await user_service.touch_recent_emojis(user_id, emojis)
+        except Exception as exc:
+            _log.warning(
+                "recent_emojis_update_failed user=%s error=%s",
+                user_id, exc,
+            )
 
         # Track extraction trigger — skip for incognito sessions
         persona_id = session.get("persona_id")

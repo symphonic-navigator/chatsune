@@ -3,8 +3,11 @@
 Public API: import only from this file.
 """
 
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._key_repository import UserKeysRepository
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, RECENT_EMOJIS_MAX
 from backend.modules.user._key_service import (
     DekUnlockError,
     UserKeyNotFoundError,
@@ -23,6 +26,9 @@ from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from backend.config import settings
 from backend.database import get_db
+from backend.ws.event_bus import EventBus
+from shared.events.auth import RecentEmojisUpdatedEvent
+from shared.topics import Topics
 
 
 async def init_indexes(db) -> None:
@@ -112,6 +118,60 @@ async def get_usernames(user_ids: list[str]) -> dict[str, str]:
     return out
 
 
+class UserService:
+    """Public service surface for cross-module user operations.
+
+    This class is intentionally thin — most user-module behaviour is still
+    exposed via the module-level helpers above. New cross-module entry
+    points that need both the user repository and the event bus should be
+    added here so callers do not have to wire those dependencies
+    themselves.
+    """
+
+    def __init__(self, db: AsyncIOMotorDatabase, event_bus: EventBus) -> None:
+        self._repository = UserRepository(db)
+        self._event_bus = event_bus
+
+    @staticmethod
+    def _merge_lru(current: list[str], incoming: list[str], max_size: int) -> list[str]:
+        """Front-load ``incoming`` (in order, deduped against later occurrences),
+        then append remaining items from ``current``. Cap at ``max_size``."""
+        seen: set[str] = set()
+        merged: list[str] = []
+        for emoji in [*incoming, *current]:
+            if emoji in seen:
+                continue
+            seen.add(emoji)
+            merged.append(emoji)
+            if len(merged) >= max_size:
+                break
+        return merged
+
+    async def touch_recent_emojis(
+        self, user_id: str, emojis_in_text: list[str]
+    ) -> None:
+        """Move freshly-used emojis to the front of the user's LRU.
+
+        Idempotent — duplicate entries in ``emojis_in_text`` are tolerated.
+        No-op when the input is empty or when the resulting list is
+        unchanged from the user's current list."""
+        if not emojis_in_text:
+            return
+        doc = await self._repository.find_by_id(user_id)
+        if doc is None:
+            return
+        current = doc.get("recent_emojis") or list(DEFAULT_RECENT_EMOJIS)
+        new_list = self._merge_lru(current, emojis_in_text, max_size=RECENT_EMOJIS_MAX)
+        if new_list == current:
+            return
+        await self._repository.update_recent_emojis(user_id, new_list)
+        await self._event_bus.publish(
+            Topics.USER_RECENT_EMOJIS_UPDATED,
+            RecentEmojisUpdatedEvent(user_id=user_id, emojis=new_list),
+            target_user_ids=[user_id],
+        )
+
+
 __all__ = [
     "router",
     "init_indexes",
@@ -125,6 +185,7 @@ __all__ = [
     "cascade_delete_user",
     "DeletionReportStore",
     "UserKeyService",
+    "UserService",
     "DekUnlockError",
     "UserKeyNotFoundError",
 ]
