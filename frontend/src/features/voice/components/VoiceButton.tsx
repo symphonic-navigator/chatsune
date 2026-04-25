@@ -33,7 +33,7 @@ export function VoiceButton({
   useSecretsStore((s) => s.secrets)
   const sttReady = resolveSTTEngine()?.isReady() === true
 
-  const baseClass = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg transition-colors'
+  const baseClass = 'flex h-8 w-8 flex-shrink-0 items-center justify-center transition-colors'
 
   // State 1: Streaming — cancel button (red stop)
   if (isStreaming) {
@@ -44,7 +44,7 @@ export function VoiceButton({
         onClick={onCancel}
         title="Cancel response"
         aria-label="Cancel response"
-        className={`${baseClass} border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20`}
+        className={`${baseClass} rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20`}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -61,7 +61,7 @@ export function VoiceButton({
         onClick={onStopRecording}
         title="Stop recording"
         aria-label="Stop recording"
-        className={`${baseClass} border border-red-500/40 text-red-400`}
+        className={`${baseClass} rounded-lg border border-red-500/40 text-red-400`}
         style={{ background: `rgba(239, 68, 68, ${0.1 + volumeLevel * 0.3})` }}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -79,7 +79,7 @@ export function VoiceButton({
         disabled
         title="Transcribing..."
         aria-label="Transcribing"
-        className={`${baseClass} border border-white/10 bg-white/6 text-white/40 opacity-70`}
+        className={`${baseClass} text-white/40 opacity-70`}
       >
         <svg
           width="16"
@@ -102,7 +102,7 @@ export function VoiceButton({
         onClick={onStopRecording}
         title="Stop playback"
         aria-label="Stop playback"
-        className={`${baseClass} border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20`}
+        className={`${baseClass} rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20`}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -121,9 +121,9 @@ export function VoiceButton({
         disabled={!hasText || disabled || hasPendingUploads}
         title="Send message"
         aria-label="Send message"
-        className={`${baseClass} border border-white/10 bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6`}
+        className={`${baseClass} text-white/55 hover:text-white/90 disabled:opacity-30 disabled:hover:text-white/55`}
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
           <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />
         </svg>
       </button>
@@ -141,9 +141,9 @@ export function VoiceButton({
       onMouseUp={onMicRelease}
       onTouchStart={onMicPress}
       onTouchEnd={onMicRelease}
-      className={`${baseClass} border border-white/10 bg-white/6 text-white/60 hover:bg-white/10 hover:text-white/85 disabled:opacity-30`}
+      className={`${baseClass} text-white/55 hover:text-white/90 disabled:opacity-30`}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
         <rect x="5.5" y="1.5" width="5" height="8" rx="2.5" stroke="currentColor" strokeWidth="1.2" />
         <path d="M3 7.5C3 10.26 5.24 12.5 8 12.5C10.76 12.5 13 10.26 13 7.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
         <line x1="8" y1="12.5" x2="8" y2="14.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />

@@ -39,7 +39,7 @@ export function CockpitGroupButton({ icon, label, children, hasActiveChild }: Pr
     }
   }, [open])
 
-  const base = 'inline-flex items-center justify-center h-9 w-9 rounded-md border transition relative'
+  const base = 'inline-flex items-center justify-center h-8 w-8 lg:h-9 lg:w-9 rounded-md border transition relative'
   const classes = open
     ? `${base} border-white/25 bg-white/10 text-white/90`
     : `${base} border-transparent bg-white/5 text-white/70 hover:bg-white/10`

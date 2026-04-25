@@ -177,18 +177,36 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
           </div>
         </div>
       )}
-      <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleTextChange}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder="Type a message..."
-          disabled={isStreaming || disabled}
-          rows={1}
-          className="chat-text max-h-[40vh] flex-1 resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden"
-        />
+      <div className="mx-auto flex max-w-3xl items-center gap-2">
+        <div className="relative flex-1">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder="Type a message..."
+            disabled={isStreaming || disabled}
+            rows={1}
+            className="chat-text block max-h-[40vh] w-full resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 pr-10 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden"
+          />
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => {}}
+              title="Insert emoji"
+              aria-label="Insert emoji"
+              className="absolute bottom-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/8 text-white/60 transition-colors hover:bg-white/15 hover:text-white/90"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="9" cy="10" r="0.9" fill="currentColor" stroke="none" />
+                <circle cx="15" cy="10" r="0.9" fill="currentColor" stroke="none" />
+                <path d="M8.5 14.5C9.5 16 10.7 16.7 12 16.7C13.3 16.7 14.5 16 15.5 14.5" />
+              </svg>
+            </button>
+          )}
+        </div>
         {sttEnabled ? (
           <VoiceButton
             phase={voicePhase ?? 'idle'}
@@ -212,7 +230,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 onClick={onCancel}
                 title="Cancel response"
                 aria-label="Cancel response"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 transition-colors hover:bg-red-500/20"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <rect x="2" y="2" width="10" height="10" rx="1.5" fill="currentColor" />
@@ -226,9 +244,9 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
                 disabled={!text.trim() || disabled || hasPendingUploads}
                 title="Send message"
                 aria-label="Send message"
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/6 text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-30 disabled:hover:bg-white/6"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center text-white/55 transition-colors hover:text-white/90 disabled:opacity-30 disabled:hover:text-white/55"
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
                   <path d="M2 14L14.5 8L2 2V6.5L10 8L2 9.5V14Z" fill="currentColor" />
                 </svg>
               </button>

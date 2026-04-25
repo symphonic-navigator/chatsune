@@ -68,7 +68,7 @@ export function CockpitBar(props: Props) {
   const toolsActive = Boolean(cockpit?.tools) || props.activePersonaIntegrationIds.length > 0
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-[#0f0d16] rounded-lg">
+    <div className={`flex flex-wrap items-center py-2 bg-[#0f0d16] rounded-lg ${isMobile ? 'gap-1 px-2' : 'gap-1.5 px-3'}`}>
       {isMobile ? (
         <CockpitGroupButton icon="📎" label="Attach, camera, browse">
           {attachGroupChildren}
@@ -115,6 +115,15 @@ export function CockpitBar(props: Props) {
         canEnterLive={props.liveAvailability.canEnterLive}
         disabledReason={props.liveAvailability.reason}
       />
+      {isMobile && (
+        <CockpitButton
+          icon="😊"
+          state="idle"
+          accent="neutral"
+          label="Insert emoji"
+          onClick={() => {}}
+        />
+      )}
       {isMobile && (
         <CockpitButton
           icon="ⓘ"
