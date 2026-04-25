@@ -62,7 +62,7 @@ export function TriggerPhraseEditor({ value, onChange, disabled }: Props) {
           }}
           disabled={disabled}
           placeholder="add phrase…"
-          className="w-full rounded border border-white/10 bg-transparent px-3 py-2 text-sm"
+          className="w-full rounded border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-gold/60"
         />
         {input.trim() !== "" && preview !== input && (
           <p className="mt-1 text-xs text-white/50">
