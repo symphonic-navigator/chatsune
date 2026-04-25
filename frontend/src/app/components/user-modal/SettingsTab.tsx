@@ -2,6 +2,10 @@ import { useDisplaySettings } from '../../../core/store/displaySettingsStore'
 import { useHapticsStore } from '../../../core/store/hapticsStore'
 import { useIsPwa } from '../../../core/hooks/useIsPwa'
 import {
+  isIosSafari,
+  usePwaInstallStore,
+} from '../../../core/pwa/installPrompt'
+import {
   UI_SCALE_OPTIONS,
   FONT_FAMILY_VALUES,
   FONT_SIZE_VALUES,
@@ -47,6 +51,11 @@ export function SettingsTab() {
   const hapticsEnabled = useHapticsStore((s) => s.enabled)
   const setHapticsEnabled = useHapticsStore((s) => s.setEnabled)
   const isPwa = useIsPwa()
+  const promptEvent = usePwaInstallStore((s) => s.promptEvent)
+  const install = usePwaInstallStore((s) => s.install)
+  const canPromptInstall = !isPwa && promptEvent !== null
+  const showIosInstructions = !isPwa && !promptEvent && isIosSafari()
+  const showInstallFallback = !isPwa && !promptEvent && !showIosInstructions
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-xl overflow-y-auto">
@@ -151,6 +160,42 @@ export function SettingsTab() {
           {hapticsEnabled ? 'On' : 'Off'}
         </button>
       </div>
+
+      {!isPwa && (
+        <div>
+          <label className={LABEL}>Install App</label>
+          {canPromptInstall && (
+            <>
+              <p className="text-[11px] text-white/40 font-mono mb-2 leading-relaxed">
+                Add Chatsune to your home screen for a full-screen, app-like
+                experience.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  void install()
+                }}
+                className="px-3.5 py-1.5 rounded-lg text-[11px] font-mono transition-all border border-gold/60 bg-gold/12 text-gold hover:bg-gold/20"
+              >
+                Install
+              </button>
+            </>
+          )}
+          {showIosInstructions && (
+            <p className="text-[11px] text-white/50 font-mono leading-relaxed">
+              To install on iOS, tap the Share icon in Safari, then choose
+              <span className="text-white/80"> "Add to Home Screen"</span>.
+            </p>
+          )}
+          {showInstallFallback && (
+            <p className="text-[11px] text-white/40 font-mono leading-relaxed">
+              Your browser does not expose a direct install action. Try
+              Chrome, Edge or another Chromium-based browser, or look for an
+              "Install app" option in your browser's menu.
+            </p>
+          )}
+        </div>
+      )}
 
       {isPwa && (
         <div>

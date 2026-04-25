@@ -82,6 +82,24 @@ export const usePwaInstallStore = create<PwaInstallState>((set, get) => ({
 }))
 
 /**
+ * Detect iOS / iPadOS Safari, where `beforeinstallprompt` is never fired
+ * and installation happens through the native Share → Add to Home Screen
+ * flow. iPad on iPadOS 13+ reports a Mac-like user-agent, so we also
+ * check for touch-capable Mac platforms as a heuristic.
+ */
+export function isIosSafari(): boolean {
+  if (typeof navigator === "undefined") return false
+  const ua = navigator.userAgent || ""
+  if (/iPad|iPhone|iPod/.test(ua)) return true
+  // iPadOS 13+ masquerades as Mac; touch points disambiguate.
+  return (
+    navigator.platform === "MacIntel" &&
+    typeof navigator.maxTouchPoints === "number" &&
+    navigator.maxTouchPoints > 1
+  )
+}
+
+/**
  * Bind the global listeners. Call once from the app entry point.
  * Bumps a per-browser visit counter on every boot — the UI uses it to
  * defer the hint until the second visit.
