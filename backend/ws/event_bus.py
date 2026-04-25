@@ -140,6 +140,10 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.KNOWLEDGE_DOCUMENT_EMBEDDED: ([], True),
     Topics.KNOWLEDGE_DOCUMENT_EMBED_FAILED: ([], True),
     Topics.KNOWLEDGE_SEARCH_COMPLETED: ([], True),
+    Topics.LIBRARY_ATTACHED_TO_SESSION:   ([], True),
+    Topics.LIBRARY_DETACHED_FROM_SESSION: ([], True),
+    Topics.LIBRARY_ATTACHED_TO_PERSONA:   ([], True),
+    Topics.LIBRARY_DETACHED_FROM_PERSONA: ([], True),
     # Artefacts — target user only
     Topics.ARTEFACT_CREATED: ([], True),
     Topics.ARTEFACT_UPDATED: ([], True),
