@@ -28,7 +28,7 @@ import json
 import logging
 import tarfile
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
@@ -56,6 +56,7 @@ class _ImportedLibrary(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None
     nsfw: bool = False
+    default_refresh: Literal["rarely", "standard", "often"] = "standard"
 
 
 class _ImportedDocument(BaseModel):
@@ -64,6 +65,8 @@ class _ImportedDocument(BaseModel):
     title: str = Field(min_length=1)
     content: str
     media_type: str = "text/markdown"
+    trigger_phrases: list[str] = Field(default_factory=list)
+    refresh: Literal["rarely", "standard", "often"] | None = None
 
 
 def _extract_archive(archive_bytes: bytes) -> dict[str, bytes]:
@@ -235,6 +238,7 @@ async def import_library_archive(
             name=library_payload.name,
             description=library_payload.description,
             nsfw=library_payload.nsfw,
+            default_refresh=library_payload.default_refresh,
             correlation_id=correlation_id,
         )
         library_id = library_doc["_id"]
@@ -248,13 +252,23 @@ async def import_library_archive(
         # 2. For each document, go through the normal upload pipeline so
         #    chunking + embedding + DOCUMENT_CREATED / EMBEDDING events
         #    fire exactly as they would for a hand-uploaded file.
+        from backend.modules.knowledge._pti_normalisation import normalise
+
         for idx, doc_payload in enumerate(documents_payload):
+            # Normalise defensively — old or hand-edited archives may carry
+            # un-normalised phrases. _create_document_internal does not
+            # normalise internally; that is the public endpoint's job.
+            normalised_phrases = [
+                n for n in (normalise(p) for p in doc_payload.trigger_phrases) if n
+            ]
             await _create_document_internal(
                 user_id=user_id,
                 library_id=library_id,
                 title=doc_payload.title,
                 content=doc_payload.content,
                 media_type=doc_payload.media_type,
+                trigger_phrases=normalised_phrases,
+                refresh=doc_payload.refresh,
                 correlation_id=correlation_id,
             )
 

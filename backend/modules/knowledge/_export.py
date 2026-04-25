@@ -38,10 +38,16 @@ _log = logging.getLogger(__name__)
 
 # Explicit allowlist of document fields. INTENTIONALLY NOT a ``model_dump()``
 # of the whole doc — see module docstring for the reasoning.
-_DOCUMENT_FIELDS: tuple[str, ...] = ("title", "content", "media_type")
+_DOCUMENT_FIELDS: tuple[str, ...] = (
+    "title", "content", "media_type",
+    "trigger_phrases", "refresh",
+)
 
 # Explicit allowlist of library fields that cross installs.
-_LIBRARY_FIELDS: tuple[str, ...] = ("name", "description", "nsfw")
+_LIBRARY_FIELDS: tuple[str, ...] = (
+    "name", "description", "nsfw",
+    "default_refresh",
+)
 
 
 def _slug(name: str) -> str:
