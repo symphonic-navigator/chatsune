@@ -1,21 +1,6 @@
 import { useState } from 'react'
 import type { SVGProps } from 'react'
-
-export interface KnowledgeContextItem {
-  library_name: string
-  document_title: string
-  heading_path?: string[]
-  preroll_text?: string | null
-  content: string
-  score?: number | null
-  source: 'search' | 'trigger'
-  triggered_by?: string | null
-}
-
-export interface PtiOverflow {
-  dropped_count: number
-  dropped_titles: string[]
-}
+import type { KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 
 interface Props {
   items: KnowledgeContextItem[]
@@ -100,9 +85,9 @@ function Pill({
             </p>
           )}
           {item.source === 'trigger' && item.triggered_by && (
-            <p>
-              {'Triggered by:'}{' '}
-              <span className="font-mono">{item.triggered_by}</span>
+            <p className="text-white/40">
+              Triggered by:{' '}
+              <span className="font-mono text-white/80">{item.triggered_by}</span>
             </p>
           )}
           {item.preroll_text && (
