@@ -41,7 +41,7 @@ export function RefreshFrequencySelect({
           const v = e.target.value
           onChange(v === "__inherit__" ? null : (v as RefreshFrequency))
         }}
-        className="rounded border border-white/10 bg-transparent px-3 py-2 text-sm"
+        className="rounded border border-white/10 bg-transparent px-3 py-2 text-sm outline-none focus:border-gold/60"
       >
         {inheritFrom && (
           <option value="__inherit__" style={OPTION_STYLE}>
