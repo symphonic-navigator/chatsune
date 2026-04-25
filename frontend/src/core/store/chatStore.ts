@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import type { ArtefactRef, ChatMessageDto, WebSearchContextItem } from '../api/chat'
-import type { RetrievedChunkDto } from '../types/knowledge'
+import type { ArtefactRef, ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../api/chat'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -34,7 +33,7 @@ interface ChatState {
   streamingContent: string
   streamingThinking: string
   streamingWebSearchContext: WebSearchContextItem[]
-  streamingKnowledgeContext: RetrievedChunkDto[]
+  streamingKnowledgeContext: KnowledgeContextItem[]
   streamingArtefactRefs: ArtefactRef[]
   streamingRefusalText: string | null
   activeToolCalls: ActiveToolCall[]
@@ -57,7 +56,7 @@ interface ChatState {
   replaceInStreamingContent: (search: string, replacement: string) => void
   appendStreamingThinking: (delta: string) => void
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
-  setStreamingKnowledgeContext: (items: RetrievedChunkDto[]) => void
+  setStreamingKnowledgeContext: (items: KnowledgeContextItem[]) => void
   appendArtefactRef: (ref: ArtefactRef) => void
   setStreamingRefusalText: (text: string | null) => void
   addToolCall: (tc: ActiveToolCall) => void
@@ -91,7 +90,7 @@ const INITIAL_STATE = {
   streamingContent: '',
   streamingThinking: '',
   streamingWebSearchContext: [] as WebSearchContextItem[],
-  streamingKnowledgeContext: [] as RetrievedChunkDto[],
+  streamingKnowledgeContext: [] as KnowledgeContextItem[],
   streamingArtefactRefs: [] as ArtefactRef[],
   streamingRefusalText: null as string | null,
   activeToolCalls: [] as ActiveToolCall[],

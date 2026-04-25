@@ -1,6 +1,21 @@
 import { api } from "./client"
 import type { AttachmentRefDto } from "./storage"
-import type { RetrievedChunkDto } from "../types/knowledge"
+
+export interface KnowledgeContextItem {
+  library_name: string
+  document_title: string
+  heading_path?: string[]
+  preroll_text?: string | null
+  content: string
+  score?: number | null
+  source: 'search' | 'trigger'
+  triggered_by?: string | null
+}
+
+export interface PtiOverflow {
+  dropped_count: number
+  dropped_titles: string[]
+}
 
 interface ChatSessionDto {
   id: string
@@ -54,7 +69,8 @@ interface ChatMessageDto {
   token_count: number
   attachments: AttachmentRefDto[] | null
   web_search_context: WebSearchContextItem[] | null
-  knowledge_context: RetrievedChunkDto[] | null
+  knowledge_context: KnowledgeContextItem[] | null
+  pti_overflow?: PtiOverflow | null
   vision_descriptions_used?: VisionDescriptionSnapshot[] | null
   created_at: string
   status?: 'completed' | 'aborted' | 'refused'
