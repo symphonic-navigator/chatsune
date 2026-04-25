@@ -4,9 +4,13 @@ from __future__ import annotations
 import pytest
 
 from backend.modules.knowledge._pti_service import (
+    PTI_DOC_MAX_CHARS,
+    PTI_DOC_MAX_TOKENS,
     REFRESH_TO_N,
     DocumentCandidate,
+    PtiContentTooLargeError,
     apply_cooldown_and_caps,
+    validate_pti_eligibility,
 )
 
 
@@ -155,3 +159,24 @@ def test_caps_count_only_emitted_documents():
     assert all(i.document_title.startswith("H") for i in items)
     assert overflow is not None
     assert overflow.dropped_count == 2
+
+
+def test_validate_no_triggers_passes_any_size():
+    long = "x" * 50_000
+    validate_pti_eligibility(content=long, trigger_phrases=[])
+
+
+def test_validate_with_triggers_under_char_limit_passes():
+    validate_pti_eligibility(content="hi" * 100, trigger_phrases=["foo"])
+
+
+def test_validate_rejects_over_char_limit():
+    long = "x" * 25_000
+    with pytest.raises(PtiContentTooLargeError) as ei:
+        validate_pti_eligibility(content=long, trigger_phrases=["foo"])
+    assert "5,000 tokens" in str(ei.value) or "20,000 characters" in str(ei.value)
+
+
+def test_validate_constants():
+    assert PTI_DOC_MAX_TOKENS == 5_000
+    assert PTI_DOC_MAX_CHARS == 20_000

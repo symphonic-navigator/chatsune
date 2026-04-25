@@ -83,3 +83,27 @@ def apply_cooldown_and_caps(
         else None
     )
     return items, overflow
+
+
+PTI_DOC_MAX_TOKENS = 5_000
+PTI_DOC_MAX_CHARS = 20_000
+
+
+class PtiContentTooLargeError(ValueError):
+    """Raised when a PTI-eligible document exceeds size caps."""
+
+
+def validate_pti_eligibility(content: str, trigger_phrases: list[str]) -> None:
+    """Reject documents that have trigger phrases but exceed size caps.
+
+    Documents WITHOUT trigger phrases are not size-capped — they remain
+    available for embedding-search retrieval at any size.
+    """
+    if not trigger_phrases:
+        return
+    if len(content) > PTI_DOC_MAX_CHARS:
+        raise PtiContentTooLargeError(
+            "PTI documents must stay under 5,000 tokens "
+            "(~20,000 characters). Split this document into smaller, "
+            "focused entries."
+        )
