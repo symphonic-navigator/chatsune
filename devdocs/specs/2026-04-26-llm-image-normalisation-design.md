@@ -184,7 +184,7 @@ Generated-image and vision-fallback paths join at the same chokepoint.
 
 ### 5.1 Unit tests
 
-Location: `backend/tests/llm/test_image_normaliser.py` (new file).
+Location: `backend/tests/modules/llm/test_image_normaliser.py` (new file, matches the repo convention).
 
 Pure-function tests — no DB, no async, no fixtures beyond Pillow-generated
 in-memory images. Runs on the host without Docker.
