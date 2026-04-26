@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { useViewport } from '@/core/hooks/useViewport'
 
 export type CockpitButtonState =
@@ -16,6 +16,9 @@ type Props = {
   panel?: ReactNode
   onClick?: () => void
   ariaLabel?: string
+  /** Optional ref forwarded to the inner <button>. Used for low-frequency
+   *  imperative DOM updates (e.g. CSS transform driven by an external RAF). */
+  buttonRef?: Ref<HTMLButtonElement>
 }
 
 const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
@@ -27,7 +30,7 @@ const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
 }
 
 export function CockpitButton({
-  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel,
+  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel, buttonRef,
 }: Props) {
   const { isMobile } = useViewport()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -76,6 +79,7 @@ export function CockpitButton({
     >
       <button
         type="button"
+        ref={buttonRef}
         disabled={!actionable}
         aria-label={ariaLabel ?? label}
         title={label}
