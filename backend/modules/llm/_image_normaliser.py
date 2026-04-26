@@ -52,7 +52,7 @@ def normalise_for_llm(data: bytes, media_type: str) -> tuple[bytes, str]:
     try:
         src = Image.open(io.BytesIO(data))
         src.load()
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
         raise ImageNormalisationError(
             original_media_type=media_type,
             original_bytes=orig_bytes,

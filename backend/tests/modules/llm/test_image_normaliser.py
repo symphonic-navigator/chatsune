@@ -139,3 +139,15 @@ def test_output_strips_icc_profile():
 def test_corrupt_bytes_raise_typed_error():
     with pytest.raises(ImageNormalisationError):
         normalise_for_llm(b"not an image at all", "image/jpeg")
+
+
+def test_decompression_bomb_raises_typed_error(monkeypatch):
+    """Pillow's DecompressionBombError must be wrapped as ImageNormalisationError,
+    not allowed to propagate. We trigger it by lowering MAX_IMAGE_PIXELS for the
+    duration of the test and feeding a small but ‘too many pixels’ image.
+    """
+    # MAX_IMAGE_PIXELS=10 means anything bigger than 20 pixels is a "bomb".
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+    src = _make_jpeg(50, 50)  # 2500 pixels >> 20
+    with pytest.raises(ImageNormalisationError):
+        normalise_for_llm(src, "image/jpeg")
