@@ -24,3 +24,11 @@ class IntegrationDefinition:
     tool_definitions: list[ToolDefinition] = field(default_factory=list)
     tool_side: Literal["server", "client"] = "client"
     linked_premium_provider: str | None = None
+    # When True, the integration participates in the per-persona allowlist:
+    # it is only active for a chat session if the persona has explicitly
+    # opted in via ``integrations_config.enabled_integration_ids``. This
+    # gates tool-providing integrations (e.g. ``lovense``) so a fresh
+    # persona doesn't expose unwanted tools by default. Non-assignable
+    # integrations (e.g. voice providers) remain active whenever
+    # user-enabled, regardless of the persona allowlist.
+    assignable: bool = False

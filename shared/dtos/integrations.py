@@ -51,6 +51,11 @@ class IntegrationDefinitionDto(BaseModel):
     # ``xai_voice``). The frontend uses this to hide the per-integration
     # api_key UI and redirect the user to the Providers tab instead.
     linked_premium_provider: str | None = None
+    # ``True`` means the integration participates in the per-persona
+    # allowlist: tools/prompt-extensions are only active for a chat session
+    # if the persona explicitly opts in. Non-assignable integrations
+    # (e.g. voice providers) remain active whenever user-enabled.
+    assignable: bool = False
 
 
 class UserIntegrationConfigDto(BaseModel):

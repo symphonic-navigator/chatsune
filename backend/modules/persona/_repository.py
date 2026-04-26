@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from shared.dtos.integrations import PersonaIntegrationConfigDto
 from shared.dtos.mcp import PersonaMcpConfig
 from shared.dtos.persona import PersonaDto, ProfileCropDto, VoiceConfigDto
 
@@ -173,6 +174,10 @@ class PersonaRepository:
             profile_crop=ProfileCropDto(**doc["profile_crop"]) if doc.get("profile_crop") else None,
             mcp_config=PersonaMcpConfig(**doc["mcp_config"]) if doc.get("mcp_config") else None,
             integration_configs=doc.get("integration_configs", {}),
+            integrations_config=(
+                PersonaIntegrationConfigDto(**doc["integrations_config"])
+                if doc.get("integrations_config") else None
+            ),
             voice_config=VoiceConfigDto(**doc["voice_config"]) if doc.get("voice_config") else None,
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],

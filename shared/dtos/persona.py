@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from shared.dtos.integrations import PersonaIntegrationConfigDto
 from shared.dtos.mcp import PersonaMcpConfig
 
 ChakraColour = Literal[
@@ -73,6 +74,13 @@ class PersonaDto(BaseModel):
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
     integration_configs: dict[str, dict] = Field(default_factory=dict)
+    # Persona-scoped allowlist of integrations the persona has explicitly
+    # opted into. Only ``assignable`` integrations (e.g. ``lovense``) are
+    # gated by this list — non-assignable integrations such as voice
+    # providers stay active for the persona regardless of allowlist
+    # membership. ``None`` means "no allowlist on this persona", which for
+    # assignable integrations is treated as exclusion.
+    integrations_config: PersonaIntegrationConfigDto | None = None
     voice_config: VoiceConfigDto | None = None
     created_at: datetime
     updated_at: datetime
@@ -117,4 +125,7 @@ class UpdatePersonaDto(BaseModel):
     profile_crop: ProfileCropDto | None = None
     mcp_config: PersonaMcpConfig | None = None
     integration_configs: dict[str, dict] | None = None
+    # Persona-scoped allowlist of integrations the persona has explicitly
+    # opted into. See ``PersonaDto.integrations_config`` for semantics.
+    integrations_config: PersonaIntegrationConfigDto | None = None
     voice_config: VoiceConfigDto | None = None

@@ -66,8 +66,15 @@ export function ImageConfigPanel() {
   // trigger a redundant save with the already-active config.
   const isFirstAfterMount = useRef(true)
 
+  // Hydrate exactly once per mount. After the initial population the user owns
+  // the working state — re-hydrating from `active` would feed a save → store
+  // update → re-hydrate → save loop, because our own `applyConfig` call
+  // updates `active` with a fresh object reference.
+  const hydratedRef = useRef(false)
+
   // Hydrate from the active config or fall back to the first available connection.
   useEffect(() => {
+    if (hydratedRef.current) return
     if (available.length === 0) return
 
     if (active) {
@@ -88,6 +95,8 @@ export function ImageConfigPanel() {
       setGroupId(firstGroup)
       setConfig(defaultConfigForGroup(firstGroup))
     }
+
+    hydratedRef.current = true
   }, [available, active])
 
   // Auto-save with 400 ms debounce. Skips the first run after mount so the

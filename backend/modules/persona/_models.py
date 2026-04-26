@@ -31,6 +31,10 @@ class PersonaDocument(BaseModel):
     # voice selection now lives in integration_configs[tts_integration_id].voice_id.
     voice_config: dict | None = None
     integration_configs: dict[str, dict] = Field(default_factory=dict)
+    # Persona-scoped allowlist of integrations the persona has opted into.
+    # Stored as a loose dict ({"enabled_integration_ids": [...]}), parsed
+    # into ``PersonaIntegrationConfigDto`` at the DTO boundary.
+    integrations_config: dict | None = None
     created_at: datetime
     updated_at: datetime
 

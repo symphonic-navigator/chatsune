@@ -406,24 +406,29 @@ def get_tool_groups_for_persona(persona: dict) -> list[dict]:
     the initial ``tools_enabled`` value at session-create time, without
     requiring an async DB call.
 
-    If the persona has an explicit ``integrations_config.enabled_integration_ids``
-    list, only those integrations are checked. If the list is absent or empty,
-    the full static registry is checked (conservative: the user likely has at
-    least one tool-bringing integration enabled at the user level).
+    Allowlist semantics mirror ``get_enabled_integration_ids``:
+
+    - Assignable integrations (``defn.assignable=True``) are only included
+      when the persona's ``integrations_config.enabled_integration_ids``
+      explicitly lists them.
+    - Non-assignable integrations are always considered (they are gated
+      elsewhere by the user-level enabled flag and by whether they
+      actually contribute ``tool_definitions``).
     """
     from backend.modules.integrations._registry import get_all as _get_all_integrations
 
     all_integrations = _get_all_integrations()
     integrations_config = (persona.get("integrations_config") or {})
-    explicit_ids: list[str] = integrations_config.get("enabled_integration_ids") or []
-
-    candidate_ids: list[str] = explicit_ids if explicit_ids else list(all_integrations.keys())
+    explicit_ids: set[str] = set(integrations_config.get("enabled_integration_ids") or [])
 
     result = []
-    for iid in candidate_ids:
-        defn = all_integrations.get(iid)
-        if defn and defn.tool_definitions:
-            result.append({"id": iid, "tools": list(defn.tool_definitions)})
+    for iid, defn in all_integrations.items():
+        if not defn.tool_definitions:
+            continue
+        if defn.assignable:
+            if iid not in explicit_ids:
+                continue
+        result.append({"id": iid, "tools": list(defn.tool_definitions)})
     return result
 
 

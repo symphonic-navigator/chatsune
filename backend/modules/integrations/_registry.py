@@ -163,6 +163,7 @@ def _register_builtins() -> None:
             ),
         ],
         tool_side="client",
+        assignable=True,
     ))
 
     register(IntegrationDefinition(
