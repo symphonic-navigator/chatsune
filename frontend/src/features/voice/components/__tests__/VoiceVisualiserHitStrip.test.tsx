@@ -8,7 +8,6 @@ var mockTogglePause: ReturnType<typeof vi.fn>
 var settingsVisualisationEnabled: boolean
 var pauseStorePaused: boolean
 var mqMatches: boolean
-var mqListener: ((e: { matches: boolean }) => void) | null
 
 vi.mock('@/features/voice/infrastructure/audioPlayback', () => ({
   get audioPlayback() {
@@ -36,11 +35,10 @@ beforeEach(() => {
   settingsVisualisationEnabled = true
   pauseStorePaused = false
   mqMatches = false
-  mqListener = null
   vi.stubGlobal('matchMedia', (_q: string) => ({
     matches: mqMatches,
-    addEventListener: (_t: string, l: (e: { matches: boolean }) => void) => { mqListener = l },
-    removeEventListener: () => { mqListener = null },
+    addEventListener: (_t: string, _l: (e: { matches: boolean }) => void) => {},
+    removeEventListener: () => {},
   }))
 })
 
