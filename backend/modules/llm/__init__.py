@@ -61,6 +61,7 @@ from backend.modules.llm._registry import (
     get_adapter_class,
 )
 from backend.modules.llm._resolver import (
+    _to_resolved,
     resolve_for_model,
     resolve_owned_connection_by_slug,
     resolve_premium_for_listing,
@@ -74,6 +75,11 @@ from backend.modules.llm._token_estimate import DEFAULT_CONTEXT_WINDOW
 from backend.modules.llm._user_config import UserModelConfigRepository
 from backend.modules.metrics import inference_duration_seconds, inference_total
 from shared.dtos.debug import ActiveInferenceDto
+from shared.dtos.images import (
+    ConnectionImageGroupsDto,
+    ImageGenItem,
+    ImageGroupConfig,
+)
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
@@ -539,6 +545,135 @@ async def delete_all_for_user(user_id: str) -> dict:
     }
 
 
+class LlmService:
+    """Service facade for image-generation operations on the LLM module.
+
+    Keeps the ``images`` module's call surface clean: it imports only
+    ``LlmService`` from this public API — never reaches into adapters, the
+    connection repo, or the resolver directly.
+
+    The three image methods are the only reason this class exists. All
+    inference-related helpers remain module-level functions (the existing
+    pattern); a class is used here because ``validate_image_config`` must
+    be safely callable without a live DB connection (tests bypass
+    ``__init__`` via ``LlmService.__new__(LlmService)``).
+    """
+
+    async def list_image_groups(
+        self, *, user_id: str,
+    ) -> list[ConnectionImageGroupsDto]:
+        """Return one entry per connection that has at least one image group.
+
+        Iterates all of the user's connections, skips any whose adapter does
+        not declare ``supports_image_generation``, resolves + instantiates
+        the adapter, and calls ``adapter.image_groups(resolved)``.
+        """
+        conn_repo = ConnectionRepository(get_db())
+        raw_connections = await conn_repo.list_for_user(user_id)
+
+        _log.info(
+            "llm.list_image_groups user_id=%s total_connections=%d",
+            user_id, len(raw_connections),
+        )
+
+        out: list[ConnectionImageGroupsDto] = []
+        for doc in raw_connections:
+            adapter_cls = get_adapter_class(doc["adapter_type"])
+            if adapter_cls is None or not adapter_cls.supports_image_generation:
+                continue
+            resolved = _to_resolved(doc)
+            adapter = _instantiate_adapter(adapter_cls, get_redis())
+            groups = await adapter.image_groups(resolved)
+            if groups:
+                out.append(ConnectionImageGroupsDto(
+                    connection_id=doc["_id"],
+                    connection_display_name=doc["display_name"],
+                    group_ids=groups,
+                ))
+
+        _log.info(
+            "llm.list_image_groups user_id=%s image_capable_connections=%d",
+            user_id, len(out),
+        )
+        return out
+
+    async def validate_image_config(
+        self, *, group_id: str, config: dict,
+    ) -> ImageGroupConfig:
+        """Parse and validate ``config`` against the typed schema for ``group_id``.
+
+        Does not require a live DB connection — safe to call on a bare
+        ``LlmService.__new__(LlmService)`` instance in tests.
+
+        Raises:
+            ValueError: the config does not match the group's schema.
+        """
+        from pydantic import TypeAdapter, ValidationError
+
+        try:
+            return TypeAdapter(ImageGroupConfig).validate_python(
+                {**config, "group_id": group_id}
+            )
+        except ValidationError as exc:
+            raise ValueError(str(exc)) from exc
+
+    async def generate_images(
+        self,
+        *,
+        user_id: str,
+        connection_id: str,
+        group_id: str,
+        config: ImageGroupConfig,
+        prompt: str,
+    ) -> list[ImageGenItem]:
+        """Resolve the connection (with ownership check), instantiate the adapter,
+        and invoke ``adapter.generate_images``.
+
+        Persistence of the results is the caller's responsibility
+        (``ImageService`` handles that).
+
+        Raises:
+            PermissionError: ``connection_id`` is not owned by ``user_id``.
+            ValueError: the adapter does not support image generation.
+        """
+        conn_repo = ConnectionRepository(get_db())
+        doc = await conn_repo.find(user_id, connection_id)
+        if doc is None:
+            _log.warning(
+                "llm.generate_images user_id=%s connection_id=%s "
+                "reason=not_found_or_not_owned",
+                user_id, connection_id,
+            )
+            raise PermissionError("connection not found or not owned by user")
+
+        adapter_cls = get_adapter_class(doc["adapter_type"])
+        if adapter_cls is None or not adapter_cls.supports_image_generation:
+            _log.warning(
+                "llm.generate_images user_id=%s connection_id=%s "
+                "adapter_type=%s reason=no_image_support",
+                user_id, connection_id, doc.get("adapter_type"),
+            )
+            raise ValueError(
+                f"adapter {doc.get('adapter_type')!r} does not support image generation"
+            )
+
+        resolved = _to_resolved(doc)
+        adapter = _instantiate_adapter(adapter_cls, get_redis())
+
+        n = getattr(config, "n", None)
+        _log.info(
+            "llm.generate_images user_id=%s connection_id=%s "
+            "group_id=%s n=%s",
+            user_id, connection_id, group_id, n,
+        )
+        return await adapter.generate_images(
+            connection=resolved,
+            group_id=group_id,
+            config=config,
+            prompt=prompt,
+        )
+
+
 __all__ = [
     "router",
     "homelab_router",
@@ -591,4 +726,5 @@ __all__ = [
     "HOST_KEY_PREFIX",
     "get_sidecar_registry",
     "set_sidecar_registry",
+    "LlmService",
 ]
