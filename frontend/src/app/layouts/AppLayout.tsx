@@ -24,6 +24,8 @@ import { PersonaOverlay, type PersonaOverlayTab } from "../components/persona-ov
 import { ToastContainer } from "../components/toast/ToastContainer"
 import { MobileToastContainer } from "../components/toast/MobileToastContainer"
 import { InstallHint } from "../components/pwa/InstallHint"
+import { VoiceVisualiser } from "../../features/voice/components/VoiceVisualiser"
+import { personaHex } from "../components/sidebar/personaColour"
 import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
@@ -95,6 +97,9 @@ export default function AppLayout() {
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
   const activePersonaId = chatMatch?.params.personaId ?? null
   const activeSessionId = chatMatch?.params.sessionId ?? null
+  const activePersonaHex = activePersonaId
+    ? personaHex(allPersonas.find((p) => p.id === activePersonaId) ?? { colour_scheme: '' })
+    : undefined
 
   // User modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -341,6 +346,7 @@ export default function AppLayout() {
           )}
         </main>
       </div>
+      <VoiceVisualiser personaColourHex={activePersonaHex} />
       <ToastContainer />
       <MobileToastContainer />
       <InstallHint />

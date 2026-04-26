@@ -22,6 +22,7 @@ class AudioPlaybackImpl {
   private currentSource: AudioBufferSourceNode | null = null
   private currentToken: string | null = null
   private callbacks: AudioPlaybackCallbacks | null = null
+  private analyser: AnalyserNode | null = null
   private playing = false
   private paused = false
   private streamClosed = false
@@ -173,6 +174,12 @@ class AudioPlaybackImpl {
     try {
       if (!this.ctx || this.ctx.state === 'closed') {
         this.ctx = new AudioContext({ sampleRate: 24_000 })
+        this.analyser = this.ctx.createAnalyser()
+        this.analyser.fftSize = 256
+        this.analyser.smoothingTimeConstant = 0.7
+        this.analyser.minDecibels = -90
+        this.analyser.maxDecibels = -10
+        this.analyser.connect(this.ctx.destination)
       }
       if (this.ctx.state === 'suspended') {
         await this.ctx.resume()
@@ -207,9 +214,9 @@ class AudioPlaybackImpl {
         // 128-sample worklet quanta (see soundTouchLoader comment).
         source.playbackRate.value = speed
         source.connect(modNode)
-        modNode.connect(this.ctx.destination)
+        modNode.connect(this.analyser!)
       } else {
-        source.connect(this.ctx.destination)
+        source.connect(this.analyser!)
       }
 
       this.currentSource = source
@@ -239,12 +246,15 @@ class AudioPlaybackImpl {
 
   isPlaying(): boolean { return this.playing }
 
+  getAnalyser(): AnalyserNode | null { return this.analyser }
+
   dispose(): void {
     this.stopAll()
     if (this.ctx && this.ctx.state !== 'closed') {
       this.ctx.close()
     }
     this.ctx = null
+    this.analyser = null
     this.callbacks = null
   }
 }
