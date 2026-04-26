@@ -7,6 +7,7 @@ import { IntegrationsButton } from './buttons/IntegrationsButton'
 import { VoiceButton } from './buttons/VoiceButton'
 import { LiveButton } from './buttons/LiveButton'
 import { AttachButton, CameraButton, BrowseButton } from './buttons/AttachmentButtons'
+import { ImageButton } from '@/features/images/cockpit/ImageButton'
 import { MobileInfoModal } from './MobileInfoModal'
 import { CockpitButton } from './CockpitButton'
 import { CockpitGroupButton } from './CockpitGroupButton'
@@ -63,6 +64,7 @@ export function CockpitBar(props: Props) {
         sessionId={props.sessionId}
         availableGroups={props.availableToolGroups}
       />
+      <ImageButton />
       <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
     </>
   )
@@ -101,6 +103,7 @@ export function CockpitBar(props: Props) {
             sessionId={props.sessionId}
             availableGroups={props.availableToolGroups}
           />
+          <ImageButton />
           <Sep />
           <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
           <Sep />

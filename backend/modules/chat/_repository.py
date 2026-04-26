@@ -389,6 +389,7 @@ class ChatRepository:
         vision_descriptions_used: list[dict] | None = None,
         artefact_refs: list[dict] | None = None,
         tool_calls: list[dict] | None = None,
+        image_refs: list[dict] | None = None,
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
         correlation_id: str | None = None,
@@ -426,6 +427,8 @@ class ChatRepository:
             doc["artefact_refs"] = artefact_refs
         if tool_calls:
             doc["tool_calls"] = tool_calls
+        if image_refs:
+            doc["image_refs"] = image_refs
         if refusal_text:
             doc["refusal_text"] = refusal_text
         await self._messages.insert_one(doc)
@@ -683,10 +686,31 @@ class ChatRepository:
                     tool_name=tc.get("tool_name", ""),
                     arguments=tc.get("arguments", {}),
                     success=tc.get("success", True),
+                    moderated_count=tc.get("moderated_count", 0),
                 )
                 for tc in raw_tool_calls
             ]
             if raw_tool_calls
+            else None
+        )
+        from shared.dtos.images import ImageRefDto
+        raw_image_refs = doc.get("image_refs")
+        image_refs = (
+            [
+                ImageRefDto(
+                    id=r.get("id", ""),
+                    blob_url=r.get("blob_url", ""),
+                    thumb_url=r.get("thumb_url", ""),
+                    width=r.get("width", 0),
+                    height=r.get("height", 0),
+                    prompt=r.get("prompt", ""),
+                    model_id=r.get("model_id", ""),
+                    tool_call_id=r.get("tool_call_id", ""),
+                    thumbnail_b64=r.get("thumbnail_b64"),
+                )
+                for r in raw_image_refs
+            ]
+            if raw_image_refs
             else None
         )
         return ChatMessageDto(
@@ -705,5 +729,6 @@ class ChatRepository:
             refusal_text=doc.get("refusal_text"),
             artefact_refs=artefact_refs,
             tool_calls=tool_calls,
+            image_refs=image_refs,
             usage=doc.get("usage"),
         )

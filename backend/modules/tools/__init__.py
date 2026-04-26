@@ -13,7 +13,7 @@ from backend.modules.metrics import tool_calls_total, tool_call_duration_seconds
 from backend.modules.tools._client_dispatcher import ClientToolDispatcher
 from backend.modules.tools._mcp_executor import McpExecutor
 from backend.modules.tools._mcp_registry import SessionMcpRegistry
-from backend.modules.tools._registry import ToolGroup, get_groups
+from backend.modules.tools._registry import ToolGroup, get_groups, available_groups_for_user
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.tools import ToolGroupDto
 
@@ -81,8 +81,24 @@ class ToolNotFoundError(Exception):
     """No registered executor can handle this tool name."""
 
 
-def get_all_groups() -> list[ToolGroupDto]:
-    """Return DTOs for all registered tool groups (for the frontend)."""
+async def get_all_groups(user_id: str | None = None) -> list[ToolGroupDto]:
+    """Return DTOs for all registered tool groups (for the frontend).
+
+    When ``user_id`` is provided the result is filtered via
+    ``available_groups_for_user``, which excludes ``image_generation`` for
+    users who have no active image configuration.
+    """
+    from backend.modules.images import get_image_service
+    try:
+        image_svc = get_image_service()
+    except RuntimeError:
+        image_svc = None  # ImageService not yet initialised (e.g. tests)
+
+    if user_id is not None and image_svc is not None:
+        groups = await available_groups_for_user(user_id=user_id, image_service=image_svc)
+    else:
+        groups = get_groups()
+
     return [
         ToolGroupDto(
             id=g.id,
@@ -91,24 +107,38 @@ def get_all_groups() -> list[ToolGroupDto]:
             side=g.side,
             toggleable=g.toggleable,
         )
-        for g in get_groups().values()
+        for g in groups.values()
     ]
 
 
-def get_active_definitions(
+async def get_active_definitions(
     disabled_groups: list[str] | None = None,
     mcp_registry: SessionMcpRegistry | None = None,
     persona_mcp_config: "PersonaMcpConfig | None" = None,
+    user_id: str | None = None,
 ) -> list[ToolDefinition]:
     """Return tool definitions for all enabled groups, plus MCP tools if registry provided.
 
-    If persona_mcp_config is provided, excluded gateways/servers/tools are filtered out.
+    When ``user_id`` is provided, ``image_generation`` is only included if the
+    user has an active image configuration (via ``available_groups_for_user``).
+    If persona_mcp_config is provided, excluded gateways/servers/tools are
+    filtered out.
     """
     from shared.dtos.mcp import PersonaMcpConfig  # avoid circular import at module level
+    from backend.modules.images import get_image_service
+    try:
+        image_svc = get_image_service()
+    except RuntimeError:
+        image_svc = None  # ImageService not yet initialised (e.g. tests)
+
+    if user_id is not None and image_svc is not None:
+        effective_groups = await available_groups_for_user(user_id=user_id, image_service=image_svc)
+    else:
+        effective_groups = get_groups()
 
     disabled = set(disabled_groups or [])
     definitions: list[ToolDefinition] = []
-    for group in get_groups().values():
+    for group in effective_groups.values():
         if group.id in disabled and group.toggleable:
             continue
         if group.id == "mcp":
@@ -205,7 +235,16 @@ async def execute_tool(
                 tool_calls_total.labels(model=model, tool_name=tool_name).inc()
                 tool_call_duration_seconds.labels(model=model, tool_name=tool_name).observe(duration)
 
-    for group in get_groups().values():
+    # Resolve groups per-user so the image_generation executor is only active
+    # when the user has a valid active image configuration.
+    from backend.modules.images import get_image_service as _get_image_service
+    try:
+        _image_svc = _get_image_service()
+        _resolved_groups = await available_groups_for_user(user_id=user_id, image_service=_image_svc)
+    except RuntimeError:
+        _resolved_groups = get_groups()  # ImageService not initialised — fall back to static groups
+
+    for group in _resolved_groups.values():
         if tool_name not in group.tool_names:
             continue
 

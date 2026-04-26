@@ -86,6 +86,76 @@ def _consume_retract(user_id: str, correlation_id: str) -> tuple[bool, str | Non
     return True, session_id
 
 
+async def _resolve_attachment_ids(
+    attachment_ids: list[str],
+    user_id: str,
+) -> list[dict]:
+    """Resolve a list of attachment IDs into attachment-ref dicts.
+
+    Tries the storage module first. Any IDs not found there are looked up in
+    the image service (generated images). IDs that exist in neither source
+    are silently dropped — the message is still saved without them.
+
+    Returns a list of dicts shaped to match ``AttachmentRefDto``.
+    """
+    from backend.modules.storage import get_files_by_ids
+
+    storage_files = await get_files_by_ids(attachment_ids, user_id)
+    found_ids = {f["_id"] for f in storage_files}
+
+    refs: list[dict] = [
+        {
+            "file_id": f["_id"],
+            "display_name": f["display_name"],
+            "media_type": f["media_type"],
+            "size_bytes": f["size_bytes"],
+            "thumbnail_b64": f.get("thumbnail_b64"),
+            "text_preview": f.get("text_preview"),
+        }
+        for f in storage_files
+    ]
+
+    missing_ids = [aid for aid in attachment_ids if aid not in found_ids]
+    if missing_ids:
+        _log.debug(
+            "chat.attachment_resolve storage_miss ids=%s user=%s — trying image service",
+            missing_ids, user_id,
+        )
+        try:
+            from backend.modules.images import get_image_service
+            image_service = get_image_service()
+        except RuntimeError:
+            # ImageService not initialised (test/script context) — skip silently.
+            _log.debug(
+                "chat.attachment_resolve image_service_not_initialised user=%s", user_id,
+            )
+            image_service = None
+
+        if image_service is not None:
+            for aid in missing_ids:
+                detail = await image_service.get_image(user_id=user_id, image_id=aid)
+                if detail is None:
+                    _log.debug(
+                        "chat.attachment_resolve not_found id=%s user=%s", aid, user_id,
+                    )
+                    continue
+
+                _log.debug(
+                    "chat.attachment_resolve image_found id=%s user=%s blob_url=%s",
+                    aid, user_id, detail.blob_url,
+                )
+                refs.append({
+                    "file_id": detail.id,
+                    "display_name": detail.prompt or "Generated image",
+                    "media_type": "image/jpeg",
+                    "size_bytes": 0,
+                    "thumbnail_b64": None,
+                    "text_preview": None,
+                })
+
+    return refs
+
+
 async def _publish_message_deleted(
     *,
     user_id: str,
@@ -168,19 +238,8 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
         attachment_ids = data.get("attachment_ids")
         attachment_refs = None
         if attachment_ids:
-            from backend.modules.storage import get_files_by_ids
-            files = await get_files_by_ids(attachment_ids, user_id)
-            attachment_refs = [
-                {
-                    "file_id": f["_id"],
-                    "display_name": f["display_name"],
-                    "media_type": f["media_type"],
-                    "size_bytes": f["size_bytes"],
-                    "thumbnail_b64": f.get("thumbnail_b64"),
-                    "text_preview": f.get("text_preview"),
-                }
-                for f in files
-            ]
+            refs = await _resolve_attachment_ids(attachment_ids, user_id)
+            attachment_refs = refs if refs else None
 
         token_count = count_tokens(text)
 
@@ -603,7 +662,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         repo = ChatRepository(db)
         session = await repo.get_session(session_id, user_id)
         tools_enabled = session.get("tools_enabled", False) if session else False
-        active_tools = get_active_definitions([]) if tools_enabled else None
+        active_tools = await get_active_definitions([], user_id=user_id) if tools_enabled else None
 
         # Assemble system prompt (integration prompt extensions follow tools_enabled)
         system_prompt = await assemble(

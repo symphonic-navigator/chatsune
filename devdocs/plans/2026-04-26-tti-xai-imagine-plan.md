@@ -14,7 +14,7 @@
 
 - Read every file you intend to modify **before** editing it. Patterns in this repo are strict (see CLAUDE.md "Module Boundaries"); never import from another module's `_internal.py`.
 - For Python edits: run `uv run python -m py_compile <file>` after every change.
-- For backend tests: prefer to run them in the Docker compose stack (`docker compose run --rm backend pytest <path>`). On the host, exclude DB-dependent test files (the four MongoDB tests). The plan flags which tasks need Docker.
+- For backend tests: run on host via `PYTHONPATH=. uv run pytest <specific path>` against the running Docker-Compose MongoDB (port 27017 must be reachable; `docker compose up -d mongodb redis` first if needed). There is **no** `backend` service in compose. The four problematic full-suite ignores from CLAUDE.md still apply when running the *whole* backend suite, but new targeted tests work fine on host as long as compose-side Mongo is up.
 - For TS edits: run `pnpm --dir frontend tsc --noEmit` after every change.
 - Commit after every task with a short imperative message (CLAUDE.md). No `--no-verify`.
 - Do not exceed task scope. If you discover something outside the task that needs fixing, note it in the task summary and stop.
@@ -535,7 +535,7 @@ git commit -m "Extend chat DTOs with image_refs and moderated_count"
 **Files:**
 - Create: `backend/modules/images/__init__.py` (empty for now)
 - Create: `backend/modules/images/_models.py`
-- Test: `tests/backend/modules/images/test_models.py`
+- Test: `tests/modules/images/test_models.py`
 
 - [ ] **Step 1: Create empty package init**
 
@@ -547,7 +547,7 @@ Create `backend/modules/images/__init__.py` with a single docstring:
 
 - [ ] **Step 2: Write failing test**
 
-Create `tests/backend/modules/images/test_models.py`:
+Create `tests/modules/images/test_models.py`:
 
 ```python
 from datetime import datetime, UTC
@@ -597,7 +597,7 @@ def test_user_image_config_document_required_fields():
 - [ ] **Step 3: Run test (will fail, no model file)**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_models.py -v
+uv run pytest tests/modules/images/test_models.py -v
 ```
 
 - [ ] **Step 4: Implement `_models.py`**
@@ -663,7 +663,7 @@ class UserImageConfigDocument(BaseModel):
 - [ ] **Step 5: Run test, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_models.py -v
+uv run pytest tests/modules/images/test_models.py -v
 ```
 
 - [ ] **Step 6: Syntax check**
@@ -675,7 +675,7 @@ uv run python -m py_compile backend/modules/images/__init__.py backend/modules/i
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/modules/images/ tests/backend/modules/images/test_models.py
+git add backend/modules/images/ tests/modules/images/test_models.py
 git commit -m "Add images module skeleton with MongoDB document models"
 ```
 
@@ -687,7 +687,7 @@ git commit -m "Add images module skeleton with MongoDB document models"
 
 **Files:**
 - Create: `backend/modules/images/_repository.py`
-- Test: `tests/backend/modules/images/test_repository.py` (DB-required; runs in Docker)
+- Test: `tests/modules/images/test_repository.py` (DB-required; runs in Docker)
 
 - [ ] **Step 1: Read `backend/modules/llm/_user_config.py` for the repository pattern**
 
@@ -695,7 +695,7 @@ Note the use of `find_one_and_update` with `$setOnInsert`, `create_indexes`, `de
 
 - [ ] **Step 2: Write failing test**
 
-Create `tests/backend/modules/images/test_repository.py`:
+Create `tests/modules/images/test_repository.py`:
 
 ```python
 from datetime import datetime, UTC
@@ -784,7 +784,7 @@ async def test_delete_all_for_user(repo):
 - [ ] **Step 3: Run test in Docker (will fail, no repo file)**
 
 ```bash
-docker compose run --rm backend pytest tests/backend/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 4: Implement `_repository.py`** (only `GeneratedImagesRepository` for this task)
@@ -866,7 +866,7 @@ class GeneratedImagesRepository:
 - [ ] **Step 5: Run tests in Docker, verify pass**
 
 ```bash
-docker compose run --rm backend pytest tests/backend/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 6: Syntax check**
@@ -878,7 +878,7 @@ uv run python -m py_compile backend/modules/images/_repository.py
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/modules/images/_repository.py tests/backend/modules/images/test_repository.py
+git add backend/modules/images/_repository.py tests/modules/images/test_repository.py
 git commit -m "Add GeneratedImagesRepository with indexes and cascade delete"
 ```
 
@@ -890,11 +890,11 @@ git commit -m "Add GeneratedImagesRepository with indexes and cascade delete"
 
 **Files:**
 - Modify: `backend/modules/images/_repository.py` (append second repository class)
-- Test: extend `tests/backend/modules/images/test_repository.py`
+- Test: extend `tests/modules/images/test_repository.py`
 
 - [ ] **Step 1: Append failing tests**
 
-Add to `tests/backend/modules/images/test_repository.py`:
+Add to `tests/modules/images/test_repository.py`:
 
 ```python
 from backend.modules.images._repository import UserImageConfigRepository
@@ -983,7 +983,7 @@ async def test_delete_all_for_user_clears_configs(cfg_repo):
 - [ ] **Step 2: Run tests, verify failure**
 
 ```bash
-docker compose run --rm backend pytest tests/backend/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 3: Append `UserImageConfigRepository` to `_repository.py`**
@@ -1113,7 +1113,7 @@ transaction needs the client, not the database.
 - [ ] **Step 4: Run tests in Docker, verify pass**
 
 ```bash
-docker compose run --rm backend pytest tests/backend/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 5: Syntax check**
@@ -1125,7 +1125,7 @@ uv run python -m py_compile backend/modules/images/_repository.py
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/modules/images/_repository.py tests/backend/modules/images/test_repository.py
+git add backend/modules/images/_repository.py tests/modules/images/test_repository.py
 git commit -m "Add UserImageConfigRepository with atomic active-config switching"
 ```
 
@@ -1137,11 +1137,11 @@ git commit -m "Add UserImageConfigRepository with atomic active-config switching
 
 **Files:**
 - Create: `backend/modules/images/_thumbnails.py`
-- Test: `tests/backend/modules/images/test_thumbnails.py`
+- Test: `tests/modules/images/test_thumbnails.py`
 
 - [ ] **Step 1: Write failing test**
 
-Create `tests/backend/modules/images/test_thumbnails.py`:
+Create `tests/modules/images/test_thumbnails.py`:
 
 ```python
 import io
@@ -1195,7 +1195,7 @@ def test_generate_thumbnail_strips_metadata():
 - [ ] **Step 2: Run test, verify fail**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_thumbnails.py -v
+uv run pytest tests/modules/images/test_thumbnails.py -v
 ```
 
 - [ ] **Step 3: Implement `_thumbnails.py`**
@@ -1237,7 +1237,7 @@ def generate_thumbnail_jpeg(image_bytes: bytes, *, max_edge: int = 256) -> bytes
 - [ ] **Step 4: Run test, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_thumbnails.py -v
+uv run pytest tests/modules/images/test_thumbnails.py -v
 ```
 
 - [ ] **Step 5: Syntax check**
@@ -1249,7 +1249,7 @@ uv run python -m py_compile backend/modules/images/_thumbnails.py
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/modules/images/_thumbnails.py tests/backend/modules/images/test_thumbnails.py
+git add backend/modules/images/_thumbnails.py tests/modules/images/test_thumbnails.py
 git commit -m "Add JPEG thumbnail generator using Pillow"
 ```
 
@@ -1261,7 +1261,7 @@ git commit -m "Add JPEG thumbnail generator using Pillow"
 
 **Files:**
 - Modify: `backend/modules/llm/_adapters/_base.py`
-- Test: `tests/backend/modules/llm/_adapters/test_base.py` (extend if exists, else create)
+- Test: `tests/modules/llm/_adapters/test_base.py` (extend if exists, else create)
 
 - [ ] **Step 1: Read `_base.py` to confirm current shape**
 
@@ -1269,7 +1269,7 @@ Already known to be ABC with `fetch_models` and `stream_completion` as abstract 
 
 - [ ] **Step 2: Write failing test**
 
-Create or extend `tests/backend/modules/llm/_adapters/test_base.py`:
+Create or extend `tests/modules/llm/_adapters/test_base.py`:
 
 ```python
 import pytest
@@ -1314,7 +1314,7 @@ async def test_base_adapter_generate_images_default_raises():
 - [ ] **Step 3: Run test, verify fail**
 
 ```bash
-uv run pytest tests/backend/modules/llm/_adapters/test_base.py -v
+uv run pytest tests/modules/llm/_adapters/test_base.py -v
 ```
 
 - [ ] **Step 4: Modify `_base.py`**
@@ -1376,20 +1376,20 @@ from shared.dtos.images import ImageGenItem, ImageGroupConfig
 - [ ] **Step 5: Run test, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/llm/_adapters/test_base.py -v
+uv run pytest tests/modules/llm/_adapters/test_base.py -v
 ```
 
 - [ ] **Step 6: Syntax check + verify nothing else broke**
 
 ```bash
 uv run python -m py_compile backend/modules/llm/_adapters/_base.py
-uv run pytest tests/backend/modules/llm/_adapters/ -v
+uv run pytest tests/modules/llm/_adapters/ -v
 ```
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/modules/llm/_adapters/_base.py tests/backend/modules/llm/_adapters/test_base.py
+git add backend/modules/llm/_adapters/_base.py tests/modules/llm/_adapters/test_base.py
 git commit -m "Add optional image generation hooks to BaseAdapter"
 ```
 
@@ -1402,45 +1402,49 @@ git commit -m "Add optional image generation hooks to BaseAdapter"
 **Files:**
 - Create: `backend/modules/llm/_adapters/_xai_image_groups.py`
 - Modify: `backend/modules/llm/_adapters/_xai_http.py`
-- Test: extend `tests/backend/modules/llm/_adapters/test_xai_http.py`
+- Test: extend `tests/modules/llm/_adapters/test_xai_http.py`
 
-**API verification step required:** Before implementing, fetch
-`https://docs.x.ai/developers/model-capabilities/images/generation`
-(with WebFetch) and pin down: exact endpoint URL, model IDs for normal vs
-pro tier, request body shape, response shape (URL or base64), and the
-`respect_moderation` field name and semantics. Update the implementation
-to match. The placeholders below are the design intent; reconcile with
-the live API.
+**API verified live on 2026-04-26 with Chris's `.xai-test-key`** —
+see spec §12 for the canonical findings. Use these exact values; do
+NOT re-verify (we already paid for the probe).
 
-- [ ] **Step 1: Verify the live xAI imagine API**
+| field | verified value |
+|---|---|
+| endpoint | `POST https://api.x.ai/v1/images/generations` |
+| normal model id | `grok-imagine-image` |
+| pro model id | `grok-imagine-image-pro` |
+| `n` range | 1..10 |
+| `response_format` we use | `"url"` (download immediately — Cloudflare URL expires) |
+| `aspect_ratio` (Phase I subset) | `1:1`, `16:9`, `9:16`, `4:3`, `3:4` |
+| `resolution` | `"1k"` or `"2k"` |
+| success item | `{url, mime_type, revised_prompt}` (no width/height — probe via Pillow) |
+| moderation flag | `respect_moderation: false` per item (absent or true → success) |
+| cost telemetry | `usage.cost_in_usd_ticks` (log at debug level, no UI) |
 
-Use WebFetch on the docs URL and capture:
+- [ ] **Step 1: Confirm understanding of the verified API**
 
-- Endpoint path (e.g. `POST /v1/images/generations`)
-- Model IDs for normal and pro
-- Allowed `aspect_ratio` values
-- Allowed `n` range
-- Response item shape (`url` vs `b64_json`)
-- Per-item moderation flag name (`respect_moderation` or similar)
-
-Record findings as comments at the top of `_xai_image_groups.py`.
+Read spec §12 once. No live re-verification needed. The placeholder
+TODOs in the rest of this task have been pre-resolved with the verified
+values below.
 
 - [ ] **Step 2: Create `_xai_image_groups.py`**
 
 ```python
 """xAI grok-imagine image group definition.
 
-Verified against https://docs.x.ai/developers/model-capabilities/images/generation
-on YYYY-MM-DD. Update this comment when the API changes.
+Verified against the live xAI API on 2026-04-26 with the project's
+.xai-test-key. See devdocs/specs/2026-04-26-tti-xai-imagine-design.md
+section 12 for the canonical findings.
 
-Live API parameters (record verified values here):
-- endpoint: POST <PATH>
-- normal model id: <ID>
-- pro model id: <ID>
-- aspect ratios: <LIST>
-- n range: 1..10
-- response items: <SHAPE>
-- per-item moderation: <FIELD>
+API contract (do not change without re-verifying):
+- endpoint: POST https://api.x.ai/v1/images/generations
+- model ids: grok-imagine-image (normal), grok-imagine-image-pro (pro)
+- aspect_ratio: literal string ('1:1', '16:9', '9:16', '4:3', '3:4',
+  plus several others we do not expose in Phase I)
+- resolution: '1k' or '2k'
+- response: { data: [{url, mime_type, revised_prompt}], usage: {...} }
+- moderation: per-item 'respect_moderation: false' indicates the image
+  was filtered. Absent or true means success.
 """
 
 from shared.dtos.images import (
@@ -1455,35 +1459,25 @@ GROUP_ID = "xai_imagine"
 
 
 def model_id_for_tier(tier: str) -> str:
-    """Map config tier ('normal'|'pro') to the xAI model id.
-
-    Replace the placeholder ids below with the verified model ids from
-    the live API check.
-    """
+    """Map config tier to xAI's model id."""
     if tier == "pro":
-        return "grok-imagine-pro"  # TODO verify
-    return "grok-imagine"  # TODO verify
+        return "grok-imagine-image-pro"
+    return "grok-imagine-image"
 
 
 def aspect_to_payload(aspect: str) -> str:
-    """Map our aspect literal to whatever string xAI expects.
-
-    Replace if xAI uses different tokens (e.g. ``"1024x1024"``).
-    """
+    """xAI takes the aspect literal directly (e.g. '16:9')."""
     return aspect
 
 
 def resolution_to_payload(resolution: str) -> str:
-    """Map ``'1k'``/``'2k'`` to whatever xAI expects.
-
-    Replace if xAI uses pixel dimensions instead.
-    """
+    """xAI takes '1k' or '2k' directly."""
     return resolution
 ```
 
 - [ ] **Step 3: Write failing tests for `xai_http` image methods**
 
-Add to `tests/backend/modules/llm/_adapters/test_xai_http.py`:
+Add to `tests/modules/llm/_adapters/test_xai_http.py`:
 
 ```python
 import json
@@ -1609,7 +1603,7 @@ If a `fake_connection` fixture does not exist, add it to the test file's conftes
 - [ ] **Step 4: Run tests, verify failures**
 
 ```bash
-uv run pytest tests/backend/modules/llm/_adapters/test_xai_http.py -k "image_generation or image_groups or generate_images" -v
+uv run pytest tests/modules/llm/_adapters/test_xai_http.py -k "image_generation or image_groups or generate_images" -v
 ```
 
 - [ ] **Step 5: Implement xAI image methods in `_xai_http.py`**
@@ -1761,13 +1755,13 @@ collector callback into `generate_images`.
 - [ ] **Step 6: Run tests, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/llm/_adapters/test_xai_http.py -k "image_generation or image_groups or generate_images" -v
+uv run pytest tests/modules/llm/_adapters/test_xai_http.py -k "image_generation or image_groups or generate_images" -v
 ```
 
 - [ ] **Step 7: Run the full xAI adapter test file to catch regressions**
 
 ```bash
-uv run pytest tests/backend/modules/llm/_adapters/test_xai_http.py -v
+uv run pytest tests/modules/llm/_adapters/test_xai_http.py -v
 ```
 
 - [ ] **Step 8: Syntax check**
@@ -1779,7 +1773,7 @@ uv run python -m py_compile backend/modules/llm/_adapters/_xai_http.py backend/m
 - [ ] **Step 9: Commit**
 
 ```bash
-git add backend/modules/llm/_adapters/_xai_image_groups.py backend/modules/llm/_adapters/_xai_http.py tests/backend/modules/llm/_adapters/test_xai_http.py
+git add backend/modules/llm/_adapters/_xai_image_groups.py backend/modules/llm/_adapters/_xai_http.py tests/modules/llm/_adapters/test_xai_http.py
 git commit -m "Add xAI grok-imagine image generation to xAI adapter"
 ```
 
@@ -1791,7 +1785,7 @@ git commit -m "Add xAI grok-imagine image generation to xAI adapter"
 
 **Files:**
 - Modify: `backend/modules/llm/_adapters/_xai_http.py` (extend the `router()` classmethod)
-- Test: extend `tests/backend/modules/llm/_adapters/test_xai_http.py` or add an HTTP-level test if the sub-router is mounted in the test app.
+- Test: extend `tests/modules/llm/_adapters/test_xai_http.py` or add an HTTP-level test if the sub-router is mounted in the test app.
 
 - [ ] **Step 1: Read current `router()` classmethod in `_xai_http.py`**
 
@@ -1855,13 +1849,13 @@ If the existing test file already mounts the sub-router into a FastAPI test clie
 
 ```bash
 uv run python -m py_compile backend/modules/llm/_adapters/_xai_http.py
-uv run pytest tests/backend/modules/llm/_adapters/test_xai_http.py -v
+uv run pytest tests/modules/llm/_adapters/test_xai_http.py -v
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/modules/llm/_adapters/_xai_http.py tests/backend/modules/llm/_adapters/test_xai_http.py
+git add backend/modules/llm/_adapters/_xai_http.py tests/modules/llm/_adapters/test_xai_http.py
 git commit -m "Add /imagine/test endpoint to xAI adapter sub-router"
 ```
 
@@ -1873,7 +1867,7 @@ git commit -m "Add /imagine/test endpoint to xAI adapter sub-router"
 
 **Files:**
 - Modify: `backend/modules/llm/__init__.py`
-- Test: `tests/backend/modules/llm/test_service_image_methods.py`
+- Test: `tests/modules/llm/test_service_image_methods.py`
 
 - [ ] **Step 1: Read `backend/modules/llm/__init__.py`** to identify the `LlmService` class and its existing patterns for connection resolution.
 
@@ -1999,7 +1993,7 @@ from shared.dtos.images import (
 - [ ] **Step 4: Run tests, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/llm/test_service_image_methods.py -v
+uv run pytest tests/modules/llm/test_service_image_methods.py -v
 ```
 
 - [ ] **Step 5: Syntax check**
@@ -2011,7 +2005,7 @@ uv run python -m py_compile backend/modules/llm/__init__.py
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/modules/llm/__init__.py tests/backend/modules/llm/test_service_image_methods.py
+git add backend/modules/llm/__init__.py tests/modules/llm/test_service_image_methods.py
 git commit -m "Add image generation methods to LlmService"
 ```
 
@@ -2024,11 +2018,11 @@ git commit -m "Add image generation methods to LlmService"
 **Files:**
 - Create: `backend/modules/images/_service.py`
 - Modify: `backend/modules/images/__init__.py` (export `ImageService`)
-- Test: `tests/backend/modules/images/test_service.py` (mocks LlmService and BlobStore)
+- Test: `tests/modules/images/test_service.py` (mocks LlmService and BlobStore)
 
 - [ ] **Step 1: Write failing tests**
 
-`tests/backend/modules/images/test_service.py`:
+`tests/modules/images/test_service.py`:
 
 ```python
 from datetime import UTC, datetime
@@ -2146,7 +2140,7 @@ async def test_generate_for_chat_partial_moderation_outcome(
 - [ ] **Step 2: Run tests, verify failure**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_service.py -v
+uv run pytest tests/modules/images/test_service.py -v
 ```
 
 - [ ] **Step 3: Implement `_service.py`**
@@ -2489,7 +2483,7 @@ clean for now.)
 - [ ] **Step 5: Run tests, verify pass**
 
 ```bash
-uv run pytest tests/backend/modules/images/test_service.py -v
+uv run pytest tests/modules/images/test_service.py -v
 ```
 
 - [ ] **Step 6: Syntax check**
@@ -2501,7 +2495,7 @@ uv run python -m py_compile backend/modules/images/_service.py backend/modules/i
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/modules/images/_service.py backend/modules/images/__init__.py tests/backend/modules/images/test_service.py
+git add backend/modules/images/_service.py backend/modules/images/__init__.py tests/modules/images/test_service.py
 git commit -m "Add ImageService orchestrator (generate, gallery, config, blob)"
 ```
 
@@ -2695,14 +2689,14 @@ async def test_image_group_absent_when_no_active_config():
 - [ ] **Step 4: Run tests + syntax check**
 
 ```bash
-uv run pytest tests/backend/modules/tools/ -v
+uv run pytest tests/modules/tools/ -v
 uv run python -m py_compile backend/modules/tools/_registry.py backend/modules/images/_tool_executor.py
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/modules/images/_tool_executor.py backend/modules/tools/_registry.py tests/backend/modules/tools/
+git add backend/modules/images/_tool_executor.py backend/modules/tools/_registry.py tests/modules/tools/
 git commit -m "Register image_generation tool group conditionally on active config"
 ```
 
@@ -2715,7 +2709,7 @@ git commit -m "Register image_generation tool group conditionally on active conf
 **Files:**
 - Create: `backend/modules/images/_http.py`
 - Modify: `backend/modules/images/__init__.py` to export `router`, `init_indexes`
-- Test: `tests/backend/modules/images/test_http.py`
+- Test: `tests/modules/images/test_http.py`
 
 - [ ] **Step 1: Read an existing module's `_http.py`** for the auth/dep pattern (e.g., `backend/modules/storage/...`) — confirm how the current user is injected and how routers are exported.
 
@@ -2893,7 +2887,7 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 4: Add HTTP test** (`tests/backend/modules/images/test_http.py`)
+- [ ] **Step 4: Add HTTP test** (`tests/modules/images/test_http.py`)
 
 Use FastAPI's `TestClient` with a mounted router and a stubbed
 `ImageService`. Test 200/404 paths for each endpoint.
@@ -2902,13 +2896,13 @@ Use FastAPI's `TestClient` with a mounted router and a stubbed
 
 ```bash
 uv run python -m py_compile backend/modules/images/_http.py backend/modules/images/__init__.py
-uv run pytest tests/backend/modules/images/test_http.py -v
+uv run pytest tests/modules/images/test_http.py -v
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/modules/images/_http.py backend/modules/images/__init__.py tests/backend/modules/images/test_http.py
+git add backend/modules/images/_http.py backend/modules/images/__init__.py tests/modules/images/test_http.py
 git commit -m "Add /api/images/* HTTP routes for gallery and config"
 ```
 
@@ -3008,7 +3002,7 @@ git commit -m "Wire images module into main.py lifespan and routers"
 
 **Files:**
 - Modify: chat module attachment resolution code (subagent locates exact file)
-- Test: integration test in `tests/backend/modules/chat/`
+- Test: integration test in `tests/modules/chat/`
 
 - [ ] **Step 1: Locate the attachment resolver**
 
@@ -3062,13 +3056,13 @@ gallery endpoint would return.
 
 ```bash
 uv run python -m py_compile <touched files>
-docker compose run --rm backend pytest tests/backend/modules/chat/ -v
+PYTHONPATH=. uv run pytest tests/modules/chat/ -v
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/modules/chat/<touched files> tests/backend/modules/chat/<touched files>
+git add backend/modules/chat/<touched files> tests/modules/chat/<touched files>
 git commit -m "Resolve generated images as chat attachments"
 ```
 

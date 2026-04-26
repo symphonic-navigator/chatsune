@@ -147,6 +147,16 @@ async def list_messages(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     messages = await repo.list_messages(session_id)
+    # Back-fill thumbnail_b64 on image_refs from older messages that were
+    # persisted before the inline-base64 path landed. Silent no-op when
+    # ImageService isn't initialised (script contexts) or no refs need it.
+    try:
+        from backend.modules.images import get_image_service
+        await get_image_service().enrich_image_refs_in_messages(
+            user_id=user["sub"], messages=messages,
+        )
+    except RuntimeError:
+        pass
     return ChatMessagesBundleDto(
         messages=[ChatRepository.message_to_dto(m) for m in messages],
         context_status=session.get("context_status", "green"),
@@ -462,4 +472,4 @@ async def update_session_toggles(
 @router.get("/tools")
 async def list_tool_groups(user: dict = Depends(require_active_session)):
     """Return all available tool groups for the frontend."""
-    return get_all_groups()
+    return await get_all_groups(user_id=user["sub"])

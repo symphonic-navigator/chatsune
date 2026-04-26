@@ -538,6 +538,14 @@ export function Sidebar({
           isActive={isTabActive('artefacts')}
         />
 
+        {/* Images */}
+        <IconBtn
+          icon="🖼️"
+          onClick={() => onOpenModal('images')}
+          title="Images"
+          isActive={isTabActive('images')}
+        />
+
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
 
         {/* Sanitised */}
@@ -974,6 +982,14 @@ export function Sidebar({
           label="Artefacts"
           isActive={isTabActive('artefacts')}
           onClick={() => openModalAndClose('artefacts')}
+        />
+
+        {/* Images gallery */}
+        <NavRow
+          icon="🖼️"
+          label="Images"
+          isActive={isTabActive('images')}
+          onClick={() => openModalAndClose('images')}
         />
 
         <div className="mx-2 my-1.5 h-px bg-white/4" />

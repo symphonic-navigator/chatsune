@@ -37,6 +37,7 @@ def _build_groups() -> dict[str, ToolGroup]:
         KnowledgeSearchExecutor,
         WebSearchExecutor,
     )
+    from backend.modules.images._tool_executor import ImageGenerationToolExecutor
     from backend.modules.websearch import get_tool_definitions as ws_definitions
     from shared.dtos.inference import ToolDefinition
 
@@ -288,6 +289,21 @@ def _build_groups() -> dict[str, ToolGroup]:
             definitions=[],  # dynamic — populated per-session
             executor=None,
         ),
+        "image_generation": ToolGroup(
+            id="image_generation",
+            display_name="Image Generation",
+            description=(
+                "Generate images from text prompts. Available when an "
+                "image-capable connection is configured and an active image "
+                "configuration is selected."
+            ),
+            side="server",
+            toggleable=False,  # rides on tools_enabled with the rest
+            tool_names=["generate_image"],
+            definitions=[ImageGenerationToolExecutor.tool_definition()],
+            executor=None,  # constructed at resolution time with the
+                            # ImageService instance; see available_groups_for_user below
+        ),
     }
 
 
@@ -300,3 +316,37 @@ def get_groups() -> dict[str, ToolGroup]:
     if _groups is None:
         _groups = _build_groups()
     return _groups
+
+
+async def available_groups_for_user(
+    *, user_id: str, image_service,
+) -> dict[str, ToolGroup]:
+    """Return tool groups available to ``user_id``.
+
+    For all static groups: include them as built. For the
+    ``image_generation`` group: include it ONLY if the user has an
+    active image configuration. When included, swap in an executor
+    constructed with the live ``image_service`` instance.
+    """
+    groups = dict(get_groups())
+    image_group = groups.get("image_generation")
+    if image_group is None:
+        return groups
+
+    has_active = await image_service.get_active_config(user_id=user_id) is not None
+    if not has_active:
+        groups.pop("image_generation")
+        return groups
+
+    from backend.modules.images._tool_executor import ImageGenerationToolExecutor
+    groups["image_generation"] = ToolGroup(
+        id=image_group.id,
+        display_name=image_group.display_name,
+        description=image_group.description,
+        side=image_group.side,
+        toggleable=image_group.toggleable,
+        tool_names=image_group.tool_names,
+        definitions=image_group.definitions,
+        executor=ImageGenerationToolExecutor(image_service),
+    )
+    return groups

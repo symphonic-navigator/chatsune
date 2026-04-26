@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useUploadStore, toAttachmentRefs, type PendingAttachment } from '../../core/store/uploadStore'
 import { uploadFile } from '../../core/api/storage'
 import type { AttachmentRefDto } from '../../core/api/storage'
+import type { GeneratedImageSummaryDto } from '../../core/api/images'
 
 export function useAttachments(personaId?: string) {
   const pendingAttachments = useUploadStore((s) => s.pendingAttachments)
@@ -61,6 +62,27 @@ export function useAttachments(personaId?: string) {
     [addPending],
   )
 
+  const addGeneratedImage = useCallback(
+    (image: GeneratedImageSummaryDto) => {
+      // Skip if already queued (e.g. double-click on a tile).
+      const existing = useUploadStore.getState().pendingAttachments
+      if (existing.some((a) => a.fileId === image.id)) return
+
+      const localId = `generated-${crypto.randomUUID()}`
+      addPending({
+        localId,
+        // Placeholder File so the type check in AttachmentStrip resolves to an image.
+        file: new File([], image.prompt.slice(0, 40) || 'generated-image', { type: 'image/jpeg' }),
+        status: 'done',
+        fileId: image.id,
+        dto: null,
+        localPreviewUrl: image.thumb_url,
+        error: null,
+      })
+    },
+    [addPending],
+  )
+
   const hasPending = pendingAttachments.some((a) => a.status === 'uploading')
   const hasErrors = pendingAttachments.some((a) => a.status === 'error')
   const hasAttachments = pendingAttachments.length > 0
@@ -79,6 +101,7 @@ export function useAttachments(personaId?: string) {
     pendingAttachments,
     addFile,
     addExistingFile,
+    addGeneratedImage,
     removeAttachment: removePending,
     clearAttachments: clearPending,
     hasPending,

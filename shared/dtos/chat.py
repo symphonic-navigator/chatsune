@@ -3,6 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from shared.dtos.images import ImageRefDto
 from shared.dtos.storage import AttachmentRefDto
 
 
@@ -65,6 +66,7 @@ class ToolCallRefDto(BaseModel):
     tool_name: str
     arguments: dict
     success: bool
+    moderated_count: int = 0
 
 
 class KnowledgeContextItem(BaseModel):
@@ -100,6 +102,7 @@ class ChatMessageDto(BaseModel):
     refusal_text: str | None = None
     artefact_refs: list[ArtefactRefDto] | None = None
     tool_calls: list[ToolCallRefDto] | None = None
+    image_refs: list[ImageRefDto] | None = None
     usage: dict | None = None
 
 

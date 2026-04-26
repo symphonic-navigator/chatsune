@@ -11,6 +11,7 @@ import { KnowledgePills } from './KnowledgePills'
 import { ToolCallPills } from './ToolCallPills'
 import { ToolCallActivity } from './ToolCallActivity'
 import { ArtefactCard } from '../artefact/ArtefactCard'
+import { InlineImageBlock } from '../images/chat/InlineImageBlock'
 
 interface ActiveToolCall {
   id: string
@@ -192,6 +193,16 @@ export function MessageList({
                     ))}
                   </div>
                 )}
+                {/* Inline generated images — rendered after artefact cards, before the message body. */}
+                {(() => {
+                  const imageToolCall = msg.tool_calls?.find(
+                    (tc) => tc.tool_name === 'generate_image',
+                  )
+                  const moderatedCount = imageToolCall?.moderated_count ?? 0
+                  const refs = msg.image_refs ?? []
+                  if (refs.length === 0 && moderatedCount === 0) return null
+                  return <InlineImageBlock refs={refs} moderatedCount={moderatedCount} />
+                })()}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}

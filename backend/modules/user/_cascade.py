@@ -278,7 +278,29 @@ async def cascade_delete_user(
         warnings=provider_warnings,
     ))
 
-    # Step 7: audit-log entries (actor OR resource).
+    # Step 7: generated images and image config.
+    from backend.modules.images import get_image_service as _get_image_service
+    image_count: int = 0
+    image_warnings: list[str] = []
+    try:
+        _image_svc = _get_image_service()
+        _deleted_images, _del_warnings = await _safe_call(
+            "image data deletion",
+            _image_svc.cascade_delete_user(user_id=user_id),
+        )
+        image_count = _deleted_images or 0
+        image_warnings.extend(_del_warnings)
+    except RuntimeError:
+        # ImageService not initialised — e.g. a standalone migration script
+        # that bypasses the normal lifespan. Not a hard failure.
+        image_warnings.append("ImageService not initialised — image data not purged")
+    steps.append(DeletionStepDto(
+        label="generated images",
+        deleted_count=image_count,
+        warnings=image_warnings,
+    ))
+
+    # Step 8: audit-log entries (actor OR resource).
     audit_count, audit_warnings = await _safe_call(
         "audit log deletion", audit_repo.delete_for_user(user_id),
     )
@@ -288,7 +310,7 @@ async def cascade_delete_user(
         warnings=audit_warnings,
     ))
 
-    # Step 8: per-user Redis safeguard keys.
+    # Step 9: per-user Redis safeguard keys.
     redis_patterns = [
         f"safeguard:queue:{user_id}",
         f"safeguard:budget:{user_id}:*",
@@ -310,7 +332,7 @@ async def cascade_delete_user(
         warnings=redis_warnings,
     ))
 
-    # Step 9: revoke every active session (refresh tokens).
+    # Step 10: revoke every active session (refresh tokens).
     # Pre-count the outstanding token set size so the report shows how
     # many sessions the action actually killed.
     session_count = 0
@@ -331,7 +353,7 @@ async def cascade_delete_user(
         warnings=session_warnings,
     ))
 
-    # Step 10: the user document itself. This determines overall success.
+    # Step 11: the user document itself. This determines overall success.
     user_deleted = False
     user_warnings: list[str] = []
     try:

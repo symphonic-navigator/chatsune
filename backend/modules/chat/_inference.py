@@ -9,6 +9,7 @@ from typing import Literal
 
 from backend.config import settings
 from backend.jobs import get_user_lock
+from shared.dtos.images import ImageRefDto
 from backend.modules.metrics import inferences_aborted_total
 from backend.modules.llm import (
     ContentDelta,
@@ -109,6 +110,10 @@ class InferenceRunner:
         web_search_context: list[dict] = []
         knowledge_context: list[dict] = []
         artefact_refs: list[dict] = []
+        # Collected image refs from generate_image tool calls — drained out
+        # of the side-channel exposed by ImageGenerationToolExecutor and
+        # persisted on the assistant message for inline rendering.
+        image_refs: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
@@ -285,15 +290,28 @@ class InferenceRunner:
                 )
                 extra_messages.append(assistant_msg)
 
-                # The content from this iteration was a tool-call turn — the
-                # final user-facing content will come from the next iteration.
-                # Reset so only the last iteration's content is saved.
-                # Thinking, however, is cumulative: reasoning that preceded a
-                # tool call is still part of the model's complete reasoning
-                # trace and must survive a chat reload, otherwise the thinking
-                # bubble disappears on refresh for any response that involved
-                # a tool call (e.g. artefact creation).
-                full_content = ""
+                # The content from this iteration was a tool-call turn — for
+                # most tools the final user-facing content will come from the
+                # next iteration, and resetting avoids duplication (artefact
+                # tools tend to narrate the same idea before AND after the
+                # call). For ``generate_image`` the model usually has nothing
+                # meaningful to say after the call (it considers the request
+                # fulfilled once the images render), so the pre-call preamble
+                # IS the user-facing message — preserving it is the right
+                # behaviour. The condition checks "all tools are preserve-
+                # preamble" so a mixed iter (rare) still resets to be safe.
+                #
+                # Thinking, however, is cumulative regardless: reasoning that
+                # preceded a tool call is still part of the model's complete
+                # reasoning trace and must survive a chat reload, otherwise
+                # the thinking bubble disappears on refresh.
+                _PRESERVE_PREAMBLE_TOOLS = frozenset({"generate_image"})
+                preserve_preamble = bool(iter_tool_calls) and all(
+                    tc.name in _PRESERVE_PREAMBLE_TOOLS
+                    for tc in iter_tool_calls
+                )
+                if not preserve_preamble:
+                    full_content = ""
 
                 for tc in iter_tool_calls:
                     now = datetime.now(timezone.utc)
@@ -351,11 +369,39 @@ class InferenceRunner:
                             )
                             artefact_refs.append(ref_for_event.model_dump())
 
+                    # Drain the structured image-generation outcome (if any).
+                    # `generate_image` produces image_refs + a moderated_count;
+                    # both flow onto the persisted assistant message AND into
+                    # the tool_call.completed event so the frontend can render
+                    # the inline image block live without a session reload.
+                    moderated_count = 0
+                    image_refs_for_event: list[ImageRefDto] | None = None
+                    if tc.name == "generate_image":
+                        from backend.modules.images._tool_executor import (
+                            drain_image_outcome,
+                        )
+                        outcome = drain_image_outcome(tc.id)
+                        if outcome is not None:
+                            for ref in outcome.image_refs:
+                                image_refs.append(ref.model_dump())
+                            moderated_count = outcome.moderated_count
+                            image_refs_for_event = (
+                                list(outcome.image_refs) if outcome.image_refs else None
+                            )
+                            # All-moderated runs are surfaced as failed tool
+                            # calls so the frontend pill can render the error
+                            # state and offer a retry. Partial-moderation
+                            # batches stay successful — the moderated_count
+                            # decoration carries the secondary information.
+                            if outcome.all_moderated:
+                                tool_success = False
+
                     all_tool_calls.append({
                         "tool_call_id": tc.id,
                         "tool_name": tc.name,
                         "arguments": arguments,
                         "success": tool_success,
+                        "moderated_count": moderated_count,
                     })
 
                     await emit_fn(ChatToolCallCompletedEvent(
@@ -364,6 +410,8 @@ class InferenceRunner:
                         tool_name=tc.name,
                         success=tool_success,
                         artefact_ref=ref_for_event,
+                        image_refs=image_refs_for_event,
+                        moderated_count=moderated_count,
                         timestamp=datetime.now(timezone.utc),
                     ))
 
@@ -454,6 +502,7 @@ class InferenceRunner:
                 knowledge_context=knowledge_context or None,
                 artefact_refs=artefact_refs or None,
                 tool_calls=all_tool_calls or None,
+                image_refs=image_refs or None,
                 refusal_text=iter_refusal_text,
                 status=resolved_status,
             )

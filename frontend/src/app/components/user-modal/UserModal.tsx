@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { GalleryGrid } from '../../../features/images/gallery/GalleryGrid'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
@@ -247,6 +248,11 @@ export function UserModal({
           {contentKey === 'community-provisioning' && <CommunityProvisioningPage />}
           {contentKey === 'uploads' && <UploadsTab />}
           {contentKey === 'artefacts' && <ArtefactsTab onClose={onClose} />}
+          {contentKey === 'images' && (
+            <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+              <GalleryGrid />
+            </div>
+          )}
           {contentKey === 'models' && <ModelsTab />}
           {contentKey === 'job-log' && <JobLogTab />}
           {contentKey === 'display' && <SettingsTab />}
