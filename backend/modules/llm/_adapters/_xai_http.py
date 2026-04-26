@@ -14,8 +14,9 @@ from typing import ClassVar
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from PIL import Image
+from pydantic import BaseModel
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -568,6 +569,16 @@ class XaiHttpAdapter(BaseAdapter):
         return items
 
 
+class _ImagineTestRequest(BaseModel):
+    group_id: str
+    config: dict
+    prompt: str = "a serene mountain landscape at dawn"
+
+
+class _ImagineTestResponse(BaseModel):
+    items: list[ImageGenItem]
+
+
 def _xai_repo_factory():
     """Default factory — returns a ConnectionRepository backed by the live DB.
 
@@ -630,5 +641,39 @@ def _build_adapter_router() -> APIRouter:
                 ),
             )
         return {"valid": valid, "error": error}
+
+    @router.post("/imagine/test", response_model=_ImagineTestResponse)
+    async def imagine_test(
+        body: _ImagineTestRequest,
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> _ImagineTestResponse:
+        from pydantic import TypeAdapter
+        from shared.dtos.images import ImageGroupConfig
+
+        _log.info(
+            "xai_http.imagine_test connection_id=%s group_id=%s n=%d",
+            c.id, body.group_id,
+            body.config.get("n", -1),
+        )
+
+        try:
+            cfg = TypeAdapter(ImageGroupConfig).validate_python(
+                {**body.config, "group_id": body.group_id}
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"invalid config: {exc}")
+
+        adapter = XaiHttpAdapter()
+        items = await adapter.generate_images(
+            connection=c,
+            group_id=body.group_id,
+            config=cfg,
+            prompt=body.prompt,
+        )
+        # Drain buffers immediately — bytes are not persisted in the test path.
+        for item in items:
+            if item.kind == "image":
+                drain_image_buffer(item.id)
+        return _ImagineTestResponse(items=items)
 
     return router

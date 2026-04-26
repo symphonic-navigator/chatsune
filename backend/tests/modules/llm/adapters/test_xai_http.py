@@ -716,6 +716,122 @@ async def test_xai_generate_images_success_and_moderation_mix(monkeypatch):
     assert drain_image_buffer(items[0].id) is None
 
 
+# ---------------------------------------------------------------------------
+# Sub-router POST /imagine/test
+# ---------------------------------------------------------------------------
+
+def _app_with_imagine_test_router(monkeypatch, fake_client_cls) -> TestClient:
+    """Build a minimal FastAPI app mounting the xAI sub-router with the
+    httpx.AsyncClient replaced by *fake_client_cls* and dependency overrides
+    so no real DB or event bus is needed.
+    """
+    from backend.modules.llm._adapters import _xai_http
+    from backend.modules.llm._resolver import resolve_connection_for_user
+    from backend.ws.event_bus import get_event_bus
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._xai_http.httpx.AsyncClient",
+        fake_client_cls,
+    )
+
+    router = XaiHttpAdapter.router()
+    app = FastAPI()
+    app.include_router(router, prefix="/adapter")
+    app.dependency_overrides[resolve_connection_for_user] = lambda: _resolved_conn()
+
+    class _FakeBus:
+        async def publish(self, *a, **kw):
+            return None
+
+    app.dependency_overrides[get_event_bus] = lambda: _FakeBus()
+    monkeypatch.setattr(_xai_http, "_xai_repo_factory",
+                        lambda: object(), raising=False)
+    return TestClient(app)
+
+
+def test_imagine_test_endpoint_invalid_config_returns_422(monkeypatch):
+    """Submitting a config that fails Pydantic validation should return 422."""
+    # n=99 exceeds XaiImagineConfig's Field(ge=1, le=10) constraint.
+    class _UnusedClient:
+        pass
+
+    client = _app_with_imagine_test_router(monkeypatch, _UnusedClient)
+    resp = client.post(
+        "/adapter/imagine/test",
+        json={"group_id": "xai_imagine", "config": {"n": 99}},
+    )
+    assert resp.status_code == 422
+    assert "invalid config" in resp.json()["detail"].lower()
+
+
+def test_imagine_test_endpoint_returns_items_and_drains_buffers(monkeypatch):
+    """Successful generation returns items; buffers are drained (no bytes
+    remain in _LAST_BATCH_BUFFERS after the endpoint response)."""
+    import io as _io
+    from PIL import Image as _Image
+
+    _png = _io.BytesIO()
+    _Image.new("RGB", (32, 32), (10, 20, 30)).save(_png, format="PNG")
+    fake_image_bytes = _png.getvalue()
+
+    fake_gen_response = {
+        "data": [{"url": "https://example.test/img.png", "mime_type": "image/png"}],
+        "usage": {"cost_in_usd_ticks": 0},
+    }
+
+    class _FakeResp:
+        def __init__(self, status_code=200, json_data=None, content=None, headers=None):
+            self.status_code = status_code
+            self._json = json_data
+            self.content = content or b""
+            self.headers = headers or {}
+            self.text = ""
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, *a, **kw):
+            return _FakeResp(json_data=fake_gen_response)
+
+        async def get(self, *a, **kw):
+            return _FakeResp(
+                content=fake_image_bytes,
+                headers={"content-type": "image/png"},
+            )
+
+    client = _app_with_imagine_test_router(monkeypatch, _FakeClient)
+    resp = client.post(
+        "/adapter/imagine/test",
+        json={
+            "group_id": "xai_imagine",
+            "config": {"tier": "normal", "n": 1},
+            "prompt": "a test mountain",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "items" in body
+    assert len(body["items"]) == 1
+    item = body["items"][0]
+    assert item["kind"] == "image"
+    assert item["width"] == 32
+    assert item["height"] == 32
+
+    # Buffer must have been drained — no bytes left behind.
+    from backend.modules.llm._adapters._xai_http import drain_image_buffer
+    assert drain_image_buffer(item["id"]) is None
+
+
 @pytest.mark.asyncio
 async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
     captured_body: dict = {}
