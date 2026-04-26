@@ -249,6 +249,51 @@ def _make_tool_executor(
     return _executor
 
 
+async def _resolve_attachment_files(
+    attachment_ids: list[str],
+    user_id: str,
+) -> list[dict]:
+    """Resolve attachment IDs into file dicts ready for inference.
+
+    Storage files are loaded by ``get_files_by_ids`` (metadata + raw bytes).
+    Any IDs not present there are looked up in the image service so a
+    generated image can be passed to a vision model just like an uploaded
+    image. The returned dict shape matches ``storage.get_files_by_ids``:
+    ``_id``, ``user_id``, ``display_name``, ``media_type``, ``data``.
+    """
+    files = await get_files_by_ids(attachment_ids, user_id)
+    found_ids = {f["_id"] for f in files}
+    missing_ids = [aid for aid in attachment_ids if aid not in found_ids]
+    if not missing_ids:
+        return files
+
+    try:
+        from backend.modules.images import get_image_service
+        image_service = get_image_service()
+    except RuntimeError:
+        # ImageService not initialised (e.g. test/script context).
+        return files
+
+    for aid in missing_ids:
+        detail = await image_service.get_image(user_id=user_id, image_id=aid)
+        if detail is None:
+            continue
+        blob_result = await image_service.stream_blob(
+            user_id=user_id, image_id=aid, kind="full",
+        )
+        if blob_result is None:
+            continue
+        data, content_type = blob_result
+        files.append({
+            "_id": detail.id,
+            "user_id": user_id,
+            "display_name": detail.prompt or "Generated image",
+            "media_type": content_type,
+            "data": data,
+        })
+    return files
+
+
 async def _resolve_image_attachments_for_inference(
     *,
     user_id: str,
@@ -577,7 +622,7 @@ async def run_inference(
         attachment_ids = last_msg.get("attachment_ids")
         if attachment_ids:
             supports_vision = await get_model_supports_vision(user_id, model_unique_id)
-            files = await get_files_by_ids(attachment_ids, user_id)
+            files = await _resolve_attachment_files(attachment_ids, user_id)
             vision_fallback_model = persona.get("vision_fallback_model") if persona else None
             extra_parts, new_msg_vision_snapshots, _ = await _resolve_image_attachments_for_inference(
                 user_id=user_id,

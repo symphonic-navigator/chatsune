@@ -891,6 +891,14 @@ export function ChatView({ persona }: ChatViewProps) {
     })
   }, [activeImageConfigId])
 
+  // Persona-scoped integration allowlist. Only ``assignable`` integrations
+  // (e.g. ``lovense``) honour this — non-assignable ones (voice providers)
+  // are always considered active when user-enabled. Mirrors the backend
+  // logic in ``get_enabled_integration_ids`` / ``get_tool_groups_for_persona``.
+  const personaEnabledIntegrationIds =
+    persona?.integrations_config?.enabled_integration_ids ?? []
+  const personaIntegrationSet = new Set(personaEnabledIntegrationIds)
+
   // Build the list of available tool groups for the CockpitBar ToolsButton.
   // Three kinds:
   //   'builtin'     — platform-provided (web_search, journal, knowledge base, …)
@@ -910,7 +918,12 @@ export function ChatView({ persona }: ChatViewProps) {
         kind: 'mcp',
       })),
     ...intDefinitions
-      .filter((d) => intConfigs[d.id]?.effective_enabled && d.has_tools)
+      .filter((d) => {
+        if (!intConfigs[d.id]?.effective_enabled) return false
+        if (!d.has_tools) return false
+        if (d.assignable) return personaIntegrationSet.has(d.id)
+        return true
+      })
       .map((d): ToolGroup => ({
         id: d.id,
         label: d.display_name,
@@ -923,8 +936,6 @@ export function ChatView({ persona }: ChatViewProps) {
   //   - the persona has explicitly enabled it (integrations_config),
   //   - it is globally usable (effective_enabled),
   //   - it is not a TTS / STT provider (those have dedicated buttons).
-  const personaEnabledIntegrationIds =
-    persona?.integrations_config?.enabled_integration_ids ?? []
   const activePersonaIntegrationIds = personaEnabledIntegrationIds.filter((id) => {
     if (!intConfigs[id]?.effective_enabled) return false
     const def = intDefinitions.find((d) => d.id === id)
