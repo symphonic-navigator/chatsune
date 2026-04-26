@@ -1344,6 +1344,9 @@ export function ChatView({ persona }: ChatViewProps) {
                   openPersonaVoiceSettings: persona
                     ? () => openPersonaOverlay(persona.id, 'voice')
                     : undefined,
+                  openLlmProviderSettings: openModal
+                    ? () => openModal('llm-providers')
+                    : undefined,
                 }}
               />
             ) : undefined}
