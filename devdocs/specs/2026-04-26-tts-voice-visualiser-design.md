@@ -170,7 +170,7 @@ Existing persisted snapshots without `visualisation` get the defaults via Zustan
 
 ## 7. Render component
 
-New file: `frontend/src/features/voice/components/VoiceVisualiser.tsx`. Mounted exactly once near the top of `frontend/src/app/App.tsx`, at the same level as `<Toaster />` or equivalent global overlays.
+New file: `frontend/src/features/voice/components/VoiceVisualiser.tsx`. Mounted exactly once inside `frontend/src/app/layouts/AppLayout.tsx`, alongside `<ToastContainer />` (around line 344) — so it covers all authenticated views and is automatically absent on the login/onboarding pages where TTS does not play.
 
 Markup:
 
