@@ -55,6 +55,7 @@ import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
 import { useWakeLock } from '../../core/hooks/useWakeLock'
+import { useImagesStore } from '../images/store'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -79,6 +80,9 @@ export function ChatView({ persona }: ChatViewProps) {
     loading: modelsLoading,
   } = useEnrichedModels()
   const hasAnyModel = modelGroups.some((g) => g.models.length > 0)
+  // Track whether the user has an active image config — used to re-fetch tool
+  // groups when the config is set or cleared without remounting this component.
+  const activeImageConfigId = useImagesStore((s) => s.active?.connection_id ?? null)
   const { isMobile } = useViewport()
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -877,15 +881,15 @@ export function ChatView({ persona }: ChatViewProps) {
   // -- CockpitBar prop derivations --
 
   // Built-in tool groups (web search, journal, knowledge base, calculate_js …)
-  // come from the server-side tool registry. We fetch them once per mount —
-  // the registry contents change only when the user edits their tool config,
-  // which is rare compared to chat open/close.
+  // come from the server-side tool registry. Re-fetched on mount and whenever
+  // the active image config changes — the image_generation group is conditional
+  // on having an active config, so the list must refresh when that changes.
   const [builtinToolGroups, setBuiltinToolGroups] = useState<ToolGroupDto[]>([])
   useEffect(() => {
     chatApi.listToolGroups().then(setBuiltinToolGroups).catch(() => {
       setBuiltinToolGroups([])
     })
-  }, [])
+  }, [activeImageConfigId])
 
   // Build the list of available tool groups for the CockpitBar ToolsButton.
   // Three kinds:
