@@ -562,21 +562,31 @@ class LlmService:
     async def list_image_groups(
         self, *, user_id: str,
     ) -> list[ConnectionImageGroupsDto]:
-        """Return one entry per connection that has at least one image group.
+        """Return one entry per image-capable source the user owns.
 
-        Iterates all of the user's connections, skips any whose adapter does
-        not declare ``supports_image_generation``, resolves + instantiates
-        the adapter, and calls ``adapter.image_groups(resolved)``.
+        Two sources contribute:
+
+        1. Regular per-user Connections (``connections`` collection). For
+           each, the registered adapter class is consulted; if it declares
+           ``supports_image_generation`` and exposes any group ids for the
+           resolved Connection, an entry is produced with the Connection's
+           own ``_id``.
+        2. Premium Provider accounts (``premium_provider_accounts``
+           collection). For each Premium Provider whose adapter supports
+           image generation AND for which the user has stored an API key,
+           a synthetic entry is produced with ``connection_id``
+           ``"premium:<provider_id>"`` (matching the resolver convention).
+
+        The synthetic id is round-trippable: ``generate_images`` and the
+        ``user_image_configs`` collection both treat it as an opaque
+        connection identifier.
         """
+        out: list[ConnectionImageGroupsDto] = []
+
+        # 1. Regular Connections.
         conn_repo = ConnectionRepository(get_db())
         raw_connections = await conn_repo.list_for_user(user_id)
 
-        _log.info(
-            "llm.list_image_groups user_id=%s total_connections=%d",
-            user_id, len(raw_connections),
-        )
-
-        out: list[ConnectionImageGroupsDto] = []
         for doc in raw_connections:
             adapter_cls = get_adapter_class(doc["adapter_type"])
             if adapter_cls is None or not adapter_cls.supports_image_generation:
@@ -591,9 +601,32 @@ class LlmService:
                     group_ids=groups,
                 ))
 
+        # 2. Premium Provider accounts.
+        from backend.modules.llm._resolver import (
+            _PREMIUM_ADAPTER_TYPE,
+            resolve_premium_for_listing,
+        )
+
+        for provider_id, adapter_type in _PREMIUM_ADAPTER_TYPE.items():
+            adapter_cls = get_adapter_class(adapter_type)
+            if adapter_cls is None or not adapter_cls.supports_image_generation:
+                continue
+            resolved = await resolve_premium_for_listing(user_id, provider_id)
+            if resolved is None:
+                continue  # user has no account for this provider
+            adapter = _instantiate_adapter(adapter_cls, get_redis())
+            groups = await adapter.image_groups(resolved)
+            if groups:
+                out.append(ConnectionImageGroupsDto(
+                    connection_id=resolved.id,
+                    connection_display_name=resolved.display_name,
+                    group_ids=groups,
+                ))
+
         _log.info(
-            "llm.list_image_groups user_id=%s image_capable_connections=%d",
-            user_id, len(out),
+            "llm.list_image_groups user_id=%s "
+            "regular_connections=%d image_capable_sources=%d",
+            user_id, len(raw_connections), len(out),
         )
         return out
 
@@ -632,32 +665,76 @@ class LlmService:
         Persistence of the results is the caller's responsibility
         (``ImageService`` handles that).
 
+        ``connection_id`` may be either a regular Connection id (UUID) or a
+        synthetic Premium Provider id of the form ``"premium:<provider_id>"``
+        (as returned by :meth:`list_image_groups`). The two paths are
+        resolved transparently.
+
         Raises:
-            PermissionError: ``connection_id`` is not owned by ``user_id``.
+            PermissionError: ``connection_id`` is not owned by ``user_id``
+                or no Premium Provider account exists for the given id.
             ValueError: the adapter does not support image generation.
         """
-        conn_repo = ConnectionRepository(get_db())
-        doc = await conn_repo.find(user_id, connection_id)
-        if doc is None:
-            _log.warning(
-                "llm.generate_images user_id=%s connection_id=%s "
-                "reason=not_found_or_not_owned",
-                user_id, connection_id,
-            )
-            raise PermissionError("connection not found or not owned by user")
-
-        adapter_cls = get_adapter_class(doc["adapter_type"])
-        if adapter_cls is None or not adapter_cls.supports_image_generation:
-            _log.warning(
-                "llm.generate_images user_id=%s connection_id=%s "
-                "adapter_type=%s reason=no_image_support",
-                user_id, connection_id, doc.get("adapter_type"),
-            )
-            raise ValueError(
-                f"adapter {doc.get('adapter_type')!r} does not support image generation"
+        if connection_id.startswith("premium:"):
+            from backend.modules.llm._resolver import (
+                _PREMIUM_ADAPTER_TYPE,
+                resolve_premium_for_listing,
             )
 
-        resolved = _to_resolved(doc)
+            provider_id = connection_id[len("premium:"):]
+            adapter_type = _PREMIUM_ADAPTER_TYPE.get(provider_id)
+            if adapter_type is None:
+                _log.warning(
+                    "llm.generate_images user_id=%s connection_id=%s "
+                    "reason=unknown_premium_provider",
+                    user_id, connection_id,
+                )
+                raise PermissionError(
+                    f"unknown premium provider {provider_id!r}"
+                )
+            adapter_cls = get_adapter_class(adapter_type)
+            if adapter_cls is None or not adapter_cls.supports_image_generation:
+                _log.warning(
+                    "llm.generate_images user_id=%s connection_id=%s "
+                    "adapter_type=%s reason=no_image_support",
+                    user_id, connection_id, adapter_type,
+                )
+                raise ValueError(
+                    f"adapter {adapter_type!r} does not support image generation"
+                )
+            resolved = await resolve_premium_for_listing(user_id, provider_id)
+            if resolved is None:
+                _log.warning(
+                    "llm.generate_images user_id=%s connection_id=%s "
+                    "reason=no_premium_account",
+                    user_id, connection_id,
+                )
+                raise PermissionError(
+                    f"no premium provider account for {provider_id!r}"
+                )
+        else:
+            conn_repo = ConnectionRepository(get_db())
+            doc = await conn_repo.find(user_id, connection_id)
+            if doc is None:
+                _log.warning(
+                    "llm.generate_images user_id=%s connection_id=%s "
+                    "reason=not_found_or_not_owned",
+                    user_id, connection_id,
+                )
+                raise PermissionError("connection not found or not owned by user")
+
+            adapter_cls = get_adapter_class(doc["adapter_type"])
+            if adapter_cls is None or not adapter_cls.supports_image_generation:
+                _log.warning(
+                    "llm.generate_images user_id=%s connection_id=%s "
+                    "adapter_type=%s reason=no_image_support",
+                    user_id, connection_id, doc.get("adapter_type"),
+                )
+                raise ValueError(
+                    f"adapter {doc.get('adapter_type')!r} does not support image generation"
+                )
+
+            resolved = _to_resolved(doc)
         adapter = _instantiate_adapter(adapter_cls, get_redis())
 
         n = getattr(config, "n", None)

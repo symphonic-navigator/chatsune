@@ -59,18 +59,27 @@ async def resolve_connection_for_user(
     user: dict = Depends(require_active_session),
 ) -> ResolvedConnection:
     # The path parameter may be either the Connection ``_id`` (UUID used by
-    # internal callers such as the Model Browser / favourites flow) or the
+    # internal callers such as the Model Browser / favourites flow), the
     # ``slug`` (used when the Frontend splits a ``model_unique_id`` of the
-    # form ``<connection_slug>:<model_slug>`` — see INS-019). Try id first,
-    # then fall back to slug; both lookups are strictly scoped to the
+    # form ``<connection_slug>:<model_slug>`` — see INS-019), or a synthetic
+    # Premium Provider id of the form ``"premium:<provider_id>"`` (used by
+    # the image-config UI when the user only has a Premium account, no
+    # standalone Connection). All three lookups are strictly scoped to the
     # calling user.
     repo = ConnectionRepository(get_db())
     doc = await repo.find(user["sub"], connection_id)
     if doc is None:
         doc = await repo.find_by_slug(user["sub"], connection_id)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Connection not found")
-    return _to_resolved(doc)
+    if doc is not None:
+        return _to_resolved(doc)
+
+    if connection_id.startswith("premium:"):
+        provider_id = connection_id[len("premium:"):]
+        resolved = await resolve_premium_for_listing(user["sub"], provider_id)
+        if resolved is not None:
+            return resolved
+
+    raise HTTPException(status_code=404, detail="Connection not found")
 
 
 async def resolve_owned_connection_by_slug(
