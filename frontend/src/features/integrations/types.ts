@@ -46,6 +46,15 @@ export interface IntegrationDefinition {
    * and the enable/disable toggle, pointing the user at the Providers tab.
    */
   linked_premium_provider?: string | null
+  /**
+   * `true` means the integration participates in the per-persona
+   * allowlist: tools / prompt-extensions are only active for a chat when
+   * the persona has explicitly opted in. Non-assignable integrations
+   * (e.g. voice providers) stay active whenever user-enabled. Backend
+   * defaults this to `false`, so an undefined/missing value is treated
+   * as `false`.
+   */
+  assignable?: boolean
 }
 
 /** Mirrors UserIntegrationConfigDto from the backend. */

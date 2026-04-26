@@ -79,22 +79,42 @@ async def is_effective_enabled(user_id: str, integration_id: str) -> bool:
 
 
 async def get_enabled_integration_ids(user_id: str, persona_id: str | None = None) -> list[str]:
-    """Return integration IDs that are enabled for a user (and optionally filtered by persona)."""
+    """Return integration IDs that are enabled for a user (and optionally filtered by persona).
+
+    The per-persona allowlist (``integrations_config.enabled_integration_ids``)
+    only filters integrations whose definition has ``assignable=True``.
+    Non-assignable integrations (e.g. voice providers) stay active whenever
+    user-enabled, irrespective of the persona's allowlist — this preserves
+    TTS / prompt-extension behaviour for legacy personas that have never
+    opted in explicitly. Assignable integrations are strict: missing or
+    empty allowlist means excluded, by design.
+    """
     effective = await effective_enabled_map(user_id)
     enabled = [iid for iid, on in effective.items() if on]
 
-    if persona_id is not None:
-        from backend.modules.persona import get_persona
-        persona = await get_persona(persona_id, user_id)
-        if persona:
-            integrations_config = persona.get("integrations_config")
-            if integrations_config and integrations_config.get("enabled_integration_ids"):
-                # Persona has explicit integration config — filter to only those
-                persona_integrations = set(integrations_config["enabled_integration_ids"])
-                enabled = [eid for eid in enabled if eid in persona_integrations]
-            # No integrations_config or empty list = all user-enabled integrations are active
+    if persona_id is None:
+        return enabled
 
-    return enabled
+    from backend.modules.persona import get_persona
+    persona = await get_persona(persona_id, user_id)
+    if not persona:
+        return enabled
+
+    integrations_config = persona.get("integrations_config") or {}
+    explicit_ids = set(integrations_config.get("enabled_integration_ids") or [])
+    definitions = get_all_integrations()
+
+    result: list[str] = []
+    for iid in enabled:
+        defn = definitions.get(iid)
+        if defn and defn.assignable:
+            # Strict opt-in: must be explicitly listed by the persona.
+            if iid in explicit_ids:
+                result.append(iid)
+        else:
+            # Non-assignable: always active when user-enabled.
+            result.append(iid)
+    return result
 
 
 async def get_integration_tools(

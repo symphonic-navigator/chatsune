@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useUploadStore, toAttachmentRefs, type PendingAttachment } from '../../core/store/uploadStore'
 import { uploadFile } from '../../core/api/storage'
-import type { AttachmentRefDto } from '../../core/api/storage'
+import type { AttachmentRefDto, StorageFileDto } from '../../core/api/storage'
 import type { GeneratedImageSummaryDto } from '../../core/api/images'
 
 export function useAttachments(personaId?: string) {
@@ -69,14 +69,42 @@ export function useAttachments(personaId?: string) {
       if (existing.some((a) => a.fileId === image.id)) return
 
       const localId = `generated-${crypto.randomUUID()}`
+      const displayName = image.prompt.slice(0, 40) || 'Generated image'
+
+      // Synthesise a StorageFileDto-shaped record so toAttachmentRefs treats
+      // generated images identically to uploaded files. The backend's
+      // _resolve_attachment_ids accepts the id even though it lives in the
+      // image collection rather than storage (storage miss → ImageService
+      // fallback). user_id / size_bytes are unknown on the FE but unused
+      // by toAttachmentRefs' output shape.
+      const syntheticDto: StorageFileDto = {
+        id: image.id,
+        user_id: '',
+        persona_id: null,
+        original_name: displayName,
+        display_name: displayName,
+        media_type: 'image/jpeg',
+        size_bytes: 0,
+        thumbnail_b64: image.thumbnail_b64 ?? null,
+        text_preview: null,
+        created_at: image.generated_at,
+        updated_at: image.generated_at,
+      }
+
+      // Inline data URI so <img src> renders without Bearer auth (the
+      // image.thumb_url backend endpoint cannot be loaded as a subresource).
+      const previewUrl = image.thumbnail_b64
+        ? `data:image/jpeg;base64,${image.thumbnail_b64}`
+        : null
+
       addPending({
         localId,
         // Placeholder File so the type check in AttachmentStrip resolves to an image.
-        file: new File([], image.prompt.slice(0, 40) || 'generated-image', { type: 'image/jpeg' }),
+        file: new File([], displayName, { type: 'image/jpeg' }),
         status: 'done',
         fileId: image.id,
-        dto: null,
-        localPreviewUrl: image.thumb_url,
+        dto: syntheticDto,
+        localPreviewUrl: previewUrl,
         error: null,
       })
     },
