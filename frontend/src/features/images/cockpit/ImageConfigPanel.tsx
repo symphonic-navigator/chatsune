@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { ImageGroupConfig, XaiImagineConfig } from '@/core/api/images'
 import { useImagesStore } from '../store'
 import { imagesApi } from '../api'
@@ -51,18 +51,20 @@ export function ImageConfigPanel() {
   const [groupId, setGroupId] = useState<string>('')
   const [config, setConfig] = useState<ImageGroupConfig>(XAI_IMAGINE_DEFAULTS)
 
-  // Track the last applied state so we can disable "Apply" when nothing changed.
-  const [appliedKey, setAppliedKey] = useState<string>('')
+  // Auto-save state
+  const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Test-image state
   const [testing, setTesting] = useState(false)
   const [testImages, setTestImages] = useState<string[]>([])
   const [testError, setTestError] = useState<string | null>(null)
 
-  // Apply state
-  const [applying, setApplying] = useState(false)
-
   const applyConfig = useImagesStore((s) => s.applyConfig)
+
+  // Skip the very first effect run after mount so opening the panel doesn't
+  // trigger a redundant save with the already-active config.
+  const isFirstAfterMount = useRef(true)
 
   // Hydrate from the active config or fall back to the first available connection.
   useEffect(() => {
@@ -79,16 +81,41 @@ export function ImageConfigPanel() {
       } else {
         setConfig(defaultConfigForGroup(active.group_id))
       }
-      setAppliedKey(JSON.stringify({ connection_id: active.connection_id, group_id: active.group_id, config: active.config }))
     } else {
       const first = available[0]
       const firstGroup = first.group_ids[0] ?? 'xai_imagine'
       setConnectionId(first.connection_id)
       setGroupId(firstGroup)
       setConfig(defaultConfigForGroup(firstGroup))
-      setAppliedKey('')
     }
   }, [available, active])
+
+  // Auto-save with 400 ms debounce. Skips the first run after mount so the
+  // initial hydration does not trigger an unnecessary network call.
+  useEffect(() => {
+    if (!connectionId || !groupId) return
+
+    if (isFirstAfterMount.current) {
+      isFirstAfterMount.current = false
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setSavingState('saving')
+      setSaveError(null)
+      try {
+        await applyConfig({ connection_id: connectionId, group_id: groupId, config })
+        setSavingState('saved')
+        // Clear the "Saved" indicator after 1.5 s.
+        setTimeout(() => setSavingState((s) => (s === 'saved' ? 'idle' : s)), 1500)
+      } catch (err) {
+        setSavingState('error')
+        setSaveError(err instanceof Error ? err.message : 'Failed to save')
+      }
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [connectionId, groupId, config, applyConfig])
 
   if (available.length === 0) {
     return <EmptyState />
@@ -114,21 +141,6 @@ export function ImageConfigPanel() {
     setConfig(defaultConfigForGroup(newGroupId))
     setTestImages([])
     setTestError(null)
-  }
-
-  const currentKey = JSON.stringify({ connection_id: connectionId, group_id: groupId, config })
-  const hasChanges = currentKey !== appliedKey
-
-  const handleApply = async () => {
-    setApplying(true)
-    try {
-      await applyConfig({ connection_id: connectionId, group_id: groupId, config })
-      setAppliedKey(currentKey)
-    } catch (err) {
-      console.error('[images] Apply config failed:', err)
-    } finally {
-      setApplying(false)
-    }
   }
 
   const handleTest = async () => {
@@ -247,8 +259,8 @@ export function ImageConfigPanel() {
         <p className="text-[11px] text-red-300/80 leading-snug">{testError}</p>
       )}
 
-      {/* Action row */}
-      <div className="flex gap-2">
+      {/* Action row: Test button + auto-save indicator */}
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => { void handleTest() }}
@@ -264,19 +276,22 @@ export function ImageConfigPanel() {
             'Test image'
           )}
         </button>
-        <button
-          type="button"
-          onClick={() => { void handleApply() }}
-          disabled={!hasChanges || applying}
-          className={[
-            'flex-1 text-[11px] px-2 py-1.5 rounded border transition',
-            hasChanges && !applying
-              ? 'border-[#c084fc]/50 bg-[#c084fc]/15 text-[#c084fc] hover:bg-[#c084fc]/25'
-              : 'border-white/10 bg-white/5 text-white/30 cursor-not-allowed',
-          ].join(' ')}
-        >
-          {applying ? 'Applying…' : 'Apply'}
-        </button>
+
+        {/* Auto-save status indicator */}
+        <span className="text-[11px] min-w-[52px] text-right">
+          {savingState === 'saving' && (
+            <span className="flex items-center gap-1 text-white/40">
+              <SpinnerIcon />
+              Saving…
+            </span>
+          )}
+          {savingState === 'saved' && (
+            <span className="text-white/40">&#10003; Saved</span>
+          )}
+          {savingState === 'error' && saveError && (
+            <span className="text-red-400">{saveError}</span>
+          )}
+        </span>
       </div>
     </div>
   )
