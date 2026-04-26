@@ -10,9 +10,12 @@ export function GeneratedImagesTab({ onPick }: GeneratedImagesTabProps) {
   const { gallery, galleryLoading, galleryHasMore, loadGalleryFirst, loadGalleryMore } =
     useImagesStore()
 
+  // Refresh on every mount so newly generated images appear without F5.
+  // The store has no live "image-created" event yet, so each tab open
+  // re-pulls the first page.
   useEffect(() => {
-    if (gallery.length === 0) void loadGalleryFirst()
-  }, [gallery.length, loadGalleryFirst])
+    void loadGalleryFirst()
+  }, [loadGalleryFirst])
 
   return (
     <div className="p-3">
