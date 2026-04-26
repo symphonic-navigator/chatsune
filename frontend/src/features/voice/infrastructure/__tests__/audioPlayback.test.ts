@@ -39,6 +39,7 @@ class FakeAudioContext {
   }
   createAnalyser() { return new FakeAnalyserNode() }
   resume() { this.state = 'running'; return Promise.resolve() }
+  suspend() { this.state = 'suspended'; return Promise.resolve() }
   close() { this.state = 'closed'; return Promise.resolve() }
 }
 
@@ -364,5 +365,98 @@ describe('audioPlayback — subscribe API', () => {
     audioPlayback.stopAll()
     expect(audioPlayback.isPlaying()).toBe(false)
     expect(observed[observed.length - 1]).toBe(false)
+  })
+})
+
+describe('audioPlayback — isActive()', () => {
+  it('returns false when idle', () => {
+    expect(audioPlayback.isActive()).toBe(false)
+  })
+
+  it('returns true while playing', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns true while paused mid-playback', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.pause()
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns true when only queue has entries (between segments)', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn(), gapMs: 50 })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    // End first segment; gap timer arms — playing=false, queue.length>0
+    sources[0].onended?.()
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns false after stopAll()', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.stopAll()
+    expect(audioPlayback.isActive()).toBe(false)
+  })
+})
+
+describe('audioPlayback — suspend/unsuspend (true pause)', () => {
+  beforeEach(() => {
+    audioPlayback.stopAll()
+    audioPlayback.setCurrentToken(null)
+  })
+
+  it('suspend calls ctx.suspend when running', async () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    // Wait one microtask so playNext's await chain runs.
+    await Promise.resolve(); await Promise.resolve()
+    expect(audioPlayback.isSuspended()).toBe(false)
+    await audioPlayback.suspend()
+    expect(audioPlayback.isSuspended()).toBe(true)
+  })
+
+  it('suspend is a no-op when ctx is not running', async () => {
+    expect(audioPlayback.isSuspended()).toBe(false)
+    await audioPlayback.suspend()
+    // Without a running ctx (no playback yet), suspend is a no-op.
+    expect(audioPlayback.isSuspended()).toBe(false)
+  })
+
+  it('unsuspend resumes ctx and kicks playNext if needed', async () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    await Promise.resolve(); await Promise.resolve()
+    await audioPlayback.suspend()
+    expect(audioPlayback.isSuspended()).toBe(true)
+    await audioPlayback.unsuspend()
+    expect(audioPlayback.isSuspended()).toBe(false)
+  })
+
+  it('unsuspend is a no-op when ctx is not suspended', async () => {
+    expect(audioPlayback.isSuspended()).toBe(false)
+    await audioPlayback.unsuspend()
+    expect(audioPlayback.isSuspended()).toBe(false)
+  })
+
+  it('isActive remains true while suspended (current source still alive)', async () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    await Promise.resolve(); await Promise.resolve()
+    await audioPlayback.suspend()
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('does not change the existing pause/resume behaviour', async () => {
+    // pause() still has barge semantics (sets paused=true, stops source).
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    await Promise.resolve(); await Promise.resolve()
+    audioPlayback.pause()
+    expect(audioPlayback.isPlaying()).toBe(false)
+    expect(audioPlayback.isActive()).toBe(true) // paused flag still true
   })
 })

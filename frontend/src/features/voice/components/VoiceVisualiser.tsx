@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
+import { useVisualiserPauseStore } from '../stores/visualiserPauseStore'
 import { useTtsFrequencyData } from '../infrastructure/useTtsFrequencyData'
 import { drawVisualiserFrame } from '../infrastructure/visualiserRenderers'
 import { audioPlayback } from '../infrastructure/audioPlayback'
@@ -33,10 +34,13 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const opacity = useVoiceSettingsStore((s) => s.visualisation.opacity)
   const barCount = useVoiceSettingsStore((s) => s.visualisation.barCount)
 
+  const paused = useVisualiserPauseStore((s) => s.paused)
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const activeRef = useRef(0)
   const reducedMotionRef = useRef(false)
+  const frozenBinsRef = useRef<Float32Array | null>(null)
 
   const accessors = useTtsFrequencyData(barCount)
 
@@ -82,6 +86,28 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         return
       }
 
+      if (paused) {
+        const bins = accessors.getBins()
+        if (!frozenBinsRef.current) {
+          frozenBinsRef.current = bins ? bins.slice() : new Float32Array(barCount)
+        }
+        const t = performance.now() / 1000
+        const breath = 0.8 + 0.2 * Math.sin((t * 2 * Math.PI) / 2.5)  // 0.6..1.0
+        const rgb = hexToRgb(personaColourHex)
+        const rgbLight = brighten(rgb)
+        drawVisualiserFrame(style, ctx, w, h, frozenBinsRef.current, {
+          rgb,
+          rgbLight,
+          opacity: opacity * breath,
+          maxHeightFraction: MAX_HEIGHT_FRACTION,
+        })
+        rafRef.current = requestAnimationFrame(tick)
+        return
+      }
+
+      // Not paused — clear any stale snapshot.
+      frozenBinsRef.current = null
+
       const playing = accessors.isActive()
       const target = playing ? 1 : 0
       activeRef.current += (target - activeRef.current) * FADE_RATE
@@ -125,7 +151,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       }
       unsub()
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused])
 
   return (
     <canvas

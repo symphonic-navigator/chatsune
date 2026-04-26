@@ -73,7 +73,7 @@ export function useTtsFrequencyData(barCount: number): FrequencyAccessors {
         }
         return out
       },
-      isActive: () => audioPlayback.isPlaying(),
+      isActive: () => audioPlayback.isActive(),
     }
   }
 
