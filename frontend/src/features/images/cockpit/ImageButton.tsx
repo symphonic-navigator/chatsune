@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { CockpitButton } from '@/features/chat/cockpit/CockpitButton'
+import { useCockpitSession, useCockpitStore } from '@/features/chat/cockpit/cockpitStore'
 import { useImagesStore } from '../store'
 import { ImageConfigPanel } from './ImageConfigPanel'
 import type { ActiveImageConfigDto } from '@/core/api/images'
+
+type Props = {
+  sessionId: string
+  /**
+   * Invoked when the button is clicked while no image-capable connection is
+   * configured. Should navigate the user to the LLM Providers tab of the
+   * user modal so they can add an xAI (or other TTI) connection.
+   */
+  onOpenLlmProviders: () => void
+}
 
 /**
  * Derives a short human-readable label from the active image config.
@@ -19,6 +30,14 @@ function humanModelLabel(active: ActiveImageConfigDto): string {
 /**
  * Cockpit button for image-generation config.
  *
+ * Three visual states:
+ *   - "disabled" — no TTI/ITI connection is configured. Click navigates to
+ *     the LLM Providers tab; no panel.
+ *   - "idle"     — a TTI connection exists but the per-session Tools toggle
+ *     is off, so image generation cannot actually run yet. Panel shows a
+ *     hint with an "Enable Tools" action above the existing config UI.
+ *   - "active"   — TTI available and Tools on. Behaves as before (purple).
+ *
  * Uses click-to-toggle (not hover) so the panel stays open while the user
  * adjusts settings. The panel is rendered via a React portal into document.body
  * so it works correctly both on desktop and inside CockpitGroupButton on mobile
@@ -28,8 +47,10 @@ function humanModelLabel(active: ActiveImageConfigDto): string {
  * stopPropagation on the button click prevents CockpitGroupButton from
  * interpreting the tap as "close the group".
  */
-export function ImageButton() {
+export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
   const { available, active, loadConfig } = useImagesStore()
+  const cockpit = useCockpitSession(sessionId)
+  const setTools = useCockpitStore((s) => s.setTools)
 
   const [panelOpen, setPanelOpen] = useState(false)
   const buttonRef = useRef<HTMLDivElement | null>(null)
@@ -62,14 +83,36 @@ export function ImageButton() {
     }
   }, [panelOpen])
 
-  const disabled = available.length === 0
+  const noConnection = available.length === 0
+  const toolsOn = cockpit?.tools === true
   const badgeLabel = active ? humanModelLabel(active) : null
 
-  const label = disabled
+  const label = noConnection
     ? 'Image generation — no connection configured'
     : active
       ? `Image · ${badgeLabel}`
       : 'Image generation'
+
+  // Visual state mapping — colour reflects runtime reality, not panel state:
+  //   - no connection                  → "disabled" (dashed muted)
+  //   - tools on                       → "active" (bright purple)
+  //   - tools off (but TTI available)  → "idle" (white-ish)
+  // Deliberately NOT promoting panelOpen to "active": with tools off the
+  // pipeline cannot run, and a purple button next to a panel saying
+  // "Tools are off" would contradict itself.
+  const buttonState = noConnection
+    ? 'disabled'
+    : toolsOn
+      ? 'active'
+      : 'idle'
+
+  const handleClick = () => {
+    if (noConnection) {
+      onOpenLlmProviders()
+      return
+    }
+    setPanelOpen((v) => !v)
+  }
 
   // Compute panel position relative to the button (above it, centred).
   // Falls back gracefully if the ref is not yet attached.
@@ -84,6 +127,11 @@ export function ImageButton() {
     }
   }
 
+  // Panel is suppressed entirely when there is no connection — the click
+  // navigates to the LLM Providers modal instead, so the panel would be
+  // redundant.
+  const showPanel = panelOpen && !noConnection
+
   return (
     // stopPropagation on the wrapper div prevents CockpitGroupButton's
     // close-on-child-click from firing when this button is rendered inside
@@ -94,13 +142,13 @@ export function ImageButton() {
     >
       <CockpitButton
         icon={<ImageIcon />}
-        state={panelOpen ? 'active' : active ? 'active' : disabled ? 'disabled' : 'idle'}
+        state={buttonState}
         accent="purple"
         label={label}
-        onClick={() => setPanelOpen((v) => !v)}
+        onClick={handleClick}
         ariaLabel={label}
       />
-      {panelOpen && createPortal(
+      {showPanel && createPortal(
         <div
           ref={panelRef}
           style={panelStyle()}
@@ -108,13 +156,23 @@ export function ImageButton() {
           role="dialog"
           aria-label="Image generation settings"
         >
-          {disabled ? (
-            <p className="text-white/70 text-xs">
-              No image-capable connection configured. Add an xAI connection in settings.
-            </p>
-          ) : (
-            <ImageConfigPanel />
+          {!toolsOn && (
+            <div className="mb-3 rounded-md border border-white/10 bg-white/5 p-2 text-xs text-white/70">
+              <p className="mb-2">
+                Tools are off — image generation won't run yet.
+              </p>
+              <button
+                type="button"
+                className="rounded border border-[#a855f7]/40 bg-[#a855f7]/15 px-2 py-1 text-[#c084fc] hover:bg-[#a855f7]/25"
+                onClick={() => {
+                  void setTools(sessionId, true)
+                }}
+              >
+                Enable Tools
+              </button>
+            </div>
           )}
+          <ImageConfigPanel />
         </div>,
         document.body,
       )}

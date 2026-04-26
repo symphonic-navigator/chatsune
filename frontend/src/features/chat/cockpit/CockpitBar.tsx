@@ -37,6 +37,7 @@ type Props = {
     camera: () => void
     browse: () => void
     openPersonaVoiceSettings?: () => void
+    openLlmProviderSettings?: () => void
   }
 }
 
@@ -58,13 +59,18 @@ export function CockpitBar(props: Props) {
     </>
   )
 
+  // No-op fallback when no llm-providers handler was provided. Keeps the
+  // ImageButton prop required (so callers can't forget about the disabled
+  // state) without forcing every consumer to wire it up immediately.
+  const openLlmProviders = props.handlers.openLlmProviderSettings ?? (() => {})
+
   const toolsGroupChildren = (
     <>
       <ToolsButton
         sessionId={props.sessionId}
         availableGroups={props.availableToolGroups}
       />
-      <ImageButton />
+      <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
       <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
     </>
   )
@@ -103,7 +109,7 @@ export function CockpitBar(props: Props) {
             sessionId={props.sessionId}
             availableGroups={props.availableToolGroups}
           />
-          <ImageButton />
+          <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
           <Sep />
           <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
           <Sep />
