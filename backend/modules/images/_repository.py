@@ -42,6 +42,27 @@ class GeneratedImagesRepository:
         raw.pop("_id", None)
         return GeneratedImageDocument.model_validate(raw)
 
+    async def find_many_for_user(
+        self, *, user_id: str, image_ids: list[str]
+    ) -> list[GeneratedImageDocument]:
+        """Bulk variant of ``find_for_user`` for back-fill enrichment paths.
+
+        Returns the documents that exist and belong to the user; missing
+        ids are silently dropped. The result is unordered — callers that
+        need a lookup map should re-key by ``doc.id`` themselves.
+        """
+        if not image_ids:
+            return []
+        cursor = self._collection.find({
+            "user_id": user_id,
+            "id": {"$in": image_ids},
+        })
+        out: list[GeneratedImageDocument] = []
+        async for raw in cursor:
+            raw.pop("_id", None)
+            out.append(GeneratedImageDocument.model_validate(raw))
+        return out
+
     async def list_for_user(
         self,
         *,

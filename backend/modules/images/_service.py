@@ -346,6 +346,46 @@ class ImageService:
             return None
         return base64.b64encode(data).decode("ascii")
 
+    async def enrich_image_refs_in_messages(
+        self, *, user_id: str, messages: list[dict],
+    ) -> None:
+        """Backfill ``thumbnail_b64`` on chat-message ``image_refs``.
+
+        Old assistant messages persisted before the inline-base64 fix don't
+        carry ``thumbnail_b64`` in their image_refs. Reading them via the
+        REST messages endpoint (or any history-replay path) goes through
+        this method, which collects all missing image ids in one pass,
+        bulk-fetches the gallery documents and BlobStore reads, and
+        mutates the dicts in place. Mutation-in-place keeps the chat
+        repository pure (no awaiting in ``message_to_dto``) and means new
+        messages with already-embedded ``thumbnail_b64`` are zero-cost.
+        """
+        # Collect all (image_id -> [refs]) for refs missing thumbnail_b64.
+        pending: dict[str, list[dict]] = {}
+        for msg in messages:
+            for ref in (msg.get("image_refs") or []):
+                if ref.get("thumbnail_b64"):
+                    continue
+                ref_id = ref.get("id")
+                if not ref_id:
+                    continue
+                pending.setdefault(ref_id, []).append(ref)
+        if not pending:
+            return
+
+        docs = await self._gen.find_many_for_user(
+            user_id=user_id, image_ids=list(pending.keys()),
+        )
+        for doc in docs:
+            if doc.thumb_blob_id is None:
+                continue
+            data = self._blobs.load(user_id, doc.thumb_blob_id)
+            if data is None:
+                continue
+            b64 = base64.b64encode(data).decode("ascii")
+            for ref in pending.get(doc.id, []):
+                ref["thumbnail_b64"] = b64
+
     async def delete_image(
         self,
         *,
