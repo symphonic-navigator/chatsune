@@ -23,7 +23,10 @@ interface FrequencyAccessors {
  * effects to tear down and restart their RAF loops on every parent render.
  */
 export function useTtsFrequencyData(barCount: number): FrequencyAccessors {
-  const rawBuffer = useRef<Uint8Array>(new Uint8Array(128))
+  // Explicit ArrayBuffer parameterisation — `getByteFrequencyData` rejects
+  // the default `Uint8Array<ArrayBufferLike>` because that union includes
+  // `SharedArrayBuffer`, which the Web Audio API does not accept here.
+  const rawBuffer = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(128))
   const smoothed = useRef<Float32Array>(new Float32Array(barCount))
   const barCountRef = useRef(barCount)
 
