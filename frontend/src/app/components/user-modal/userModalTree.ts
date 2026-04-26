@@ -23,6 +23,7 @@ export type SubTabId =
   // my-data
   | 'uploads'
   | 'artefacts'
+  | 'images'
   // settings
   | 'llm-providers'
   | 'community-provisioning'
@@ -57,6 +58,7 @@ export const TABS_TREE: TopTab[] = [
     children: [
       { id: 'uploads',   label: 'Uploads' },
       { id: 'artefacts', label: 'Artefacts' },
+      { id: 'images',    label: 'Images' },
     ],
   },
   {
