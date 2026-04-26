@@ -10,6 +10,7 @@ import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { pickRecordingMimeType, createRecorder } from '../infrastructure/audioRecording'
 import { float32ToWavBlob } from '../infrastructure/wavEncoder'
 import { createBargeController, type BargeController } from '../bargeController'
+import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
@@ -377,6 +378,7 @@ export function useConversationMode({
   const handleSpeechStart = useCallback(() => {
     vadActiveRef.current = true
     setVadActive(true)
+    micActivity.setVadActive(true)
     if (!activeRef.current) return
     // Mic muted: VAD keeps running (so the UI sees the indicator), but no
     // barge fires, no utterance is recorded, no STT pipeline is triggered.
@@ -402,6 +404,7 @@ export function useConversationMode({
   const handleSpeechEnd = useCallback((audio: CapturedAudio) => {
     vadActiveRef.current = false
     setVadActive(false)
+    micActivity.setVadActive(false)
     if (!activeRef.current) return
     // Mic muted OR this utterance began during mute: drop the audio and
     // reset held buffers. Without the started-while-muted check, an unmute
@@ -448,6 +451,7 @@ export function useConversationMode({
   const handleMisfire = useCallback(() => {
     vadActiveRef.current = false
     setVadActive(false)
+    micActivity.setVadActive(false)
     if (pendingBargeRef.current) {
       clearPendingBarge()
       return
@@ -483,6 +487,8 @@ export function useConversationMode({
     publishBargeState()
     setSttInFlight(false)
     setVadActive(false)
+    micActivity.setLevel(0)
+    micActivity.setVadActive(false)
 
     const prev = useConversationModeStore.getState().previousReasoningOverride
     if (restoreSid) {
@@ -525,7 +531,7 @@ export function useConversationMode({
       audioCapture.startContinuous({
         onSpeechStart: handleSpeechStart,
         onSpeechEnd: handleSpeechEnd,
-        onVolumeChange: () => {},
+        onVolumeChange: (level) => micActivity.setLevel(level),
         onMisfire: handleMisfire,
       }, {
         threshold: voiceActivationThresholdRef.current,
