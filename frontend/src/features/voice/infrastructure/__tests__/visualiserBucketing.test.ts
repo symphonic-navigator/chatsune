@@ -27,14 +27,23 @@ describe('bucketIntoLogBins', () => {
     for (const v of out) expect(v).toBe(0)
   })
 
-  it('uses logarithmic frequency grouping (low bands cover fewer raw bins)', () => {
-    // Given an even spread of raw energy, log bucketing puts the lowest
-    // visualiser bin over a tiny frequency range and the highest bin over
-    // most of the spectrum. The constants assert this asymmetry.
+  it('saturates all output bins when input is uniform max', () => {
     const raw = new Uint8Array(128).fill(255)
     const out = bucketIntoLogBins(raw, SAMPLE_RATE, FFT_SIZE, 24)
-    // All bars should saturate to ~1 when input is uniform max.
     for (const v of out) expect(v).toBeCloseTo(1, 1)
+  })
+
+  it('concentrates mid-spectrum input in upper output bins (logarithmic mapping)', () => {
+    // Only raw bins 60-70 (about 5.6-6.6 kHz at 24 kHz / fftSize=256) are hot.
+    // With linear bucketing the peak output bar would be near index 11-13 of 24.
+    // With log bucketing, 6 kHz is in the upper quarter of the 20 Hz - 12 kHz
+    // range, so the peak output bar must be in the upper third (index >= 16).
+    const raw = new Uint8Array(128)
+    for (let i = 60; i <= 70; i++) raw[i] = 255
+    const out = bucketIntoLogBins(raw, SAMPLE_RATE, FFT_SIZE, 24)
+    let maxIdx = 0
+    for (let i = 1; i < out.length; i++) if (out[i] > out[maxIdx]) maxIdx = i
+    expect(maxIdx).toBeGreaterThanOrEqual(16)
   })
 
   it('maps linearly-rising input to monotonically increasing bins', () => {

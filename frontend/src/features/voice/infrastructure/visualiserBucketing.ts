@@ -31,7 +31,10 @@ export function bucketIntoLogBins(
     const rawEnd = Math.min(rawCount, Math.ceil(fEnd / hzPerRawBin))
 
     if (rawEnd <= rawStart) {
-      // Output bar straddles less than one raw bin — sample the nearest.
+      // Defensive fallback for coarser FFT configurations where a single log
+      // output bin is narrower than one raw FFT bin. With the project's default
+      // 24 kHz / fftSize=256 (93.75 Hz per raw bin) this branch is unreachable,
+      // but it keeps the function correct under any future analyser tuning.
       const idx = Math.min(rawCount - 1, Math.max(0, Math.round(fStart / hzPerRawBin)))
       result[i] = rawBins[idx] / 255
       continue
