@@ -49,6 +49,10 @@ from backend.modules.llm._homelabs import (
     TooManyApiKeysError,
     TooManyHomelabsError,
 )
+from backend.modules.llm._image_normaliser import (
+    ImageNormalisationError,
+    normalise_for_llm,
+)
 from backend.modules.llm._metadata import (
     get_models_for_connection,
     get_premium_models,
@@ -804,4 +808,6 @@ __all__ = [
     "get_sidecar_registry",
     "set_sidecar_registry",
     "LlmService",
+    "ImageNormalisationError",
+    "normalise_for_llm",
 ]

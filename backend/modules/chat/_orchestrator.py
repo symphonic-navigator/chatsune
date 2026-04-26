@@ -34,8 +34,10 @@ from backend.modules.llm import (
     get_model_supports_vision,
     get_model_supports_reasoning,
     resolve_for_model,
+    ImageNormalisationError,
     LlmConnectionNotFoundError,
     LlmInvalidModelUniqueIdError,
+    normalise_for_llm,
 )
 from backend.modules.persona import get_persona
 from backend.modules.storage import (
@@ -291,6 +293,29 @@ async def _resolve_attachment_files(
             "media_type": content_type,
             "data": data,
         })
+
+    # Normalise every image attachment to JPEG <= 1024 px before the bytes
+    # leave the backend toward any LLM provider. Non-image attachments pass
+    # through untouched. Failures are signalled by replacing the file dict's
+    # data with None and tagging it with a "_normalisation_error" key — the
+    # downstream call site (_resolve_image_attachments_for_inference) drops
+    # those entries and emits a recoverable ErrorEvent.
+    for f in files:
+        media_type = f.get("media_type") or ""
+        if not media_type.startswith("image/") or not f.get("data"):
+            continue
+        try:
+            new_data, new_media_type = normalise_for_llm(f["data"], media_type)
+        except ImageNormalisationError as exc:
+            _log.warning(
+                "attachment normalisation failed: file_id=%s media_type=%s reason=%s",
+                f.get("_id"), media_type, exc.reason,
+            )
+            f["data"] = None
+            f["_normalisation_error"] = exc.reason
+            continue
+        f["data"] = new_data
+        f["media_type"] = new_media_type
     return files
 
 
@@ -324,7 +349,23 @@ async def _resolve_image_attachments_for_inference(
     parts: list[ContentPart] = []
     snapshots: list[dict] = []
 
+    # Local import — ErrorEvent lives in shared/events/system.
+    from shared.events.system import ErrorEvent
+
     for f in files:
+        if f.get("_normalisation_error"):
+            await emit_event(ErrorEvent(
+                correlation_id=correlation_id,
+                error_code="image_normalisation_failed",
+                recoverable=True,
+                user_message=(
+                    f"Couldn't process image '{f.get('display_name') or 'attachment'}' "
+                    f"— it was dropped from this turn."
+                ),
+                detail=f.get("_normalisation_error"),
+            ))
+            continue
+
         if f.get("data") and f["media_type"].startswith("image/"):
             if supports_vision:
                 parts.append(ContentPart(
