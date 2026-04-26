@@ -147,9 +147,11 @@ If Pillow cannot decode the bytes (corrupt file, unsupported codec slipped
 past upload validation), the normaliser raises a typed exception
 `ImageNormalisationError` with the original `media_type` and byte count in
 the message. The chat orchestrator catches this, drops that attachment from
-the outbound LLM call and emits a recoverable `ErrorEvent` (existing event,
-see `shared/events/system.py`) with `error_code = "image_normalisation_failed"`
-so the user sees a clear pill in the UI rather than a silent dropout.
+the outbound LLM call and emits a recoverable `ChatStreamErrorEvent` (the
+existing chat-error event used by every other chat failure path, see
+`shared/events/chat.py`) with `error_code = "image_normalisation_failed"`
+so the user sees a clear pill in the UI via the existing toast handler in
+`useChatStream.ts` rather than a silent dropout.
 
 We do not retry. If Pillow cannot read it, the bytes are bad.
 
