@@ -81,6 +81,11 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       if (!ctx) return
       ctx.clearRect(0, 0, w, h)
 
+      if (reducedMotionRef.current) {
+        rafRef.current = requestAnimationFrame(tick)
+        return
+      }
+
       if (paused) {
         const bins = accessors.getBins()
         if (!frozenBinsRef.current) {
@@ -102,11 +107,6 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
 
       // Not paused — clear any stale snapshot.
       frozenBinsRef.current = null
-
-      if (reducedMotionRef.current) {
-        rafRef.current = requestAnimationFrame(tick)
-        return
-      }
 
       const playing = accessors.isActive()
       const target = playing ? 1 : 0
