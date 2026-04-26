@@ -62,15 +62,22 @@ export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
     void loadConfig()
   }, [loadConfig])
 
-  // Re-fetch the TTI/ITI capability list whenever LLM connections change,
-  // so adding or removing an xAI connection updates the button state
-  // without a hard reload. Same pattern as useEnrichedModels.
+  // Re-fetch the TTI/ITI capability list whenever the underlying provider
+  // state changes — both Premium provider accounts (xAI lives here) and
+  // LLM connections (homelab Ollama etc.) feed into the available list.
+  // Subscribing to one family is not enough: xAI keys are managed as
+  // Premium accounts, so an xAI add/remove only fires
+  // providers.account.upserted/deleted, never llm.connection.*.
+  // Same pattern as useEnrichedModels.
   useEffect(() => {
     const topics = [
       Topics.LLM_CONNECTION_CREATED,
       Topics.LLM_CONNECTION_UPDATED,
       Topics.LLM_CONNECTION_REMOVED,
       Topics.LLM_CONNECTION_MODELS_REFRESHED,
+      Topics.PREMIUM_PROVIDER_ACCOUNT_UPSERTED,
+      Topics.PREMIUM_PROVIDER_ACCOUNT_DELETED,
+      Topics.PREMIUM_PROVIDER_MODELS_REFRESHED,
     ] as const
     const unsubs = topics.map((t) => eventBus.on(t, () => { void loadConfig() }))
     return () => unsubs.forEach((u) => u())
