@@ -251,6 +251,37 @@ def _make_tool_executor(
     return _executor
 
 
+def _normalise_image_attachments_in_place(files: list[dict]) -> None:
+    """Convert every image attachment in ``files`` to JPEG ≤ 1024 px in place.
+
+    Non-image attachments and entries with no data are left untouched.
+    On normalisation failure: ``data`` is set to ``None`` and a
+    ``_normalisation_error`` key is added with the reason string. The
+    downstream call site (_resolve_image_attachments_for_inference)
+    drops those entries and emits a recoverable ErrorEvent.
+
+    Called from every return point of _resolve_attachment_files so the
+    common user-upload path (which short-circuits when storage satisfies
+    all IDs) is normalised too.
+    """
+    for f in files:
+        media_type = f.get("media_type") or ""
+        if not media_type.startswith("image/") or not f.get("data"):
+            continue
+        try:
+            new_data, new_media_type = normalise_for_llm(f["data"], media_type)
+        except ImageNormalisationError as exc:
+            _log.warning(
+                "attachment normalisation failed: file_id=%s media_type=%s reason=%s",
+                f.get("_id"), media_type, exc.reason,
+            )
+            f["data"] = None
+            f["_normalisation_error"] = exc.reason
+            continue
+        f["data"] = new_data
+        f["media_type"] = new_media_type
+
+
 async def _resolve_attachment_files(
     attachment_ids: list[str],
     user_id: str,
@@ -267,6 +298,7 @@ async def _resolve_attachment_files(
     found_ids = {f["_id"] for f in files}
     missing_ids = [aid for aid in attachment_ids if aid not in found_ids]
     if not missing_ids:
+        _normalise_image_attachments_in_place(files)
         return files
 
     try:
@@ -274,6 +306,7 @@ async def _resolve_attachment_files(
         image_service = get_image_service()
     except RuntimeError:
         # ImageService not initialised (e.g. test/script context).
+        _normalise_image_attachments_in_place(files)
         return files
 
     for aid in missing_ids:
@@ -294,28 +327,7 @@ async def _resolve_attachment_files(
             "data": data,
         })
 
-    # Normalise every image attachment to JPEG <= 1024 px before the bytes
-    # leave the backend toward any LLM provider. Non-image attachments pass
-    # through untouched. Failures are signalled by replacing the file dict's
-    # data with None and tagging it with a "_normalisation_error" key — the
-    # downstream call site (_resolve_image_attachments_for_inference) drops
-    # those entries and emits a recoverable ErrorEvent.
-    for f in files:
-        media_type = f.get("media_type") or ""
-        if not media_type.startswith("image/") or not f.get("data"):
-            continue
-        try:
-            new_data, new_media_type = normalise_for_llm(f["data"], media_type)
-        except ImageNormalisationError as exc:
-            _log.warning(
-                "attachment normalisation failed: file_id=%s media_type=%s reason=%s",
-                f.get("_id"), media_type, exc.reason,
-            )
-            f["data"] = None
-            f["_normalisation_error"] = exc.reason
-            continue
-        f["data"] = new_data
-        f["media_type"] = new_media_type
+    _normalise_image_attachments_in_place(files)
     return files
 
 
