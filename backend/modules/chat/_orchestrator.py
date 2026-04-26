@@ -258,7 +258,7 @@ def _normalise_image_attachments_in_place(files: list[dict]) -> None:
     On normalisation failure: ``data`` is set to ``None`` and a
     ``_normalisation_error`` key is added with the reason string. The
     downstream call site (_resolve_image_attachments_for_inference)
-    drops those entries and emits a recoverable ErrorEvent.
+    drops those entries and emits a recoverable ChatStreamErrorEvent.
 
     Called from every return point of _resolve_attachment_files so the
     common user-upload path (which short-circuits when storage satisfies
@@ -361,12 +361,9 @@ async def _resolve_image_attachments_for_inference(
     parts: list[ContentPart] = []
     snapshots: list[dict] = []
 
-    # Local import — ErrorEvent lives in shared/events/system.
-    from shared.events.system import ErrorEvent
-
     for f in files:
         if f.get("_normalisation_error"):
-            await emit_event(ErrorEvent(
+            await emit_event(ChatStreamErrorEvent(
                 correlation_id=correlation_id,
                 error_code="image_normalisation_failed",
                 recoverable=True,
@@ -374,7 +371,7 @@ async def _resolve_image_attachments_for_inference(
                     f"Couldn't process image '{f.get('display_name') or 'attachment'}' "
                     f"— it was dropped from this turn."
                 ),
-                detail=f.get("_normalisation_error"),
+                timestamp=datetime.now(timezone.utc),
             ))
             continue
 
