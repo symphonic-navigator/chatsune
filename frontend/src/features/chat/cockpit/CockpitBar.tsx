@@ -117,6 +117,7 @@ export function CockpitBar(props: Props) {
       />
       {!isMobile && <Sep />}
       <LiveButton
+        sessionId={props.sessionId}
         canEnterLive={props.liveAvailability.canEnterLive}
         disabledReason={props.liveAvailability.reason}
       />

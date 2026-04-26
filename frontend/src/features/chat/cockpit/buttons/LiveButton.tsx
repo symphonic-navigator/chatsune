@@ -1,15 +1,21 @@
 import { CockpitButton } from '../CockpitButton'
+import { useCockpitSession, useCockpitStore } from '../cockpitStore'
 import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
+import { stopActiveReadAloud } from '@/features/voice/components/ReadAloudButton'
 
 type Props = {
+  sessionId: string
   canEnterLive: boolean
   disabledReason: 'no-voice' | 'not-allowed' | null
 }
 
-export function LiveButton({ canEnterLive, disabledReason }: Props) {
+export function LiveButton({ sessionId, canEnterLive, disabledReason }: Props) {
   const active = useConversationModeStore((s) => s.active)
   const enter = useConversationModeStore((s) => s.enter)
   const exit = useConversationModeStore((s) => s.exit)
+  const cockpit = useCockpitSession(sessionId)
+  const setAutoRead = useCockpitStore((s) => s.setAutoRead)
+  const clearAutoReadRequest = useCockpitStore((s) => s.clearAutoReadRequest)
 
   if (!canEnterLive) {
     return (
@@ -29,13 +35,28 @@ export function LiveButton({ canEnterLive, disabledReason }: Props) {
     )
   }
 
+  const handleClick = () => {
+    if (active) {
+      exit()
+      return
+    }
+    // Entering Live mode: silence and disarm the Read-Aloud pipeline so it
+    // does not race the live ResponseTaskGroup for audio output.
+    if (cockpit?.autoRead) {
+      void setAutoRead(sessionId, false)
+    }
+    clearAutoReadRequest()
+    stopActiveReadAloud()
+    enter()
+  }
+
   return (
     <CockpitButton
       icon="🎙"
       state={active ? 'active' : 'idle'}
       accent="green"
       label={active ? 'Voice chat · on' : 'Voice chat · off'}
-      onClick={() => (active ? exit() : enter())}
+      onClick={handleClick}
       panel={
         <div className="text-white/80">
           <div className="font-semibold text-[#4ade80] mb-1">Voice chat</div>
