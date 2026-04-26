@@ -109,6 +109,10 @@ class InferenceRunner:
         web_search_context: list[dict] = []
         knowledge_context: list[dict] = []
         artefact_refs: list[dict] = []
+        # Collected image refs from generate_image tool calls — drained out
+        # of the side-channel exposed by ImageGenerationToolExecutor and
+        # persisted on the assistant message for inline rendering.
+        image_refs: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
@@ -351,11 +355,33 @@ class InferenceRunner:
                             )
                             artefact_refs.append(ref_for_event.model_dump())
 
+                    # Drain the structured image-generation outcome (if any).
+                    # `generate_image` produces image_refs + a moderated_count;
+                    # both flow onto the persisted assistant message.
+                    moderated_count = 0
+                    if tc.name == "generate_image":
+                        from backend.modules.images._tool_executor import (
+                            drain_image_outcome,
+                        )
+                        outcome = drain_image_outcome(tc.id)
+                        if outcome is not None:
+                            for ref in outcome.image_refs:
+                                image_refs.append(ref.model_dump())
+                            moderated_count = outcome.moderated_count
+                            # All-moderated runs are surfaced as failed tool
+                            # calls so the frontend pill can render the error
+                            # state and offer a retry. Partial-moderation
+                            # batches stay successful — the moderated_count
+                            # decoration carries the secondary information.
+                            if outcome.all_moderated:
+                                tool_success = False
+
                     all_tool_calls.append({
                         "tool_call_id": tc.id,
                         "tool_name": tc.name,
                         "arguments": arguments,
                         "success": tool_success,
+                        "moderated_count": moderated_count,
                     })
 
                     await emit_fn(ChatToolCallCompletedEvent(
@@ -454,6 +480,7 @@ class InferenceRunner:
                 knowledge_context=knowledge_context or None,
                 artefact_refs=artefact_refs or None,
                 tool_calls=all_tool_calls or None,
+                image_refs=image_refs or None,
                 refusal_text=iter_refusal_text,
                 status=resolved_status,
             )

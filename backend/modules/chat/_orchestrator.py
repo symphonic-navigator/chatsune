@@ -695,6 +695,7 @@ async def run_inference(
         knowledge_context: list[dict] | None = None,
         artefact_refs: list | None = None,
         tool_calls: list[dict] | None = None,
+        image_refs: list[dict] | None = None,
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
     ) -> str | None:
@@ -710,6 +711,7 @@ async def run_inference(
             knowledge_context=knowledge_context,
             artefact_refs=artefact_refs,
             tool_calls=tool_calls,
+            image_refs=image_refs,
             refusal_text=refusal_text,
             status=status,
         )

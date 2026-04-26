@@ -32,6 +32,26 @@ class _SetActiveConfigRequest(BaseModel):
     config: dict
 
 
+class _TestImageRequest(BaseModel):
+    connection_id: str
+    group_id: str
+    config: dict
+    prompt: str = "a serene mountain landscape at dawn"
+
+
+class _TestImageResponse(BaseModel):
+    """Result of a one-off generation through the cockpit "Test image" button.
+
+    The items list mirrors the structure of a regular tool-call result but
+    is not persisted; thumbnails come back as base64 data URIs so the
+    cockpit can render them inline without needing a follow-up GET against
+    a non-existent gallery row.
+    """
+    successful_count: int
+    moderated_count: int
+    thumbs_data_uris: list[str]
+
+
 class _ImageConfigDiscoveryDto(BaseModel):
     available: list[ConnectionImageGroupsDto]
     active: ActiveImageConfigDto | None
@@ -82,6 +102,83 @@ async def set_config(
             user["sub"], body.group_id, exc,
         )
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.post("/test", response_model=_TestImageResponse)
+async def test_image(
+    body: _TestImageRequest,
+    user: Annotated[dict, Depends(require_active_session)],
+    svc: ImageService = Depends(_service),
+):
+    """One-off generation for the cockpit "Test image" button.
+
+    Bypasses the active-config + gallery-persistence path: takes inline
+    config, runs the adapter, returns base64 thumbnails inline (no row
+    in ``generated_images``). Drains the adapter byte buffer so memory
+    is not leaked across requests. A successful response confirms the
+    upstream credentials work and the configured params produce real
+    images for the user.
+    """
+    import base64
+    import io
+    from PIL import Image
+
+    from backend.modules.images._thumbnails import generate_thumbnail_jpeg
+    from backend.modules.llm import LlmService
+    from backend.modules.llm._adapters._xai_http import drain_image_buffer
+    from shared.dtos.images import GeneratedImageResult
+
+    try:
+        cfg = await LlmService().validate_image_config(
+            group_id=body.group_id, config=body.config,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"invalid config: {exc}")
+
+    try:
+        items = await LlmService().generate_images(
+            user_id=user["sub"],
+            connection_id=body.connection_id,
+            group_id=body.group_id,
+            config=cfg,
+            prompt=body.prompt,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    thumbs_data_uris: list[str] = []
+    successful = 0
+    moderated = 0
+    for item in items:
+        if isinstance(item, GeneratedImageResult):
+            buf = drain_image_buffer(item.id)
+            if buf is None:
+                moderated += 1
+                continue
+            full_bytes, _ = buf
+            try:
+                thumb_bytes = generate_thumbnail_jpeg(full_bytes, max_edge=192)
+            except Exception:
+                moderated += 1
+                continue
+            data_uri = "data:image/jpeg;base64," + base64.b64encode(thumb_bytes).decode("ascii")
+            thumbs_data_uris.append(data_uri)
+            successful += 1
+        else:
+            moderated += 1
+
+    _log.info(
+        "image.test user=%s connection_id=%s group_id=%s "
+        "successful=%d moderated=%d",
+        user["sub"], body.connection_id, body.group_id, successful, moderated,
+    )
+    return _TestImageResponse(
+        successful_count=successful,
+        moderated_count=moderated,
+        thumbs_data_uris=thumbs_data_uris,
+    )
 
 
 @router.get("/{image_id}", response_model=GeneratedImageDetailDto)

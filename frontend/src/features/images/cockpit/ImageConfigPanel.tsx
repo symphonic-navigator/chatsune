@@ -136,24 +136,20 @@ export function ImageConfigPanel() {
     setTestImages([])
     setTestError(null)
     try {
-      const result = await imagesApi.testImagine(connectionId, {
+      const result = await imagesApi.testImagine({
+        connection_id: connectionId,
         group_id: groupId,
         config,
         prompt: 'A beautiful golden sunset over calm ocean waves',
       })
-      const urls: string[] = []
-      for (const item of result.items) {
-        if (item.kind === 'image') {
-          // The blob_url field on a GeneratedImageResult — but the test endpoint
-          // returns ImageGenItem which only carries an id, not a URL. Use the
-          // /api/images/{id}/blob path to display. For now surface what we have.
-          urls.push(`/api/images/${item.id}`)
+      if (result.thumbs_data_uris.length === 0) {
+        if (result.moderated_count > 0) {
+          setTestError(`All ${result.moderated_count} results were moderated. Try a different prompt.`)
+        } else {
+          setTestError('Generation completed but produced no images.')
         }
-      }
-      if (urls.length === 0) {
-        setTestError('Generation completed but all results were moderated.')
       } else {
-        setTestImages(urls)
+        setTestImages(result.thumbs_data_uris)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Test request failed.'

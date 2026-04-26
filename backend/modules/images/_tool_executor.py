@@ -7,10 +7,38 @@ registry can import it without pulling in the full service graph.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from shared.dtos.inference import ToolDefinition
 
+if TYPE_CHECKING:
+    from backend.modules.images._service import ImageGenerationOutcome
+
 _log = logging.getLogger(__name__)
+
+
+# Side-channel for passing rich generation outcomes (image_refs +
+# moderated_count) back to the chat orchestrator. The ToolExecutor
+# Protocol's ``execute()`` returns only ``str`` (the LLM-readable
+# result), but the orchestrator also needs the structured ImageRefDtos
+# so it can attach them to the persisted assistant message and broadcast
+# them in ``chat.message.created``.
+#
+# Pattern: the executor stashes the outcome under the originating
+# ``tool_call_id`` immediately after generation. The orchestrator drains
+# it at the same call site where it processes the string result. Single
+# process only — drained-once-and-discarded, like the
+# ``_LAST_BATCH_BUFFERS`` pattern in the xAI adapter.
+_PENDING_OUTCOMES: dict[str, "ImageGenerationOutcome"] = {}
+
+
+def drain_image_outcome(tool_call_id: str) -> "ImageGenerationOutcome | None":
+    """Caller (the chat orchestrator) drains the outcome once and discards.
+
+    Returns ``None`` if the tool call had no outcome stored (e.g. it was
+    a different tool, or generation failed before producing an outcome).
+    """
+    return _PENDING_OUTCOMES.pop(tool_call_id, None)
 
 # Context injection convention for image generation:
 #
@@ -79,6 +107,11 @@ class ImageGenerationToolExecutor:
                 user_id, tool_call_id, exc,
             )
             return f"Error: image generation failed: {type(exc).__name__}"
+
+        # Stash the structured outcome so the orchestrator can attach
+        # image_refs to the assistant message; the LLM only sees the text.
+        if tool_call_id:
+            _PENDING_OUTCOMES[tool_call_id] = outcome
 
         return outcome.llm_text_result
 

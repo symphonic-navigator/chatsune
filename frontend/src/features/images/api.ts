@@ -41,15 +41,24 @@ export const imagesApi = {
     api.post<ActiveImageConfigDto>('/api/images/config', payload),
 
   /**
-   * Hits the xAI imagine adapter test endpoint.
-   * URL: POST /api/llm/connections/{connectionId}/adapter/imagine/test
+   * Adapter-agnostic one-off image generation for the cockpit "Test image"
+   * button. The backend resolves the connection (regular or premium),
+   * generates without persisting, and returns base64 thumbnail data URIs
+   * inline so the cockpit can preview them without a follow-up GET.
    */
-  testImagine: (
-    connectionId: string,
-    payload: { group_id: string; config: ImageGroupConfig; prompt?: string },
-  ): Promise<{ items: ImageGenItem[] }> =>
-    api.post<{ items: ImageGenItem[] }>(
-      `/api/llm/connections/${connectionId}/adapter/imagine/test`,
-      payload,
-    ),
+  testImagine: (payload: {
+    connection_id: string
+    group_id: string
+    config: ImageGroupConfig
+    prompt?: string
+  }): Promise<{
+    successful_count: number
+    moderated_count: number
+    thumbs_data_uris: string[]
+  }> =>
+    api.post('/api/images/test', payload),
 }
+
+// Deprecated re-export (kept to surface a clear error if any caller
+// still relies on the old per-adapter URL signature).
+export type _DeprecatedImageGenItem = ImageGenItem
