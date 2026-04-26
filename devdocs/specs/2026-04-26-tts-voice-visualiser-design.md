@@ -205,7 +205,7 @@ Component logic:
   3. Else: read frequency bins via `useTtsFrequencyData`, draw bars per current `style`, scaled to `opacity * active`.
 - Listens for `prefers-reduced-motion` via `matchMedia` and short-circuits rendering when active.
 - Re-allocates the bin buffer when `barCount` changes (rare).
-- Re-sizes the canvas backing store on `clientWidth/clientHeight` change with DPR scaling.
+- Re-sizes the canvas backing store on `clientWidth/clientHeight` change. **DPR is clamped to 1** — the bars are soft decorative shapes for which retina sharpness is not perceptible, and the clamp keeps backing-store memory bounded on high-resolution displays (~33 MB at 4K instead of ~130 MB at 4K + DPR 2).
 
 The four bar styles map exactly to the prototyped renderers:
 
@@ -249,7 +249,7 @@ The simulator code used by the live preview is extracted into a small helper so 
 - One RAF loop owned by the visualiser component (plus optionally one for the live preview while the Voice settings tab is open).
 - Per frame: one `getByteFrequencyData()` call (~0.05 ms), one logarithmic bucketing pass over 128 bins, one canvas draw with up to 96 `fillRect` operations.
 - Idle: RAF is **cancelled**, not gated. Listening for `audioPlayback`'s subscribe event resumes the loop on next playback.
-- DPR-aware canvas resize is conditional on `clientWidth`/`clientHeight` change to avoid every-frame `canvas.width = ...` reflows.
+- Canvas resize is conditional on `clientWidth`/`clientHeight` change to avoid every-frame `canvas.width = ...` reflows. DPR is clamped to 1 (see render component) so the backing store stays small.
 - No React state updates inside the RAF loop; bar values are kept in a ref-held typed array.
 
 This budget targets and easily fits within a 16 ms frame on any device of the last five years. The master toggle remains the user's escape hatch if their device disagrees.
@@ -264,7 +264,7 @@ This budget targets and easily fits within a 16 ms frame on any device of the la
 | `AnalyserNode` insertion silently breaks `SoundTouchNode` chain | The Analyser sits unconditionally at the very end of the chain, regardless of which prefix variant is active. Manual verification covers the speed/pitch-modulated path explicitly. |
 | Persona switch during TTS playback (rare; likely not possible due to session model) | Colour is read each frame via the persona store. Next frame paints with the new colour — no crossfade needed for what is essentially never user-observable. |
 | Older persisted `voice-settings` localStorage payload missing `visualisation` block | Extend the existing `merge` callback to spread `current.visualisation` first, then any persisted partial visualisation block — guarantees a complete object even on the first load after upgrade. |
-| Canvas allocates large backing store on high-DPR displays | Canvas covers the viewport with DPR scaling. At 4K + 2× DPR this can reach ~130 MB of backing-store memory — a one-time allocation, not per-frame, but worth measuring if it shows up in profiling. Initial release accepts the cost; a future optimisation could clamp the canvas to 1× DPR with a small visual quality cost. |
+| Canvas allocates large backing store on high-DPR displays | DPR is clamped to 1 from day one. The bars are soft decorative shapes — no retina-sharpness loss is visible. Caps the backing store at viewport-pixels × 4 bytes (~33 MB at 4K, ~8 MB at 1080p), instead of the up-to-130 MB an unclamped DPR=2 path would cost. |
 
 ---
 
