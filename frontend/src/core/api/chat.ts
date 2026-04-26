@@ -1,5 +1,6 @@
 import { api } from "./client"
 import type { AttachmentRefDto } from "./storage"
+import type { ImageRefDto } from "./images"
 
 export interface KnowledgeContextItem {
   library_name: string
@@ -58,6 +59,8 @@ interface ToolCallRef {
   tool_name: string
   arguments: Record<string, unknown>
   success: boolean
+  /** Number of image slots rejected by the content-moderation filter. */
+  moderated_count?: number
 }
 
 interface ChatMessageDto {
@@ -77,6 +80,7 @@ interface ChatMessageDto {
   refusal_text?: string | null
   artefact_refs?: ArtefactRef[] | null
   tool_calls?: ToolCallRef[] | null
+  image_refs?: ImageRefDto[] | null
   usage?: { input_tokens?: number; output_tokens?: number } | null
   time_to_first_token_ms?: number | null
   tokens_per_second?: number | null
