@@ -1285,6 +1285,7 @@ export function ChatView({ persona }: ChatViewProps) {
             <UploadBrowserPanel
               personaId={personaId}
               onSelect={(file) => attachments.addExistingFile(file)}
+              onSelectImage={(image) => attachments.addGeneratedImage(image)}
               onClose={() => setShowUploadBrowser(false)}
             />
           )}
