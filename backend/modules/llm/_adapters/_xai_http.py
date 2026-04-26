@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
 import time
+import uuid
 from collections.abc import AsyncIterator
+from typing import ClassVar
 from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends
+from PIL import Image
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -30,10 +34,46 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
+from backend.modules.llm._adapters._xai_image_groups import (
+    GROUP_ID as XAI_IMAGINE_GROUP_ID,
+    aspect_to_payload,
+    model_id_for_tier,
+    resolution_to_payload,
+)
+from shared.dtos.images import (
+    GeneratedImageResult,
+    ImageGenItem,
+    ImageGroupConfig,
+    ModeratedRejection,
+    XaiImagineConfig,
+)
 from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
+
+# Module-level temporary buffer keyed by generated image_id, drained
+# by the caller (ImageService) immediately after generate_images returns.
+# Single-process only; do not rely on cross-request persistence.
+_LAST_BATCH_BUFFERS: dict[str, tuple[bytes, str]] = {}
+
+
+def _new_image_id() -> str:
+    return f"img_{uuid.uuid4().hex[:12]}"
+
+
+def _probe_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
+    """Return (width, height) from image bytes, or None if unparseable."""
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as im:
+            return im.size  # (w, h)
+    except Exception:
+        return None
+
+
+def drain_image_buffer(image_id: str) -> tuple[bytes, str] | None:
+    """Caller (ImageService) drains the bytes once and discards them."""
+    return _LAST_BATCH_BUFFERS.pop(image_id, None)
 
 # Opt-in payload tracing for cache-miss debugging. Enable via
 # LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
@@ -253,6 +293,7 @@ class XaiHttpAdapter(BaseAdapter):
     display_name = "xAI / Grok"
     view_id = "xai_http"
     secret_fields = frozenset({"api_key"})
+    supports_image_generation: ClassVar[bool] = True
 
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
@@ -436,6 +477,95 @@ class XaiHttpAdapter(BaseAdapter):
 
         if not seen_done:
             yield StreamDone()
+
+    async def image_groups(self, connection: ResolvedConnection) -> list[str]:
+        # xAI offers exactly one image group today.
+        return [XAI_IMAGINE_GROUP_ID]
+
+    async def generate_images(
+        self,
+        connection: ResolvedConnection,
+        group_id: str,
+        config: ImageGroupConfig,
+        prompt: str,
+    ) -> list[ImageGenItem]:
+        if group_id != XAI_IMAGINE_GROUP_ID:
+            raise ValueError(f"unknown image group {group_id!r} for xAI adapter")
+        if not isinstance(config, XaiImagineConfig):
+            raise ValueError(
+                f"expected XaiImagineConfig, got {type(config).__name__}"
+            )
+
+        model_id = model_id_for_tier(config.tier)
+        _log.debug(
+            "xai_http.generate_images model=%s n=%d aspect=%s resolution=%s",
+            model_id, config.n, config.aspect, config.resolution,
+        )
+
+        body = {
+            "model": model_id,
+            "prompt": prompt,
+            "n": config.n,
+            "response_format": "url",
+            "aspect_ratio": aspect_to_payload(config.aspect),
+            "resolution": resolution_to_payload(config.resolution),
+        }
+
+        base_url = connection.config["url"].rstrip("/")
+        url = f"{base_url}/images/generations"
+        api_key = connection.config.get("api_key") or ""
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(url, headers=headers, json=body)
+            if resp.status_code >= 400:
+                _log.error(
+                    "xai_http.generate_images failed status=%d body=%s",
+                    resp.status_code, resp.text[:500],
+                )
+                raise RuntimeError(
+                    f"xAI image generation failed: {resp.status_code} {resp.text}"
+                )
+            payload = resp.json()
+
+            cost = (payload.get("usage") or {}).get("cost_in_usd_ticks")
+            _log.debug("xai_http.generate_images done cost_in_usd_ticks=%s", cost)
+
+            items: list[ImageGenItem] = []
+            for entry in payload.get("data", []):
+                if entry.get("respect_moderation") is False:
+                    items.append(ModeratedRejection(reason=entry.get("reason")))
+                    continue
+
+                image_url = entry.get("url")
+                if not image_url:
+                    items.append(ModeratedRejection(reason="no_url"))
+                    continue
+
+                blob_resp = await client.get(image_url)
+                if blob_resp.status_code >= 400:
+                    items.append(ModeratedRejection(reason="fetch_failed"))
+                    continue
+
+                content_type = entry.get("mime_type") or blob_resp.headers.get(
+                    "content-type", "image/jpeg"
+                )
+                dims = _probe_dimensions(blob_resp.content)
+                width, height = dims if dims else (0, 0)
+                image_id = _new_image_id()
+
+                items.append(GeneratedImageResult(
+                    id=image_id,
+                    width=width,
+                    height=height,
+                    model_id=model_id,
+                ))
+                _LAST_BATCH_BUFFERS[image_id] = (blob_resp.content, content_type)
+
+        return items
 
 
 def _xai_repo_factory():

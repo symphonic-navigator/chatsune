@@ -585,3 +585,176 @@ def test_post_test_invalid_key_returns_false(monkeypatch):
     body = resp.json()
     assert body["valid"] is False
     assert "key" in body["error"].lower() or "401" in body["error"]
+
+
+# ---------------------------------------------------------------------------
+# Image generation — capability flag, group listing, and generate_images
+# ---------------------------------------------------------------------------
+
+from shared.dtos.images import (
+    GeneratedImageResult,
+    ModeratedRejection,
+    XaiImagineConfig,
+)
+
+
+def test_xai_supports_image_generation_flag():
+    assert XaiHttpAdapter.supports_image_generation is True
+
+
+@pytest.mark.asyncio
+async def test_xai_image_groups_returns_xai_imagine():
+    adapter = XaiHttpAdapter()
+    groups = await adapter.image_groups(_resolved_conn())
+    assert groups == ["xai_imagine"]
+
+
+@pytest.mark.asyncio
+async def test_xai_generate_images_unknown_group_raises():
+    adapter = XaiHttpAdapter()
+    with pytest.raises(ValueError, match="unknown image group"):
+        await adapter.generate_images(
+            connection=_resolved_conn(),
+            group_id="not_a_group",
+            config=XaiImagineConfig(),
+            prompt="x",
+        )
+
+
+@pytest.mark.asyncio
+async def test_xai_generate_images_wrong_config_type_raises():
+    """generate_images must reject configs from other groups (defence
+    against the discriminated union being bypassed somewhere upstream).
+    """
+    adapter = XaiHttpAdapter()
+    with pytest.raises(ValueError, match="expected XaiImagineConfig"):
+        await adapter.generate_images(
+            connection=_resolved_conn(),
+            group_id="xai_imagine",
+            config={"group_id": "xai_imagine"},  # raw dict, not parsed
+            prompt="x",
+        )
+
+
+@pytest.mark.asyncio
+async def test_xai_generate_images_success_and_moderation_mix(monkeypatch):
+    """Mock the HTTP layer to return one success + one moderated item."""
+    # Build a tiny real PNG so probe_dimensions returns something.
+    import io as _io
+    from PIL import Image as _Image
+    _png = _io.BytesIO()
+    _Image.new("RGB", (64, 32), (1, 2, 3)).save(_png, format="PNG")
+    fake_image_bytes = _png.getvalue()
+
+    fake_response = {
+        "data": [
+            {"url": "https://example/img1.png", "mime_type": "image/png"},
+            {"respect_moderation": False, "reason": "filter_a"},
+        ],
+        "usage": {"cost_in_usd_ticks": 100000000},
+    }
+
+    class _FakeResp:
+        def __init__(self, status_code=200, json_data=None, content=None, headers=None):
+            self.status_code = status_code
+            self._json = json_data
+            self.content = content
+            self.headers = headers or {}
+            self.text = ""
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, *a, **kw):
+            return _FakeResp(json_data=fake_response)
+
+        async def get(self, *a, **kw):
+            return _FakeResp(
+                content=fake_image_bytes,
+                headers={"content-type": "image/png"},
+            )
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._xai_http.httpx.AsyncClient",
+        _FakeClient,
+    )
+
+    adapter = XaiHttpAdapter()
+    items = await adapter.generate_images(
+        connection=_resolved_conn(),
+        group_id="xai_imagine",
+        config=XaiImagineConfig(n=2),
+        prompt="a tiny image",
+    )
+
+    assert len(items) == 2
+    assert isinstance(items[0], GeneratedImageResult)
+    assert items[0].width == 64
+    assert items[0].height == 32
+    assert items[0].model_id == "grok-imagine-image"
+    assert isinstance(items[1], ModeratedRejection)
+    assert items[1].reason == "filter_a"
+
+    # Buffer should have been populated for the success item.
+    from backend.modules.llm._adapters._xai_http import drain_image_buffer
+    bufs = drain_image_buffer(items[0].id)
+    assert bufs is not None
+    bytes_, ct = bufs
+    assert bytes_ == fake_image_bytes
+    assert ct == "image/png"
+    # Second drain returns None (buffer entry has been consumed).
+    assert drain_image_buffer(items[0].id) is None
+
+
+@pytest.mark.asyncio
+async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
+    captured_body: dict = {}
+
+    class _FakeResp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"data": [], "usage": {}}
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, headers, json):
+            captured_body.update(json)
+            return _FakeResp()
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._xai_http.httpx.AsyncClient",
+        _FakeClient,
+    )
+
+    adapter = XaiHttpAdapter()
+    await adapter.generate_images(
+        connection=_resolved_conn(),
+        group_id="xai_imagine",
+        config=XaiImagineConfig(tier="pro", resolution="2k", aspect="16:9", n=1),
+        prompt="x",
+    )
+
+    assert captured_body["model"] == "grok-imagine-image-pro"
+    assert captured_body["resolution"] == "2k"
+    assert captured_body["aspect_ratio"] == "16:9"
+    assert captured_body["n"] == 1
