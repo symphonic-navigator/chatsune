@@ -17,6 +17,16 @@ class FakeSource {
 
 let sources: FakeSource[] = []
 
+class FakeAnalyserNode {
+  _name = 'analyser'
+  fftSize = 256
+  smoothingTimeConstant = 0
+  minDecibels = -100
+  maxDecibels = -30
+  connect = vi.fn()
+  disconnect = vi.fn()
+}
+
 class FakeAudioContext {
   state = 'running'
   destination = {}
@@ -27,6 +37,7 @@ class FakeAudioContext {
     sources.push(s)
     return s
   }
+  createAnalyser() { return new FakeAnalyserNode() }
   resume() { this.state = 'running'; return Promise.resolve() }
   close() { this.state = 'closed'; return Promise.resolve() }
 }
