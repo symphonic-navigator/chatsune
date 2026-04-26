@@ -50,7 +50,7 @@ export function InlineImageBlock({ refs, moderatedCount = 0 }: InlineImageBlockP
               aria-label={`Open image: ${r.prompt.slice(0, 80)}`}
             >
               <img
-                src={r.thumb_url}
+                src={r.thumbnail_b64 ? `data:image/jpeg;base64,${r.thumbnail_b64}` : r.thumb_url}
                 alt={r.prompt}
                 className={
                   layout === 'single'

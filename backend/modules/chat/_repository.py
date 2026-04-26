@@ -706,6 +706,7 @@ class ChatRepository:
                     prompt=r.get("prompt", ""),
                     model_id=r.get("model_id", ""),
                     tool_call_id=r.get("tool_call_id", ""),
+                    thumbnail_b64=r.get("thumbnail_b64"),
                 )
                 for r in raw_image_refs
             ]

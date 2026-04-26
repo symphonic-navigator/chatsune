@@ -9,6 +9,7 @@ Coordinates between:
 
 from __future__ import annotations
 
+import base64
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -198,6 +199,7 @@ class ImageService:
 
             # Generate a thumbnail (always JPEG, max 256 px on longest edge).
             thumb_bytes = generate_thumbnail_jpeg(full_bytes, max_edge=256)
+            thumbnail_b64 = base64.b64encode(thumb_bytes).decode("ascii")
 
             # BlobStore requires real UUID file_ids — the adapter id (img_<hex>) is not valid.
             full_blob_id = str(uuid.uuid4())
@@ -224,7 +226,10 @@ class ImageService:
             docs.append(doc)
 
             # The URL uses the image_id (not blob_id); the HTTP route resolves
-            # blob_id internally by looking up the document.
+            # blob_id internally by looking up the document. ``thumbnail_b64``
+            # is the primary render path because <img> cannot send Bearer
+            # auth; ``thumb_url`` is kept for the (rare) authenticated-fetch
+            # case (e.g. opening the image in a new tab from the lightbox).
             ref = ImageRefDto(
                 id=item.id,
                 blob_url=f"/api/images/{item.id}/blob",
@@ -234,6 +239,7 @@ class ImageService:
                 prompt=prompt,
                 model_id=item.model_id,
                 tool_call_id=tool_call_id,
+                thumbnail_b64=thumbnail_b64,
             )
             refs.append(ref)
             successful_count += 1
@@ -276,8 +282,11 @@ class ImageService:
         Moderated stubs are excluded from the gallery.
         """
         rows = await self._gen.list_for_user(user_id=user_id, limit=limit, before=before)
-        return [
-            GeneratedImageSummaryDto(
+        out: list[GeneratedImageSummaryDto] = []
+        for r in rows:
+            if r.moderated:
+                continue
+            out.append(GeneratedImageSummaryDto(
                 id=r.id,
                 thumb_url=f"/api/images/{r.id}/thumb",
                 width=r.width,
@@ -285,10 +294,9 @@ class ImageService:
                 prompt=r.prompt,
                 model_id=r.model_id,
                 generated_at=r.generated_at,
-            )
-            for r in rows
-            if not r.moderated
-        ]
+                thumbnail_b64=self._read_thumbnail_b64(user_id, r.thumb_blob_id),
+            ))
+        return out
 
     async def get_image(
         self,
@@ -322,7 +330,21 @@ class ImageService:
             config_snapshot=doc.config_snapshot,
             connection_id=doc.connection_id,
             group_id=doc.group_id,
+            thumbnail_b64=self._read_thumbnail_b64(user_id, doc.thumb_blob_id),
         )
+
+    def _read_thumbnail_b64(self, user_id: str, thumb_blob_id: str | None) -> str | None:
+        """Read a thumbnail blob from disk and return base64-encoded ASCII.
+
+        Returns ``None`` if the blob_id is missing (moderated stub) or the
+        blob can't be loaded (e.g. file deleted out-of-band).
+        """
+        if thumb_blob_id is None:
+            return None
+        data = self._blobs.load(user_id, thumb_blob_id)
+        if data is None:
+            return None
+        return base64.b64encode(data).decode("ascii")
 
     async def delete_image(
         self,

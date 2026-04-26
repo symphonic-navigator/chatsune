@@ -57,6 +57,14 @@ export interface ImageRefDto {
   prompt: string
   model_id: string
   tool_call_id: string
+  /**
+   * JPEG thumbnail bytes inline (base64). Use as
+   * `<img src="data:image/jpeg;base64,${thumbnail_b64}">`. The auth model
+   * is Bearer JWT, which browsers cannot attach to <img> subresource
+   * requests, so the URL endpoints are only useful for authenticated
+   * fetches (e.g. lightbox via fetch + URL.createObjectURL).
+   */
+  thumbnail_b64?: string | null
 }
 
 
@@ -71,6 +79,8 @@ export interface GeneratedImageSummaryDto {
   model_id: string
   /** ISO 8601 timestamp */
   generated_at: string
+  /** JPEG thumbnail base64 — see ImageRefDto.thumbnail_b64. */
+  thumbnail_b64?: string | null
 }
 
 export interface GeneratedImageDetailDto extends GeneratedImageSummaryDto {

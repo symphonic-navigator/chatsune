@@ -56,6 +56,11 @@ class ImageRefDto(BaseModel):
     prompt: str
     model_id: str
     tool_call_id: str
+    # Inline thumbnail bytes so <img> tags work without an auth header
+    # (the API uses Bearer JWT, which browsers cannot attach to <img>
+    # subresource requests). Mirrors storage's StorageFileDto pattern.
+    # Always JPEG when present.
+    thumbnail_b64: str | None = None
 
 
 # --- gallery REST DTOs ----------------------------------------------------
@@ -68,6 +73,8 @@ class GeneratedImageSummaryDto(BaseModel):
     prompt: str
     model_id: str
     generated_at: datetime
+    # See ImageRefDto.thumbnail_b64.
+    thumbnail_b64: str | None = None
 
 
 class GeneratedImageDetailDto(GeneratedImageSummaryDto):

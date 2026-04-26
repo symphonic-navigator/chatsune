@@ -36,7 +36,7 @@ export function GeneratedImagesTab({ onPick }: GeneratedImagesTabProps) {
             aria-label={`Attach: ${it.prompt.slice(0, 80)}`}
           >
             <img
-              src={it.thumb_url}
+              src={it.thumbnail_b64 ? `data:image/jpeg;base64,${it.thumbnail_b64}` : it.thumb_url}
               alt={it.prompt}
               className="rounded-md w-full aspect-square object-cover"
               loading="lazy"
