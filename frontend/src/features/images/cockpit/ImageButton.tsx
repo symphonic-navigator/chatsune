@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { CockpitButton } from '@/features/chat/cockpit/CockpitButton'
 import { useImagesStore } from '../store'
 import { ImageConfigPanel } from './ImageConfigPanel'
@@ -15,12 +16,51 @@ function humanModelLabel(active: ActiveImageConfigDto): string {
   return tier ? `${group} · ${tier}` : group
 }
 
+/**
+ * Cockpit button for image-generation config.
+ *
+ * Uses click-to-toggle (not hover) so the panel stays open while the user
+ * adjusts settings. The panel is rendered via a React portal into document.body
+ * so it works correctly both on desktop and inside CockpitGroupButton on mobile
+ * (where hover panels are suppressed and the group's close-on-click would
+ * otherwise destroy a child-rendered panel).
+ *
+ * stopPropagation on the button click prevents CockpitGroupButton from
+ * interpreting the tap as "close the group".
+ */
 export function ImageButton() {
   const { available, active, loadConfig } = useImagesStore()
+
+  const [panelOpen, setPanelOpen] = useState(false)
+  const buttonRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     void loadConfig()
   }, [loadConfig])
+
+  // Close on outside click or Escape.
+  useEffect(() => {
+    if (!panelOpen) return
+
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (buttonRef.current?.contains(target)) return
+      if (panelRef.current?.contains(target)) return
+      setPanelOpen(false)
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPanelOpen(false)
+    }
+
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [panelOpen])
 
   const disabled = available.length === 0
   const badgeLabel = active ? humanModelLabel(active) : null
@@ -31,22 +71,54 @@ export function ImageButton() {
       ? `Image · ${badgeLabel}`
       : 'Image generation'
 
+  // Compute panel position relative to the button (above it, centred).
+  // Falls back gracefully if the ref is not yet attached.
+  const panelStyle = (): React.CSSProperties => {
+    if (!buttonRef.current) return { position: 'fixed', bottom: 0, left: 0 }
+    const rect = buttonRef.current.getBoundingClientRect()
+    return {
+      position: 'fixed',
+      // Place the bottom of the panel 8 px above the top of the button.
+      bottom: window.innerHeight - rect.top + 8,
+      left: Math.max(8, rect.left + rect.width / 2 - 160),
+    }
+  }
+
   return (
-    <CockpitButton
-      icon={<ImageIcon />}
-      state={active ? 'active' : disabled ? 'disabled' : 'idle'}
-      accent="purple"
-      label={label}
-      panel={
-        disabled ? (
-          <p className="text-white/70 text-xs">
-            No image-capable connection configured. Add an xAI connection in settings.
-          </p>
-        ) : (
-          <ImageConfigPanel />
-        )
-      }
-    />
+    // stopPropagation on the wrapper div prevents CockpitGroupButton's
+    // close-on-child-click from firing when this button is rendered inside
+    // the mobile group.
+    <div
+      ref={buttonRef}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <CockpitButton
+        icon={<ImageIcon />}
+        state={panelOpen ? 'active' : active ? 'active' : disabled ? 'disabled' : 'idle'}
+        accent="purple"
+        label={label}
+        onClick={() => setPanelOpen((v) => !v)}
+        ariaLabel={label}
+      />
+      {panelOpen && createPortal(
+        <div
+          ref={panelRef}
+          style={panelStyle()}
+          className="z-50 w-80 rounded-lg border border-white/10 bg-[#1a1625] p-3 text-sm shadow-xl"
+          role="dialog"
+          aria-label="Image generation settings"
+        >
+          {disabled ? (
+            <p className="text-white/70 text-xs">
+              No image-capable connection configured. Add an xAI connection in settings.
+            </p>
+          ) : (
+            <ImageConfigPanel />
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
   )
 }
 
