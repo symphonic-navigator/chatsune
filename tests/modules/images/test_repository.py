@@ -1,9 +1,10 @@
 from datetime import datetime, UTC
 
 import pytest
+import pytest_asyncio
 
-from backend.modules.images._repository import GeneratedImagesRepository
-from backend.modules.images._models import GeneratedImageDocument
+from backend.modules.images._repository import GeneratedImagesRepository, UserImageConfigRepository
+from backend.modules.images._models import GeneratedImageDocument, UserImageConfigDocument
 
 
 @pytest.fixture
@@ -78,4 +79,93 @@ async def test_delete_all_for_user(repo):
     deleted = await repo.delete_all_for_user(user_id="u1")
     assert deleted == 2
     remaining = await repo.list_for_user(user_id="u2", limit=10, before=None)
+    assert len(remaining) == 1
+
+
+# ---------------------------------------------------------------------------
+# UserImageConfigRepository tests
+# ---------------------------------------------------------------------------
+
+@pytest_asyncio.fixture
+async def cfg_repo(db):
+    """`UserImageConfigRepository` wired to the clean test database."""
+    r = UserImageConfigRepository(db)
+    await r.create_indexes()
+    yield r
+    await db["user_image_configs"].delete_many({})
+
+
+def _make_config(
+    user_id: str = "u1",
+    connection_id: str = "conn_a",
+    group_id: str = "xai_imagine",
+    **overrides,
+) -> dict:
+    base = dict(
+        user_id=user_id,
+        connection_id=connection_id,
+        group_id=group_id,
+        config={"model": "grok-2-image", "n": 1},
+    )
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_cfg_repo_upsert_creates_document(cfg_repo):
+    kwargs = _make_config()
+    doc = await cfg_repo.upsert(**kwargs)
+    assert isinstance(doc, UserImageConfigDocument)
+    assert doc.user_id == "u1"
+    assert doc.connection_id == "conn_a"
+    assert doc.group_id == "xai_imagine"
+    assert doc.selected is False
+
+
+@pytest.mark.asyncio
+async def test_cfg_repo_upsert_updates_existing_document(cfg_repo):
+    await cfg_repo.upsert(**_make_config(config={"model": "grok-2-image", "n": 1}))
+    updated = await cfg_repo.upsert(**_make_config(config={"model": "grok-2-image", "n": 4}))
+    assert updated.config["n"] == 4
+    # Confirm only one document exists
+    all_docs = await cfg_repo.list_for_user(user_id="u1")
+    assert len(all_docs) == 1
+
+
+@pytest.mark.asyncio
+async def test_cfg_repo_set_active_only_one_selected(cfg_repo):
+    await cfg_repo.upsert(**_make_config(connection_id="conn_a", group_id="xai_imagine"))
+    await cfg_repo.upsert(**_make_config(connection_id="conn_b", group_id="xai_imagine"))
+
+    await cfg_repo.set_active(user_id="u1", connection_id="conn_a", group_id="xai_imagine")
+    all_docs = await cfg_repo.list_for_user(user_id="u1")
+    selected = [d for d in all_docs if d.selected]
+    assert len(selected) == 1
+    assert selected[0].connection_id == "conn_a"
+
+    # Switch active to the second config
+    await cfg_repo.set_active(user_id="u1", connection_id="conn_b", group_id="xai_imagine")
+    all_docs = await cfg_repo.list_for_user(user_id="u1")
+    selected = [d for d in all_docs if d.selected]
+    assert len(selected) == 1
+    assert selected[0].connection_id == "conn_b"
+
+
+@pytest.mark.asyncio
+async def test_cfg_repo_get_active_returns_none_when_nothing_selected(cfg_repo):
+    await cfg_repo.upsert(**_make_config())
+    result = await cfg_repo.get_active(user_id="u1")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_cfg_repo_delete_all_for_user_cascade(cfg_repo):
+    await cfg_repo.upsert(**_make_config(user_id="u1", connection_id="conn_a"))
+    await cfg_repo.upsert(**_make_config(user_id="u1", connection_id="conn_b"))
+    await cfg_repo.upsert(**_make_config(user_id="u2", connection_id="conn_a"))
+
+    deleted = await cfg_repo.delete_all_for_user(user_id="u1")
+    assert deleted == 2
+
+    remaining = await cfg_repo.list_for_user(user_id="u2")
     assert len(remaining) == 1
