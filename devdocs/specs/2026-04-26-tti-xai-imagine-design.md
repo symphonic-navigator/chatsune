@@ -820,30 +820,55 @@ configured. The tester is Chris on his usual desktop + mobile device.
 
 ---
 
-## 12. Open questions / TBD at implementation time
+## 12. Verified xAI API surface (2026-04-26 live probe)
 
-These are deliberately not nailed down in the spec; they will be
-resolved during planning or implementation against the live xAI API:
+Verified against the live xAI API with Chris's test key on the
+implementation branch. These supersede the placeholders used earlier
+in the spec.
 
-1. **Exact xAI model IDs** — we use placeholders `grok-imagine` and
-   `grok-imagine-pro` in this doc. Confirm the actual IDs at
-   `https://docs.x.ai/developers/model-capabilities/images/generation`
-   and adjust `XaiImagineConfig.tier` mapping accordingly.
-2. **Exact aspect ratio list** — verify the values listed in
-   `XaiImagineConfig.aspect` match the API's accepted set; adjust
-   if needed.
-3. **xAI return format** — JPEG vs. PNG, URL vs. base64; affects how
-   we fetch and store. The adapter implementation handles whichever
-   is current.
-4. **Gallery reachability** — exact entry point in the existing nav
+- **Endpoint:** `POST https://api.x.ai/v1/images/generations`
+- **Model IDs:**
+  - normal tier → `grok-imagine-image`
+  - pro tier → `grok-imagine-image-pro`
+  - (`grok-imagine-video` also exists; out of Phase I scope)
+- **Request body fields used:** `model`, `prompt`, `n` (1..10),
+  `response_format` (`"url"` — we use URL because images are
+  temporary and we download them immediately anyway),
+  `aspect_ratio` (string), `resolution` (`"1k"` or `"2k"`).
+- **Available aspect ratios:** the API accepts 14+ values
+  (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`, `2:1`, `1:2`,
+  `19.5:9`, `9:19.5`, `20:9`, `9:20`, `auto`). **Phase I exposes
+  the five common ones** (`1:1`, `16:9`, `9:16`, `4:3`, `3:4`) to
+  keep the UI clean; the exotic ratios can be added later if testers
+  ask.
+- **Successful response item shape:**
+  `{ "url": "...", "mime_type": "image/jpeg", "revised_prompt": "..." }`
+  — note `revised_prompt` is xAI's rewritten version of the prompt
+  (often empty); we capture it as a Phase-II hook for the Phase-II
+  `description` field on `GeneratedImageResult`.
+- **No `width`/`height` in the response** — we probe dimensions via
+  Pillow on the downloaded bytes.
+- **URL lifetime:** Cloudflare-served temp URL with a short TTL.
+  The adapter MUST download immediately; storing only the URL is
+  not viable.
+- **Moderation:** documented as a per-item `respect_moderation`
+  Boolean. On a successful test the field was absent; we therefore
+  treat absence-or-True as success and only `False` as moderated.
+- **Cost:** the response `usage.cost_in_usd_ticks` reports cost
+  per request (1 tick = 1e-10 USD). For logging/debugging only in
+  Phase I; cost UI is out of scope.
+
+## 13. Remaining decisions for implementation time
+
+1. **Gallery reachability** — exact entry point in the existing nav
    (user menu? sidebar item?) to be agreed during planning.
-5. **Attachment loader integration point** — concrete file:line in
+2. **Attachment loader integration point** — concrete file:line in
    `modules/chat/` for the change that lets `generated_images.id`
    resolve as a valid attachment id.
 
 ---
 
-## 13. Summary
+## 14. Summary
 
 This is a focused Phase I that delivers TTI as a first-class chat
 capability through the existing tool pipeline, with clean module

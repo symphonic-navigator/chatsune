@@ -1404,43 +1404,47 @@ git commit -m "Add optional image generation hooks to BaseAdapter"
 - Modify: `backend/modules/llm/_adapters/_xai_http.py`
 - Test: extend `tests/backend/modules/llm/_adapters/test_xai_http.py`
 
-**API verification step required:** Before implementing, fetch
-`https://docs.x.ai/developers/model-capabilities/images/generation`
-(with WebFetch) and pin down: exact endpoint URL, model IDs for normal vs
-pro tier, request body shape, response shape (URL or base64), and the
-`respect_moderation` field name and semantics. Update the implementation
-to match. The placeholders below are the design intent; reconcile with
-the live API.
+**API verified live on 2026-04-26 with Chris's `.xai-test-key`** —
+see spec §12 for the canonical findings. Use these exact values; do
+NOT re-verify (we already paid for the probe).
 
-- [ ] **Step 1: Verify the live xAI imagine API**
+| field | verified value |
+|---|---|
+| endpoint | `POST https://api.x.ai/v1/images/generations` |
+| normal model id | `grok-imagine-image` |
+| pro model id | `grok-imagine-image-pro` |
+| `n` range | 1..10 |
+| `response_format` we use | `"url"` (download immediately — Cloudflare URL expires) |
+| `aspect_ratio` (Phase I subset) | `1:1`, `16:9`, `9:16`, `4:3`, `3:4` |
+| `resolution` | `"1k"` or `"2k"` |
+| success item | `{url, mime_type, revised_prompt}` (no width/height — probe via Pillow) |
+| moderation flag | `respect_moderation: false` per item (absent or true → success) |
+| cost telemetry | `usage.cost_in_usd_ticks` (log at debug level, no UI) |
 
-Use WebFetch on the docs URL and capture:
+- [ ] **Step 1: Confirm understanding of the verified API**
 
-- Endpoint path (e.g. `POST /v1/images/generations`)
-- Model IDs for normal and pro
-- Allowed `aspect_ratio` values
-- Allowed `n` range
-- Response item shape (`url` vs `b64_json`)
-- Per-item moderation flag name (`respect_moderation` or similar)
-
-Record findings as comments at the top of `_xai_image_groups.py`.
+Read spec §12 once. No live re-verification needed. The placeholder
+TODOs in the rest of this task have been pre-resolved with the verified
+values below.
 
 - [ ] **Step 2: Create `_xai_image_groups.py`**
 
 ```python
 """xAI grok-imagine image group definition.
 
-Verified against https://docs.x.ai/developers/model-capabilities/images/generation
-on YYYY-MM-DD. Update this comment when the API changes.
+Verified against the live xAI API on 2026-04-26 with the project's
+.xai-test-key. See devdocs/specs/2026-04-26-tti-xai-imagine-design.md
+section 12 for the canonical findings.
 
-Live API parameters (record verified values here):
-- endpoint: POST <PATH>
-- normal model id: <ID>
-- pro model id: <ID>
-- aspect ratios: <LIST>
-- n range: 1..10
-- response items: <SHAPE>
-- per-item moderation: <FIELD>
+API contract (do not change without re-verifying):
+- endpoint: POST https://api.x.ai/v1/images/generations
+- model ids: grok-imagine-image (normal), grok-imagine-image-pro (pro)
+- aspect_ratio: literal string ('1:1', '16:9', '9:16', '4:3', '3:4',
+  plus several others we do not expose in Phase I)
+- resolution: '1k' or '2k'
+- response: { data: [{url, mime_type, revised_prompt}], usage: {...} }
+- moderation: per-item 'respect_moderation: false' indicates the image
+  was filtered. Absent or true means success.
 """
 
 from shared.dtos.images import (
@@ -1455,29 +1459,19 @@ GROUP_ID = "xai_imagine"
 
 
 def model_id_for_tier(tier: str) -> str:
-    """Map config tier ('normal'|'pro') to the xAI model id.
-
-    Replace the placeholder ids below with the verified model ids from
-    the live API check.
-    """
+    """Map config tier to xAI's model id."""
     if tier == "pro":
-        return "grok-imagine-pro"  # TODO verify
-    return "grok-imagine"  # TODO verify
+        return "grok-imagine-image-pro"
+    return "grok-imagine-image"
 
 
 def aspect_to_payload(aspect: str) -> str:
-    """Map our aspect literal to whatever string xAI expects.
-
-    Replace if xAI uses different tokens (e.g. ``"1024x1024"``).
-    """
+    """xAI takes the aspect literal directly (e.g. '16:9')."""
     return aspect
 
 
 def resolution_to_payload(resolution: str) -> str:
-    """Map ``'1k'``/``'2k'`` to whatever xAI expects.
-
-    Replace if xAI uses pixel dimensions instead.
-    """
+    """xAI takes '1k' or '2k' directly."""
     return resolution
 ```
 
