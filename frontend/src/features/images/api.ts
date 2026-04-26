@@ -1,4 +1,4 @@
-import { api } from '@/core/api/client'
+import { api, apiUrl, currentAccessToken } from '@/core/api/client'
 import type {
   ActiveImageConfigDto,
   ConnectionImageGroupsDto,
@@ -57,6 +57,23 @@ export const imagesApi = {
     thumbs_data_uris: string[]
   }> =>
     api.post('/api/images/test', payload),
+}
+
+/**
+ * Fetch the full-size blob for an image via an authenticated GET.
+ *
+ * Browsers cannot attach an Authorization header to <img src="..."> subresource
+ * requests, so direct URL rendering always 401s. This helper does the fetch
+ * manually with the Bearer token so the caller can create an ObjectURL instead.
+ */
+export async function getImageBlob(id: string): Promise<Blob> {
+  const token = currentAccessToken()
+  const res = await fetch(apiUrl(`/api/images/${id}/blob`), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`Failed to load image: ${res.status}`)
+  return res.blob()
 }
 
 // Deprecated re-export (kept to surface a clear error if any caller
