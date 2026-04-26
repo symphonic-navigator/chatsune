@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
+from typing import ClassVar
 
 from fastapi import APIRouter
 
@@ -11,6 +12,7 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
+from shared.dtos.images import ImageGenItem, ImageGroupConfig
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
@@ -57,6 +59,9 @@ class BaseAdapter(ABC):
     view_id: str = ""
     secret_fields: frozenset[str] = frozenset()
 
+    # Image generation capability (optional; default: not supported)
+    supports_image_generation: ClassVar[bool] = False
+
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
         return []
@@ -87,6 +92,25 @@ class BaseAdapter(ABC):
         transports) but should avoid endpoints that duplicate generic CRUD.
         """
         return None
+
+    async def image_groups(self, connection: ResolvedConnection) -> list[str]:
+        """Return image-group ids supported by this adapter for this
+        connection. Default: empty (not supported)."""
+        return []
+
+    async def generate_images(
+        self,
+        connection: ResolvedConnection,
+        group_id: str,
+        config: ImageGroupConfig,
+        prompt: str,
+    ) -> list[ImageGenItem]:
+        """Generate images for the given group and config. Default:
+        raise ``NotImplementedError``. Adapters that declare image
+        support must override."""
+        raise NotImplementedError(
+            f"Adapter {self.adapter_type!r} does not implement image generation"
+        )
 
     @abstractmethod
     async def fetch_models(
