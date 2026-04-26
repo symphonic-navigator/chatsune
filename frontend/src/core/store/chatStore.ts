@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ArtefactRef, ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../api/chat'
+import type { ImageRefDto } from '../api/images'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -35,6 +36,7 @@ interface ChatState {
   streamingWebSearchContext: WebSearchContextItem[]
   streamingKnowledgeContext: KnowledgeContextItem[]
   streamingArtefactRefs: ArtefactRef[]
+  streamingImageRefs: ImageRefDto[]
   streamingRefusalText: string | null
   activeToolCalls: ActiveToolCall[]
   visionDescriptions: Record<string, LiveVisionDescription>
@@ -58,6 +60,7 @@ interface ChatState {
   setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
   setStreamingKnowledgeContext: (items: KnowledgeContextItem[]) => void
   appendArtefactRef: (ref: ArtefactRef) => void
+  appendImageRefs: (refs: ImageRefDto[]) => void
   setStreamingRefusalText: (text: string | null) => void
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
@@ -92,6 +95,7 @@ const INITIAL_STATE = {
   streamingWebSearchContext: [] as WebSearchContextItem[],
   streamingKnowledgeContext: [] as KnowledgeContextItem[],
   streamingArtefactRefs: [] as ArtefactRef[],
+  streamingImageRefs: [] as ImageRefDto[],
   streamingRefusalText: null as string | null,
   activeToolCalls: [] as ActiveToolCall[],
   visionDescriptions: {} as Record<string, LiveVisionDescription>,
@@ -119,7 +123,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], visionDescriptions: {}, error: null,
-      streamingArtefactRefs: [], streamingRefusalText: null,
+      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
       streamingSlow: false,
     }),
   appendStreamingContent: (delta) =>
@@ -136,6 +140,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({ streamingKnowledgeContext: items }),
   appendArtefactRef: (ref) =>
     set((s) => ({ streamingArtefactRefs: [...s.streamingArtefactRefs, ref] })),
+  appendImageRefs: (refs) =>
+    set((s) => ({ streamingImageRefs: [...s.streamingImageRefs, ...refs] })),
   setStreamingRefusalText: (text) =>
     set({ streamingRefusalText: text }),
   addToolCall: (tc) =>
@@ -158,7 +164,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
-      streamingArtefactRefs: [], streamingRefusalText: null,
+      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
       streamingSlow: false,
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
       contextUsedTokens: usedTokens, contextMaxTokens: maxTokens,
@@ -168,7 +174,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
       streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
-      streamingArtefactRefs: [], streamingRefusalText: null,
+      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
       streamingSlow: false,
     }),
   truncateAfter: (messageId) =>

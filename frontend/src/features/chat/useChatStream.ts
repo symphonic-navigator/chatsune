@@ -6,6 +6,7 @@ import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
+import type { ImageRefDto } from '../../core/api/images'
 import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroup } from './responseTaskGroup'
@@ -88,6 +89,14 @@ export function handleChatEvent(
       if (artefactRef) {
         getStore().appendArtefactRef(artefactRef)
       }
+      // Mirrors the artefact_ref pattern: the inference loop attaches
+      // image_refs to the tool_call.completed event for generate_image so
+      // the frontend can render the inline images live without waiting
+      // for a session reload.
+      const imageRefsRaw = p.image_refs as unknown
+      if (Array.isArray(imageRefsRaw) && imageRefsRaw.length > 0) {
+        getStore().appendImageRefs(imageRefsRaw as ImageRefDto[])
+      }
       break
     }
     case Topics.CHAT_WEB_SEARCH_CONTEXT: {
@@ -136,6 +145,7 @@ export function handleChatEvent(
       const webSearchContext = getStore().streamingWebSearchContext
       const knowledgeContext = getStore().streamingKnowledgeContext
       const artefactRefs = getStore().streamingArtefactRefs
+      const imageRefs = getStore().streamingImageRefs
       const refusalText = getStore().streamingRefusalText
       const toolCalls = getStore().activeToolCalls
       // Auto-read trigger: if the session has auto-read on and the message
@@ -173,6 +183,7 @@ export function handleChatEvent(
                   success: tc.status === 'done',
                 }))
               : null,
+            image_refs: imageRefs.length > 0 ? imageRefs : null,
             refusal_text: refusalText || null,
             created_at: new Date().toISOString(),
             status: messageStatus,

@@ -9,6 +9,7 @@ from typing import Literal
 
 from backend.config import settings
 from backend.jobs import get_user_lock
+from shared.dtos.images import ImageRefDto
 from backend.modules.metrics import inferences_aborted_total
 from backend.modules.llm import (
     ContentDelta,
@@ -357,8 +358,11 @@ class InferenceRunner:
 
                     # Drain the structured image-generation outcome (if any).
                     # `generate_image` produces image_refs + a moderated_count;
-                    # both flow onto the persisted assistant message.
+                    # both flow onto the persisted assistant message AND into
+                    # the tool_call.completed event so the frontend can render
+                    # the inline image block live without a session reload.
                     moderated_count = 0
+                    image_refs_for_event: list[ImageRefDto] | None = None
                     if tc.name == "generate_image":
                         from backend.modules.images._tool_executor import (
                             drain_image_outcome,
@@ -368,6 +372,9 @@ class InferenceRunner:
                             for ref in outcome.image_refs:
                                 image_refs.append(ref.model_dump())
                             moderated_count = outcome.moderated_count
+                            image_refs_for_event = (
+                                list(outcome.image_refs) if outcome.image_refs else None
+                            )
                             # All-moderated runs are surfaced as failed tool
                             # calls so the frontend pill can render the error
                             # state and offer a retry. Partial-moderation
@@ -390,6 +397,8 @@ class InferenceRunner:
                         tool_name=tc.name,
                         success=tool_success,
                         artefact_ref=ref_for_event,
+                        image_refs=image_refs_for_event,
+                        moderated_count=moderated_count,
                         timestamp=datetime.now(timezone.utc),
                     ))
 

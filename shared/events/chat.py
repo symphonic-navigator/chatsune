@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from shared.dtos.chat import ArtefactRefDto
+from shared.dtos.images import ImageRefDto
 
 
 class ChatMessageCreatedEvent(BaseModel):
@@ -155,6 +156,11 @@ class ChatToolCallCompletedEvent(BaseModel):
     tool_name: str
     success: bool
     artefact_ref: ArtefactRefDto | None = None
+    # Populated for generate_image tool calls so the frontend can render
+    # the inline image block live (without waiting for a session reload).
+    # Mirrors the artefact_ref pattern.
+    image_refs: list[ImageRefDto] | None = None
+    moderated_count: int = 0
     timestamp: datetime
 
 
