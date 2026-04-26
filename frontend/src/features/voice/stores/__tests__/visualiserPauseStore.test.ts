@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Mock audioPlayback BEFORE the store is imported, since the store wires
 // a module-init subscription on first import.
 const audioPlaybackMock = {
-  pause: vi.fn(),
-  resume: vi.fn(),
+  suspend: vi.fn(),
+  unsuspend: vi.fn(),
   isActive: vi.fn(() => true),
   subscribe: vi.fn((_listener: () => void) => () => {}),
 }
@@ -30,8 +30,8 @@ let subscribedListener: (() => void) | null = null
 describe('visualiserPauseStore', () => {
   beforeEach(async () => {
     vi.resetModules()
-    audioPlaybackMock.pause.mockClear()
-    audioPlaybackMock.resume.mockClear()
+    audioPlaybackMock.suspend.mockClear()
+    audioPlaybackMock.unsuspend.mockClear()
     audioPlaybackMock.isActive.mockReset().mockReturnValue(true)
     audioPlaybackMock.subscribe.mockReset().mockImplementation((listener: () => void) => {
       subscribedListener = listener
@@ -55,7 +55,7 @@ describe('visualiserPauseStore', () => {
   it('togglePause in normal mode pauses TTS without touching the mic', () => {
     cmState.active = false
     useVisualiserPauseStore.getState().togglePause()
-    expect(audioPlaybackMock.pause).toHaveBeenCalledOnce()
+    expect(audioPlaybackMock.suspend).toHaveBeenCalledOnce()
     expect(cmState.setMicMuted).not.toHaveBeenCalled()
     expect(useVisualiserPauseStore.getState().paused).toBe(true)
     expect(useVisualiserPauseStore.getState().mutedByPause).toBe(false)
@@ -83,7 +83,7 @@ describe('visualiserPauseStore', () => {
     useVisualiserPauseStore.getState().togglePause()  // pause
     cmState.setMicMuted.mockClear()
     useVisualiserPauseStore.getState().togglePause()  // resume
-    expect(audioPlaybackMock.resume).toHaveBeenCalledOnce()
+    expect(audioPlaybackMock.unsuspend).toHaveBeenCalledOnce()
     expect(cmState.setMicMuted).toHaveBeenCalledWith(false)
     expect(useVisualiserPauseStore.getState().paused).toBe(false)
     expect(useVisualiserPauseStore.getState().mutedByPause).toBe(false)

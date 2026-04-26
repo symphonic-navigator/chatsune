@@ -16,7 +16,7 @@ export const useVisualiserPauseStore = create<VisualiserPauseState>((set, get) =
   togglePause: () => {
     const { paused, mutedByPause } = get()
     if (!paused) {
-      audioPlayback.pause()
+      audioPlayback.suspend()
       const cm = useConversationModeStore.getState()
       if (cm.active && !cm.micMuted) {
         cm.setMicMuted(true)
@@ -25,7 +25,7 @@ export const useVisualiserPauseStore = create<VisualiserPauseState>((set, get) =
         set({ paused: true, mutedByPause: false })
       }
     } else {
-      audioPlayback.resume()
+      audioPlayback.unsuspend()
       if (mutedByPause) {
         useConversationModeStore.getState().setMicMuted(false)
       }

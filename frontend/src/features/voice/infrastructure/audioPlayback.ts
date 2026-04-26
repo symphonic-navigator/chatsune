@@ -84,6 +84,36 @@ class AudioPlaybackImpl {
   }
 
   /**
+   * True pause via AudioContext.suspend(). Freezes the audio clock so the
+   * current source stays alive mid-sample; on unsuspend(), playback resumes
+   * exactly where it left off — sample-accurate. Distinct from pause() which
+   * has barge semantics (stops the source, advances on resume to the next
+   * queued segment). Use suspend()/unsuspend() for user-initiated pause UX
+   * where frame-perfect resume matters.
+   */
+  async suspend(): Promise<void> {
+    if (!this.ctx || this.ctx.state !== 'running') return
+    try { await this.ctx.suspend() } catch { /* already suspended or closed */ }
+    this.emit()
+  }
+
+  async unsuspend(): Promise<void> {
+    if (!this.ctx || this.ctx.state !== 'suspended') return
+    try { await this.ctx.resume() } catch { /* already running or closed */ }
+    // If a gap-boundary happened to land while we were suspended and the
+    // gap timer never fired (or fired and arrived at a no-op), kick playNext
+    // so the queue continues to drain.
+    if (!this.playing && this.pendingGapTimer === null && this.queue.length > 0) {
+      this.playNext()
+    }
+    this.emit()
+  }
+
+  isSuspended(): boolean {
+    return this.ctx?.state === 'suspended'
+  }
+
+  /**
    * Drops the queue and stops the current source if `token` matches the
    * active scope token. No-op when the tokens differ.
    *
