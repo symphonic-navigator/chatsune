@@ -5,6 +5,8 @@ import { useCockpitSession, useCockpitStore } from '@/features/chat/cockpit/cock
 import { useImagesStore } from '../store'
 import { ImageConfigPanel } from './ImageConfigPanel'
 import type { ActiveImageConfigDto } from '@/core/api/images'
+import { eventBus } from '@/core/websocket/eventBus'
+import { Topics } from '@/core/types/events'
 
 type Props = {
   sessionId: string
@@ -58,6 +60,20 @@ export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
 
   useEffect(() => {
     void loadConfig()
+  }, [loadConfig])
+
+  // Re-fetch the TTI/ITI capability list whenever LLM connections change,
+  // so adding or removing an xAI connection updates the button state
+  // without a hard reload. Same pattern as useEnrichedModels.
+  useEffect(() => {
+    const topics = [
+      Topics.LLM_CONNECTION_CREATED,
+      Topics.LLM_CONNECTION_UPDATED,
+      Topics.LLM_CONNECTION_REMOVED,
+      Topics.LLM_CONNECTION_MODELS_REFRESHED,
+    ] as const
+    const unsubs = topics.map((t) => eventBus.on(t, () => { void loadConfig() }))
+    return () => unsubs.forEach((u) => u())
   }, [loadConfig])
 
   // Close on outside click or Escape.
