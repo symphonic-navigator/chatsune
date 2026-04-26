@@ -246,6 +246,17 @@ class AudioPlaybackImpl {
 
   isPlaying(): boolean { return this.playing }
 
+  /**
+   * True whenever there is *something* the playback pipeline is responsible
+   * for: an actively playing source, a paused-but-resumable session, or
+   * pending entries in the queue. Used by overlays (visualiser, hit-strip)
+   * that must stay visible across the entire active lifecycle, including
+   * the gap between two segments and the paused-but-not-cancelled state.
+   */
+  isActive(): boolean {
+    return this.playing || this.paused || this.queue.length > 0
+  }
+
   getAnalyser(): AnalyserNode | null { return this.analyser }
 
   dispose(): void {

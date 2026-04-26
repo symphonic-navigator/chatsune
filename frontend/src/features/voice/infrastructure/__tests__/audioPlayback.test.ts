@@ -366,3 +366,38 @@ describe('audioPlayback — subscribe API', () => {
     expect(observed[observed.length - 1]).toBe(false)
   })
 })
+
+describe('audioPlayback — isActive()', () => {
+  it('returns false when idle', () => {
+    expect(audioPlayback.isActive()).toBe(false)
+  })
+
+  it('returns true while playing', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns true while paused mid-playback', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.pause()
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns true when only queue has entries (between segments)', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn(), gapMs: 50 })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    // End first segment; gap timer arms — playing=false, queue.length>0
+    sources[0].onended?.()
+    expect(audioPlayback.isActive()).toBe(true)
+  })
+
+  it('returns false after stopAll()', () => {
+    audioPlayback.setCallbacks({ onSegmentStart: vi.fn(), onFinished: vi.fn() })
+    audioPlayback.enqueue(new Float32Array(24_000), SEGMENT)
+    audioPlayback.stopAll()
+    expect(audioPlayback.isActive()).toBe(false)
+  })
+})
