@@ -3,8 +3,6 @@ import { audioPlayback } from '../infrastructure/audioPlayback'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { useVisualiserPauseStore } from '../stores/visualiserPauseStore'
 
-const FOCUS_OUTLINE = '2px solid rgba(140, 118, 215, 0.6)'
-
 export function VoiceVisualiserHitStrip() {
   const enabled = useVoiceSettingsStore((s) => s.visualisation.enabled)
   const paused = useVisualiserPauseStore((s) => s.paused)
@@ -31,27 +29,34 @@ export function VoiceVisualiserHitStrip() {
   if (!isActive && !paused) return null
 
   return (
-    <button
-      type="button"
-      aria-label={paused ? 'TTS fortsetzen' : 'TTS pausieren'}
-      onClick={togglePause}
-      style={{
-        position: 'fixed',
-        left: 0,
-        width: '100vw',
-        top: '35vh',
-        height: '30vh',
-        background: 'transparent',
-        border: 0,
-        padding: 0,
-        margin: 0,
-        cursor: 'pointer',
-        zIndex: 2,
-        touchAction: 'manipulation',
-        outline: 'none',
-      }}
-      onFocus={(e) => { e.currentTarget.style.outline = FOCUS_OUTLINE; e.currentTarget.style.outlineOffset = '-4px' }}
-      onBlur={(e) => { e.currentTarget.style.outline = 'none' }}
-    />
+    <>
+      <style>{`
+        .visualiser-hit-strip { outline: none; }
+        .visualiser-hit-strip:focus-visible {
+          outline: 2px solid rgba(140, 118, 215, 0.6);
+          outline-offset: -4px;
+        }
+      `}</style>
+      <button
+        type="button"
+        className="visualiser-hit-strip"
+        aria-label={paused ? 'TTS fortsetzen' : 'TTS pausieren'}
+        onClick={togglePause}
+        style={{
+          position: 'fixed',
+          left: 0,
+          width: '100vw',
+          top: '35vh',
+          height: '30vh',
+          background: 'transparent',
+          border: 0,
+          padding: 0,
+          margin: 0,
+          cursor: 'pointer',
+          zIndex: 2,
+          touchAction: 'manipulation',
+        }}
+      />
+    </>
   )
 }
