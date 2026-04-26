@@ -14,7 +14,7 @@
 
 - Read every file you intend to modify **before** editing it. Patterns in this repo are strict (see CLAUDE.md "Module Boundaries"); never import from another module's `_internal.py`.
 - For Python edits: run `uv run python -m py_compile <file>` after every change.
-- For backend tests: prefer to run them in the Docker compose stack (`docker compose run --rm backend pytest <path>`). On the host, exclude DB-dependent test files (the four MongoDB tests). The plan flags which tasks need Docker.
+- For backend tests: run on host via `PYTHONPATH=. uv run pytest <specific path>` against the running Docker-Compose MongoDB (port 27017 must be reachable; `docker compose up -d mongodb redis` first if needed). There is **no** `backend` service in compose. The four problematic full-suite ignores from CLAUDE.md still apply when running the *whole* backend suite, but new targeted tests work fine on host as long as compose-side Mongo is up.
 - For TS edits: run `pnpm --dir frontend tsc --noEmit` after every change.
 - Commit after every task with a short imperative message (CLAUDE.md). No `--no-verify`.
 - Do not exceed task scope. If you discover something outside the task that needs fixing, note it in the task summary and stop.
@@ -784,7 +784,7 @@ async def test_delete_all_for_user(repo):
 - [ ] **Step 3: Run test in Docker (will fail, no repo file)**
 
 ```bash
-docker compose run --rm backend pytest tests/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 4: Implement `_repository.py`** (only `GeneratedImagesRepository` for this task)
@@ -866,7 +866,7 @@ class GeneratedImagesRepository:
 - [ ] **Step 5: Run tests in Docker, verify pass**
 
 ```bash
-docker compose run --rm backend pytest tests/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 6: Syntax check**
@@ -983,7 +983,7 @@ async def test_delete_all_for_user_clears_configs(cfg_repo):
 - [ ] **Step 2: Run tests, verify failure**
 
 ```bash
-docker compose run --rm backend pytest tests/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 3: Append `UserImageConfigRepository` to `_repository.py`**
@@ -1113,7 +1113,7 @@ transaction needs the client, not the database.
 - [ ] **Step 4: Run tests in Docker, verify pass**
 
 ```bash
-docker compose run --rm backend pytest tests/modules/images/test_repository.py -v
+PYTHONPATH=. uv run pytest tests/modules/images/test_repository.py -v
 ```
 
 - [ ] **Step 5: Syntax check**
@@ -3056,7 +3056,7 @@ gallery endpoint would return.
 
 ```bash
 uv run python -m py_compile <touched files>
-docker compose run --rm backend pytest tests/modules/chat/ -v
+PYTHONPATH=. uv run pytest tests/modules/chat/ -v
 ```
 
 - [ ] **Step 5: Commit**
