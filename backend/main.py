@@ -40,6 +40,17 @@ from backend.modules.settings import router as settings_router, init_indexes as 
 from backend.modules.chat import router as chat_router, init_indexes as chat_init_indexes, cleanup_stale_empty_sessions, cleanup_soft_deleted_sessions
 from backend.modules.bookmark import bookmark_router, init_indexes as bookmark_init_indexes
 from backend.modules.storage import router as storage_router, init_indexes as storage_init_indexes
+from backend.modules.images import (
+    router as images_router,
+    init_indexes as images_init_indexes,
+    ImageService,
+    set_image_service,
+)
+from backend.modules.images._repository import (
+    GeneratedImagesRepository,
+    UserImageConfigRepository,
+)
+from backend.modules.storage._blob_store import BlobStore
 from backend.modules.memory import router as memory_router, init_indexes as memory_init_indexes
 from backend.modules.embedding import router as embedding_router, startup as embedding_startup, shutdown as embedding_shutdown
 from backend.modules.knowledge import (
@@ -91,6 +102,7 @@ async def lifespan(app: FastAPI):
     await chat_init_indexes(db)
     await bookmark_init_indexes(db)
     await storage_init_indexes(db)
+    await images_init_indexes(db)
     await memory_init_indexes(db)
     await knowledge_init_indexes(db)
     await artefact_init_indexes(db)
@@ -106,6 +118,17 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
+
+    # Initialise ImageService with its dependencies and register it as the
+    # module-level singleton so tools and handlers can call get_image_service().
+    from backend.modules.llm import LlmService
+    image_service = ImageService(
+        llm_service=LlmService(),
+        blob_store=BlobStore(),
+        gen_repo=GeneratedImagesRepository(db),
+        cfg_repo=UserImageConfigRepository(db),
+    )
+    set_image_service(image_service)
 
     # Community provisioning: process-local sidecar registry. Holds
     # in-memory state for the lifetime of this backend process — every
@@ -587,6 +610,7 @@ app.include_router(settings_router)
 app.include_router(chat_router)
 app.include_router(bookmark_router)
 app.include_router(storage_router)
+app.include_router(images_router)
 app.include_router(memory_router)
 app.include_router(embedding_router)
 app.include_router(knowledge_router)

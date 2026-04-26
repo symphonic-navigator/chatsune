@@ -462,4 +462,4 @@ async def update_session_toggles(
 @router.get("/tools")
 async def list_tool_groups(user: dict = Depends(require_active_session)):
     """Return all available tool groups for the frontend."""
-    return get_all_groups()
+    return await get_all_groups(user_id=user["sub"])

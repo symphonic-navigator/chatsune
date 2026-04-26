@@ -229,6 +229,13 @@ def _make_tool_executor(
             args["_correlation_id"] = correlation_id
             arguments_json = json.dumps(args)
 
+        if tool_name == "generate_image":
+            # Inject the tool-call id so ImageGenerationToolExecutor can
+            # tag the persisted document and emit the correct event scope.
+            # Use a fresh dict to avoid mutating the caller's object.
+            args = json.loads(arguments_json)
+            arguments_json = json.dumps({**args, "__tool_call_id__": tool_call_id})
+
         return await execute_tool(
             user_id,
             tool_name,
@@ -610,10 +617,11 @@ async def run_inference(
             from shared.dtos.mcp import PersonaMcpConfig
             persona_mcp_config = PersonaMcpConfig(**persona["mcp_config"])
 
-        active_tools = get_active_definitions(
+        active_tools = await get_active_definitions(
             [],  # empty disabled-list — all groups active; tools_enabled is the master switch
             mcp_registry=mcp_registry,
             persona_mcp_config=persona_mcp_config,
+            user_id=user_id,
         ) or None
 
         # Merge integration tools (independent of MCP/tool group toggles)

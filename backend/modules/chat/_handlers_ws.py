@@ -603,7 +603,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         repo = ChatRepository(db)
         session = await repo.get_session(session_id, user_id)
         tools_enabled = session.get("tools_enabled", False) if session else False
-        active_tools = get_active_definitions([]) if tools_enabled else None
+        active_tools = await get_active_definitions([], user_id=user_id) if tools_enabled else None
 
         # Assemble system prompt (integration prompt extensions follow tools_enabled)
         system_prompt = await assemble(

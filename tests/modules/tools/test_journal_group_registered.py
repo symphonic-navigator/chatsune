@@ -1,4 +1,5 @@
 import backend.modules.tools._registry as registry_mod
+import pytest
 from backend.modules.tools import get_active_definitions, get_all_groups
 from backend.modules.tools._registry import get_groups
 
@@ -30,15 +31,19 @@ def test_journal_group_is_registered():
     }
 
 
-def test_journal_tool_is_in_active_definitions_by_default():
+@pytest.mark.asyncio
+async def test_journal_tool_is_in_active_definitions_by_default():
     _reset_registry_cache()
-    active = get_active_definitions()
+    # No user_id — falls back to static group list (ImageService not needed)
+    active = await get_active_definitions()
     names = {d.name for d in active}
     assert "write_journal_entry" in names
 
 
-def test_journal_group_is_in_group_dtos():
+@pytest.mark.asyncio
+async def test_journal_group_is_in_group_dtos():
     _reset_registry_cache()
-    dtos = get_all_groups()
+    # No user_id — falls back to static group list (ImageService not needed)
+    dtos = await get_all_groups()
     ids = {g.id for g in dtos}
     assert "journal" in ids
