@@ -290,15 +290,28 @@ class InferenceRunner:
                 )
                 extra_messages.append(assistant_msg)
 
-                # The content from this iteration was a tool-call turn — the
-                # final user-facing content will come from the next iteration.
-                # Reset so only the last iteration's content is saved.
-                # Thinking, however, is cumulative: reasoning that preceded a
-                # tool call is still part of the model's complete reasoning
-                # trace and must survive a chat reload, otherwise the thinking
-                # bubble disappears on refresh for any response that involved
-                # a tool call (e.g. artefact creation).
-                full_content = ""
+                # The content from this iteration was a tool-call turn — for
+                # most tools the final user-facing content will come from the
+                # next iteration, and resetting avoids duplication (artefact
+                # tools tend to narrate the same idea before AND after the
+                # call). For ``generate_image`` the model usually has nothing
+                # meaningful to say after the call (it considers the request
+                # fulfilled once the images render), so the pre-call preamble
+                # IS the user-facing message — preserving it is the right
+                # behaviour. The condition checks "all tools are preserve-
+                # preamble" so a mixed iter (rare) still resets to be safe.
+                #
+                # Thinking, however, is cumulative regardless: reasoning that
+                # preceded a tool call is still part of the model's complete
+                # reasoning trace and must survive a chat reload, otherwise
+                # the thinking bubble disappears on refresh.
+                _PRESERVE_PREAMBLE_TOOLS = frozenset({"generate_image"})
+                preserve_preamble = bool(iter_tool_calls) and all(
+                    tc.name in _PRESERVE_PREAMBLE_TOOLS
+                    for tc in iter_tool_calls
+                )
+                if not preserve_preamble:
+                    full_content = ""
 
                 for tc in iter_tool_calls:
                     now = datetime.now(timezone.utc)

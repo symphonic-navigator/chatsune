@@ -57,26 +57,43 @@ def _format_llm_text(
 ) -> str:
     """Compose the text result that the LLM sees after a generate_images call.
 
-    The final line is the Phase II hook that tells the model it can reference
-    images by id in subsequent tool calls (image-to-image operations).
+    The internal ids block is the Phase II hook for image-to-image tool
+    calls. We deliberately keep it terse and frame it as "internal" so the
+    model is less likely to splice the ids into its user-facing reply as
+    URLs or markdown image tags (a pre-fix from manual testing where Grok
+    happily emitted ``/images/img_xxx`` paths in the reply when it saw
+    the ids exposed casually).
     """
     if successful == 0 and moderated > 0:
         return (
             f"All {moderated} requested image{'s were' if moderated != 1 else ' was'} "
-            "filtered by content moderation. Try rephrasing the prompt."
+            "filtered by content moderation. Tell the user the request was blocked "
+            "and ask them to rephrase."
         )
 
     total = successful + moderated
     lines: list[str] = []
-    lines.append(f"Generated {successful} of {total} requested image{'s' if total != 1 else ''}.")
+    lines.append(
+        f"Generated {successful} of {total} image{'s' if total != 1 else ''}. "
+        "The user is shown the image(s) inline below your reply automatically."
+    )
     if moderated > 0:
         lines.append(
-            f"{moderated} image{'s were' if moderated != 1 else ' was'} filtered by content moderation."
+            f"{moderated} image{'s were' if moderated != 1 else ' was'} filtered by "
+            "content moderation. Mention this in your reply."
         )
-    lines.append("Images:")
-    for i, ref in enumerate(refs, 1):
-        lines.append(f"  {i}. id={ref.id} ({ref.width}x{ref.height}, {ref.model_id})")
-    lines.append("Use the id values to reference these images in subsequent tool calls.")
+    lines.append("")
+    lines.append(
+        "When you reply: acknowledge the result naturally and offer adjustments. "
+        "Do NOT include image URLs, paths, ids, or markdown image tags — the "
+        "user already sees the images. Reference them in prose only "
+        "(e.g. \"the second one\", \"all four\")."
+    )
+    lines.append("")
+    lines.append(
+        "[internal_image_ids_for_tools_only: " +
+        ", ".join(ref.id for ref in refs) + "]"
+    )
     return "\n".join(lines)
 
 
