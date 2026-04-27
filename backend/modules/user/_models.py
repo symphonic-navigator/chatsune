@@ -78,7 +78,7 @@ class InvitationTokenDocument(BaseModel):
     cleanup.
     """
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = {"arbitrary_types_allowed": True, "populate_by_name": True}
 
     id: ObjectId = Field(alias="_id")
     token: str

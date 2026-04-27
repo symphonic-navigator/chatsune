@@ -8,7 +8,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from backend.modules.user._audit import AuditRepository
 from backend.modules.user._invitation_repository import InvitationRepository
 from backend.modules.user._key_repository import UserKeysRepository
-from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, RECENT_EMOJIS_MAX
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, InvitationTokenDocument, RECENT_EMOJIS_MAX
 from backend.modules.user._key_service import (
     DekUnlockError,
     UserKeyNotFoundError,
@@ -187,6 +187,7 @@ __all__ = [
     "cascade_delete_user",
     "DeletionReportStore",
     "InvitationRepository",
+    "InvitationTokenDocument",
     "UserKeyService",
     "UserService",
     "DekUnlockError",

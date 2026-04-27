@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timedelta, timezone
-from backend.modules.user._invitation_repository import InvitationRepository
+from backend.modules.user import InvitationRepository
 
 
 @pytest.mark.asyncio
