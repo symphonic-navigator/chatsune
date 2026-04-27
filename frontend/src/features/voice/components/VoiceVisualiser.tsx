@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { useVisualiserPauseStore } from '../stores/visualiserPauseStore'
+import { useVisualiserLayoutStore } from '../stores/visualiserLayoutStore'
 import { useTtsFrequencyData } from '../infrastructure/useTtsFrequencyData'
 import { drawVisualiserFrame } from '../infrastructure/visualiserRenderers'
 import { audioPlayback } from '../infrastructure/audioPlayback'
@@ -38,6 +39,9 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
 
   const paused = useVisualiserPauseStore((s) => s.paused)
 
+  const chatview = useVisualiserLayoutStore((s) => s.chatview)
+  const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const activeRef = useRef(0)
@@ -74,7 +78,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   }, [])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !chatview || !textColumn) {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
@@ -96,6 +100,8 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       const w = c.clientWidth
       const h = c.clientHeight
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h }
+
+      const geometry = { chatview, textColumn }
 
       const ctx = c.getContext('2d')
       if (!ctx) return
@@ -123,12 +129,12 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         const breath = 0.8 + 0.2 * Math.sin((t * 2 * Math.PI) / 2.5)  // 0.6..1.0
         const rgb = hexToRgb(personaColourHex)
         const rgbLight = brighten(rgb)
-        drawVisualiserFrame(style, ctx, w, h, frozenBinsRef.current, {
+        drawVisualiserFrame(style, ctx, h, frozenBinsRef.current, {
           rgb,
           rgbLight,
           opacity: opacity * breath,
           maxHeightFraction: MAX_HEIGHT_FRACTION,
-        })
+        }, geometry)
         rafRef.current = requestAnimationFrame(tick)
         return
       }
@@ -153,12 +159,12 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         if (bins) {
           const rgb = hexToRgb(personaColourHex)
           const rgbLight = brighten(rgb)
-          drawVisualiserFrame(style, ctx, w, h, bins, {
+          drawVisualiserFrame(style, ctx, h, bins, {
             rgb,
             rgbLight,
             opacity: opacity * activeRef.current,
             maxHeightFraction: MAX_HEIGHT_FRACTION,
-          })
+          }, geometry)
         }
         rafRef.current = requestAnimationFrame(tick)
       } else if (visible) {
@@ -200,7 +206,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       unsubAudio()
       resumeRafRef.current = null
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn])
 
   return (
     <canvas
