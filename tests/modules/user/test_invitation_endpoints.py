@@ -277,7 +277,7 @@ async def test_register_username_collision_returns_409_and_token_unused(
     # production unique-index on ``users.username`` is not auto-created.
     # The DuplicateKeyError path under test depends on that index, so we
     # build it explicitly here to mirror the production schema.
-    from backend.modules.user._repository import UserRepository
+    from backend.modules.user import UserRepository
     await UserRepository(db).create_indexes()
 
     # Pre-create a user named "taken" via the existing admin endpoint.

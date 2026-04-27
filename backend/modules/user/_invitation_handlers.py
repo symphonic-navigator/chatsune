@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from pymongo.errors import DuplicateKeyError, OperationFailure
+from pymongo.errors import DuplicateKeyError
 
 from backend.database import get_client, get_db, get_redis
 from backend.dependencies import require_admin
@@ -28,8 +28,13 @@ from shared.dtos.invitation import (
     RegisterViaInvitationResponseDto,
     ValidateInvitationResponseDto,
 )
-from shared.events.auth import InvitationCreatedEvent, InvitationUsedEvent
+from shared.events.auth import (
+    InvitationCreatedEvent,
+    InvitationUsedEvent,
+    UserCreatedEvent,
+)
 from shared.events.audit import AuditLoggedEvent
+from shared.events.user_keys import UserKeyProvisionedEvent
 from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
@@ -138,82 +143,77 @@ async def register_via_invitation(
     svc = UserKeyService(db=db, redis=get_redis())
 
     client = get_client()
-    user_id: str | None = None
-    token_id: str | None = None
 
-    # Retry loop for TransientTransactionError (e.g. WriteConflict when two
-    # registrations race for the same token). On retry the second attempt
-    # will see ``used: True`` from the winner's commit and short-circuit
-    # to 410 — exactly the desired loser-gets-Gone behaviour.
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            async with await client.start_session() as session:
-                async with session.start_transaction():
-                    # Atomic validate-and-consume. Returns None for
-                    # used/expired/unknown. The placeholder used_by_user_id
-                    # is patched below once we know the real id — kept
-                    # inside the same transaction so an outside reader
-                    # never observes the placeholder value.
-                    marked = await repo.mark_used_atomic(
-                        token,
-                        used_by_user_id="pending",
-                        session=session,
-                    )
-                    if marked is None:
-                        raise HTTPException(
-                            status_code=410, detail="invitation_invalid",
-                        )
-
-                    try:
-                        user_doc, _dek = await _provision_new_user(
-                            users_repo=users_repo,
-                            svc=svc,
-                            username=body.username,
-                            email=body.email,
-                            display_name=body.display_name,
-                            h_auth=body.h_auth,
-                            h_kek=body.h_kek,
-                            recovery_key=body.recovery_key,
-                            role="user",
-                            must_change_password=False,
-                            session=session,
-                        )
-                    except DuplicateKeyError:
-                        # Aborts the transaction — the mark-used write is
-                        # rolled back and the token remains usable. Surface
-                        # as 409 to the client.
-                        raise HTTPException(
-                            status_code=409,
-                            detail="username_or_email_taken",
-                        )
-
-                    user_id = str(user_doc["_id"])
-                    token_id = str(marked["_id"])
-
-                    # Patch the token doc with the real user id, still in-tx.
-                    await db["invitation_tokens"].update_one(
-                        {"_id": marked["_id"]},
-                        {"$set": {"used_by_user_id": user_id}},
-                        session=session,
-                    )
-            break  # success — leave the retry loop
-        except OperationFailure as exc:
-            # MongoDB tags retriable transaction failures with the
-            # ``TransientTransactionError`` label. Anything else is fatal.
-            if "TransientTransactionError" in (exc.details or {}).get(
-                "errorLabels", []
-            ) and attempt < max_retries - 1:
-                _log.info(
-                    "invitation.register.transient_retry token=%s attempt=%d",
-                    token, attempt + 1,
+    # We use ``session.with_transaction(callback)`` rather than a
+    # hand-rolled retry loop because it correctly handles BOTH retry
+    # semantics defined by the MongoDB driver spec:
+    #   * ``TransientTransactionError``      → retry the whole callback
+    #   * ``UnknownTransactionCommitResult`` → retry the commit
+    # A naive ``async with session.start_transaction()`` plus a
+    # try/except on ``OperationFailure`` only covers the first label
+    # and silently drops commit-time network blips.
+    async with await client.start_session() as session:
+        async def _txn(s):
+            # Atomic validate-and-consume. Returns None for
+            # used/expired/unknown. The placeholder used_by_user_id
+            # is patched below once we know the real id — kept
+            # inside the same transaction so an outside reader
+            # never observes the placeholder value.
+            marked = await repo.mark_used_atomic(
+                token,
+                used_by_user_id="pending",
+                session=s,
+            )
+            if marked is None:
+                raise HTTPException(
+                    status_code=410, detail="invitation_invalid",
                 )
-                continue
-            raise
+
+            try:
+                user_doc, _dek = await _provision_new_user(
+                    users_repo=users_repo,
+                    svc=svc,
+                    username=body.username,
+                    email=body.email,
+                    display_name=body.display_name,
+                    h_auth=body.h_auth,
+                    h_kek=body.h_kek,
+                    recovery_key=body.recovery_key,
+                    role="user",
+                    must_change_password=False,
+                    session=s,
+                )
+            except DuplicateKeyError:
+                # Aborts the transaction — the mark-used write is
+                # rolled back and the token remains usable. Surface
+                # as 409 to the client.
+                raise HTTPException(
+                    status_code=409,
+                    detail="username_or_email_taken",
+                )
+
+            new_user_id = str(user_doc["_id"])
+
+            # Patch the token doc with the real user id, still in-tx.
+            await db["invitation_tokens"].update_one(
+                {"_id": marked["_id"]},
+                {"$set": {"used_by_user_id": new_user_id}},
+                session=s,
+            )
+            return user_doc, str(marked["_id"])
+
+        user_doc, token_id = await session.with_transaction(_txn)
+
+    user_id = str(user_doc["_id"])
 
     # Outside the transaction — best-effort audit and event publication.
-    audit = AuditRepository(db)
+    # The transaction has already committed: the user exists and the
+    # token is consumed. A Redis hiccup or audit-write failure must
+    # NOT translate into a 500 for the client, because they cannot
+    # recover (the token is gone). Wrap the entire observability block
+    # in one try/except that logs but does not raise.
     try:
+        audit = AuditRepository(db)
         await audit.log(
             actor_id=user_id,
             action="user.invitation_used",
@@ -221,25 +221,42 @@ async def register_via_invitation(
             resource_id=token_id,
             detail={},
         )
-    except Exception:
-        _log.warning(
-            "invitation.register.audit_failed user_id=%s token_id=%s",
-            user_id, token_id, exc_info=True,
+        await event_bus.publish(
+            Topics.INVITATION_USED,
+            InvitationUsedEvent(token_id=token_id, used_by_user_id=user_id),
         )
-
-    await event_bus.publish(
-        Topics.INVITATION_USED,
-        InvitationUsedEvent(token_id=token_id, used_by_user_id=user_id),
-    )
-    await event_bus.publish(
-        Topics.AUDIT_LOGGED,
-        AuditLoggedEvent(
-            actor_id=user_id,
-            action="user.invitation_used",
-            resource_type="invitation",
-            resource_id=token_id,
-            detail={},
-        ),
-    )
+        await event_bus.publish(
+            Topics.AUDIT_LOGGED,
+            AuditLoggedEvent(
+                actor_id=user_id,
+                action="user.invitation_used",
+                resource_type="invitation",
+                resource_id=token_id,
+                detail={},
+            ),
+        )
+        # Mirror the /auth/setup contract: a freshly created user must
+        # be visible to admins immediately (USER_CREATED, fan-out, no
+        # target_user_ids) and the user themselves must learn that
+        # their key material is ready (USER_KEY_PROVISIONED, targeted).
+        await event_bus.publish(
+            Topics.USER_CREATED,
+            UserCreatedEvent(
+                user_id=user_id,
+                username=user_doc["username"],
+                role="user",
+                timestamp=user_doc["created_at"],
+            ),
+        )
+        await event_bus.publish(
+            Topics.USER_KEY_PROVISIONED,
+            UserKeyProvisionedEvent(user_id=user_id, reason="signup"),
+            target_user_ids=[user_id],
+        )
+    except Exception:
+        _log.exception(
+            "invitation.register.post_commit_failed user_id=%s token_id=%s",
+            user_id, token_id,
+        )
 
     return RegisterViaInvitationResponseDto(success=True, user_id=user_id)
