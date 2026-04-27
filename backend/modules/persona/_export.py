@@ -45,6 +45,7 @@ _PERSONALITY_FIELDS: tuple[str, ...] = (
     "tagline",
     "system_prompt",
     "nsfw",
+    "use_memory",
     "colour_scheme",
     "monogram",
     # profile_crop is serialised as a plain dict, has_avatar is a bool flag.

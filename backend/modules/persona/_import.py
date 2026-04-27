@@ -297,6 +297,7 @@ async def import_persona_archive(
             temperature=1.0,
             reasoning_enabled=False,
             nsfw=bool(personality.get("nsfw", False)),
+            use_memory=bool(personality.get("use_memory", True)),
             colour_scheme=personality.get("colour_scheme", "solar") or "solar",
             display_order=0,
             pinned=False,
