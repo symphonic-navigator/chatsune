@@ -23,6 +23,7 @@ from backend.modules.user._auth import (
 from backend.modules.user._cascade import cascade_delete_user
 from backend.modules.user._deletion_report_store import DeletionReportStore
 from backend.modules.user._handlers import router
+from backend.modules.user._invitation_handlers import router as invitation_router
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from backend.config import settings
@@ -176,6 +177,7 @@ class UserService:
 
 __all__ = [
     "router",
+    "invitation_router",
     "init_indexes",
     "perform_token_refresh",
     "decode_access_token",

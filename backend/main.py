@@ -29,8 +29,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import connect_db, disconnect_db, get_db, get_redis
-from backend.modules.user import router as user_router, init_indexes as user_init_indexes
-from backend.modules.user._invitation_handlers import router as invitation_router
+from backend.modules.user import router as user_router, invitation_router, init_indexes as user_init_indexes
 from backend.modules.llm import (
     router as llm_router,
     init_indexes as llm_init_indexes,
