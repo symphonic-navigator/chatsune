@@ -132,4 +132,48 @@ export const authApi = {
       undefined,
       true,
     ),
+
+  async validateInvitation(token: string): Promise<{ valid: boolean; reason?: 'expired' | 'used' | 'not_found' }> {
+    return apiRequest<{ valid: boolean; reason?: 'expired' | 'used' | 'not_found' }>(
+      "POST",
+      `/api/invitations/${encodeURIComponent(token)}/validate`,
+      undefined,
+      true,
+    )
+  },
+
+  async registerWithInvitation(
+    token: string,
+    opts: { username: string; email: string; displayName: string; password: string },
+  ): Promise<{ recoveryKey: string; userId: string }> {
+    // Mirrors the setup() flow, gated by the token in the URL.
+    // Recovery key is generated client-side; the server never sees the password.
+    const params = await fetchKdfParams(opts.username)
+    const salt = fromBase64Url(params.kdf_salt)
+    const { hAuth, hKek } = await deriveAuthAndKek(opts.password, salt, params.kdf_params)
+    const recoveryKey = generateRecoveryKey()
+    const resp = await apiRequest<{ user_id: string }>(
+      "POST",
+      `/api/invitations/${encodeURIComponent(token)}/register`,
+      {
+        username: opts.username,
+        email: opts.email,
+        display_name: opts.displayName,
+        h_auth: toBase64Url(hAuth),
+        h_kek: toBase64Url(hKek),
+        recovery_key: recoveryKey,
+      },
+      true,
+    )
+    return { recoveryKey, userId: resp.user_id }
+  },
+
+  async createInvitation(): Promise<{ token: string; expiresAt: string }> {
+    const resp = await apiRequest<{ token: string; expires_at: string }>(
+      "POST",
+      "/api/admin/invitations",
+      undefined,
+    )
+    return { token: resp.token, expiresAt: resp.expires_at }
+  },
 }

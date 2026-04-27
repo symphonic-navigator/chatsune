@@ -833,3 +833,47 @@ voice-expression-tags duplication (see CLAUDE.md and the existing
 **Symptom of drift:** tag shown in the editor differs from what the backend
 matches against. Test via the existing parametrised tests on each side;
 any diff in expected outputs is the smoking gun.
+
+---
+
+## INS-029 — Server cannot enforce password strength (BYO-key constraint)
+
+**Decision:** Password-strength validation lives entirely in the client.
+The server has no knowledge of the plaintext password and therefore
+cannot apply length/complexity/zxcvbn rules.
+
+**Why:** Chatsune uses an end-to-end encrypted key schema. The client
+derives `h_auth` (Argon2 hash for authentication) and `h_kek` (key
+encryption key for wrapping the user's DEK) from the password locally.
+Only those derived values reach the server. A server-side strength check
+would require shipping the password itself, which would defeat the entire
+BYO-key threat model.
+
+**What this means in practice:**
+- Strength meters and basic typo checks (length, character classes,
+  confirm-password match) are client-side concerns.
+- This applies to all account-creation flows: master-admin setup,
+  invitation-token registration, change-password, recovery flow.
+- A future "server enforces strength" change is not a small ticket — it
+  would require fundamental rework of the auth scheme. Do not file it
+  as a routine improvement.
+
+---
+
+## INS-030 — Account-creation crypto duplicated; extract on third use
+
+**Decision:** The form + Argon2 derivation + recovery-key generation
+sequence currently lives in two places: the master-admin setup mode in
+`frontend/src/app/pages/LoginPage.tsx` and the invitation-token
+self-registration in `frontend/src/app/pages/RegisterPage.tsx`. Both
+files carry a `// see also` comment pointing at the other.
+
+**Why duplicate:** Rule of three. Two implementations are easier to keep
+correct than one premature abstraction whose seams may not match the
+third use case.
+
+**Trigger for extraction:** The third place that needs this sequence
+(e.g. a hypothetical "join an existing org via link" flow, or a
+multi-tenant invitation variant) is the cue to pull a shared
+`useAccountSetup({ mode })` hook into `frontend/src/features/auth/`.
+Until then, two copies are fine.

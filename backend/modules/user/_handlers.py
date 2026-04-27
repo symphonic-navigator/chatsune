@@ -151,6 +151,65 @@ async def auth_status():
 # --- Setup ---
 
 
+async def _provision_new_user(
+    *,
+    users_repo: UserRepository,
+    svc: UserKeyService,
+    username: str,
+    email: str,
+    display_name: str,
+    h_auth: str,
+    h_kek: str,
+    recovery_key: str,
+    role: str,
+    must_change_password: bool = False,
+    session=None,
+) -> tuple[dict, bytes]:
+    """Create user document and provision DEK/KEK keys.
+
+    Pure user+key creation — no audit, no event publishing. Caller is
+    responsible for those side effects so it can compose them inside its
+    own transaction or sequence.
+
+    When ``session`` is supplied, every Mongo write/read happens inside
+    that transaction so the caller can roll the whole provisioning step
+    back atomically (used by the invitation-token register endpoint to
+    keep the token unused if user creation fails).
+
+    Returns (user_doc, unlocked_dek). Raises on collision (DuplicateKeyError)
+    or crypto failure.
+    """
+    password_hash = hash_h_auth(h_auth)
+    doc = await users_repo.create(
+        username=username,
+        email=email,
+        display_name=display_name,
+        password_hash=password_hash,
+        role=role,
+        must_change_password=must_change_password,
+        session=session,
+    )
+    user_id = str(doc["_id"])
+    await users_repo.set_password_hash_and_version(
+        user_id, password_hash=password_hash, version=1, session=session,
+    )
+
+    kdf_salt = os.urandom(32)
+    h_kek_bytes = decode_base64url(h_kek)
+    await svc.provision_for_new_user(
+        user_id=user_id,
+        h_kek=h_kek_bytes,
+        recovery_key=recovery_key,
+        kdf_salt=kdf_salt,
+        session=session,
+    )
+
+    dek = await svc.unlock_with_password(
+        user_id=user_id, h_kek=h_kek_bytes, session=session,
+    )
+    return doc, dek
+
+
 @router.post("/auth/setup")
 async def setup(
     body: SetupRequestV2Dto,
@@ -169,32 +228,21 @@ async def setup(
     if existing is not None:
         raise HTTPException(status_code=409, detail="master_admin_exists")
 
-    # Create the user document without a password_hash_version first, then
-    # upgrade it so the field is set to 1 (H_auth scheme) in one atomic write.
-    password_hash = hash_h_auth(body.h_auth)
-    doc = await users_repo.create(
+    doc, dek = await _provision_new_user(
+        users_repo=users_repo,
+        svc=svc,
         username=body.username,
         email=body.email,
         display_name=body.display_name,
-        password_hash=password_hash,
+        h_auth=body.h_auth,
+        h_kek=body.h_kek,
+        recovery_key=body.recovery_key,
         role="master_admin",
         must_change_password=False,
     )
     user_id = str(doc["_id"])
-    await users_repo.set_password_hash_and_version(user_id, password_hash=password_hash, version=1)
 
-    # Generate a fresh per-user kdf_salt and provision the DEK.
-    kdf_salt = os.urandom(32)
-    h_kek_bytes = decode_base64url(body.h_kek)
-    await svc.provision_for_new_user(
-        user_id=user_id,
-        h_kek=h_kek_bytes,
-        recovery_key=body.recovery_key,
-        kdf_salt=kdf_salt,
-    )
-
-    # Unlock the freshly provisioned DEK and open an immediate session.
-    dek = await svc.unlock_with_password(user_id=user_id, h_kek=h_kek_bytes)
+    # Open an immediate session for the newly created master admin.
     session_id = generate_session_id()
     access_token = create_access_token(
         user_id=user_id, role="master_admin", session_id=session_id

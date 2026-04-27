@@ -6,8 +6,9 @@ Public API: import only from this file.
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.modules.user._audit import AuditRepository
+from backend.modules.user._invitation_repository import InvitationRepository
 from backend.modules.user._key_repository import UserKeysRepository
-from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, RECENT_EMOJIS_MAX
+from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, InvitationTokenDocument, RECENT_EMOJIS_MAX
 from backend.modules.user._key_service import (
     DekUnlockError,
     UserKeyNotFoundError,
@@ -22,6 +23,7 @@ from backend.modules.user._auth import (
 from backend.modules.user._cascade import cascade_delete_user
 from backend.modules.user._deletion_report_store import DeletionReportStore
 from backend.modules.user._handlers import router
+from backend.modules.user._invitation_handlers import router as invitation_router
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from backend.config import settings
@@ -36,6 +38,7 @@ async def init_indexes(db) -> None:
     await UserRepository(db).create_indexes()
     await AuditRepository(db).create_indexes()
     await UserKeysRepository(db).ensure_indexes()
+    await InvitationRepository(db).create_indexes()
 
 
 async def perform_token_refresh(refresh_token: str, redis) -> dict | None:
@@ -174,6 +177,7 @@ class UserService:
 
 __all__ = [
     "router",
+    "invitation_router",
     "init_indexes",
     "perform_token_refresh",
     "decode_access_token",
@@ -184,6 +188,8 @@ __all__ = [
     "get_admin_mcp_gateways",
     "cascade_delete_user",
     "DeletionReportStore",
+    "InvitationRepository",
+    "InvitationTokenDocument",
     "UserKeyService",
     "UserService",
     "DekUnlockError",

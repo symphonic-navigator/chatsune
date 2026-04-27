@@ -181,3 +181,6 @@ class Topics:
     USER_KEY_RECOVERY_REQUIRED = "user.key.recovery_required"
     USER_KEY_RECOVERED = "user.key.recovered"
     USER_KEY_RECOVERY_DECLINED = "user.key.recovery_declined"
+    # --- Invitation tokens ---
+    INVITATION_CREATED = "user.invitation.created"
+    INVITATION_USED = "user.invitation.used"

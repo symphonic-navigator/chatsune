@@ -69,6 +69,7 @@ class UserKeyService:
         recovery_key: str,
         kdf_salt: bytes,
         kdf_params: Argon2Params | None = None,
+        session=None,
     ) -> None:
         """Generate a DEK, wrap it under both the password KEK and the recovery
         key, and persist the resulting document.
@@ -111,7 +112,7 @@ class UserKeyService:
             created_at=now,
             updated_at=now,
         )
-        await self._repo.insert(doc)
+        await self._repo.insert(doc, session=session)
 
     # ------------------------------------------------------------------
     # Document access
@@ -125,13 +126,15 @@ class UserKeyService:
     # Unlock helpers
     # ------------------------------------------------------------------
 
-    async def unlock_with_password(self, *, user_id: str, h_kek: bytes) -> bytes:
+    async def unlock_with_password(
+        self, *, user_id: str, h_kek: bytes, session=None,
+    ) -> bytes:
         """Decrypt and return the current DEK using the password-derived KEK.
 
         Raises :class:`DekUnlockError` on authentication failure.
         Raises :class:`UserKeyNotFoundError` if the user has no key document.
         """
-        doc = await self._require_keys_doc(user_id)
+        doc = await self._require_keys_doc(user_id, session=session)
         version = str(doc.current_dek_version)
         wrapped = doc.deks[version].wrapped_by_password
         key_pw = derive_wrap_key(h_kek, info=b"dek-wrap")
@@ -285,9 +288,11 @@ class UserKeyService:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    async def _require_keys_doc(self, user_id: str) -> UserKeysDocument:
+    async def _require_keys_doc(
+        self, user_id: str, *, session=None,
+    ) -> UserKeysDocument:
         """Return the key document or raise :class:`UserKeyNotFoundError`."""
-        doc = await self._repo.get_by_user_id(user_id)
+        doc = await self._repo.get_by_user_id(user_id, session=session)
         if doc is None:
             raise UserKeyNotFoundError(f"No key document found for user {user_id!r}")
         return doc

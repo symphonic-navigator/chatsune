@@ -215,7 +215,7 @@ existing setup flow).
 - `INVITATION_USED = "user.invitation.used"`
 
 `shared/events/auth.py` (extend):
-- `InvitationCreatedEvent { token_id, created_by, expires_at }`
+- `InvitationCreatedEvent { token_id, actor_id, expires_at }`
 - `InvitationUsedEvent { token_id, used_by_user_id }`
 
 ---

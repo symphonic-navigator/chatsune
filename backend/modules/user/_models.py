@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from bson import ObjectId
 from pydantic import BaseModel, Field
 
 DEFAULT_RECENT_EMOJIS: tuple[str, ...] = ("👍", "❤️", "😂", "🤘", "😊", "🔥")
@@ -67,3 +68,23 @@ class AuditLogDocument(BaseModel):
     detail: dict | None = None
 
     model_config = {"populate_by_name": True}
+
+
+class InvitationTokenDocument(BaseModel):
+    """One-time admin-generated link that lets a new user self-register.
+
+    The token field is a URL-safe random string (~43 chars) generated via
+    ``secrets.token_urlsafe(32)``. The ``expires_at`` field drives MongoDB TTL
+    cleanup.
+    """
+
+    model_config = {"arbitrary_types_allowed": True, "populate_by_name": True}
+
+    id: ObjectId = Field(alias="_id")
+    token: str
+    created_at: datetime
+    expires_at: datetime
+    used: bool = False
+    used_at: datetime | None = None
+    used_by_user_id: str | None = None
+    created_by: str

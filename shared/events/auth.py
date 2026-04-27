@@ -61,3 +61,18 @@ class RecentEmojisUpdatedEvent(BaseModel):
     type: Literal["user.recent_emojis.updated"] = "user.recent_emojis.updated"
     user_id: str
     emojis: list[str]
+
+
+class InvitationCreatedEvent(BaseModel):
+    """Emitted when an admin generates a fresh invitation link."""
+    type: str = "user.invitation.created"
+    token_id: str
+    actor_id: str
+    expires_at: datetime
+
+
+class InvitationUsedEvent(BaseModel):
+    """Emitted when a user successfully registers via an invitation link."""
+    type: str = "user.invitation.used"
+    token_id: str
+    used_by_user_id: str

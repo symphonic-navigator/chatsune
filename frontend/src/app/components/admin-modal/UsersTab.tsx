@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react"
 import type { UserDto, CreateUserResponse } from "../../../core/types/auth"
+import { authApi } from "../../../core/api/auth"
 import { usersApi } from "../../../core/api/users"
 import { useAuthStore } from "../../../core/store/authStore"
+import { InvitationLinkDialog } from "./InvitationLinkDialog"
 import { NewUserForm } from "./NewUserForm"
 
 interface ResetConfirm {
@@ -19,6 +21,10 @@ export function UsersTab() {
 
   const [showNewForm, setShowNewForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  const [generating, setGenerating] = useState(false)
+  const [invitation, setInvitation] = useState<{ token: string; expiresAt: string } | null>(null)
+  const [genError, setGenError] = useState<string | null>(null)
 
   const [generatedPw, setGeneratedPw] = useState<{ username: string; password: string; expiresAt: number } | null>(null)
   const [pwCountdown, setPwCountdown] = useState(0)
@@ -73,6 +79,19 @@ export function UsersTab() {
     setGeneratedPw({ username, password, expiresAt: Date.now() + 60_000 })
     setCopied(false)
     setCopyError(null)
+  }
+
+  async function generateInvitation() {
+    setGenError(null)
+    setGenerating(true)
+    try {
+      const result = await authApi.createInvitation()
+      setInvitation(result)
+    } catch {
+      setGenError("Failed to generate invitation link.")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function handleCopy() {
@@ -183,22 +202,39 @@ export function UsersTab() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/6 px-4 py-2.5">
-        <span className="text-[10px] uppercase tracking-[0.15em] text-white/60">
-          User Registry
-        </span>
-        <button
-          type="button"
-          onClick={() => setShowNewForm((v) => !v)}
-          className={[
-            "rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer",
-            showNewForm
-              ? "border-white/8 text-white/60 hover:bg-white/6"
-              : "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
-          ].join(" ")}
-        >
-          {showNewForm ? "Cancel" : "+ New User"}
-        </button>
+      <div className="flex flex-col gap-1 border-b border-white/6 px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] uppercase tracking-[0.15em] text-white/60">
+            User Registry
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={generateInvitation}
+              disabled={generating}
+              className="rounded-lg border border-white/8 px-3 py-1.5 text-[11px] font-medium text-white/55 transition-colors hover:bg-white/6 hover:text-white/75 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {generating ? "Generating…" : "+ Invitation Link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNewForm((v) => !v)}
+              className={[
+                "rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer",
+                showNewForm
+                  ? "border-white/8 text-white/60 hover:bg-white/6"
+                  : "border-gold/30 bg-gold/10 text-gold hover:bg-gold/20",
+              ].join(" ")}
+            >
+              {showNewForm ? "Cancel" : "+ New User"}
+            </button>
+          </div>
+        </div>
+        {genError && (
+          <p role="alert" className="text-[10px] text-red-400">
+            {genError}
+          </p>
+        )}
       </div>
 
       {/* New user form */}
@@ -362,6 +398,14 @@ export function UsersTab() {
           {total} {total === 1 ? "user" : "users"}
         </span>
       </div>
+
+      {invitation && (
+        <InvitationLinkDialog
+          token={invitation.token}
+          expiresAt={invitation.expiresAt}
+          onClose={() => setInvitation(null)}
+        />
+      )}
     </div>
   )
 }

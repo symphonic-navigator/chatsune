@@ -34,13 +34,13 @@ class UserKeysRepository:
         """Create collection indexes. Safe to call on every startup (idempotent)."""
         await self._collection.create_index("user_id", unique=True)
 
-    async def insert(self, doc: UserKeysDocument) -> None:
+    async def insert(self, doc: UserKeysDocument, *, session=None) -> None:
         """Insert a new UserKeysDocument. Raises DuplicateKeyError if user_id exists."""
-        await self._collection.insert_one(_to_mongo(doc))
+        await self._collection.insert_one(_to_mongo(doc), session=session)
 
-    async def get_by_user_id(self, user_id: str) -> UserKeysDocument | None:
+    async def get_by_user_id(self, user_id: str, *, session=None) -> UserKeysDocument | None:
         """Return the key document for a user, or None if not found."""
-        raw = await self._collection.find_one({"user_id": user_id})
+        raw = await self._collection.find_one({"user_id": user_id}, session=session)
         if raw is None:
             return None
         return _from_mongo(raw)
