@@ -70,12 +70,12 @@ export function VoiceVisualiserPreview({
       const bins = simulateFrequencyBins(t, ampl, barCount)
       const rgb = hexToRgb(personaColourHex)
       const rgbLight = brighten(rgb)
-      drawVisualiserFrame(style, ctx, w, h, bins, {
+      drawVisualiserFrame(style, ctx, h, bins, {
         rgb,
         rgbLight,
         opacity,
         maxHeightFraction: MAX_HEIGHT_FRACTION,
-      })
+      }, { chatview: { x: 0, w }, textColumn: { x: 0, w } })
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
