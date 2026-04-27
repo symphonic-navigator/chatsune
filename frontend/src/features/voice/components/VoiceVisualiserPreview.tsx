@@ -75,7 +75,7 @@ export function VoiceVisualiserPreview({
         rgbLight,
         opacity,
         maxHeightFraction: MAX_HEIGHT_FRACTION,
-      }, { chatview: { x: 0, w }, textColumn: { x: 0, w } })
+      }, { chatview: { x: w * 0.05, w: w * 0.9 }, textColumn: { x: w * 0.05, w: w * 0.9 } })
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
