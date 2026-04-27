@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 
 interface Props {
   token: string
@@ -11,6 +11,7 @@ interface Props {
  * retrievable again — the user must copy it before closing the dialog.
  */
 export function InvitationLinkDialog({ token, expiresAt, onClose }: Props) {
+  const titleId = useId()
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
 
@@ -55,8 +56,13 @@ export function InvitationLinkDialog({ token, expiresAt, onClose }: Props) {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-md rounded-lg border border-white/8 bg-surface p-6 text-white/80">
-        <h2 className="mb-3 text-[13px] font-medium text-white/90">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-md rounded-lg border border-white/8 bg-surface p-6 text-white/80"
+      >
+        <h2 id={titleId} className="mb-3 text-[13px] font-medium text-white/90">
           New invitation link
         </h2>
 
