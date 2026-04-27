@@ -6,6 +6,7 @@ Public API: import only from this file.
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.modules.user._audit import AuditRepository
+from backend.modules.user._invitation_repository import InvitationRepository
 from backend.modules.user._key_repository import UserKeysRepository
 from backend.modules.user._models import DEFAULT_RECENT_EMOJIS, RECENT_EMOJIS_MAX
 from backend.modules.user._key_service import (
@@ -36,6 +37,7 @@ async def init_indexes(db) -> None:
     await UserRepository(db).create_indexes()
     await AuditRepository(db).create_indexes()
     await UserKeysRepository(db).ensure_indexes()
+    await InvitationRepository(db).create_indexes()
 
 
 async def perform_token_refresh(refresh_token: str, redis) -> dict | None:
@@ -184,6 +186,7 @@ __all__ = [
     "get_admin_mcp_gateways",
     "cascade_delete_user",
     "DeletionReportStore",
+    "InvitationRepository",
     "UserKeyService",
     "UserService",
     "DekUnlockError",
