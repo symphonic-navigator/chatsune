@@ -30,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import connect_db, disconnect_db, get_db, get_redis
 from backend.modules.user import router as user_router, init_indexes as user_init_indexes
+from backend.modules.user._invitation_handlers import router as invitation_router
 from backend.modules.llm import (
     router as llm_router,
     init_indexes as llm_init_indexes,
@@ -603,6 +604,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(user_router)
+app.include_router(invitation_router)
 app.include_router(llm_router)
 app.include_router(llm_homelab_router)
 app.include_router(persona_router)
