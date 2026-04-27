@@ -43,3 +43,87 @@ async def test_create_invitation_requires_admin(
 async def test_create_invitation_unauthenticated(client, clean_db):
     resp = await client.post("/api/admin/invitations", json={})
     assert resp.status_code == 401, resp.text
+
+
+# ---------------------------------------------------------------------------
+# POST /api/invitations/{token}/validate
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_validate_returns_valid_for_fresh_token(client, seeded_admin_token, user_key_service):
+    _, admin_token = seeded_admin_token
+    create_resp = await client.post(
+        "/api/admin/invitations",
+        json={},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    token = create_resp.json()["token"]
+
+    resp = await client.post(f"/api/invitations/{token}/validate")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"valid": True, "reason": None}
+
+
+@pytest.mark.asyncio
+async def test_validate_returns_not_found_for_unknown(client, clean_db):
+    resp = await client.post("/api/invitations/garbage-token/validate")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"valid": False, "reason": "not_found"}
+
+
+@pytest.mark.asyncio
+async def test_validate_returns_expired(client, seeded_admin_token, user_key_service, db):
+    _, admin_token = seeded_admin_token
+    create_resp = await client.post(
+        "/api/admin/invitations",
+        json={},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    token = create_resp.json()["token"]
+
+    from datetime import datetime, timezone
+    await db["invitation_tokens"].update_one(
+        {"token": token},
+        {"$set": {"expires_at": datetime(2020, 1, 1, tzinfo=timezone.utc)}},
+    )
+
+    resp = await client.post(f"/api/invitations/{token}/validate")
+    assert resp.status_code == 200
+    assert resp.json() == {"valid": False, "reason": "expired"}
+
+
+@pytest.mark.asyncio
+async def test_validate_returns_used(client, seeded_admin_token, user_key_service, db):
+    _, admin_token = seeded_admin_token
+    create_resp = await client.post(
+        "/api/admin/invitations",
+        json={},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    token = create_resp.json()["token"]
+
+    await db["invitation_tokens"].update_one(
+        {"token": token}, {"$set": {"used": True}}
+    )
+
+    resp = await client.post(f"/api/invitations/{token}/validate")
+    assert resp.status_code == 200
+    assert resp.json() == {"valid": False, "reason": "used"}
+
+
+@pytest.mark.asyncio
+async def test_validate_status_always_200(client, seeded_admin_token, user_key_service, db):
+    """No HTTP-code enumeration possible across not_found / used / expired."""
+    r1 = await client.post("/api/invitations/never-existed/validate")
+    _, admin_token = seeded_admin_token
+    create_resp = await client.post(
+        "/api/admin/invitations",
+        json={},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    token = create_resp.json()["token"]
+    await db["invitation_tokens"].update_one({"token": token}, {"$set": {"used": True}})
+    r2 = await client.post(f"/api/invitations/{token}/validate")
+    assert r1.status_code == r2.status_code == 200
