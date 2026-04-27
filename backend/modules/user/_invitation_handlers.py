@@ -165,6 +165,7 @@ async def register_via_invitation(
                 session=s,
             )
             if marked is None:
+                _log.info("invitation.register.rejected reason=token_invalid")
                 raise HTTPException(
                     status_code=410, detail="invitation_invalid",
                 )
@@ -187,6 +188,7 @@ async def register_via_invitation(
                 # Aborts the transaction — the mark-used write is
                 # rolled back and the token remains usable. Surface
                 # as 409 to the client.
+                _log.info("invitation.register.rejected reason=user_collision")
                 raise HTTPException(
                     status_code=409,
                     detail="username_or_email_taken",
@@ -205,6 +207,9 @@ async def register_via_invitation(
         user_doc, token_id = await session.with_transaction(_txn)
 
     user_id = str(user_doc["_id"])
+    _log.info(
+        "invitation.register.consumed token_id=%s user_id=%s", token_id, user_id,
+    )
 
     # Outside the transaction — best-effort audit and event publication.
     # The transaction has already committed: the user exists and the
