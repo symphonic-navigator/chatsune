@@ -66,6 +66,7 @@ class PersonaDto(BaseModel):
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool
+    use_memory: bool = True
     colour_scheme: ChakraColour
     display_order: int
     monogram: str
@@ -96,6 +97,7 @@ class CreatePersonaDto(BaseModel):
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool = False
+    use_memory: bool = True
     colour_scheme: ChakraColour = "solar"
     display_order: int = 0
     pinned: bool = False
@@ -118,6 +120,7 @@ class UpdatePersonaDto(BaseModel):
     soft_cot_enabled: bool | None = None
     vision_fallback_model: str | None = None
     nsfw: bool | None = None
+    use_memory: bool | None = None
     colour_scheme: ChakraColour | None = None
     display_order: int | None = None
     pinned: bool | None = None
