@@ -4,6 +4,7 @@ import { useParams, Link, useNavigate } from "react-router-dom"
 import { authApi } from "../../core/api/auth"
 import { ApiError } from "../../core/api/client"
 import { RecoveryKeyModal } from "../../features/auth/RecoveryKeyModal"
+import { useAuthStore } from "../../core/store/authStore"
 
 type Phase =
   | { kind: "validating" }
@@ -31,6 +32,15 @@ const errorHintClass = "mt-1 block text-[11px] text-red-400/80"
 export default function RegisterPage() {
   const { token = "" } = useParams<{ token: string }>()
   const navigate = useNavigate()
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  // Invitations are for new accounts only — redirect logged-in users away
+  // immediately so they cannot accidentally create a duplicate account.
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/personas", { replace: true })
+    }
+  }, [isAuthenticated, navigate])
 
   const usernameId = useId()
   const emailId = useId()
