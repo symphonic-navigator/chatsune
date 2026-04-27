@@ -35,7 +35,7 @@ class RegisterViaInvitationRequestDto(BaseModel):
 
     username: str = Field(min_length=3, max_length=64)
     email: EmailStr
-    display_name: str = Field(min_length=1, max_length=128)
+    display_name: str = Field(min_length=1, max_length=64)
     h_auth: str        # client-derived Argon2 hash, urlsafe-base64
     h_kek: str         # client-derived KEK, urlsafe-base64
     recovery_key: str  # client-generated; backend wraps DEK with this

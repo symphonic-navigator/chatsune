@@ -67,7 +67,7 @@ class InvitationCreatedEvent(BaseModel):
     """Emitted when an admin generates a fresh invitation link."""
     type: str = "user.invitation.created"
     token_id: str
-    created_by: str    # admin user id
+    actor_id: str
     expires_at: datetime
 
 
