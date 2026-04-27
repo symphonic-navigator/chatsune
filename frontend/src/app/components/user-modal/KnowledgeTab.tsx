@@ -292,7 +292,7 @@ export function KnowledgeTab() {
                   onClick={() => handleExportLibrary(library)}
                   disabled={exportingLibraryId === library.id}
                   aria-label={`Export library ${library.name}`}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   title="Export library"
                 >
                   {exportingLibraryId === library.id ? '…' : '⇩'}
@@ -303,7 +303,7 @@ export function KnowledgeTab() {
                   type="button"
                   onClick={() => setLibraryModal({ mode: 'edit', library })}
                   aria-label={`Edit library ${library.name}`}
-                  className="opacity-0 group-hover:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer"
+                  className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 flex-shrink-0 rounded border border-white/8 px-1.5 py-0.5 text-[10px] font-mono text-white/60 transition-all hover:border-white/20 hover:text-white/80 cursor-pointer"
                   title="Edit library"
                 >
                   ✎

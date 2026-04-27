@@ -371,7 +371,7 @@ export function UploadsTab() {
                 </span>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                   {deletingId === file.id ? (
                     <>
                       <span role="status" aria-live="polite" className="text-[10px] text-red-400 font-mono mr-1">Delete?</span>
