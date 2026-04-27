@@ -4,6 +4,8 @@ import { useVisualiserPauseStore } from '../stores/visualiserPauseStore'
 import { useTtsFrequencyData } from '../infrastructure/useTtsFrequencyData'
 import { drawVisualiserFrame } from '../infrastructure/visualiserRenderers'
 import { audioPlayback } from '../infrastructure/audioPlayback'
+import { fillNoiseBins } from '../infrastructure/visualiserNoise'
+import { useTtsExpected } from '../infrastructure/useTtsExpected'
 
 const MAX_HEIGHT_FRACTION = 0.28
 const FADE_RATE = 0.05
@@ -42,7 +44,25 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const reducedMotionRef = useRef(false)
   const frozenBinsRef = useRef<Float32Array | null>(null)
 
+  // Buffer used when the noise branch is the data source.
+  // Stable across renders; resized when barCount changes.
+  const noiseBufferRef = useRef<Float32Array>(new Float32Array(barCount))
+  if (noiseBufferRef.current.length !== barCount) {
+    noiseBufferRef.current = new Float32Array(barCount)
+  }
+
   const accessors = useTtsFrequencyData(barCount)
+
+  // Forward declaration so the edge callback can call it. The actual
+  // function is assigned inside the effect below; we just need a stable
+  // ref to wrap it.
+  const resumeRafRef = useRef<(() => void) | null>(null)
+
+  const ttsExpected = useTtsExpected({
+    onTrueEdge: () => {
+      resumeRafRef.current?.()
+    },
+  })
 
   // Reduced-motion subscription. Honours OS-level preference live.
   useEffect(() => {
@@ -109,11 +129,19 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       frozenBinsRef.current = null
 
       const playing = accessors.isActive()
-      const target = playing ? 1 : 0
+      const expected = ttsExpected()
+      const visible = playing || expected
+      const target = visible ? 1 : 0
       activeRef.current += (target - activeRef.current) * FADE_RATE
 
       if (activeRef.current > 0.005) {
-        const bins = accessors.getBins()
+        let bins: Float32Array | null = null
+        if (playing) {
+          bins = accessors.getBins()
+        } else if (expected) {
+          fillNoiseBins(noiseBufferRef.current, performance.now() / 1000)
+          bins = noiseBufferRef.current
+        }
         if (bins) {
           const rgb = hexToRgb(personaColourHex)
           const rgbLight = brighten(rgb)
@@ -125,23 +153,30 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
           })
         }
         rafRef.current = requestAnimationFrame(tick)
-      } else if (playing) {
-        // Was idle, just started — keep the loop running.
+      } else if (visible) {
+        // Visible but still ramping in — keep the loop running.
         rafRef.current = requestAnimationFrame(tick)
       } else {
-        // Fully faded out and not playing — pause RAF until next play event.
+        // Fully faded out and nothing expected — pause RAF until next event.
         rafRef.current = null
       }
     }
 
     rafRef.current = requestAnimationFrame(tick)
 
-    // Resume the loop when playback starts after an idle pause.
-    const unsub = audioPlayback.subscribe(() => {
+    // Resume on play (audio events).
+    const unsubAudio = audioPlayback.subscribe(() => {
       if (rafRef.current === null && !stopped) {
         rafRef.current = requestAnimationFrame(tick)
       }
     })
+
+    // Resume on expectation true-edge (e.g. user submits in live mode).
+    resumeRafRef.current = () => {
+      if (rafRef.current === null && !stopped) {
+        rafRef.current = requestAnimationFrame(tick)
+      }
+    }
 
     return () => {
       stopped = true
@@ -149,9 +184,10 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         cancelAnimationFrame(rafRef.current)
         rafRef.current = null
       }
-      unsub()
+      unsubAudio()
+      resumeRafRef.current = null
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected])
 
   return (
     <canvas
