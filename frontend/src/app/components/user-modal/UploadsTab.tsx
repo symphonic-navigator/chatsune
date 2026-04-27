@@ -8,6 +8,11 @@ import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 type SortBy = 'date' | 'size'
 type SortOrder = 'asc' | 'desc'
 
+const OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',
+  color: 'rgba(255,255,255,0.85)',
+}
+
 const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-1 font-mono"
 const BTN = 'px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all border cursor-pointer'
 const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
@@ -253,10 +258,10 @@ export function UploadsTab() {
             className="bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
             style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
           >
-            <option value="all">All</option>
-            <option value="none">No persona</option>
+            <option value="all" style={OPTION_STYLE}>All</option>
+            <option value="none" style={OPTION_STYLE}>No persona</option>
             {visiblePersonas.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id} style={OPTION_STYLE}>{p.name}</option>
             ))}
           </select>
         </div>

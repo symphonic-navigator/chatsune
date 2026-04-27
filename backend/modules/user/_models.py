@@ -1,7 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from bson import ObjectId
 from pydantic import BaseModel, Field
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 DEFAULT_RECENT_EMOJIS: tuple[str, ...] = ("👍", "❤️", "😂", "🤘", "😊", "🔥")
 RECENT_EMOJIS_MAX: int = 6
@@ -20,8 +24,8 @@ class UserDocument(BaseModel):
     is_active: bool = True
     must_change_password: bool = False
     recent_emojis: list[str] = Field(default_factory=lambda: list(DEFAULT_RECENT_EMOJIS))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
 
     model_config = {"populate_by_name": True}
 
@@ -60,7 +64,7 @@ class AuditLogDocument(BaseModel):
     """Internal MongoDB document model for audit log entries."""
 
     id: str = Field(alias="_id")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=_utcnow)
     actor_id: str
     action: str
     resource_type: str

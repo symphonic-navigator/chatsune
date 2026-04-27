@@ -53,6 +53,11 @@ const BTN = 'px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide
 const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
 const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
 
+const OPTION_STYLE: React.CSSProperties = {
+  background: '#0f0d16',
+  color: 'rgba(255,255,255,0.85)',
+}
+
 export function BookmarksTab({ onClose }: BookmarksTabProps) {
   const { bookmarks, setBookmarks, isLoading } = useBookmarks()
   const { personas } = usePersonas()
@@ -148,9 +153,9 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
           className="w-full sm:w-auto bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
         >
-          <option value="all">All Personas</option>
+          <option value="all" style={OPTION_STYLE}>All Personas</option>
           {filterPersonas.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id} style={OPTION_STYLE}>{p.name}</option>
           ))}
         </select>
       </div>
