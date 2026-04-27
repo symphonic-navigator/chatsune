@@ -52,6 +52,14 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const reducedMotionRef = useRef(false)
   const frozenBinsRef = useRef<Float32Array | null>(null)
 
+  // [TIDOTS] TEMP DEBUG — remove after diagnosing transcription-indicator visibility.
+  // Logs every phase change and a periodic snapshot of the visualiser state so we
+  // can see whether `transcribing` ever wins long enough to fade the dots in.
+  const debugFrameCounter = useRef(0)
+  useEffect(() => {
+    console.log(`[TIDOTS] ${performance.now().toFixed(0)}ms phase → ${phase}`)
+  }, [phase])
+
   // Buffer used when the noise branch is the data source.
   // Stable across renders; resized when barCount changes.
   const noiseBufferRef = useRef<Float32Array>(new Float32Array(barCount))
@@ -157,6 +165,17 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       const visible = playing || expected
       const target = visible ? 1 : 0
       activeRef.current += (target - activeRef.current) * FADE_RATE
+
+      // [TIDOTS] TEMP DEBUG — periodic snapshot, ~every 0.5 s at 60 fps.
+      debugFrameCounter.current++
+      if (debugFrameCounter.current % 30 === 0) {
+        console.log(
+          `[TIDOTS] ${performance.now().toFixed(0)}ms ` +
+          `phase=${phase} playing=${playing} expected=${expected} ` +
+          `activeRef=${activeRef.current.toFixed(3)} ` +
+          `dotsActiveRef=${dotsActiveRef.current.toFixed(3)}`
+        )
+      }
 
       // Always advance the dots fade so transitions stay smooth even when
       // the bars branch is the one rendering this frame. Bars and dots are
