@@ -132,7 +132,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Filters */}
-      <div className="px-4 pt-4 pb-2 flex-shrink-0 flex gap-2">
+      <div className="px-4 pt-4 pb-2 flex-shrink-0 flex flex-col sm:flex-row gap-2">
         <input
           type="text"
           value={search}
@@ -145,7 +145,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
           value={personaFilter}
           onChange={(e) => setPersonaFilter(e.target.value)}
           aria-label="Filter by persona"
-          className="bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
+          className="w-full sm:w-auto bg-surface border border-white/8 rounded-lg px-2 py-1 text-[11px] font-mono text-white/60 outline-none focus:border-gold/40 cursor-pointer appearance-none pr-6"
           style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%2712%27 viewBox=%270 0 12 12%27%3E%3Cpath d=%27M3 5l3 3 3-3%27 fill=%27none%27 stroke=%27rgba(255,255,255,0.3)%27 stroke-width=%271.5%27/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}
         >
           <option value="all">All Personas</option>
