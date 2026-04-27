@@ -318,11 +318,11 @@ function ArtefactRow({ item, onOpen, onRename, onDelete }: ArtefactRowProps) {
 
   return (
     <div className="group rounded-lg transition-colors hover:bg-white/4">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div className="flex items-start gap-3 px-3 py-2.5 [@media(hover:hover)]:items-center">
         {/* Persona monogram */}
         {chakra && (
           <div
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif mt-0.5 [@media(hover:hover)]:mt-0"
             style={{
               background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
               color: `${chakra.hex}CC`,
@@ -332,12 +332,14 @@ function ArtefactRow({ item, onOpen, onRename, onDelete }: ArtefactRowProps) {
           </div>
         )}
 
-        {/* Main content — clickable to open chat */}
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex-1 min-w-0 text-left"
-        >
+        {/* Inner container: stacks title+actions on touch, sits side-by-side on hover-capable devices */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 [@media(hover:hover)]:flex-row [@media(hover:hover)]:items-center [@media(hover:hover)]:gap-3">
+          {/* Main content — clickable to open chat */}
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex-1 min-w-0 text-left"
+          >
           <div className="flex items-center gap-2">
             {editing ? (
               <input
@@ -377,10 +379,10 @@ function ArtefactRow({ item, onOpen, onRename, onDelete }: ArtefactRowProps) {
               {formatDate(item.updated_at)}
             </p>
           </div>
-        </button>
+          </button>
 
-        {/* Actions — visible on hover */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
+          {/* Actions — second row on touch, hover-faded inline on hover-capable */}
+          <div className="flex items-center gap-1 flex-shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
           <button
             type="button"
             onClick={startEdit}
@@ -421,14 +423,15 @@ function ArtefactRow({ item, onOpen, onRename, onDelete }: ArtefactRowProps) {
           >
             OPEN
           </button>
-          <span role="status" aria-live="polite" className="sr-only">
-            {confirmDelete ? 'Confirm delete: press SURE to remove this artefact.' : ''}
-          </span>
+            <span role="status" aria-live="polite" className="sr-only">
+              {confirmDelete ? 'Confirm delete: press SURE to remove this artefact.' : ''}
+            </span>
+          </div>
         </div>
 
         {/* Open arrow */}
         <span
-          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer"
+          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer mt-0.5 [@media(hover:hover)]:mt-0"
           onClick={onOpen}
         >
           ›

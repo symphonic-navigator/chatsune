@@ -296,7 +296,7 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
 
   return (
     <div className="group rounded-lg transition-colors hover:bg-white/4">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div className="flex items-start gap-3 px-3 py-2.5 [@media(hover:hover)]:items-center">
         {/* Drag handle */}
         {dragListeners && (
           <span
@@ -310,7 +310,7 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
         {/* Persona monogram */}
         {chakra && monogram && (
           <div
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif mt-0.5 [@media(hover:hover)]:mt-0"
             style={{
               background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
               color: `${chakra.hex}CC`,
@@ -320,61 +320,64 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
           </div>
         )}
 
-        {/* Main content */}
-        {editing ? (
-          <div className="flex-1 min-w-0">
-            <input
-              ref={inputRef}
-              type="text"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={saveEdit}
-              className="w-full bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
-            />
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-[10px] text-white/40 font-mono truncate">{personaName}</p>
+        {/* Inner container: stacks title+actions on touch, sits side-by-side on hover-capable devices */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 [@media(hover:hover)]:flex-row [@media(hover:hover)]:items-center [@media(hover:hover)]:gap-3">
+          {/* Main content */}
+          {editing ? (
+            <div className="flex-1 min-w-0">
+              <input
+                ref={inputRef}
+                type="text"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={saveEdit}
+                className="w-full bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
+              />
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[10px] text-white/40 font-mono truncate">{personaName}</p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left">
-            <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-              {bookmark.title}
-            </p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-[10px] text-white/40 font-mono truncate">{personaName}</p>
-            </div>
-          </button>
-        )}
-
-        {/* Actions — visible on hover */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
-          <button
-            type="button"
-            onClick={startEdit}
-            aria-label={`Edit bookmark title ${bookmark.title}`}
-            title="Edit title"
-            className={BTN_NEUTRAL}
-          >
-            EDIT
-          </button>
-          {confirmDelete ? (
-            <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete bookmark" title="Confirm delete" className={BTN_RED}>
-              SURE?
-            </button>
           ) : (
-            <button type="button" onClick={startDeleteConfirm} aria-label={`Delete bookmark ${bookmark.title}`} title="Delete bookmark" className={BTN_NEUTRAL}>
-              DEL
+            <button type="button" onClick={onOpen} className="flex-1 min-w-0 text-left">
+              <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
+                {bookmark.title}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-[10px] text-white/40 font-mono truncate">{personaName}</p>
+              </div>
             </button>
           )}
-          <span role="status" aria-live="polite" className="sr-only">
-            {confirmDelete ? 'Confirm delete: press SURE to remove this bookmark.' : ''}
-          </span>
+
+          {/* Actions — second row on touch, hover-faded inline on hover-capable */}
+          <div className="flex items-center gap-1 flex-shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label={`Edit bookmark title ${bookmark.title}`}
+              title="Edit title"
+              className={BTN_NEUTRAL}
+            >
+              EDIT
+            </button>
+            {confirmDelete ? (
+              <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete bookmark" title="Confirm delete" className={BTN_RED}>
+                SURE?
+              </button>
+            ) : (
+              <button type="button" onClick={startDeleteConfirm} aria-label={`Delete bookmark ${bookmark.title}`} title="Delete bookmark" className={BTN_NEUTRAL}>
+                DEL
+              </button>
+            )}
+            <span role="status" aria-live="polite" className="sr-only">
+              {confirmDelete ? 'Confirm delete: press SURE to remove this bookmark.' : ''}
+            </span>
+          </div>
         </div>
 
         {/* Open arrow */}
         <span
-          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer"
+          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer mt-0.5 [@media(hover:hover)]:mt-0"
           onClick={onOpen}
         >
           ›

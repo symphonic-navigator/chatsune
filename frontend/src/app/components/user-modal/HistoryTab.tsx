@@ -299,11 +299,11 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
 
   return (
     <div className="group rounded-lg transition-colors hover:bg-white/4">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div className="flex items-start gap-3 px-3 py-2.5 [@media(hover:hover)]:items-center">
         {/* Persona monogram */}
         {chakra && monogram && (
           <div
-            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif mt-0.5 [@media(hover:hover)]:mt-0"
             style={{
               background: `radial-gradient(circle, ${chakra.hex}40 0%, ${chakra.hex}10 80%)`,
               color: `${chakra.hex}CC`,
@@ -313,81 +313,84 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
           </div>
         )}
 
-        {/* Main content — clickable to open chat */}
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex-1 min-w-0 text-left"
-        >
-          <div className="flex items-center gap-2">
-            {editing ? (
-              <input
-                ref={inputRef}
-                type="text"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={saveEdit}
-                onClick={(e) => e.stopPropagation()}
-                className="flex-1 bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
-              />
-            ) : (
-              <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-                {session.title ?? formatDate(session.updated_at)}
+        {/* Inner container: stacks title+actions on touch, sits side-by-side on hover-capable devices */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 [@media(hover:hover)]:flex-row [@media(hover:hover)]:items-center [@media(hover:hover)]:gap-3">
+          {/* Main content — clickable to open chat */}
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex-1 min-w-0 text-left"
+          >
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onBlur={saveEdit}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
+                />
+              ) : (
+                <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
+                  {session.title ?? formatDate(session.updated_at)}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-[10px] text-white/40 font-mono truncate">
+                {personaName}
               </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-[10px] text-white/40 font-mono truncate">
-              {personaName}
-            </p>
-            <span className="text-[10px] text-white/20">·</span>
-            <p className="text-[10px] text-white/30 font-mono">
-              {formatDate(session.updated_at)}
-            </p>
-          </div>
-        </button>
+              <span className="text-[10px] text-white/20">·</span>
+              <p className="text-[10px] text-white/30 font-mono">
+                {formatDate(session.updated_at)}
+              </p>
+            </div>
+          </button>
 
-        {/* Actions — visible on hover */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
-          <button
-            type="button"
-            onClick={startEdit}
-            aria-label="Rename session"
-            title="Rename"
-            className={BTN_NEUTRAL}
-          >
-            REN
-          </button>
-          <button
-            type="button"
-            onClick={handleGenerateTitle}
-            disabled={generating}
-            aria-label="Generate session title"
-            title="Generate title"
-            className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
-          >
-            {generating ? (
-              <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-white/20 border-t-white/50" />
-            ) : genSuccess ? 'OK' : 'GEN'}
-          </button>
-          {confirmDelete ? (
-            <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete session" title="Confirm delete" className={BTN_RED}>
-              SURE?
+          {/* Actions — second row on touch, hover-faded inline on hover-capable */}
+          <div className="flex items-center gap-1 flex-shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label="Rename session"
+              title="Rename"
+              className={BTN_NEUTRAL}
+            >
+              REN
             </button>
-          ) : (
-            <button type="button" onClick={startDeleteConfirm} aria-label="Delete session" title="Delete session" className={BTN_NEUTRAL}>
-              DEL
+            <button
+              type="button"
+              onClick={handleGenerateTitle}
+              disabled={generating}
+              aria-label="Generate session title"
+              title="Generate title"
+              className={`${BTN_NEUTRAL} ${generating ? 'opacity-60 cursor-not-allowed' : ''} ${genSuccess ? 'text-gold' : ''}`}
+            >
+              {generating ? (
+                <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-white/20 border-t-white/50" />
+              ) : genSuccess ? 'OK' : 'GEN'}
             </button>
-          )}
-          <span role="status" aria-live="polite" className="sr-only">
-            {confirmDelete ? 'Confirm delete: press SURE to remove this session.' : ''}
-          </span>
+            {confirmDelete ? (
+              <button ref={sureRef} type="button" onClick={handleDelete} aria-label="Confirm delete session" title="Confirm delete" className={BTN_RED}>
+                SURE?
+              </button>
+            ) : (
+              <button type="button" onClick={startDeleteConfirm} aria-label="Delete session" title="Delete session" className={BTN_NEUTRAL}>
+                DEL
+              </button>
+            )}
+            <span role="status" aria-live="polite" className="sr-only">
+              {confirmDelete ? 'Confirm delete: press SURE to remove this session.' : ''}
+            </span>
+          </div>
         </div>
 
         {/* Open arrow */}
         <span
-          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer"
+          className="text-[11px] text-white/20 group-hover:text-gold/50 transition-colors flex-shrink-0 cursor-pointer mt-0.5 [@media(hover:hover)]:mt-0"
           onClick={onOpen}
         >
           ›

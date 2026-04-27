@@ -313,7 +313,7 @@ export function UploadsTab() {
             {filteredFiles.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/6 hover:border-white/10 transition-colors group"
+                className="flex items-start gap-3 px-3 py-2.5 rounded-lg border border-white/6 hover:border-white/10 transition-colors group [@media(hover:hover)]:items-center"
               >
                 {/* Thumbnail or icon */}
                 <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0 bg-white/4 overflow-hidden">
@@ -327,6 +327,9 @@ export function UploadsTab() {
                     <span className="text-sm">{fileIcon(file.media_type)}</span>
                   )}
                 </div>
+
+                {/* Inner container: stacks name+meta on touch, sits side-by-side on hover-capable devices */}
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5 [@media(hover:hover)]:flex-row [@media(hover:hover)]:items-center [@media(hover:hover)]:gap-3">
 
                 {/* Name column */}
                 <div className="flex flex-col min-w-0 flex-1">
@@ -360,18 +363,20 @@ export function UploadsTab() {
                   )}
                 </div>
 
+                {/* Meta + actions row: stays as one flex-row both on touch (second row of inner) and hover */}
+                <div className="flex items-center gap-2 flex-shrink-0">
                 {/* Size */}
                 <span className="text-[11px] text-white/30 font-mono whitespace-nowrap flex-shrink-0">
                   {formatSize(file.size_bytes)}
                 </span>
 
                 {/* Date */}
-                <span className="text-[11px] text-white/25 font-mono whitespace-nowrap flex-shrink-0 w-20 text-right">
+                <span className="text-[11px] text-white/25 font-mono whitespace-nowrap flex-shrink-0 [@media(hover:hover)]:w-20 [@media(hover:hover)]:text-right">
                   {formatRelativeDate(file.created_at)}
                 </span>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 flex-shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
                   {deletingId === file.id ? (
                     <>
                       <span role="status" aria-live="polite" className="text-[10px] text-red-400 font-mono mr-1">Delete?</span>
@@ -414,6 +419,8 @@ export function UploadsTab() {
                       </button>
                     </>
                   )}
+                </div>
+                </div>
                 </div>
               </div>
             ))}
