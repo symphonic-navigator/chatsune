@@ -48,6 +48,8 @@ class UserRepository:
         password_hash: str,
         role: str,
         must_change_password: bool = False,
+        *,
+        session=None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -62,7 +64,7 @@ class UserRepository:
             "created_at": now,
             "updated_at": now,
         }
-        await self._collection.insert_one(doc)
+        await self._collection.insert_one(doc, session=session)
         return doc
 
     async def update(self, user_id: str, fields: dict) -> dict | None:
@@ -134,7 +136,7 @@ class UserRepository:
         return result.modified_count > 0
 
     async def set_password_hash_and_version(
-        self, user_id: str, *, password_hash: str, version: int
+        self, user_id: str, *, password_hash: str, version: int, session=None,
     ) -> None:
         """Atomically update the password hash and set the hash version field."""
         await self._collection.update_one(
@@ -144,6 +146,7 @@ class UserRepository:
                 "password_hash_version": version,
                 "updated_at": datetime.now(UTC),
             }},
+            session=session,
         )
 
     async def set_must_change_password(self, user_id: str, *, value: bool) -> None:
