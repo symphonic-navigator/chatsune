@@ -11,6 +11,9 @@ export interface RenderOpts {
   maxHeightFraction: number
 }
 
+/** Fraction of the canvas width occupied by the bar field, centred. */
+const WIDTH_FRACTION = 0.9
+
 /**
  * Render a frame of the equaliser for the requested style. Caller has
  * already cleared the canvas. `bins` is normalised to [0, 1].
@@ -31,29 +34,36 @@ export function drawVisualiserFrame(
   }
 }
 
-function barLayout(width: number, height: number, n: number, frac: number) {
+export function barLayout(
+  width: number,
+  height: number,
+  n: number,
+  frac: number,
+): { cy: number; slot: number; barW: number; maxDy: number; xOffset: number } {
+  const usableWidth = width * WIDTH_FRACTION
+  const xOffset = (width - usableWidth) / 2
   const cy = height / 2
-  const slot = width / n
+  const slot = usableWidth / n
   const barW = slot * 0.62
   const maxDy = (height * frac) / 2
-  return { cy, slot, barW, maxDy }
+  return { cy, slot, barW, maxDy, xOffset }
 }
 
 function drawSharp(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts) {
   const n = bins.length
-  const { cy, slot, barW, maxDy } = barLayout(w, h, n, o.maxHeightFraction)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction)
   const [lr, lg, lb] = o.rgbLight
   ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity})`
   for (let i = 0; i < n; i++) {
     const dy = Math.min(bins[i], 1) * maxDy
     if (dy < 0.5) continue
-    ctx.fillRect(i * slot + (slot - barW) / 2, cy - dy, barW, dy * 2)
+    ctx.fillRect(xOffset + i * slot + (slot - barW) / 2, cy - dy, barW, dy * 2)
   }
 }
 
 function drawSoft(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts) {
   const n = bins.length
-  const { cy, slot, barW, maxDy } = barLayout(w, h, n, o.maxHeightFraction)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction)
   const [r, g, b] = o.rgb
   const [lr, lg, lb] = o.rgbLight
   for (let i = 0; i < n; i++) {
@@ -65,13 +75,13 @@ function drawSoft(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Flo
     grd.addColorStop(0.5, `rgba(${lr},${lg},${lb},${o.opacity})`)
     grd.addColorStop(1,   `rgba(${r},${g},${b},${o.opacity * 0.15})`)
     ctx.fillStyle = grd
-    ctx.fillRect(i * slot + (slot - barW) / 2, y0, barW, dy * 2)
+    ctx.fillRect(xOffset + i * slot + (slot - barW) / 2, y0, barW, dy * 2)
   }
 }
 
 function drawGlow(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts) {
   const n = bins.length
-  const { cy, slot, barW, maxDy } = barLayout(w, h, n, o.maxHeightFraction)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction)
   const [r, g, b] = o.rgb
   const [lr, lg, lb] = o.rgbLight
   ctx.shadowColor = `rgba(${r},${g},${b},${o.opacity * 1.5})`
@@ -80,20 +90,20 @@ function drawGlow(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Flo
   for (let i = 0; i < n; i++) {
     const dy = Math.min(bins[i], 1) * maxDy
     if (dy < 0.5) continue
-    ctx.fillRect(i * slot + (slot - barW) / 2, cy - dy, barW, dy * 2)
+    ctx.fillRect(xOffset + i * slot + (slot - barW) / 2, cy - dy, barW, dy * 2)
   }
   ctx.shadowBlur = 0
 }
 
 function drawGlass(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts) {
   const n = bins.length
-  const { cy, slot, barW, maxDy } = barLayout(w, h, n, o.maxHeightFraction)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction)
   const [lr, lg, lb] = o.rgbLight
   ctx.lineWidth = 1
   for (let i = 0; i < n; i++) {
     const dy = Math.min(bins[i], 1) * maxDy
     if (dy < 0.5) continue
-    const x = i * slot + (slot - barW) / 2
+    const x = xOffset + i * slot + (slot - barW) / 2
     const y0 = cy - dy
     ctx.fillStyle = `rgba(255,255,255,${o.opacity * 0.45})`
     ctx.fillRect(x, y0, barW, dy * 2)
