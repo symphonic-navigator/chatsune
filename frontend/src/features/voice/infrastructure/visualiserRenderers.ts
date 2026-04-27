@@ -41,7 +41,7 @@ export function drawVisualiserFrame(
 
 
 export function barLayout(
-  width: number,
+  _width: number,
   height: number,
   n: number,
   frac: number,
