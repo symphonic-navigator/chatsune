@@ -3,6 +3,7 @@ import type { ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from 
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
+import { useReportBounds } from '../voice/infrastructure/useReportBounds'
 import { UserBubble } from './UserBubble'
 import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
@@ -60,6 +61,9 @@ export function MessageList({
   const visionDescriptions = useChatStore((s) => s.visionDescriptions)
   const correlationId = useChatStore((s) => s.correlationId)
   const streamingSlow = useChatStore((s) => s.streamingSlow)
+
+  const textColumnRef = useRef<HTMLDivElement>(null)
+  useReportBounds(textColumnRef, 'textColumn')
 
   const [slowElapsed, setSlowElapsed] = useState<number>(0)
   const slowSinceRef = useRef<number | null>(null)
@@ -129,7 +133,7 @@ export function MessageList({
       */}
       <div ref={containerRef} className="chat-scroll absolute inset-0 overflow-y-auto px-3 py-6 lg:px-4 [overflow-anchor:none]">
       <style>{scrollbarStyle}</style>
-      <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div ref={textColumnRef} className="mx-auto flex max-w-3xl flex-col gap-4">
         {messages.length === 0 && !isStreaming && !isWaitingForResponse && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-[13px] text-white/20">Start a conversation</p>
