@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMemoryStore } from '../../../core/store/memoryStore'
 import { memoryApi } from '../../../core/api/memory'
-import { useMemoryEvents } from '../../../features/memory/useMemoryEvents'
 import type { JournalEntryDto } from '../../../core/api/memory'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
@@ -32,8 +31,6 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   const setUncommittedEntries = useMemoryStore((s) => s.setUncommittedEntries)
   const setCommittedEntries = useMemoryStore((s) => s.setCommittedEntries)
   const resetToastCounter = useMemoryStore((s) => s.resetToastCounter)
-
-  useMemoryEvents(personaId)
 
   useEffect(() => {
     if (!personaId) return
