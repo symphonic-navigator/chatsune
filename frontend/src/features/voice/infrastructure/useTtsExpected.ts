@@ -76,6 +76,8 @@ export function useTtsExpected(
 
     // Sources to subscribe to.
     const unsubAudio = audioPlayback.subscribe(evaluate)
+    // GroupListener receives the group value; evaluate ignores it and reads
+    // getActiveGroup() directly so the signature stays uniform with the others.
     const unsubGroup = subscribeActiveGroup(evaluate)
     const unsubMode = useConversationModeStore.subscribe(evaluate)
     const unsubCockpit = useCockpitStore.subscribe(evaluate)
@@ -92,6 +94,15 @@ export function useTtsExpected(
   }, [])
 
   // Re-evaluate when isReadingAloud (the one React-driven source) changes.
+  //
+  // The two effects share lastValueRef. React runs effects in declaration
+  // order within a commit, so the subscription effect above fires first and
+  // updates lastValueRef before this one runs. Sole external race is a
+  // subscription firing after isReadingAloudRef has been updated (in the
+  // render body) but before this effect runs; in that case evaluate() in
+  // the subscription effect already sees the fresh isReadingAloud value
+  // and fires onTrueEdge if appropriate, and this effect is a no-op. No
+  // double-fire is possible.
   useEffect(() => {
     const value = accessorRef.current!()
     if (value && !lastValueRef.current && onTrueEdgeRef.current) {
