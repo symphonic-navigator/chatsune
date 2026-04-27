@@ -38,7 +38,7 @@ export function MobileSidebarHeader({ title, onBack, onClose }: MobileSidebarHea
         type="button"
         onClick={onClose}
         aria-label="Close drawer"
-        className="flex h-7 w-7 items-center justify-center rounded text-[14px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
+        className="flex h-11 w-11 items-center justify-center rounded text-[14px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
       >
         ✕
       </button>
