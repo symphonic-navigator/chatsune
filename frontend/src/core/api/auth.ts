@@ -152,7 +152,7 @@ export const authApi = {
     const salt = fromBase64Url(params.kdf_salt)
     const { hAuth, hKek } = await deriveAuthAndKek(opts.password, salt, params.kdf_params)
     const recoveryKey = generateRecoveryKey()
-    const resp = await apiRequest<{ success: boolean; user_id: string }>(
+    const resp = await apiRequest<{ user_id: string }>(
       "POST",
       `/api/invitations/${encodeURIComponent(token)}/register`,
       {
@@ -172,7 +172,7 @@ export const authApi = {
     const resp = await apiRequest<{ token: string; expires_at: string }>(
       "POST",
       "/api/admin/invitations",
-      {},
+      undefined,
     )
     return { token: resp.token, expiresAt: resp.expires_at }
   },
