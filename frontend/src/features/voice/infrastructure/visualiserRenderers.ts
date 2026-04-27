@@ -61,6 +61,33 @@ export function barLayout(
   return { cy, slot, barW, maxDy, xOffset }
 }
 
+const DOT_BASE_RADIUS = 7
+const DOT_GAP = 22
+
+export function dotLayout(geometry: BarGeometry): {
+  centreX: number
+  dotXs: [number, number, number]
+  baseRadius: number
+  gap: number
+} {
+  // Same clamping rules as barLayout so the dots stay centred on the
+  // same visual extent as the bars (≤ 1.2 × textColumn, but never wider
+  // than chatview).
+  const { chatview, textColumn } = geometry
+  const target = textColumn.w * 1.2
+  const usable = Math.min(target, chatview.w)
+  const tcCentre = textColumn.x + textColumn.w / 2
+  const left = Math.max(chatview.x, tcCentre - usable / 2)
+  const right = Math.min(chatview.x + chatview.w, tcCentre + usable / 2)
+  const centreX = (left + right) / 2
+  return {
+    centreX,
+    dotXs: [centreX - DOT_GAP, centreX, centreX + DOT_GAP],
+    baseRadius: DOT_BASE_RADIUS,
+    gap: DOT_GAP,
+  }
+}
+
 function drawSharp(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
   const n = bins.length
   const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, g)

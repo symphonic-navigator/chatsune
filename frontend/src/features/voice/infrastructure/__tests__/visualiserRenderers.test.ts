@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barLayout, type BarGeometry } from '../visualiserRenderers'
+import { barLayout, dotLayout, type BarGeometry } from '../visualiserRenderers'
 
 const BASE_GEOMETRY: BarGeometry = {
   chatview: { x: 0, w: 1000 },
@@ -70,5 +70,38 @@ describe('barLayout', () => {
       expect(xOffset).toBeCloseTo(39.2)
       expect(slot * 10).toBeCloseTo(921.6)
     })
+  })
+})
+
+describe('dotLayout', () => {
+  it('places centreX at the centre of the bar-layout extent', () => {
+    const g: BarGeometry = {
+      chatview: { x: 0, w: 1000 },
+      textColumn: { x: 116, w: 768 },
+    }
+    // barLayout for this geometry: xOffset=39.2, finalWidth=921.6 → centre 500
+    const { centreX } = dotLayout(g)
+    expect(centreX).toBeCloseTo(500)
+  })
+
+  it('places three dots symmetrically around centreX with a 22 px centre-to-centre gap', () => {
+    const g: BarGeometry = {
+      chatview: { x: 0, w: 1000 },
+      textColumn: { x: 116, w: 768 },
+    }
+    const { dotXs, gap } = dotLayout(g)
+    expect(gap).toBe(22)
+    expect(dotXs[1] - dotXs[0]).toBeCloseTo(22)
+    expect(dotXs[2] - dotXs[1]).toBeCloseTo(22)
+    expect(dotXs[1]).toBeCloseTo(500)
+  })
+
+  it('exposes a 7 px base radius (14 px diameter)', () => {
+    const g: BarGeometry = {
+      chatview: { x: 0, w: 1000 },
+      textColumn: { x: 116, w: 768 },
+    }
+    const { baseRadius } = dotLayout(g)
+    expect(baseRadius).toBe(7)
   })
 })
