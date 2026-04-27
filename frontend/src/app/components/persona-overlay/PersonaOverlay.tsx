@@ -56,6 +56,7 @@ const DEFAULT_PERSONA: PersonaDto = {
   soft_cot_enabled: false,
   vision_fallback_model: null,
   nsfw: false,
+  use_memory: true,
   colour_scheme: 'heart',
   display_order: 0,
   monogram: '?',
