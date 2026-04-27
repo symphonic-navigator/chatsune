@@ -57,6 +57,24 @@ body {
   height: 100%;
 }
 
+/* Cockpit-button fixed visual size — opt out of the body's UI-scale transform.
+ * Buttons stay at the equivalent of "120% of default" regardless of the user's
+ * UI-scale setting. The layout size is divided by the scale factor so that
+ * body's transform: scale(--ui-scale) re-multiplies it back to a stable
+ * rendered size — preventing wrap on iPhone SE at high UI-scale settings.
+ *
+ * Mobile rendered size: 32px * 1.2 = 38.4px; Desktop: 36px * 1.2 = 43.2px. */
+.cockpit-btn-fixed {
+  width: calc(38.4px / var(--ui-scale, 1));
+  height: calc(38.4px / var(--ui-scale, 1));
+}
+@media (min-width: 1024px) {
+  .cockpit-btn-fixed {
+    width: calc(43.2px / var(--ui-scale, 1));
+    height: calc(43.2px / var(--ui-scale, 1));
+  }
+}
+
 /* Persona card entrance animation */
 @keyframes card-entrance {
   from {

@@ -56,7 +56,7 @@ export function CockpitButton({
     closeTimer.current = window.setTimeout(() => setPanelOpen(false), 120)
   }
 
-  const base = 'inline-flex items-center justify-center h-8 w-8 lg:h-9 lg:w-9 rounded-md border transition'
+  const base = 'cockpit-btn-fixed inline-flex items-center justify-center rounded-md border transition'
   const disabled = state === 'disabled'
   // A disabled button becomes an actionable "needs setup" button when the
   // caller still provides an onClick — it keeps the muted visual but accepts
