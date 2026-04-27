@@ -26,6 +26,11 @@ import { SidebarFlyout } from './SidebarFlyout'
 import { NewChatRow } from './NewChatRow'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
+import { MobileSidebarHeader } from './MobileSidebarHeader'
+import { MobileMainView } from './MobileMainView'
+import { MobileNewChatView } from './MobileNewChatView'
+import { HistoryTab } from '../user-modal/HistoryTab'
+import { BookmarksTab } from '../user-modal/BookmarksTab'
 import type { PersonaDto } from "../../../core/types/persona"
 import { chatApi, type ChatSessionDto } from "../../../core/api/chat"
 import type { TopTabId, SubTabId } from "../user-modal/userModalTree"
@@ -205,6 +210,14 @@ export function Sidebar({
   // is a one-line widening rather than reshaping every callsite.
   const [flyoutTab, setFlyoutTab] = useState<'history' | null>(null)
 
+  type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks'
+  const [mobileView, setMobileView] = useState<MobileView>('main')
+
+  // Reset to main when the drawer is closed (so next open lands on main view).
+  useEffect(() => {
+    if (!drawerOpen) setMobileView('main')
+  }, [drawerOpen])
+
   function toggleFlyout(tab: 'history') {
     setFlyoutTab((prev) => {
       if (prev === tab) {
@@ -302,6 +315,15 @@ export function Sidebar({
     }
   }
 
+  /** Close any mobile overlay AND the drawer itself. Used by item-tap in
+   *  History/Bookmarks/New-Chat to fully collapse. */
+  function closeOverlayAndDrawer() {
+    setMobileView('main')
+    if (!isDesktop) {
+      useDrawerStore.getState().close()
+    }
+  }
+
   /** Open a modal tab and dismiss the mobile drawer. */
   function openModalAndClose(leaf: string) {
     closeDrawerIfMobile()
@@ -323,6 +345,13 @@ export function Sidebar({
   function handleNewChat(persona: PersonaDto) {
     onCloseModal()
     closeDrawerIfMobile()
+    navigate(`/chat/${persona.id}?new=1`)
+  }
+
+  function handleNewChatFromMobileOverlay(persona: PersonaDto) {
+    onCloseModal()
+    setMobileView('main')
+    useDrawerStore.getState().close()
     navigate(`/chat/${persona.id}?new=1`)
   }
 
@@ -666,7 +695,75 @@ export function Sidebar({
     )
   }
 
-  // ── Expanded view ───────────────────��─────────────────────��─────
+  // ── Mobile branch ───────────────────────────────────────────────────
+  if (!isDesktop) {
+    const handleAdmin     = () => { closeDrawerIfMobile(); onOpenAdmin() }
+    const handlePersonas  = () => { onCloseModal(); closeDrawerIfMobile(); navigate('/personas') }
+    const handleKnowledge = () => openModalAndClose('knowledge')
+    const handleMyData    = () => openModalAndClose('my-data')
+    const handleUserRow   = () => openModalAndClose(avatarTab)
+    const handleClose     = () => useDrawerStore.getState().close()
+
+    const overlayTitle =
+      mobileView === 'new-chat'  ? 'New Chat'  :
+      mobileView === 'history'   ? 'History'   :
+      mobileView === 'bookmarks' ? 'Bookmarks' :
+      undefined
+
+    return (
+      <aside
+        className={[
+          'fixed inset-y-0 left-0 z-40 flex h-full w-screen flex-col overflow-hidden border-r border-white/6 bg-base transition-transform duration-200 ease-out',
+          drawerOpen ? 'translate-x-0' : '-translate-x-full',
+        ].join(' ')}
+      >
+        <MobileSidebarHeader
+          title={overlayTitle}
+          onBack={overlayTitle ? () => setMobileView('main') : undefined}
+          onClose={handleClose}
+        />
+
+        <div className="relative flex-1 overflow-hidden">
+          <div
+            className="flex h-full w-[200%] transition-transform duration-150 ease-out"
+            style={{ transform: mobileView === 'main' ? 'translateX(0)' : 'translateX(-50%)' }}
+          >
+            <div className="h-full w-1/2 flex-shrink-0 overflow-hidden">
+              <MobileMainView
+                isAdmin={isAdmin}
+                isInChat={isInChat}
+                hasLastSession={!!lastSession}
+                hasApiKeyProblem={hasApiKeyProblem}
+                isSanitised={isSanitised}
+                displayName={displayName}
+                role={user?.role || ''}
+                initial={initial}
+                onAdmin={handleAdmin}
+                onContinue={handleContinue}
+                onNewChat={() => setMobileView('new-chat')}
+                onPersonas={handlePersonas}
+                onHistory={() => setMobileView('history')}
+                onBookmarks={() => setMobileView('bookmarks')}
+                onKnowledge={handleKnowledge}
+                onMyData={handleMyData}
+                onToggleSanitised={toggleSanitised}
+                onUserRow={handleUserRow}
+                onLogout={() => logout()}
+              />
+            </div>
+
+            <div className="h-full w-1/2 flex-shrink-0 overflow-hidden">
+              {mobileView === 'new-chat'  && <MobileNewChatView personas={personas} onSelect={handleNewChatFromMobileOverlay} onClose={closeOverlayAndDrawer} />}
+              {mobileView === 'history'   && <HistoryTab   onClose={closeOverlayAndDrawer} />}
+              {mobileView === 'bookmarks' && <BookmarksTab onClose={closeOverlayAndDrawer} />}
+            </div>
+          </div>
+        </div>
+      </aside>
+    )
+  }
+
+  // ── Desktop expanded view ──────────────────────────────────────────────
   return (
     <aside
       className={[
