@@ -17,6 +17,7 @@ class PersonaDocument(BaseModel):
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool
+    use_memory: bool = True
     colour_scheme: str
     display_order: int
     monogram: str

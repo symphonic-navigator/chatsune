@@ -75,6 +75,7 @@ async def clone_persona(
             temperature=source.get("temperature", 1.0),
             reasoning_enabled=source.get("reasoning_enabled", False),
             nsfw=source.get("nsfw", False),
+            use_memory=source.get("use_memory", True),
             colour_scheme=source.get("colour_scheme", "solar") or "solar",
             display_order=next_order,
             pinned=False,

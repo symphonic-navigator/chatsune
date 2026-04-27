@@ -150,6 +150,7 @@ async def create_persona(
         display_order=body.display_order,
         soft_cot_enabled=body.soft_cot_enabled,
         vision_fallback_model=body.vision_fallback_model,
+        use_memory=body.use_memory,
     )
 
     user_id = user["sub"]

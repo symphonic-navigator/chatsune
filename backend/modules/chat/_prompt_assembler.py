@@ -105,11 +105,15 @@ async def assemble(
     if is_soft_cot_active(soft_cot_enabled, supports_reasoning, reasoning_enabled_for_call):
         parts.append(SOFT_COT_INSTRUCTIONS)
 
-    # Layer: User memory (if available)
-    from backend.modules.memory import get_memory_context
-    memory_xml = await get_memory_context(user_id, persona_id) if persona_id else None
-    if memory_xml:
-        parts.append(memory_xml)
+    # Layer: User memory (if available, and the persona opts in to injection).
+    # Generation jobs continue regardless — only the prompt-time read path
+    # is gated. See devdocs/specs/2026-04-27-persona-use-memory-toggle-design.md.
+    use_memory = bool(persona_doc.get("use_memory", True)) if persona_doc else True
+    if persona_id and use_memory:
+        from backend.modules.memory import get_memory_context
+        memory_xml = await get_memory_context(user_id, persona_id)
+        if memory_xml:
+            parts.append(memory_xml)
 
     # Layer: Integration prompt extensions (active integrations for this persona).
     # Skipped when the session has tools disabled — the tool list sent to the

@@ -22,6 +22,7 @@ export interface PersonaDto {
   soft_cot_enabled: boolean;
   vision_fallback_model: string | null;
   nsfw: boolean;
+  use_memory: boolean;
   colour_scheme: ChakraColour;
   display_order: number;
   monogram: string;
@@ -66,6 +67,7 @@ export interface CreatePersonaRequest {
   soft_cot_enabled?: boolean;
   vision_fallback_model?: string | null;
   nsfw?: boolean;
+  use_memory?: boolean;
   colour_scheme?: ChakraColour;
   display_order?: number;
   pinned?: boolean;
@@ -82,6 +84,7 @@ export interface UpdatePersonaRequest {
   soft_cot_enabled?: boolean;
   vision_fallback_model?: string | null;
   nsfw?: boolean;
+  use_memory?: boolean;
   colour_scheme?: ChakraColour;
   display_order?: number;
   pinned?: boolean;

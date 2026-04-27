@@ -30,6 +30,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   const [softCotEnabled, setSoftCotEnabled] = useState(persona.soft_cot_enabled)
   const [visionFallbackModel, setVisionFallbackModel] = useState<string | null>(persona.vision_fallback_model)
   const [nsfw, setNsfw] = useState(persona.nsfw)
+  const [useMemory, setUseMemory] = useState(persona.use_memory)
   const [saving, setSaving] = useState(false)
   const [modelUniqueId, setModelUniqueId] = useState(persona.model_unique_id)
   const [modelDisplayName, setModelDisplayName] = useState(
@@ -128,6 +129,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     softCotEnabled !== persona.soft_cot_enabled ||
     visionFallbackModel !== persona.vision_fallback_model ||
     nsfw !== persona.nsfw ||
+    useMemory !== persona.use_memory ||
     modelUniqueId !== persona.model_unique_id
 
   const canSave = isCreating
@@ -148,6 +150,7 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
         soft_cot_enabled: softCotEnabled,
         vision_fallback_model: visionFallbackModel,
         nsfw,
+        use_memory: useMemory,
         model_unique_id: modelUniqueId,
       }
       await onSave(isCreating ? null : persona.id, data)
@@ -469,6 +472,13 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
             description="Hide this persona and related data in 'sanitised' mode"
             value={nsfw}
             onChange={setNsfw}
+            chakraHex={chakra.hex}
+          />
+          <Toggle
+            label="Use memory"
+            description="Inject this persona's memories into the prompt. Memories are still generated when off."
+            value={useMemory}
+            onChange={setUseMemory}
             chakraHex={chakra.hex}
           />
         </div>
