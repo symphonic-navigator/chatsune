@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { barLayout, dotLayout, type BarGeometry } from '../visualiserRenderers'
+import { describe, expect, it, vi } from 'vitest'
+import { barLayout, dotLayout, drawTranscriptionDots, type BarGeometry, type RenderOpts } from '../visualiserRenderers'
 
 const BASE_GEOMETRY: BarGeometry = {
   chatview: { x: 0, w: 1000 },
@@ -103,5 +103,71 @@ describe('dotLayout', () => {
     }
     const { baseRadius } = dotLayout(g)
     expect(baseRadius).toBe(7)
+  })
+})
+
+interface MockCtx {
+  fillStyle: string
+  strokeStyle: string
+  lineWidth: number
+  shadowColor: string
+  shadowBlur: number
+  beginPath: ReturnType<typeof vi.fn>
+  arc: ReturnType<typeof vi.fn>
+  fill: ReturnType<typeof vi.fn>
+  stroke: ReturnType<typeof vi.fn>
+  createRadialGradient: ReturnType<typeof vi.fn>
+}
+
+function makeMockCtx(): MockCtx {
+  return {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 0,
+    shadowColor: '',
+    shadowBlur: 0,
+    beginPath: vi.fn(),
+    arc: vi.fn(),
+    fill: vi.fn(),
+    stroke: vi.fn(),
+    createRadialGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+  }
+}
+
+const DOT_OPTS: RenderOpts = {
+  rgb: [140, 118, 215],
+  rgbLight: [180, 158, 255],
+  opacity: 0.5,
+  maxHeightFraction: 0.28,
+}
+
+const DOT_GEOM: BarGeometry = {
+  chatview: { x: 0, w: 1000 },
+  textColumn: { x: 116, w: 768 },
+}
+
+describe('drawTranscriptionDots dispatcher', () => {
+  it('issues exactly three arc() calls for sharp', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('sharp', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.arc).toHaveBeenCalledTimes(3)
+  })
+
+  it('issues exactly three arc() calls for soft', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('soft', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.arc).toHaveBeenCalledTimes(3)
+  })
+
+  it('issues exactly three arc() calls for glow', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glow', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.arc).toHaveBeenCalledTimes(3)
+  })
+
+  it('issues at least three arc() calls for glass (fill + ring)', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glass', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.arc.mock.calls.length).toBeGreaterThanOrEqual(3)
   })
 })

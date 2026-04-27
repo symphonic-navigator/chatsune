@@ -88,6 +88,79 @@ export function dotLayout(geometry: BarGeometry): {
   }
 }
 
+function dotPulse(t: number, i: number): { scale: number; animOp: number } {
+  // Period 2 s, per-dot stagger 0.3 s. Raised cosine matches the
+  // ThinkingBubble keyframes (0% → 50% → 100%: 0.8 → 1.2 → 0.8 for scale,
+  // 0.3 → 1.0 → 0.3 for opacity), i.e. one hump per period.
+  const raw = (t - i * 0.3) / 2.0
+  const phase = ((raw % 1) + 1) % 1
+  const pulse = (1 - Math.cos(phase * 2 * Math.PI)) / 2
+  return {
+    scale: 0.8 + 0.4 * pulse,
+    animOp: 0.3 + 0.7 * pulse,
+  }
+}
+
+export function drawTranscriptionDots(
+  style: VisualiserStyle,
+  ctx: CanvasRenderingContext2D,
+  height: number,
+  opts: RenderOpts,
+  geometry: BarGeometry,
+  t: number,
+): void {
+  switch (style) {
+    case 'sharp': drawDotsSharp(ctx, height, opts, geometry, t); break
+    case 'soft':  drawDotsSoft(ctx, height, opts, geometry, t); break
+    case 'glow':  drawDotsGlow(ctx, height, opts, geometry, t); break
+    case 'glass': drawDotsGlass(ctx, height, opts, geometry, t); break
+  }
+}
+
+function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  for (let i = 0; i < 3; i++) {
+    const { scale } = dotPulse(t, i)
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  for (let i = 0; i < 3; i++) {
+    const { scale } = dotPulse(t, i)
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  for (let i = 0; i < 3; i++) {
+    const { scale } = dotPulse(t, i)
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  for (let i = 0; i < 3; i++) {
+    const { scale } = dotPulse(t, i)
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
 function drawSharp(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
   const n = bins.length
   const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, g)
