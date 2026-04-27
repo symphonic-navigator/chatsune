@@ -150,15 +150,21 @@ function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g
   }
 }
 
-function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
   const { dotXs, baseRadius } = dotLayout(g)
   const cy = h / 2
+  const [r, gC, b] = o.rgb
+  const [lr, lg, lb] = o.rgbLight
+  ctx.shadowColor = `rgba(${r},${gC},${b},${o.opacity * 1.5})`
+  ctx.shadowBlur = 14
   for (let i = 0; i < 3; i++) {
-    const { scale } = dotPulse(t, i)
+    const { scale, animOp } = dotPulse(t, i)
+    ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity * animOp})`
     ctx.beginPath()
     ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
     ctx.fill()
   }
+  ctx.shadowBlur = 0
 }
 
 function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {

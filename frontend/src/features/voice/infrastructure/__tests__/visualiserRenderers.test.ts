@@ -164,6 +164,22 @@ describe('drawDotsSoft uses radial gradients', () => {
   })
 })
 
+describe('drawDotsGlow sets a shadow blur', () => {
+  it('applies a non-zero shadowBlur with the rgb shadow colour', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glow', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    // Note: shadowBlur is reset to 0 at the end (see other test); the
+    // shadowColor remains set, which is enough to verify the glow path.
+    expect(ctx.shadowColor).toMatch(/^rgba\(140,\s*118,\s*215,/)
+  })
+
+  it('resets shadowBlur to 0 before returning', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glow', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.shadowBlur).toBe(0)
+  })
+})
+
 describe('drawTranscriptionDots dispatcher', () => {
   it('issues exactly three arc() calls for sharp', () => {
     const ctx = makeMockCtx()
