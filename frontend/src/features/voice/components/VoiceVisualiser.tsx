@@ -106,6 +106,14 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         return
       }
 
+      // Spec invariant: paused only becomes true while audio is actually
+      // playing. The HitStrip upstream gates the pause toggle on playback
+      // state, so we never enter this branch during the noise (expected
+      // but no-audio) phase. If that invariant ever lapses, the snapshot
+      // below would freeze a zero-filled buffer for sessions that never
+      // had audio, which renders as a blank canvas — not a crash, but
+      // visually wrong; revisit the upstream guard rather than adding a
+      // defensive branch here.
       if (paused) {
         const bins = accessors.getBins()
         if (!frozenBinsRef.current) {
@@ -164,7 +172,12 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
 
     rafRef.current = requestAnimationFrame(tick)
 
-    // Resume on play (audio events).
+    // Resume on play (audio events). useTtsExpected also subscribes to
+    // audioPlayback for its predicate, but that path goes through
+    // resumeRafRef and would also resume the loop. The direct subscribe
+    // here keeps the resume path explicit and lets the loop restart even
+    // if onTrueEdge is unset (e.g. during a hot-reload window). The
+    // rafRef === null guard makes the redundancy harmless.
     const unsubAudio = audioPlayback.subscribe(() => {
       if (rafRef.current === null && !stopped) {
         rafRef.current = requestAnimationFrame(tick)
