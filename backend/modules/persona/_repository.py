@@ -32,6 +32,7 @@ class PersonaRepository:
         profile_image: str | None = None,
         soft_cot_enabled: bool = False,
         vision_fallback_model: str | None = None,
+        use_memory: bool = True,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -45,6 +46,7 @@ class PersonaRepository:
             "reasoning_enabled": reasoning_enabled,
             "soft_cot_enabled": soft_cot_enabled,
             "vision_fallback_model": vision_fallback_model,
+            "use_memory": use_memory,
             "nsfw": nsfw,
             "colour_scheme": colour_scheme,
             "display_order": display_order,
@@ -166,6 +168,7 @@ class PersonaRepository:
             soft_cot_enabled=doc.get("soft_cot_enabled", False),
             vision_fallback_model=doc.get("vision_fallback_model"),
             nsfw=doc.get("nsfw", False),
+            use_memory=doc.get("use_memory", True),
             colour_scheme=doc["colour_scheme"],
             display_order=doc["display_order"],
             monogram=doc.get("monogram", "??"),

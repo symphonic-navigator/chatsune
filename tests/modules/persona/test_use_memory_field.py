@@ -10,6 +10,7 @@ def _persona_doc_payload(**overrides) -> dict:
         "user_id": "u-1",
         "name": "Aria",
         "tagline": "Your helpful companion",
+        "model_unique_id": "ollama_cloud:llama3.2",
         "system_prompt": "You are helpful.",
         "temperature": 0.8,
         "reasoning_enabled": False,
@@ -88,3 +89,31 @@ def test_update_persona_dto_use_memory_round_trips_explicit_false():
     dto = UpdatePersonaDto(use_memory=False)
     assert dto.use_memory is False
     assert dto.model_dump(exclude_none=True)["use_memory"] is False
+
+
+from backend.modules.persona._repository import PersonaRepository
+
+
+def _doc_with_memory_flag(value: bool | None) -> dict:
+    base = _persona_doc_payload()
+    if value is None:
+        # legacy document — field absent entirely
+        base.pop("use_memory", None)
+    else:
+        base["use_memory"] = value
+    return base
+
+
+def test_to_dto_defaults_missing_use_memory_to_true():
+    dto = PersonaRepository.to_dto(_doc_with_memory_flag(None))
+    assert dto.use_memory is True
+
+
+def test_to_dto_preserves_explicit_false_use_memory():
+    dto = PersonaRepository.to_dto(_doc_with_memory_flag(False))
+    assert dto.use_memory is False
+
+
+def test_to_dto_preserves_explicit_true_use_memory():
+    dto = PersonaRepository.to_dto(_doc_with_memory_flag(True))
+    assert dto.use_memory is True
