@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
 import { MobileMainView } from './MobileMainView'
 
 const baseProps = {
@@ -27,11 +26,7 @@ const baseProps = {
 }
 
 function renderView(overrides: Partial<typeof baseProps> = {}) {
-  return render(
-    <MemoryRouter>
-      <MobileMainView {...baseProps} {...overrides} />
-    </MemoryRouter>
-  )
+  return render(<MobileMainView {...baseProps} {...overrides} />)
 }
 
 describe('MobileMainView — conditional rows', () => {
