@@ -69,3 +69,23 @@ async def test_indexes_created(db):
         idx.get("expireAfterSeconds") == 0 and idx["key"] == [("expires_at", 1)]
         for idx in indexes.values()
     )
+
+
+@pytest.mark.asyncio
+async def test_delete_all_by_creator_removes_only_that_creators_tokens(db):
+    """delete_all_by_creator must purge all tokens for the given creator and
+    leave tokens belonging to other creators untouched."""
+    repo = InvitationRepository(db)
+    await repo.create_indexes()
+
+    t1 = await repo.create(created_by="admin-1", ttl_hours=24)
+    t2 = await repo.create(created_by="admin-1", ttl_hours=24)
+    t3 = await repo.create(created_by="admin-2", ttl_hours=24)
+
+    deleted = await repo.delete_all_by_creator("admin-1")
+    assert deleted == 2
+
+    assert await repo.find_by_token(t1["token"]) is None
+    assert await repo.find_by_token(t2["token"]) is None
+    # admin-2's token must still exist
+    assert await repo.find_by_token(t3["token"]) is not None

@@ -310,6 +310,20 @@ async def cascade_delete_user(
         warnings=audit_warnings,
     ))
 
+    # Step 8b: invitation tokens created by this admin. TTL would eventually
+    # clean them up, but we purge immediately on right-to-be-forgotten so
+    # valid-looking tokens don't remain usable after the admin is gone.
+    from backend.modules.user._invitation_repository import InvitationRepository as _InvRepo
+    inv_repo = _InvRepo(get_db())
+    inv_count, inv_warnings = await _safe_call(
+        "invitation token deletion", inv_repo.delete_all_by_creator(user_id),
+    )
+    steps.append(DeletionStepDto(
+        label="invitation tokens",
+        deleted_count=inv_count or 0,
+        warnings=inv_warnings,
+    ))
+
     # Step 9: per-user Redis safeguard keys.
     redis_patterns = [
         f"safeguard:queue:{user_id}",

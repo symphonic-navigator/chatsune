@@ -63,6 +63,16 @@ class InvitationRepository:
     async def find_by_token(self, token: str) -> dict | None:
         return self._normalise_dates(await self._collection.find_one({"token": token}))
 
+    async def delete_all_by_creator(self, user_id: str) -> int:
+        """Delete all invitation tokens created by *user_id*.
+
+        Called from the cascade-delete flow (right-to-be-forgotten) so that an
+        admin's unused tokens are removed immediately rather than lingering
+        until their TTL expires (up to 24 h).
+        """
+        result = await self._collection.delete_many({"created_by": user_id})
+        return result.deleted_count
+
     async def mark_used_atomic(
         self,
         token: str,
