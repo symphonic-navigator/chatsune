@@ -105,3 +105,54 @@ async def test_assemble_empty_string_treated_as_absent():
         )
 
     assert result == ""
+
+
+async def test_assemble_skips_memory_when_use_memory_false():
+    with patch("backend.modules.chat._prompt_assembler._get_admin_prompt", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_model_instructions", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False, "use_memory": False}), \
+         patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock) as mock_get_memory, \
+         patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value="I am Chris"):
+        result = await assemble(
+            user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
+        )
+
+    # The memory loader is never called when injection is disabled.
+    mock_get_memory.assert_not_called()
+    # No memory block in the assembled prompt.
+    assert "<memory" not in result
+    # About-me is unaffected.
+    assert "I am Chris" in result
+    assert '<userinfo priority="low">' in result
+
+
+async def test_assemble_injects_memory_when_use_memory_true():
+    with patch("backend.modules.chat._prompt_assembler._get_admin_prompt", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_model_instructions", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False, "use_memory": True}), \
+         patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock, return_value="<memory>stuff</memory>") as mock_get_memory, \
+         patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
+        result = await assemble(
+            user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
+        )
+
+    mock_get_memory.assert_awaited_once_with("user-1", "p-1")
+    assert "<memory>stuff</memory>" in result
+
+
+async def test_assemble_defaults_to_injecting_memory_for_legacy_persona_doc():
+    """A persona doc that pre-dates the toggle has no use_memory key — must default to true."""
+    with patch("backend.modules.chat._prompt_assembler._get_admin_prompt", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_model_instructions", return_value=None), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
+         patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False}), \
+         patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock, return_value="<memory>legacy</memory>") as mock_get_memory, \
+         patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
+        result = await assemble(
+            user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
+        )
+
+    mock_get_memory.assert_awaited_once()
+    assert "<memory>legacy</memory>" in result
