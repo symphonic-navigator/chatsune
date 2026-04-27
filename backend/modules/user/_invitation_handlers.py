@@ -77,6 +77,7 @@ async def create_invitation(
 
 @router.post(
     "/invitations/{token}/validate",
+    status_code=200,
     response_model=ValidateInvitationResponseDto,
 )
 async def validate_invitation(token: str) -> ValidateInvitationResponseDto:
@@ -91,10 +92,6 @@ async def validate_invitation(token: str) -> ValidateInvitationResponseDto:
         return ValidateInvitationResponseDto(valid=False, reason="not_found")
     if doc["used"]:
         return ValidateInvitationResponseDto(valid=False, reason="used")
-    # Motor returns naive datetimes; treat them as UTC for comparison.
-    expires_at = doc["expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < datetime.now(timezone.utc):
+    if doc["expires_at"] < datetime.now(timezone.utc):
         return ValidateInvitationResponseDto(valid=False, reason="expired")
     return ValidateInvitationResponseDto(valid=True, reason=None)

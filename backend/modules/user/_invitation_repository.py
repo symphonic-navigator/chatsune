@@ -45,8 +45,23 @@ class InvitationRepository:
         doc["_id"] = result.inserted_id
         return doc
 
+    @staticmethod
+    def _normalise_dates(doc: dict | None) -> dict | None:
+        """Ensure all datetime fields read back from MongoDB are timezone-aware.
+
+        Motor returns naive datetimes; this coerces them to UTC so callers
+        never have to guard against tz-naive comparisons.
+        """
+        if doc is None:
+            return None
+        for field in ("expires_at", "created_at", "used_at"):
+            value = doc.get(field)
+            if value is not None and value.tzinfo is None:
+                doc[field] = value.replace(tzinfo=timezone.utc)
+        return doc
+
     async def find_by_token(self, token: str) -> dict | None:
-        return await self._collection.find_one({"token": token})
+        return self._normalise_dates(await self._collection.find_one({"token": token}))
 
     async def mark_used_atomic(
         self,
@@ -64,15 +79,17 @@ class InvitationRepository:
         from pymongo import ReturnDocument
 
         now = datetime.now(timezone.utc)
-        return await self._collection.find_one_and_update(
-            {"token": token, "used": False, "expires_at": {"$gt": now}},
-            {
-                "$set": {
-                    "used": True,
-                    "used_at": now,
-                    "used_by_user_id": used_by_user_id,
-                }
-            },
-            return_document=ReturnDocument.AFTER,
-            session=session,
+        return self._normalise_dates(
+            await self._collection.find_one_and_update(
+                {"token": token, "used": False, "expires_at": {"$gt": now}},
+                {
+                    "$set": {
+                        "used": True,
+                        "used_at": now,
+                        "used_by_user_id": used_by_user_id,
+                    }
+                },
+                return_document=ReturnDocument.AFTER,
+                session=session,
+            )
         )
