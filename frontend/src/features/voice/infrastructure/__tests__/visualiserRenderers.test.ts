@@ -166,6 +166,11 @@ describe('drawTranscriptionDots dispatcher', () => {
   })
 
   it('issues at least three arc() calls for glass (fill + ring)', () => {
+    // Loose bound during the stub phase — Task 6 turns this into a
+    // strict equality (6 arcs: 3 fill + 3 stroke) once glass is
+    // style-specific. Keeping the bound loose here means the Task 2
+    // test stays green when Task 6 doubles the arc count, instead of
+    // becoming a regression check that needs simultaneous editing.
     const ctx = makeMockCtx()
     drawTranscriptionDots('glass', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
     expect(ctx.arc.mock.calls.length).toBeGreaterThanOrEqual(3)
