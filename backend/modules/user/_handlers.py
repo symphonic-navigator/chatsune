@@ -194,7 +194,14 @@ async def _provision_new_user(
         user_id, password_hash=password_hash, version=1, session=session,
     )
 
-    kdf_salt = os.urandom(32)
+    # The client derived h_auth/h_kek using the deterministic pseudo-salt
+    # returned by /api/auth/kdf-params for the not-yet-existing username.
+    # We must store the SAME salt so the next login (which will see the
+    # user as existing and return keys_doc.kdf_salt) hands back a salt
+    # the client will agree with. Random salts here cause a permanent
+    # verify_h_auth mismatch on first login. See also /auth/login-legacy
+    # which uses the same pattern for the same reason.
+    kdf_salt = pseudo_salt_for_unknown_user(username, settings.kdf_pepper_bytes)
     h_kek_bytes = decode_base64url(h_kek)
     await svc.provision_for_new_user(
         user_id=user_id,

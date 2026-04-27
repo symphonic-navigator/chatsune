@@ -358,3 +358,82 @@ async def test_register_creates_user_with_role_user_no_escalation(
     assert user["role"] == "user"
     assert user["role"] != "admin"
     assert user["role"] != "master_admin"
+
+
+@pytest.mark.asyncio
+async def test_register_then_login_round_trip(
+    client, seeded_admin_token, user_key_service
+):
+    """A user who registers via invitation can log in immediately afterwards.
+
+    Regression test for the KDF-salt-drift bug: _provision_new_user used to
+    store a random kdf_salt while the client derived h_auth/h_kek from the
+    deterministic pseudo-salt returned by /api/auth/kdf-params for the
+    not-yet-existing username.  On first login the server would then hand
+    back the random salt, the client would re-derive a different h_auth, and
+    every first login after self-registration would fail with 401.
+    """
+    from backend.modules.user._recovery_key import generate_recovery_key
+
+    _, admin_token = seeded_admin_token
+    create_resp = await client.post(
+        "/api/admin/invitations",
+        json={},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    token = create_resp.json()["token"]
+
+    username = "round-trip-user"
+
+    # Step 1: call kdf-params as the client would BEFORE registering.
+    # The user does not exist yet, so the server returns the deterministic
+    # pseudo-salt.  The real client feeds this into Argon2; here we just
+    # record it to compare with the post-registration response.
+    pre_resp = await client.post("/api/auth/kdf-params", json={"username": username})
+    assert pre_resp.status_code == 200, pre_resp.text
+    pre_salt = pre_resp.json()["kdf_salt"]
+
+    # Use fixed h_auth / h_kek bytes — the same bytes must work for both
+    # register and login.  The round-trip property is what we are testing;
+    # real Argon2 derivation is a client-side detail irrelevant here.
+    h_auth_bytes = secrets.token_bytes(32)
+    h_kek_bytes = secrets.token_bytes(32)
+    h_auth = base64.urlsafe_b64encode(h_auth_bytes).decode()
+    h_kek = base64.urlsafe_b64encode(h_kek_bytes).decode()
+
+    body = {
+        "username": username,
+        "email": f"{username}@example.com",
+        "display_name": "Round Trip",
+        "h_auth": h_auth,
+        "h_kek": h_kek,
+        "recovery_key": generate_recovery_key(),
+    }
+    register_resp = await client.post(f"/api/invitations/{token}/register", json=body)
+    assert register_resp.status_code == 200, register_resp.text
+
+    # Step 2: call kdf-params again now that the user EXISTS.  The server now
+    # returns keys_doc.kdf_salt from the database.  With the salt-drift bug
+    # this was a random salt; with the fix it must equal the pre-registration
+    # pseudo-salt.  A mismatch here means the client would re-derive a
+    # different h_auth and the login below would fail with 401.
+    post_resp = await client.post("/api/auth/kdf-params", json={"username": username})
+    assert post_resp.status_code == 200, post_resp.text
+    post_salt = post_resp.json()["kdf_salt"]
+
+    assert pre_salt == post_salt, (
+        f"kdf-params salt changed between pre- and post-registration: "
+        f"{pre_salt!r} vs {post_salt!r}. "
+        "This means the client cannot re-derive h_auth and first login will fail with 401."
+    )
+
+    # Step 3: verify that login also succeeds end-to-end with the SAME h_auth
+    # bytes used at registration time (equivalent to the client re-deriving
+    # from the same password + the (now unchanged) salt).
+    login_resp = await client.post(
+        "/api/auth/login",
+        json={"username": username, "h_auth": h_auth, "h_kek": h_kek},
+    )
+    assert login_resp.status_code == 200, login_resp.text
+    assert "access_token" in login_resp.json()
