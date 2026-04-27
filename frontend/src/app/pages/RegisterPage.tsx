@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useId, useState } from "react"
 import { useParams, Link, useNavigate } from "react-router-dom"
 
 import { authApi } from "../../core/api/auth"
@@ -19,6 +19,9 @@ const REASON_TEXT: Record<"expired" | "used" | "not_found", string> = {
   not_found: "This invitation link is no longer valid.",
 }
 
+// see also: LoginPage.tsx — this file deliberately duplicates the setup form's
+// styling constants and crypto wiring. Both will be lifted to a shared hook
+// on the third use (rule of three).
 const inputClass =
   "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white/85 placeholder-white/20 outline-none transition-colors focus:border-white/25 focus:bg-white/8"
 
@@ -28,6 +31,15 @@ const errorHintClass = "mt-1 block text-[11px] text-red-400/80"
 export default function RegisterPage() {
   const { token = "" } = useParams<{ token: string }>()
   const navigate = useNavigate()
+
+  const usernameId = useId()
+  const emailId = useId()
+  const displayNameId = useId()
+  const passwordId = useId()
+  const confirmId = useId()
+  const usernameErrorId = useId()
+  const passwordErrorId = useId()
+  const confirmErrorId = useId()
 
   const [phase, setPhase] = useState<Phase>({ kind: "validating" })
   const [username, setUsername] = useState("")
@@ -128,24 +140,28 @@ export default function RegisterPage() {
         {(phase.kind === "form" || phase.kind === "submitting") && (
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             <div>
-              <label className={labelClass}>Username</label>
+              <label htmlFor={usernameId} className={labelClass}>Username</label>
               <input
+                id={usernameId}
                 type="text"
                 required
                 autoFocus
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                aria-describedby={fieldError?.field === "username" ? usernameErrorId : undefined}
+                aria-invalid={fieldError?.field === "username" || undefined}
                 className={inputClass}
               />
               {fieldError?.field === "username" && (
-                <span className={errorHintClass}>{fieldError.msg}</span>
+                <span id={usernameErrorId} role="alert" className={errorHintClass}>{fieldError.msg}</span>
               )}
             </div>
 
             <div>
-              <label className={labelClass}>Email</label>
+              <label htmlFor={emailId} className={labelClass}>Email</label>
               <input
+                id={emailId}
                 type="email"
                 required
                 autoComplete="email"
@@ -156,8 +172,9 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Display name</label>
+              <label htmlFor={displayNameId} className={labelClass}>Display name</label>
               <input
+                id={displayNameId}
                 type="text"
                 required
                 autoComplete="name"
@@ -168,14 +185,17 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className={labelClass}>Password</label>
+              <label htmlFor={passwordId} className={labelClass}>Password</label>
               <div className="relative">
                 <input
+                  id={passwordId}
                   type={showPassword ? "text" : "password"}
                   required
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  aria-describedby={fieldError?.field === "password" ? passwordErrorId : undefined}
+                  aria-invalid={fieldError?.field === "password" || undefined}
                   className={`${inputClass} pr-16`}
                 />
                 <button
@@ -188,22 +208,25 @@ export default function RegisterPage() {
               </div>
               <StrengthBar score={passwordStrength} />
               {fieldError?.field === "password" && (
-                <span className={errorHintClass}>{fieldError.msg}</span>
+                <span id={passwordErrorId} role="alert" className={errorHintClass}>{fieldError.msg}</span>
               )}
             </div>
 
             <div>
-              <label className={labelClass}>Confirm password</label>
+              <label htmlFor={confirmId} className={labelClass}>Confirm password</label>
               <input
+                id={confirmId}
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
+                aria-describedby={fieldError?.field === "confirm" ? confirmErrorId : undefined}
+                aria-invalid={fieldError?.field === "confirm" || undefined}
                 className={inputClass}
               />
               {fieldError?.field === "confirm" && (
-                <span className={errorHintClass}>{fieldError.msg}</span>
+                <span id={confirmErrorId} role="alert" className={errorHintClass}>{fieldError.msg}</span>
               )}
             </div>
 
