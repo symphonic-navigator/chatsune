@@ -1,4 +1,5 @@
 import type { VisualiserStyle } from '../stores/voiceSettingsStore'
+import type { Bounds } from '../stores/visualiserLayoutStore'
 
 export interface RenderOpts {
   /** RGB triplet, 0–255 each, of the persona's chakra colour. */
@@ -13,9 +14,9 @@ export interface RenderOpts {
 
 export interface BarGeometry {
   /** Inner-of-sidebars area, viewport-relative. */
-  chatview: { x: number; w: number }
+  chatview: Bounds
   /** Centred message column, viewport-relative. */
-  textColumn: { x: number; w: number }
+  textColumn: Bounds
 }
 
 /**
@@ -25,23 +26,21 @@ export interface BarGeometry {
 export function drawVisualiserFrame(
   style: VisualiserStyle,
   ctx: CanvasRenderingContext2D,
-  width: number,
   height: number,
   bins: Float32Array,
   opts: RenderOpts,
   geometry: BarGeometry,
 ): void {
   switch (style) {
-    case 'sharp': drawSharp(ctx, width, height, bins, opts, geometry); break
-    case 'soft':  drawSoft(ctx, width, height, bins, opts, geometry); break
-    case 'glow':  drawGlow(ctx, width, height, bins, opts, geometry); break
-    case 'glass': drawGlass(ctx, width, height, bins, opts, geometry); break
+    case 'sharp': drawSharp(ctx, height, bins, opts, geometry); break
+    case 'soft':  drawSoft(ctx, height, bins, opts, geometry); break
+    case 'glow':  drawGlow(ctx, height, bins, opts, geometry); break
+    case 'glass': drawGlass(ctx, height, bins, opts, geometry); break
   }
 }
 
 
 export function barLayout(
-  _width: number,
   height: number,
   n: number,
   frac: number,
@@ -62,9 +61,9 @@ export function barLayout(
   return { cy, slot, barW, maxDy, xOffset }
 }
 
-function drawSharp(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
+function drawSharp(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
   const n = bins.length
-  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction, g)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, g)
   const [lr, lg, lb] = o.rgbLight
   ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity})`
   for (let i = 0; i < n; i++) {
@@ -74,9 +73,9 @@ function drawSharp(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Fl
   }
 }
 
-function drawSoft(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts, geom: BarGeometry) {
+function drawSoft(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, geom: BarGeometry) {
   const n = bins.length
-  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction, geom)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, geom)
   const [r, g, b] = o.rgb
   const [lr, lg, lb] = o.rgbLight
   for (let i = 0; i < n; i++) {
@@ -92,9 +91,9 @@ function drawSoft(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Flo
   }
 }
 
-function drawGlow(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts, geom: BarGeometry) {
+function drawGlow(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, geom: BarGeometry) {
   const n = bins.length
-  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction, geom)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, geom)
   const [r, g, b] = o.rgb
   const [lr, lg, lb] = o.rgbLight
   ctx.shadowColor = `rgba(${r},${g},${b},${o.opacity * 1.5})`
@@ -108,9 +107,9 @@ function drawGlow(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Flo
   ctx.shadowBlur = 0
 }
 
-function drawGlass(ctx: CanvasRenderingContext2D, w: number, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
+function drawGlass(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
   const n = bins.length
-  const { cy, slot, barW, maxDy, xOffset } = barLayout(w, h, n, o.maxHeightFraction, g)
+  const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, g)
   const [lr, lg, lb] = o.rgbLight
   ctx.lineWidth = 1
   for (let i = 0; i < n; i++) {

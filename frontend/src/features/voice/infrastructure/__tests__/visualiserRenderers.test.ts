@@ -8,17 +8,17 @@ const BASE_GEOMETRY: BarGeometry = {
 
 describe('barLayout', () => {
   it('keeps cy at vertical centre', () => {
-    const { cy } = barLayout(1000, 240, 24, 0.5, BASE_GEOMETRY)
+    const { cy } = barLayout(240, 24, 0.5, BASE_GEOMETRY)
     expect(cy).toBe(120)
   })
 
   it('returns maxDy as half of height*frac', () => {
-    const { maxDy } = barLayout(800, 200, 10, 0.28, BASE_GEOMETRY)
+    const { maxDy } = barLayout(200, 10, 0.28, BASE_GEOMETRY)
     expect(maxDy).toBeCloseTo(28)
   })
 
   it('scales bar width to 62% of slot', () => {
-    const { slot, barW } = barLayout(1000, 200, 10, 0.5, BASE_GEOMETRY)
+    const { slot, barW } = barLayout(200, 10, 0.5, BASE_GEOMETRY)
     expect(barW).toBeCloseTo(slot * 0.62)
   })
 
@@ -30,7 +30,7 @@ describe('barLayout', () => {
         chatview: { x: 240, w: 1680 },
         textColumn: { x: 816, w: 768 },
       }
-      const { xOffset, slot } = barLayout(1920, 200, 10, 0.5, g)
+      const { xOffset, slot } = barLayout(200, 10, 0.5, g)
       // target = 768 * 1.2 = 921.6; min(921.6, 1680) = 921.6
       // centre = 1200; left = max(240, 1200 - 460.8) = 739.2
       expect(xOffset).toBeCloseTo(739.2)
@@ -42,7 +42,7 @@ describe('barLayout', () => {
         chatview: { x: 0, w: 768 },
         textColumn: { x: 0, w: 768 },
       }
-      const { xOffset, slot } = barLayout(768, 200, 10, 0.5, g)
+      const { xOffset, slot } = barLayout(200, 10, 0.5, g)
       expect(xOffset).toBe(0)
       expect(slot * 10).toBeCloseTo(768)
     })
@@ -53,7 +53,7 @@ describe('barLayout', () => {
         chatview: { x: 0, w: 800 },
         textColumn: { x: 16, w: 768 },
       }
-      const { xOffset, slot } = barLayout(800, 200, 10, 0.5, g)
+      const { xOffset, slot } = barLayout(200, 10, 0.5, g)
       // target=921.6, usable=min(921.6,800)=800
       // centre=400, left=max(0,400-400)=0, right=min(800,400+400)=800
       expect(xOffset).toBe(0)
@@ -65,7 +65,7 @@ describe('barLayout', () => {
         chatview: { x: 0, w: 1000 },
         textColumn: { x: 116, w: 768 },
       }
-      const { xOffset, slot } = barLayout(1000, 200, 10, 0.5, g)
+      const { xOffset, slot } = barLayout(200, 10, 0.5, g)
       // target=921.6, usable=921.6, centre=500, left=max(0,500-460.8)=39.2
       expect(xOffset).toBeCloseTo(39.2)
       expect(slot * 10).toBeCloseTo(921.6)
