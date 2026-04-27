@@ -12,7 +12,13 @@
  *       session. Covers the early window before audio first arrives.
  */
 export interface TtsExpectedInput {
-  /** True iff `audioPlayback.isActive()`. */
+  /**
+   * True iff `audioPlayback.isActive()`. That getter returns true also while
+   * playback is *paused* (tap-to-pause), so this branch keeps the predicate
+   * true through pauses without dropping back to the noise flatline for a
+   * frame on resume. If `audioPlayback.isActive()` is ever tightened to
+   * exclude the paused state, revisit this contract.
+   */
   audioActive: boolean
   /** True iff a read-aloud session is synthesising or playing. */
   isReadingAloud: boolean
