@@ -89,6 +89,54 @@ describe('useReportBounds', () => {
     expect(useVisualiserLayoutStore.getState().chatview).toEqual({ x: 150, w: 1100 })
   })
 
+  it('re-measures on window resize', () => {
+    mockRect(100, 1000)
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(null)
+      if (!ref.current) ref.current = document.createElement('div')
+      useReportBounds(ref, 'chatview')
+      return ref
+    })
+    expect(useVisualiserLayoutStore.getState().chatview).toEqual({ x: 100, w: 1000 })
+    mockRect(120, 900)
+    window.dispatchEvent(new Event('resize'))
+    expect(useVisualiserLayoutStore.getState().chatview).toEqual({ x: 120, w: 900 })
+  })
+
+  it('re-measures when another slot updates (cross-slot trigger)', () => {
+    // Simulates the sidebar-collapse / window-resize case where the
+    // chatview's bounds change but the textColumn's max-w-3xl width
+    // stays constant — only its x shifts. RO would not fire on the
+    // textColumn; the cross-slot subscription must.
+    mockRect(116, 768)
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(null)
+      if (!ref.current) ref.current = document.createElement('div')
+      useReportBounds(ref, 'textColumn')
+      return ref
+    })
+    expect(useVisualiserLayoutStore.getState().textColumn).toEqual({ x: 116, w: 768 })
+    mockRect(50, 768)
+    useVisualiserLayoutStore.getState().setBounds('chatview', { x: 0, w: 900 })
+    expect(useVisualiserLayoutStore.getState().textColumn).toEqual({ x: 50, w: 768 })
+  })
+
+  it('skips no-op writes to avoid cross-slot subscription loops', () => {
+    mockRect(100, 1000)
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(null)
+      if (!ref.current) ref.current = document.createElement('div')
+      useReportBounds(ref, 'chatview')
+      return ref
+    })
+    const before = useVisualiserLayoutStore.getState().chatview
+    // Trigger a re-measure but keep the rect identical: setBounds must
+    // not be called, so the reference stays stable.
+    window.dispatchEvent(new Event('resize'))
+    const after = useVisualiserLayoutStore.getState().chatview
+    expect(after).toBe(before)
+  })
+
   it('clears the slot to null on unmount', () => {
     mockRect(0, 800)
     const { unmount } = renderHook(() => {
