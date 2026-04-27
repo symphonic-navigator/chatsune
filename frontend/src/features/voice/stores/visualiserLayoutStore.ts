@@ -18,5 +18,5 @@ interface LayoutState {
 export const useVisualiserLayoutStore = create<LayoutState>((set) => ({
   chatview: null,
   textColumn: null,
-  setBounds: (target, bounds) => set({ [target]: bounds } as Pick<LayoutState, LayoutTarget>),
+  setBounds: (target, bounds) => set({ [target]: bounds }),
 }))
