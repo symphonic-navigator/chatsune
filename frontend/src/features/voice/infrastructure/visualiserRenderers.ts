@@ -117,11 +117,13 @@ export function drawTranscriptionDots(
   }
 }
 
-function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
   const { dotXs, baseRadius } = dotLayout(g)
   const cy = h / 2
+  const [lr, lg, lb] = o.rgbLight
   for (let i = 0; i < 3; i++) {
-    const { scale } = dotPulse(t, i)
+    const { scale, animOp } = dotPulse(t, i)
+    ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity * animOp})`
     ctx.beginPath()
     ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
     ctx.fill()

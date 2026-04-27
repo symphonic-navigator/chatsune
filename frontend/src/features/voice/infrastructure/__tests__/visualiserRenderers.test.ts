@@ -146,6 +146,16 @@ const DOT_GEOM: BarGeometry = {
   textColumn: { x: 116, w: 768 },
 }
 
+describe('drawDotsSharp colour application', () => {
+  it('uses an rgba fillStyle with the rgbLight triplet', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('sharp', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    // After the call, fillStyle holds whatever was last set. Verify the
+    // string format encodes rgbLight = [180, 158, 255].
+    expect(ctx.fillStyle).toMatch(/^rgba\(180,\s*158,\s*255,/)
+  })
+})
+
 describe('drawTranscriptionDots dispatcher', () => {
   it('issues exactly three arc() calls for sharp', () => {
     const ctx = makeMockCtx()
