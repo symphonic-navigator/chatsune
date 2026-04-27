@@ -14,6 +14,10 @@ export interface RenderOpts {
 /** Fraction of the canvas width occupied by the bar field, centred. */
 const WIDTH_FRACTION = 0.9
 
+/**
+ * Render a frame of the equaliser for the requested style. Caller has
+ * already cleared the canvas. `bins` is normalised to [0, 1].
+ */
 export function drawVisualiserFrame(
   style: VisualiserStyle,
   ctx: CanvasRenderingContext2D,
@@ -30,7 +34,12 @@ export function drawVisualiserFrame(
   }
 }
 
-export function barLayout(width: number, height: number, n: number, frac: number) {
+export function barLayout(
+  width: number,
+  height: number,
+  n: number,
+  frac: number,
+): { cy: number; slot: number; barW: number; maxDy: number; xOffset: number } {
   const usableWidth = width * WIDTH_FRACTION
   const xOffset = (width - usableWidth) / 2
   const cy = height / 2
