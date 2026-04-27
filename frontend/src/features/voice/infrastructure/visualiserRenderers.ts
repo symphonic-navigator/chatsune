@@ -130,13 +130,22 @@ function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, 
   }
 }
 
-function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
   const { dotXs, baseRadius } = dotLayout(g)
   const cy = h / 2
+  const [r, gC, b] = o.rgb
+  const [lr, lg, lb] = o.rgbLight
   for (let i = 0; i < 3; i++) {
-    const { scale } = dotPulse(t, i)
+    const { scale, animOp } = dotPulse(t, i)
+    const radius = baseRadius * scale
+    const x = dotXs[i]
+    const grd = ctx.createRadialGradient(x, cy, 0, x, cy, radius)
+    grd.addColorStop(0,    `rgba(${lr},${lg},${lb},${o.opacity * animOp})`)
+    grd.addColorStop(0.5,  `rgba(${r},${gC},${b},${o.opacity * animOp * 0.7})`)
+    grd.addColorStop(1,    `rgba(${r},${gC},${b},0)`)
+    ctx.fillStyle = grd as unknown as string
     ctx.beginPath()
-    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
     ctx.fill()
   }
 }

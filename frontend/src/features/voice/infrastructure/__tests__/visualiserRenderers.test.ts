@@ -156,6 +156,14 @@ describe('drawDotsSharp colour application', () => {
   })
 })
 
+describe('drawDotsSoft uses radial gradients', () => {
+  it('creates one radial gradient per dot', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('soft', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.createRadialGradient).toHaveBeenCalledTimes(3)
+  })
+})
+
 describe('drawTranscriptionDots dispatcher', () => {
   it('issues exactly three arc() calls for sharp', () => {
     const ctx = makeMockCtx()
