@@ -713,7 +713,7 @@ export function Sidebar({
     return (
       <aside
         className={[
-          'fixed inset-y-0 left-0 z-40 flex h-full w-screen flex-col overflow-hidden border-r border-white/6 bg-base transition-transform duration-200 ease-out',
+          'fixed inset-y-0 left-0 z-40 flex h-full w-full flex-col overflow-hidden border-r border-white/6 bg-base transition-transform duration-200 ease-out',
           drawerOpen ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
       >

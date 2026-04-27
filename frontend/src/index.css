@@ -41,9 +41,16 @@ html {
   overflow: hidden;
 }
 
+/* UI scale via transform — sized down then scaled up so the rendered body
+ * fills exactly the real viewport. Avoids the non-standard `zoom`-property
+ * quirk where `100vw`/right-aligned elements drift past the viewport edge.
+ * Note: child elements should prefer `w-full`/percentage widths over
+ * `100vw`/`w-screen`, otherwise they overflow body's compensated width. */
 body {
-  height: 100%;
-  zoom: var(--ui-scale, 1);
+  width: calc(100vw / var(--ui-scale, 1));
+  height: calc(100vh / var(--ui-scale, 1));
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
 }
 
 #root {
