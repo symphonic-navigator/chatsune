@@ -58,8 +58,13 @@ export function VoiceVisualiserPreview({
       if (stopped) return
       const c = canvasRef.current
       if (!c) { rafRef.current = requestAnimationFrame(tick); return }
-      const w = c.clientWidth
-      const h = c.clientHeight
+      // Match the canvas buffer to its visual size so it stays sharp and
+      // its drawing coordinates align with the visual rendering, even
+      // under body { zoom: --ui-scale } (clientWidth returns pre-zoom
+      // for fixed/absolute descendants of a zoomed body).
+      const rect = c.getBoundingClientRect()
+      const w = Math.round(rect.width)
+      const h = Math.round(rect.height)
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h }
       const ctx = c.getContext('2d')
       if (!ctx) return

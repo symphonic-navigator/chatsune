@@ -97,8 +97,14 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       if (!c) { rafRef.current = requestAnimationFrame(tick); return }
 
       // DPR clamped to 1 — soft decorative shapes, saves ~4× memory at 4K.
-      const w = c.clientWidth
-      const h = c.clientHeight
+      // Use getBoundingClientRect rather than clientWidth/Height: under
+      // body { zoom: --ui-scale } the canvas is position: fixed and
+      // clientWidth returns pre-zoom CSS pixels while the canvas is
+      // visually rendered at post-zoom size. Our bounds are also post-zoom
+      // (getBoundingClientRect everywhere), so the buffer must match.
+      const rect = c.getBoundingClientRect()
+      const w = Math.round(rect.width)
+      const h = Math.round(rect.height)
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h }
 
       const geometry = { chatview, textColumn }
