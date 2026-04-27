@@ -724,6 +724,8 @@ export function Sidebar({
         />
 
         <div className="relative flex-1 overflow-hidden">
+          {/* 200%-wide flex with two 50%-wide panels side-by-side; translate
+              −50% slides the second panel into view. CSS-only animation. */}
           <div
             className="flex h-full w-[200%] transition-transform duration-150 ease-out"
             style={{ transform: mobileView === 'main' ? 'translateX(0)' : 'translateX(-50%)' }}
