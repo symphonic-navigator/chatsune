@@ -8,25 +8,25 @@ import type { PersonaDto } from '../../../core/types/persona'
 const aria = {
   id: 'aria', name: 'Aria', monogram: 'A',
   pinned: true, nsfw: false,
-  colour_scheme: 'red',
+  colour_scheme: 'root',
 } as unknown as PersonaDto
 
 const lyra = {
   id: 'lyra', name: 'Lyra', monogram: 'L',
   pinned: true, nsfw: true,
-  colour_scheme: 'pink',
+  colour_scheme: 'crown',
 } as unknown as PersonaDto
 
 const marcus = {
   id: 'marcus', name: 'Marcus the Stoic', monogram: 'M',
   pinned: false, nsfw: false,
-  colour_scheme: 'green',
+  colour_scheme: 'heart',
 } as unknown as PersonaDto
 
 const thorne = {
   id: 'thorne', name: 'Thorne', monogram: 'T',
   pinned: false, nsfw: true,
-  colour_scheme: 'red',
+  colour_scheme: 'root',
 } as unknown as PersonaDto
 
 vi.mock('../../../core/store/sanitisedModeStore', () => ({

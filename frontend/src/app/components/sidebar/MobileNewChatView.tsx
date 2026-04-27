@@ -77,9 +77,9 @@ function PersonaRow({ persona, onSelect }: PersonaRowProps) {
       <span
         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[14px] font-semibold"
         style={{
-          background: `${chakra?.hex ?? '#888'}22`,
-          border: `1px solid ${chakra?.hex ?? '#888'}55`,
-          color: chakra?.hex ?? '#888',
+          background: `${chakra.hex}22`,
+          border: `1px solid ${chakra.hex}55`,
+          color: chakra.hex,
         }}
       >
         {monogram}
