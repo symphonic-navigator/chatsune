@@ -15,6 +15,7 @@ import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"
 import DeletionCompletePage from "./app/pages/DeletionCompletePage"
+import RegisterPage from "./app/pages/RegisterPage"
 import PersonasPage from "./app/pages/PersonasPage"
 import ChatPage from "./app/pages/ChatPage"
 import ProjectsPage from "./app/pages/ProjectsPage"
@@ -119,6 +120,7 @@ function AppRoutes() {
           path="/deletion-complete/:slug"
           element={<DeletionCompletePage />}
         />
+        <Route path="/register/:token" element={<RegisterPage />} />
         <Route
           element={
             <AuthGuard>
