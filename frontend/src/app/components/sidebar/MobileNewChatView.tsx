@@ -7,9 +7,12 @@ import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 interface MobileNewChatViewProps {
   personas: PersonaDto[]
   onSelect: (persona: PersonaDto) => void
+  /** Called when the empty-state "Create persona" link is tapped. Gives the
+   *  sidebar a chance to close the drawer before route navigation. */
+  onClose?: () => void
 }
 
-export function MobileNewChatView({ personas, onSelect }: MobileNewChatViewProps) {
+export function MobileNewChatView({ personas, onSelect, onClose }: MobileNewChatViewProps) {
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
 
   const visible = useMemo(() => {
@@ -25,6 +28,7 @@ export function MobileNewChatView({ personas, onSelect }: MobileNewChatViewProps
         <p className="mb-3 text-[14px] text-white/60">No personas yet</p>
         <Link
           to="/personas"
+          onClick={onClose}
           className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/80 transition-colors hover:bg-white/10"
         >
           Create persona
@@ -66,7 +70,7 @@ interface PersonaRowProps {
 }
 
 function PersonaRow({ persona, onSelect }: PersonaRowProps) {
-  const chakra = CHAKRA_PALETTE[persona.colour_scheme]
+  const chakra = CHAKRA_PALETTE[persona.colour_scheme] ?? CHAKRA_PALETTE.solar
   const monogram = persona.monogram || persona.name.charAt(0).toUpperCase()
   return (
     <button

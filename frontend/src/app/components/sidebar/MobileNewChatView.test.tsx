@@ -29,12 +29,14 @@ const thorne = {
   colour_scheme: 'root',
 } as unknown as PersonaDto
 
+let mockIsSanitised = false
 vi.mock('../../../core/store/sanitisedModeStore', () => ({
-  useSanitisedMode: (sel: (s: { isSanitised: boolean }) => unknown) => sel({ isSanitised: false }),
+  useSanitisedMode: (sel: (s: { isSanitised: boolean }) => unknown) => sel({ isSanitised: mockIsSanitised }),
 }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockIsSanitised = false
 })
 
 function renderView(personas: PersonaDto[], onSelect: (p: PersonaDto) => void = () => {}) {
@@ -79,6 +81,18 @@ describe('MobileNewChatView — NSFW pill', () => {
 
   it('does not render NSFW pill for non-NSFW personas', () => {
     renderView([aria, marcus])
+    expect(screen.queryByText('NSFW')).not.toBeInTheDocument()
+  })
+})
+
+describe('MobileNewChatView — sanitised mode', () => {
+  it('hides NSFW personas from the list when sanitised mode is on', () => {
+    mockIsSanitised = true
+    renderView([aria, lyra, marcus, thorne])
+    expect(screen.getByText('Aria')).toBeInTheDocument()
+    expect(screen.getByText('Marcus the Stoic')).toBeInTheDocument()
+    expect(screen.queryByText('Lyra')).not.toBeInTheDocument()
+    expect(screen.queryByText('Thorne')).not.toBeInTheDocument()
     expect(screen.queryByText('NSFW')).not.toBeInTheDocument()
   })
 })
