@@ -173,10 +173,21 @@ describe('drawDotsGlow sets a shadow blur', () => {
     expect(ctx.shadowColor).toMatch(/^rgba\(140,\s*118,\s*215,/)
   })
 
-  it('resets shadowBlur to 0 before returning', () => {
+  it('writes a non-zero shadowBlur during execution and resets to 0 on exit', () => {
+    // Track every shadowBlur assignment so we can confirm the function
+    // both turns the glow on (non-zero write) and cleans up (final 0).
+    // Without the tracking, dropping `ctx.shadowBlur = 14` would still
+    // leave a green test, since the mock starts and ends at 0.
     const ctx = makeMockCtx()
+    const writes: number[] = []
+    let blur = 0
+    Object.defineProperty(ctx, 'shadowBlur', {
+      get: () => blur,
+      set: (v: number) => { blur = v; writes.push(v) },
+    })
     drawTranscriptionDots('glow', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
-    expect(ctx.shadowBlur).toBe(0)
+    expect(writes).toContain(14)
+    expect(writes[writes.length - 1]).toBe(0)
   })
 })
 
@@ -215,14 +226,9 @@ describe('drawTranscriptionDots dispatcher', () => {
     expect(ctx.arc).toHaveBeenCalledTimes(3)
   })
 
-  it('issues at least three arc() calls for glass (fill + ring)', () => {
-    // Loose bound during the stub phase — Task 6 turns this into a
-    // strict equality (6 arcs: 3 fill + 3 stroke) once glass is
-    // style-specific. Keeping the bound loose here means the Task 2
-    // test stays green when Task 6 doubles the arc count, instead of
-    // becoming a regression check that needs simultaneous editing.
+  it('issues exactly six arc() calls for glass (3 fill + 3 ring)', () => {
     const ctx = makeMockCtx()
     drawTranscriptionDots('glass', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
-    expect(ctx.arc.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(ctx.arc).toHaveBeenCalledTimes(6)
   })
 })
