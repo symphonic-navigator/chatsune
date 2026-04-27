@@ -56,6 +56,7 @@ import { ConversationModeButton } from '../voice/components/ConversationModeButt
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
 import { useWakeLock } from '../../core/hooks/useWakeLock'
 import { useImagesStore } from '../images/store'
+import { useReportBounds } from '../voice/infrastructure/useReportBounds'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -98,6 +99,10 @@ export function ChatView({ persona }: ChatViewProps) {
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const [showKnowledge, setShowKnowledge] = useState(false)
+
+  // Report chat-view bounds for visualiser layout
+  const chatviewRef = useRef<HTMLDivElement>(null)
+  useReportBounds(chatviewRef, 'chatview')
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
@@ -1038,7 +1043,7 @@ export function ChatView({ persona }: ChatViewProps) {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col overflow-hidden">
+    <div ref={chatviewRef} className="absolute inset-0 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-white/6 px-4 py-2">
         <div className="flex items-center gap-2">
           {isIncognito && (
