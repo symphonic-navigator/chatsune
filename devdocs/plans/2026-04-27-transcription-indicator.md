@@ -81,7 +81,7 @@ describe('dotLayout', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL with `dotLayout is not exported` or similar.
 
 - [ ] **Step 3: Implement `dotLayout`**
@@ -119,7 +119,7 @@ export function dotLayout(geometry: BarGeometry): {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS, all `dotLayout` cases green.
 
 - [ ] **Step 5: Commit**
@@ -216,7 +216,7 @@ describe('drawTranscriptionDots dispatcher', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL with `drawTranscriptionDots is not exported` (and the four cases all red).
 
 - [ ] **Step 3: Implement dispatcher with stubs**
@@ -304,7 +304,7 @@ filled circles. The next four tasks make each one style-specific
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS, all four dispatcher cases green.
 
 - [ ] **Step 5: Commit**
@@ -341,7 +341,7 @@ describe('drawDotsSharp colour application', () => {
 
 - [ ] **Step 2: Run tests to verify it fails**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL — current stub never sets `fillStyle`.
 
 - [ ] **Step 3: Implement `drawDotsSharp` properly**
@@ -365,7 +365,7 @@ function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, 
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS, sharp colour test green; existing dispatcher tests still green.
 
 - [ ] **Step 5: Commit**
@@ -398,7 +398,7 @@ describe('drawDotsSoft uses radial gradients', () => {
 
 - [ ] **Step 2: Run tests to verify it fails**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL — current stub never calls `createRadialGradient`.
 
 - [ ] **Step 3: Implement `drawDotsSoft`**
@@ -429,7 +429,7 @@ function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -473,7 +473,7 @@ describe('drawDotsGlow sets a shadow blur', () => {
 
 - [ ] **Step 2: Run tests to verify it fails**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL on shadowBlur assertion.
 
 - [ ] **Step 3: Implement `drawDotsGlow`**
@@ -501,7 +501,7 @@ function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -542,7 +542,7 @@ describe('drawDotsGlass renders fill and ring', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: FAIL — current stub never strokes and never sets a white fill.
 
 - [ ] **Step 3: Implement `drawDotsGlass`**
@@ -575,7 +575,7 @@ function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, 
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm --filter frontend test -- visualiserRenderers`
+Run: `pnpm exec vitest run -- visualiserRenderers`
 Expected: PASS, all renderer tests green.
 
 - [ ] **Step 5: Commit**
@@ -658,12 +658,12 @@ import { drawVisualiserFrame, drawTranscriptionDots } from '../infrastructure/vi
 
 - [ ] **Step 6: Type-check**
 
-Run: `pnpm --filter frontend tsc --noEmit`
+Run: `pnpm exec tsc --noEmit`
 Expected: clean.
 
 - [ ] **Step 7: Run the full frontend test suite**
 
-Run: `pnpm --filter frontend test`
+Run: `pnpm exec vitest run`
 Expected: all tests pass, including the renderer suite from Tasks 1–6 and the unrelated `VoiceVisualiserHitStrip` suite.
 
 - [ ] **Step 8: Commit**
@@ -682,7 +682,7 @@ git commit -m "Render transcription dots in the visualiser canvas"
 
 - [ ] **Step 1: Run the production build**
 
-Run: `pnpm --filter frontend run build`
+Run: `pnpm run build`
 Expected: clean. `tsc -b` (run inside `pnpm run build`) catches stricter type errors than `tsc --noEmit` — required before any "done" claim.
 
 If the build fails: fix the underlying issue, do **not** loosen types, do **not** suppress errors. Re-run after each fix.

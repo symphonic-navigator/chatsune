@@ -164,7 +164,9 @@ Reuses `barLayout` from `visualiserRenderers.ts`:
 - `frontend/src/features/voice/infrastructure/visualiserRenderers.ts`
   - Add `drawTranscriptionDots` dispatcher and four `drawDots{Sharp,Soft,Glow,Glass}`
     helpers. Add a `dotLayout(geometry)` helper analogous to `barLayout` for
-    the centre-X computation, kept private to this module.
+    the centre-X computation. `dotLayout` is exported (so it can be unit-tested
+    directly); the four `drawDots…` helpers stay module-private and are only
+    reachable through the dispatcher.
 - `frontend/src/features/voice/components/VoiceVisualiser.tsx`
   - Add `phase` selector from `useVoicePipeline`.
   - Add `dotsActiveRef`.

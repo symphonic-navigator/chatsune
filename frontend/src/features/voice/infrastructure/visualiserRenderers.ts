@@ -61,6 +61,134 @@ export function barLayout(
   return { cy, slot, barW, maxDy, xOffset }
 }
 
+const DOT_BASE_RADIUS = 7
+const DOT_GAP = 22
+
+export function dotLayout(geometry: BarGeometry): {
+  centreX: number
+  dotXs: [number, number, number]
+  baseRadius: number
+  gap: number
+} {
+  // Same clamping rules as barLayout so the dots stay centred on the
+  // same visual extent as the bars (≤ 1.2 × textColumn, but never wider
+  // than chatview).
+  const { chatview, textColumn } = geometry
+  const target = textColumn.w * 1.2
+  const usable = Math.min(target, chatview.w)
+  const tcCentre = textColumn.x + textColumn.w / 2
+  const left = Math.max(chatview.x, tcCentre - usable / 2)
+  const right = Math.min(chatview.x + chatview.w, tcCentre + usable / 2)
+  const centreX = (left + right) / 2
+  return {
+    centreX,
+    dotXs: [centreX - DOT_GAP, centreX, centreX + DOT_GAP],
+    baseRadius: DOT_BASE_RADIUS,
+    gap: DOT_GAP,
+  }
+}
+
+function dotPulse(t: number, i: number): { scale: number; animOp: number } {
+  // Period 2 s, per-dot stagger 0.3 s. Raised cosine matches the
+  // ThinkingBubble keyframes (0% → 50% → 100%: 0.8 → 1.2 → 0.8 for scale,
+  // 0.3 → 1.0 → 0.3 for opacity), i.e. one hump per period.
+  const raw = (t - i * 0.3) / 2.0
+  const phase = ((raw % 1) + 1) % 1
+  const pulse = (1 - Math.cos(phase * 2 * Math.PI)) / 2
+  return {
+    scale: 0.8 + 0.4 * pulse,
+    animOp: 0.3 + 0.7 * pulse,
+  }
+}
+
+export function drawTranscriptionDots(
+  style: VisualiserStyle,
+  ctx: CanvasRenderingContext2D,
+  height: number,
+  opts: RenderOpts,
+  geometry: BarGeometry,
+  t: number,
+): void {
+  switch (style) {
+    case 'sharp': drawDotsSharp(ctx, height, opts, geometry, t); break
+    case 'soft':  drawDotsSoft(ctx, height, opts, geometry, t); break
+    case 'glow':  drawDotsGlow(ctx, height, opts, geometry, t); break
+    case 'glass': drawDotsGlass(ctx, height, opts, geometry, t); break
+  }
+}
+
+function drawDotsSharp(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  const [lr, lg, lb] = o.rgbLight
+  for (let i = 0; i < 3; i++) {
+    const { scale, animOp } = dotPulse(t, i)
+    ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity * animOp})`
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawDotsSoft(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  const [r, gC, b] = o.rgb
+  const [lr, lg, lb] = o.rgbLight
+  for (let i = 0; i < 3; i++) {
+    const { scale, animOp } = dotPulse(t, i)
+    const radius = baseRadius * scale
+    const x = dotXs[i]
+    const grd = ctx.createRadialGradient(x, cy, 0, x, cy, radius)
+    grd.addColorStop(0,    `rgba(${lr},${lg},${lb},${o.opacity * animOp})`)
+    grd.addColorStop(0.5,  `rgba(${r},${gC},${b},${o.opacity * animOp * 0.7})`)
+    grd.addColorStop(1,    `rgba(${r},${gC},${b},0)`)
+    ctx.fillStyle = grd as unknown as string
+    ctx.beginPath()
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  const [r, gC, b] = o.rgb
+  const [lr, lg, lb] = o.rgbLight
+  ctx.shadowColor = `rgba(${r},${gC},${b},${o.opacity * 1.5})`
+  ctx.shadowBlur = 14
+  for (let i = 0; i < 3; i++) {
+    const { scale, animOp } = dotPulse(t, i)
+    ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity * animOp})`
+    ctx.beginPath()
+    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.shadowBlur = 0
+}
+
+function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
+  const { dotXs, baseRadius } = dotLayout(g)
+  const cy = h / 2
+  const [r, gC, b] = o.rgb
+  for (let i = 0; i < 3; i++) {
+    const { scale, animOp } = dotPulse(t, i)
+    const radius = baseRadius * scale
+    const x = dotXs[i]
+    // Milky core.
+    ctx.fillStyle = `rgba(255,255,255,${o.opacity * animOp * 0.55})`
+    ctx.beginPath()
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
+    ctx.fill()
+    // Coloured ring.
+    ctx.strokeStyle = `rgba(${r},${gC},${b},${o.opacity * animOp})`
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+}
+
 function drawSharp(ctx: CanvasRenderingContext2D, h: number, bins: Float32Array, o: RenderOpts, g: BarGeometry) {
   const n = bins.length
   const { cy, slot, barW, maxDy, xOffset } = barLayout(h, n, o.maxHeightFraction, g)

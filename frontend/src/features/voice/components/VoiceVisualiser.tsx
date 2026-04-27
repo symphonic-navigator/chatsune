@@ -3,10 +3,11 @@ import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { useVisualiserPauseStore } from '../stores/visualiserPauseStore'
 import { useVisualiserLayoutStore } from '../stores/visualiserLayoutStore'
 import { useTtsFrequencyData } from '../infrastructure/useTtsFrequencyData'
-import { drawVisualiserFrame } from '../infrastructure/visualiserRenderers'
+import { drawVisualiserFrame, drawTranscriptionDots } from '../infrastructure/visualiserRenderers'
 import { audioPlayback } from '../infrastructure/audioPlayback'
 import { fillNoiseBins } from '../infrastructure/visualiserNoise'
 import { useTtsExpected } from '../infrastructure/useTtsExpected'
+import { useVoicePipeline } from '../stores/voicePipelineStore'
 
 const MAX_HEIGHT_FRACTION = 0.28
 const FADE_RATE = 0.05
@@ -42,9 +43,12 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const chatview = useVisualiserLayoutStore((s) => s.chatview)
   const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
 
+  const phase = useVoicePipeline((s) => s.state.phase)
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
   const activeRef = useRef(0)
+  const dotsActiveRef = useRef(0)
   const reducedMotionRef = useRef(false)
   const frozenBinsRef = useRef<Float32Array | null>(null)
 
@@ -154,6 +158,15 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       const target = visible ? 1 : 0
       activeRef.current += (target - activeRef.current) * FADE_RATE
 
+      // Always advance the dots fade so transitions stay smooth even when
+      // the bars branch is the one rendering this frame. Bars and dots are
+      // mutually exclusive at the render level (priority bars > dots), but
+      // both fades must keep tracking the phase so the visual handover
+      // transcribing → speaking does not freeze the dots at non-zero.
+      const transcribing = phase === 'transcribing'
+      const dotsTarget = transcribing ? 1 : 0
+      dotsActiveRef.current += (dotsTarget - dotsActiveRef.current) * FADE_RATE
+
       if (activeRef.current > 0.005) {
         let bins: Float32Array | null = null
         if (playing) {
@@ -175,6 +188,16 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         rafRef.current = requestAnimationFrame(tick)
       } else if (visible) {
         // Visible but still ramping in — keep the loop running.
+        rafRef.current = requestAnimationFrame(tick)
+      } else if (dotsActiveRef.current > 0.005) {
+        const rgb = hexToRgb(personaColourHex)
+        const rgbLight = brighten(rgb)
+        drawTranscriptionDots(style, ctx, h, {
+          rgb,
+          rgbLight,
+          opacity: opacity * dotsActiveRef.current,
+          maxHeightFraction: MAX_HEIGHT_FRACTION,
+        }, geometry, performance.now() / 1000)
         rafRef.current = requestAnimationFrame(tick)
       } else {
         // Fully faded out and nothing expected — pause RAF until next event.
@@ -212,7 +235,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       unsubAudio()
       resumeRafRef.current = null
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn, phase])
 
   return (
     <canvas
