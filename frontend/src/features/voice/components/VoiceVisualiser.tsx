@@ -8,6 +8,7 @@ import { audioPlayback } from '../infrastructure/audioPlayback'
 import { fillNoiseBins } from '../infrastructure/visualiserNoise'
 import { useTtsExpected } from '../infrastructure/useTtsExpected'
 import { useVoicePipeline } from '../stores/voicePipelineStore'
+import { usePhase } from '../usePhase'
 
 const MAX_HEIGHT_FRACTION = 0.28
 const FADE_RATE = 0.05
@@ -43,7 +44,16 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const chatview = useVisualiserLayoutStore((s) => s.chatview)
   const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
 
-  const phase = useVoicePipeline((s) => s.state.phase)
+  // Two parallel phase systems exist during the voice-barge migration:
+  //   - useVoicePipeline().state.phase — legacy, drives push-to-talk.
+  //   - usePhase() — derived from conversationModeStore + active group,
+  //     drives continuous voice (the only path that reaches `'transcribing'`
+  //     under the live-STT bargeController flow in useConversationMode).
+  // We OR them so the dots fire in both modes until the migration consolidates.
+  // See devdocs/voice-barge-structural-redesign.md.
+  const pipelinePhase = useVoicePipeline((s) => s.state.phase)
+  const conversationPhase = usePhase()
+  const transcribing = pipelinePhase === 'transcribing' || conversationPhase === 'transcribing'
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
@@ -51,14 +61,6 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const dotsActiveRef = useRef(0)
   const reducedMotionRef = useRef(false)
   const frozenBinsRef = useRef<Float32Array | null>(null)
-
-  // [TIDOTS] TEMP DEBUG — remove after diagnosing transcription-indicator visibility.
-  // Logs every phase change and a periodic snapshot of the visualiser state so we
-  // can see whether `transcribing` ever wins long enough to fade the dots in.
-  const debugFrameCounter = useRef(0)
-  useEffect(() => {
-    console.log(`[TIDOTS] ${performance.now().toFixed(0)}ms phase → ${phase}`)
-  }, [phase])
 
   // Buffer used when the noise branch is the data source.
   // Stable across renders; resized when barCount changes.
@@ -166,23 +168,11 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       const target = visible ? 1 : 0
       activeRef.current += (target - activeRef.current) * FADE_RATE
 
-      // [TIDOTS] TEMP DEBUG — periodic snapshot, ~every 0.5 s at 60 fps.
-      debugFrameCounter.current++
-      if (debugFrameCounter.current % 30 === 0) {
-        console.log(
-          `[TIDOTS] ${performance.now().toFixed(0)}ms ` +
-          `phase=${phase} playing=${playing} expected=${expected} ` +
-          `activeRef=${activeRef.current.toFixed(3)} ` +
-          `dotsActiveRef=${dotsActiveRef.current.toFixed(3)}`
-        )
-      }
-
       // Always advance the dots fade so transitions stay smooth even when
       // the bars branch is the one rendering this frame. Bars and dots are
       // mutually exclusive at the render level (priority bars > dots), but
       // both fades must keep tracking the phase so the visual handover
       // transcribing → speaking does not freeze the dots at non-zero.
-      const transcribing = phase === 'transcribing'
       const dotsTarget = transcribing ? 1 : 0
       dotsActiveRef.current += (dotsTarget - dotsActiveRef.current) * FADE_RATE
 
@@ -254,7 +244,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       unsubAudio()
       resumeRafRef.current = null
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn, phase])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn, transcribing])
 
   return (
     <canvas
