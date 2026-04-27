@@ -167,14 +167,25 @@ function drawDotsGlow(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g
   ctx.shadowBlur = 0
 }
 
-function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, _o: RenderOpts, g: BarGeometry, t: number) {
+function drawDotsGlass(ctx: CanvasRenderingContext2D, h: number, o: RenderOpts, g: BarGeometry, t: number) {
   const { dotXs, baseRadius } = dotLayout(g)
   const cy = h / 2
+  const [r, gC, b] = o.rgb
   for (let i = 0; i < 3; i++) {
-    const { scale } = dotPulse(t, i)
+    const { scale, animOp } = dotPulse(t, i)
+    const radius = baseRadius * scale
+    const x = dotXs[i]
+    // Milky core.
+    ctx.fillStyle = `rgba(255,255,255,${o.opacity * animOp * 0.55})`
     ctx.beginPath()
-    ctx.arc(dotXs[i], cy, baseRadius * scale, 0, Math.PI * 2)
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
     ctx.fill()
+    // Coloured ring.
+    ctx.strokeStyle = `rgba(${r},${gC},${b},${o.opacity * animOp})`
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(x, cy, radius, 0, Math.PI * 2)
+    ctx.stroke()
   }
 }
 

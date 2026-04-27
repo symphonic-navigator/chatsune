@@ -180,6 +180,22 @@ describe('drawDotsGlow sets a shadow blur', () => {
   })
 })
 
+describe('drawDotsGlass renders fill and ring', () => {
+  it('strokes a coloured ring per dot', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glass', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    expect(ctx.stroke).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses a near-white fill with low opacity', () => {
+    const ctx = makeMockCtx()
+    drawTranscriptionDots('glass', ctx as unknown as CanvasRenderingContext2D, 240, DOT_OPTS, DOT_GEOM, 0)
+    // The last fillStyle assignment in the loop wins; we just verify the
+    // string starts with rgba(255,255,255 to confirm the milky look.
+    expect(ctx.fillStyle).toMatch(/^rgba\(255,\s*255,\s*255,/)
+  })
+})
+
 describe('drawTranscriptionDots dispatcher', () => {
   it('issues exactly three arc() calls for sharp', () => {
     const ctx = makeMockCtx()
