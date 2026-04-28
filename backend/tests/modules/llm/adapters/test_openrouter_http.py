@@ -9,6 +9,7 @@ sub-router.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from unittest.mock import patch
@@ -500,9 +501,6 @@ def test_reasoning_field_omitted_when_unsupported():
     assert "reasoning" not in _build_chat_payload(req)
 
 
-import asyncio
-
-
 class _FakeStreamResponse:
     """httpx response stand-in that yields prepared SSE lines."""
 
@@ -531,6 +529,7 @@ class _FakeStreamingClient:
     def __init__(self, lines, status_code=200):
         self._lines = lines
         self._status = status_code
+        self.captured_headers = None
 
     def __call__(self, *_, **__):  # used as ctor when patched
         return self
@@ -542,6 +541,7 @@ class _FakeStreamingClient:
         return False
 
     def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+        self.captured_headers = headers
         return _FakeStreamResponse(self._lines, self._status)
 
 
@@ -578,3 +578,33 @@ async def test_stream_completion_emits_content_then_done():
     assert len(dones) == 1
     assert dones[0].input_tokens == 3
     assert dones[0].output_tokens == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_sends_attribution_headers():
+    """OpenRouter requires HTTP-Referer and X-Title headers for app attribution."""
+    lines = [
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClient(lines)
+
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_args, **_kw: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+
+    assert fake.captured_headers is not None
+    assert fake.captured_headers["HTTP-Referer"] == "https://chatsune.app"
+    assert fake.captured_headers["X-Title"] == "Chatsune"
+    assert fake.captured_headers["Authorization"].startswith("Bearer ")
