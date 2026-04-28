@@ -670,3 +670,57 @@ async def test_stream_completion_5xx_yields_provider_unavailable():
     errs = [e for e in events if isinstance(e, StreamError)]
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
+
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _make_app_with_test_route(monkeypatch):
+    """Mount the adapter router under a stubbed dependency that
+    returns a pre-baked ResolvedConnection — no real auth or DB."""
+    app = FastAPI()
+    router = OpenRouterHttpAdapter.router()
+    assert router is not None
+
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    async def fake_resolver():
+        return _resolved()
+
+    app.dependency_overrides[resolve_connection_for_user] = fake_resolver
+    app.include_router(router, prefix="/api/llm/connections/{connection_id}/adapter")
+    return app
+
+
+@pytest.mark.asyncio
+async def test_router_post_test_valid_when_models_returned(monkeypatch):
+    app = _make_app_with_test_route(monkeypatch)
+
+    async def fake_fetch(self, c):  # noqa: ARG001
+        return [object()]  # any non-empty list
+
+    monkeypatch.setattr(OpenRouterHttpAdapter, "fetch_models", fake_fetch)
+
+    with TestClient(app) as client:
+        r = client.post("/api/llm/connections/premium:openrouter/adapter/test")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert body["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_router_post_test_invalid_when_no_models(monkeypatch):
+    app = _make_app_with_test_route(monkeypatch)
+
+    async def fake_fetch(self, c):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(OpenRouterHttpAdapter, "fetch_models", fake_fetch)
+
+    with TestClient(app) as client:
+        r = client.post("/api/llm/connections/premium:openrouter/adapter/test")
+    body = r.json()
+    assert body["valid"] is False
+    assert body["error"]  # non-empty string

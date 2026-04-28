@@ -27,6 +27,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import httpx
+from fastapi import APIRouter, Depends
 
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -284,6 +285,10 @@ class OpenRouterHttpAdapter(BaseAdapter):
     view_id = "openrouter_http"
     secret_fields = frozenset({"api_key"})
 
+    @classmethod
+    def router(cls) -> APIRouter:
+        return _build_adapter_router()
+
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
@@ -460,3 +465,27 @@ class OpenRouterHttpAdapter(BaseAdapter):
 
         if not seen_done:
             yield StreamDone()
+
+
+def _build_adapter_router() -> APIRouter:
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    router = APIRouter()
+
+    @router.post("/test")
+    async def test_connection(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> dict:
+        adapter = OpenRouterHttpAdapter()
+        models = await adapter.fetch_models(c)
+        if models:
+            return {"valid": True, "error": None}
+        return {
+            "valid": False,
+            "error": (
+                "OpenRouter returned no models — check the API key, "
+                "your OpenRouter privacy guardrails, or upstream availability."
+            ),
+        }
+
+    return router
