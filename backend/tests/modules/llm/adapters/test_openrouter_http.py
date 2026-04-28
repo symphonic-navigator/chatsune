@@ -1,13 +1,13 @@
 """Tests for the OpenRouter HTTP adapter.
 
-Covers identity, model-list mapping, defensive modality filter,
-auth/error handling, payload shape (incl. reasoning logic), SSE parser
-extensions, and the /test sub-router.
+Coverage grows task by task; this initial pass exercises adapter
+identity and premium-only registration. Later tasks add model-list
+mapping, defensive modality filter, auth/error handling, payload
+shape (incl. reasoning logic), SSE parser extensions, and the /test
+sub-router.
 """
 
 from __future__ import annotations
-
-import pytest
 
 from backend.modules.llm._adapters._openrouter_http import (
     OpenRouterHttpAdapter,
