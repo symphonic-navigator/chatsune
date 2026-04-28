@@ -6,6 +6,7 @@ function reset() {
   useChatStore.setState({
     streamingArtefactRefs: [],
     streamingRefusalText: null,
+    activeToolCalls: [],
   } as any)
 }
 
@@ -43,6 +44,22 @@ describe('chatStore — streaming artefact and refusal slices', () => {
   it('setStreamingRefusalText sets the refusal text', () => {
     useChatStore.getState().setStreamingRefusalText('declined')
     expect(useChatStore.getState().streamingRefusalText).toBe('declined')
+  })
+
+  it('addToolCall is idempotent on tool_call_id', () => {
+    const tc = {
+      id: 'call_abc',
+      toolName: 'lookup',
+      arguments: { q: 'first' },
+      status: 'running' as const,
+    }
+    useChatStore.getState().addToolCall(tc)
+    // Same id, different arguments — represents a duplicate
+    // ToolCallStarted event from a misbehaving upstream stream.
+    useChatStore.getState().addToolCall({ ...tc, arguments: { q: 'second' } })
+    const calls = useChatStore.getState().activeToolCalls
+    expect(calls).toHaveLength(1)
+    expect(calls[0].arguments).toEqual({ q: 'second' })
   })
 
   it('finishStreaming clears the new streaming fields', () => {

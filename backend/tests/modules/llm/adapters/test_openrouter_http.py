@@ -385,6 +385,20 @@ def test_accumulator_collects_tool_call_across_fragments():
     }]
 
 
+def test_accumulator_finalised_is_idempotent():
+    """Some upstream providers (DeepSeek via OpenRouter) emit two
+    finish_reason="tool_calls" chunks for the same call. _chunk_to_events
+    re-invokes finalised() each time, so a non-idempotent finalised()
+    surfaces the same call as two ToolCallStarted events downstream."""
+    acc = _ToolCallAccumulator()
+    acc.ingest([{"index": 0, "id": "call_1",
+                 "function": {"name": "lookup", "arguments": "{}"}}])
+    first = acc.finalised()
+    second = acc.finalised()
+    assert len(first) == 1
+    assert second == []
+
+
 def test_translate_text_only_user_message():
     msg = CompletionMessage(role="user",
                             content=[ContentPart(type="text", text="hi")])

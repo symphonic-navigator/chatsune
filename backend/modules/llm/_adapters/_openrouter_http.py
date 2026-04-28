@@ -124,10 +124,17 @@ _SSE_DONE = object()
 
 
 class _ToolCallAccumulator:
-    """Gathers OpenAI-style tool_call fragments across SSE chunks."""
+    """Gathers OpenAI-style tool_call fragments across SSE chunks.
+
+    ``finalised()`` is idempotent: subsequent calls return an empty list.
+    Some upstream providers (notably DeepSeek via OpenRouter) emit two
+    chunks with ``finish_reason="tool_calls"`` for the same call, which
+    used to surface as a duplicate ToolCallStarted event downstream.
+    """
 
     def __init__(self) -> None:
         self._by_index: dict[int, dict] = {}
+        self._finalised = False
 
     def ingest(self, fragments: list[dict]) -> None:
         for frag in fragments:
@@ -146,6 +153,9 @@ class _ToolCallAccumulator:
                 slot["args"] += fn["arguments"]
 
     def finalised(self) -> list[dict]:
+        if self._finalised:
+            return []
+        self._finalised = True
         calls: list[dict] = []
         for _, slot in sorted(self._by_index.items()):
             calls.append({

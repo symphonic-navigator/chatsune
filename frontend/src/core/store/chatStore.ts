@@ -145,7 +145,20 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setStreamingRefusalText: (text) =>
     set({ streamingRefusalText: text }),
   addToolCall: (tc) =>
-    set((s) => ({ activeToolCalls: [...s.activeToolCalls, tc] })),
+    // Idempotent on tool_call_id: some upstream providers (notably
+    // DeepSeek via OpenRouter) emit two finish_reason="tool_calls"
+    // chunks for the same call, which used to surface as a duplicated
+    // ToolCallStarted event and a React duplicate-key warning. Replace
+    // an existing entry with the same id instead of appending.
+    set((s) => {
+      const idx = s.activeToolCalls.findIndex((x) => x.id === tc.id)
+      if (idx >= 0) {
+        const next = [...s.activeToolCalls]
+        next[idx] = tc
+        return { activeToolCalls: next }
+      }
+      return { activeToolCalls: [...s.activeToolCalls, tc] }
+    }),
   completeToolCall: (toolCallId) =>
     set((s) => ({
       activeToolCalls: s.activeToolCalls.map((tc) =>
