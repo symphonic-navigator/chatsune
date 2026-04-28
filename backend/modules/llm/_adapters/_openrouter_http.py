@@ -58,6 +58,11 @@ _TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 _OPENROUTER_REFERER = "https://chatsune.app"
 _OPENROUTER_X_TITLE = "Chatsune"
 
+# Minimum context window we accept, in tokens. Mirrors nano-gpt's
+# 80k floor — Chatsune builds long-running journals/memory loops
+# that need real headroom once history accumulates.
+MIN_CONTEXT_TOKENS = 80_000
+
 
 def _supports(parameters: list[str], *names: str) -> bool:
     return any(n in parameters for n in names)
@@ -79,6 +84,12 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
     if output_mods != ["text"]:
         return None
 
+    context_length = int(entry.get("context_length") or 0)
+    # Mirrors nano-gpt's MIN_CONTEXT — sub-80k models leave no
+    # breathing room once chat history and tool definitions stack up.
+    if context_length < MIN_CONTEXT_TOKENS:
+        return None
+
     input_mods = arch.get("input_modalities") or []
     params = entry.get("supported_parameters") or []
     pricing = entry.get("pricing") or {}
@@ -97,7 +108,7 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
         connection_display_name=c.display_name,
         model_id=entry["id"],
         display_name=entry.get("name") or entry["id"],
-        context_window=int(entry.get("context_length") or 0),
+        context_window=context_length,
         supports_reasoning=_supports(params, "reasoning", "include_reasoning"),
         supports_vision="image" in input_mods,
         supports_tool_calls=_supports(params, "tools"),

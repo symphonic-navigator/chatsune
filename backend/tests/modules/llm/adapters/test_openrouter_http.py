@@ -104,7 +104,7 @@ _MODELS_USER_RESPONSE = {
         {
             "id": "deepseek/deepseek-r1:free",
             "name": "DeepSeek: R1 (free)",
-            "context_length": 64_000,
+            "context_length": 131_072,
             "architecture": {
                 "modality": "text->text",
                 "input_modalities": ["text"],
@@ -112,7 +112,7 @@ _MODELS_USER_RESPONSE = {
             },
             "pricing": {"prompt": "0", "completion": "0"},
             "top_provider": {
-                "context_length": 64_000,
+                "context_length": 131_072,
                 "max_completion_tokens": 8_192,
                 "is_moderated": False,
             },
@@ -712,3 +712,103 @@ async def test_router_post_test_invalid_when_no_models(monkeypatch):
     body = r.json()
     assert body["valid"] is False
     assert body["error"]  # non-empty string
+
+
+_MODELS_USER_RESPONSE_LOW_CONTEXT = {
+    "data": [
+        {
+            "id": "tiny/8k",
+            "name": "Tiny 8k",
+            "context_length": 8192,
+            "architecture": {
+                "modality": "text->text",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "edge/just-below",
+            "name": "Just Below 80k",
+            "context_length": 79_999,
+            "architecture": {
+                "modality": "text->text",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "edge/at-threshold",
+            "name": "At 80k",
+            "context_length": 80_000,
+            "architecture": {
+                "modality": "text->text",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "okay/128k",
+            "name": "Big 128k",
+            "context_length": 128_000,
+            "architecture": {
+                "modality": "text->text",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "broken/missing-context",
+            "name": "No Context",
+            "architecture": {
+                "modality": "text->text",
+                "input_modalities": ["text"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+    ],
+}
+
+
+class _FakeAsyncClientLowContext(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=200,
+            content=json.dumps(_MODELS_USER_RESPONSE_LOW_CONTEXT).encode(),
+            request=httpx.Request("GET", url),
+        )
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_drops_models_below_min_context_window():
+    """Mirror nano-gpt's MIN_CONTEXT=80_000 — sub-80k models give us no
+    breathing room in the context window once history accumulates."""
+    a = OpenRouterHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        _FakeAsyncClientLowContext,
+    ):
+        models = await a.fetch_models(_resolved())
+
+    ids = {m.model_id for m in models}
+    # Threshold is inclusive: exactly 80_000 survives. Anything below is dropped.
+    assert ids == {"edge/at-threshold", "okay/128k"}
