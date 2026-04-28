@@ -98,11 +98,16 @@ async def embed_texts(
     texts: list[str],
     reference_id: str,
     correlation_id: str,
+    user_id: str | None = None,
 ) -> None:
-    """Enqueue texts for background embedding. Returns immediately."""
+    """Enqueue texts for background embedding. Returns immediately.
+
+    ``user_id`` is carried through to the resulting batch / error events so
+    consumers can scope their reference_id lookup by owner.
+    """
     if not _queue:
         raise RuntimeError("Embedding module not initialised")
-    _queue.submit_embed(texts, reference_id, correlation_id)
+    _queue.submit_embed(texts, reference_id, correlation_id, user_id=user_id)
 
 
 async def query_embed(text: str) -> list[float]:

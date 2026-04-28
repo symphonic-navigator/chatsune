@@ -35,6 +35,7 @@ async def handle_embedding_completed(event: dict) -> None:
     doc_id = event.get("reference_id")
     vectors: list[list[float]] = event.get("vectors", [])
     correlation_id = event.get("correlation_id", str(uuid4()))
+    evt_user_id = event.get("user_id")
 
     if not doc_id:
         _log.warning("handle_embedding_completed: missing reference_id in event")
@@ -43,8 +44,21 @@ async def handle_embedding_completed(event: dict) -> None:
     db = get_db()
     repo = KnowledgeRepository(db)
 
-    # Find the document across all users (embedding events carry no user_id)
-    doc = await db["knowledge_documents"].find_one({"_id": doc_id})
+    # Scope the lookup by owner when the event carries a user_id. The fallback
+    # to an unscoped find is a deploy-window backward-compat path: events
+    # published by the previous code (still in Redis Streams during a rolling
+    # deploy) have no user_id. Tighten this once we are confident no legacy
+    # events remain — drop the None branch and require user_id on the event.
+    if evt_user_id:
+        query = {"_id": doc_id, "user_id": evt_user_id}
+    else:
+        _log.warning(
+            "handle_embedding_completed: event missing user_id (legacy); "
+            "falling back to unscoped lookup for doc=%s",
+            doc_id,
+        )
+        query = {"_id": doc_id}
+    doc = await db["knowledge_documents"].find_one(query)
     if not doc:
         _log.warning("handle_embedding_completed: document %s not found", doc_id)
         return
@@ -104,6 +118,7 @@ async def handle_embedding_error(event: dict) -> None:
     doc_id = event.get("reference_id")
     error_msg = event.get("error", "Unknown error")
     correlation_id = event.get("correlation_id", str(uuid4()))
+    evt_user_id = event.get("user_id")
 
     if not doc_id:
         _log.warning("handle_embedding_error: missing reference_id in event")
@@ -112,7 +127,19 @@ async def handle_embedding_error(event: dict) -> None:
     db = get_db()
     repo = KnowledgeRepository(db)
 
-    doc = await db["knowledge_documents"].find_one({"_id": doc_id})
+    # Same deploy-window backward-compat as handle_embedding_completed: prefer
+    # the owner-scoped lookup, fall back to unscoped if the event predates the
+    # user_id field. Drop the fallback once legacy events have drained.
+    if evt_user_id:
+        query = {"_id": doc_id, "user_id": evt_user_id}
+    else:
+        _log.warning(
+            "handle_embedding_error: event missing user_id (legacy); "
+            "falling back to unscoped lookup for doc=%s",
+            doc_id,
+        )
+        query = {"_id": doc_id}
+    doc = await db["knowledge_documents"].find_one(query)
     if not doc:
         _log.warning("handle_embedding_error: document %s not found", doc_id)
         return

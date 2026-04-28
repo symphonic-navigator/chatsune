@@ -30,6 +30,10 @@ class EmbeddingBatchCompletedEvent(BaseModel):
     vectors: list[list[float]]
     correlation_id: str
     timestamp: datetime
+    # Optional during the deploy window so any in-flight events from older
+    # publishers (queued in Redis Streams) still deserialise. Consumers should
+    # treat ``None`` as "legacy event, owner unknown" — see knowledge module.
+    user_id: str | None = None
 
 
 class EmbeddingErrorEvent(BaseModel):
@@ -40,3 +44,5 @@ class EmbeddingErrorEvent(BaseModel):
     recoverable: bool
     correlation_id: str
     timestamp: datetime
+    # Optional during the deploy window — see EmbeddingBatchCompletedEvent.
+    user_id: str | None = None

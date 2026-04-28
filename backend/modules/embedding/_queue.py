@@ -31,6 +31,10 @@ class EmbedBatchRequest:
     texts: list[str]
     reference_id: str
     correlation_id: str
+    # The owning user. Carried through to the completion/error events so
+    # consumers can scope their reference_id lookup by owner instead of
+    # trusting the reference_id alone.
+    user_id: str | None = None
 
 
 class EmbeddingQueue:
@@ -65,12 +69,14 @@ class EmbeddingQueue:
         texts: list[str],
         reference_id: str,
         correlation_id: str,
+        user_id: str | None = None,
     ) -> None:
         """Submit texts for background embedding. Returns immediately."""
         request = EmbedBatchRequest(
             texts=texts,
             reference_id=reference_id,
             correlation_id=correlation_id,
+            user_id=user_id,
         )
         self._embed_queue.put_nowait(request)
 
@@ -189,6 +195,7 @@ class EmbeddingQueue:
                             recoverable=True,
                             correlation_id=request.correlation_id,
                             timestamp=datetime.now(timezone.utc),
+                            user_id=request.user_id,
                         ),
                     )
                 return
@@ -203,6 +210,7 @@ class EmbeddingQueue:
                     vectors=all_vectors,
                     correlation_id=request.correlation_id,
                     timestamp=datetime.now(timezone.utc),
+                    user_id=request.user_id,
                 ),
             )
 
