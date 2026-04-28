@@ -32,6 +32,13 @@ async def get_pti_injections(
     if session is None:
         return [], None
 
+    # Defense in depth: every subsequent find/update is filtered by the
+    # session owner so a regression in upstream attach validation cannot
+    # leak documents or libraries from another user's tenancy.
+    user_id = session.get("user_id")
+    if not user_id:
+        return [], None
+
     session_lib_ids = session.get("knowledge_library_ids") or []
     all_lib_ids = list({*persona_library_ids, *session_lib_ids})
     if not all_lib_ids:
@@ -39,22 +46,26 @@ async def get_pti_injections(
 
     index = cache.get(session_id)
     if index is None:
-        index = await _build_index(db, all_lib_ids)
+        index = await _build_index(db, all_lib_ids, user_id)
         cache.set(session_id, index)
 
     hits = match_phrases(message, index)
     if not hits:
         await db.chat_sessions.update_one(
-            {"_id": session_id},
+            {"_id": session_id, "user_id": user_id},
             {"$inc": {"user_message_counter": 1}},
         )
         return [], None
 
     hit_doc_ids = list({h[0] for h in hits})
-    docs_cur = db.knowledge_documents.find({"_id": {"$in": hit_doc_ids}})
+    docs_cur = db.knowledge_documents.find(
+        {"_id": {"$in": hit_doc_ids}, "user_id": user_id}
+    )
     docs_by_id = {d["_id"]: d async for d in docs_cur}
 
-    libs_cur = db.knowledge_libraries.find({"_id": {"$in": all_lib_ids}})
+    libs_cur = db.knowledge_libraries.find(
+        {"_id": {"$in": all_lib_ids}, "user_id": user_id}
+    )
     libs_by_id = {l["_id"]: l async for l in libs_cur}
 
     candidates: list[DocumentCandidate] = []
@@ -79,7 +90,7 @@ async def get_pti_injections(
             )
         )
 
-    new_counter = await _increment_counter(db, session_id)
+    new_counter = await _increment_counter(db, session_id, user_id)
     pti_last_inject = session.get("pti_last_inject") or {}
 
     items, overflow = apply_cooldown_and_caps(
@@ -104,7 +115,7 @@ async def get_pti_injections(
             for doc_id in injected_ids
         }
         await db.chat_sessions.update_one(
-            {"_id": session_id},
+            {"_id": session_id, "user_id": user_id},
             {"$set": update_fields},
         )
 
@@ -112,12 +123,20 @@ async def get_pti_injections(
 
 
 async def _build_index(
-    db: AsyncIOMotorDatabase, library_ids: list[str]
+    db: AsyncIOMotorDatabase, library_ids: list[str], user_id: str
 ) -> TriggerIndex:
-    """Load all trigger phrases of all documents in `library_ids`."""
+    """Load all trigger phrases of all documents in `library_ids`.
+
+    Filtered by `user_id` so the index can never be poisoned with phrases
+    from a foreign-tenant document if upstream attach validation regresses.
+    """
     index = TriggerIndex()
     cur = db.knowledge_documents.find(
-        {"library_id": {"$in": library_ids}, "trigger_phrases": {"$ne": []}},
+        {
+            "library_id": {"$in": library_ids},
+            "user_id": user_id,
+            "trigger_phrases": {"$ne": []},
+        },
         projection={"_id": 1, "trigger_phrases": 1},
     )
     async for doc in cur:
@@ -128,10 +147,12 @@ async def _build_index(
     return index
 
 
-async def _increment_counter(db: AsyncIOMotorDatabase, session_id: str) -> int:
+async def _increment_counter(
+    db: AsyncIOMotorDatabase, session_id: str, user_id: str
+) -> int:
     """Atomically increment user_message_counter and return the new value."""
     res = await db.chat_sessions.find_one_and_update(
-        {"_id": session_id},
+        {"_id": session_id, "user_id": user_id},
         {"$inc": {"user_message_counter": 1}},
         return_document=True,
     )
