@@ -12,20 +12,20 @@ async def init_indexes(db) -> None:
     await BookmarkRepository(db).create_indexes()
 
 
-async def delete_bookmarks_for_session(session_id: str) -> None:
+async def delete_bookmarks_for_session(session_id: str, user_id: str) -> None:
     """Cascade delete: remove all bookmarks when a session is deleted."""
     from backend.database import get_db
 
     repo = BookmarkRepository(get_db())
-    await repo.delete_by_session(session_id)
+    await repo.delete_by_session(session_id, user_id)
 
 
-async def delete_bookmarks_for_message(message_id: str) -> None:
+async def delete_bookmarks_for_message(message_id: str, user_id: str) -> None:
     """Cascade delete: remove all bookmarks when a message is deleted."""
     from backend.database import get_db
 
     repo = BookmarkRepository(get_db())
-    await repo.delete_by_message(message_id)
+    await repo.delete_by_message(message_id, user_id)
 
 
 __all__ = [

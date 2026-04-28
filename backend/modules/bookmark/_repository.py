@@ -77,14 +77,18 @@ class BookmarkRepository:
         result = await self._bookmarks.delete_one({"_id": bookmark_id, "user_id": user_id})
         return result.deleted_count > 0
 
-    async def delete_by_message(self, message_id: str) -> int:
+    async def delete_by_message(self, message_id: str, user_id: str) -> int:
         """Delete all bookmarks for a message (cascade on message delete)."""
-        result = await self._bookmarks.delete_many({"message_id": message_id})
+        result = await self._bookmarks.delete_many(
+            {"message_id": message_id, "user_id": user_id},
+        )
         return result.deleted_count
 
-    async def delete_by_session(self, session_id: str) -> int:
+    async def delete_by_session(self, session_id: str, user_id: str) -> int:
         """Delete all bookmarks for a session (cascade on session delete)."""
-        result = await self._bookmarks.delete_many({"session_id": session_id})
+        result = await self._bookmarks.delete_many(
+            {"session_id": session_id, "user_id": user_id},
+        )
         return result.deleted_count
 
     @staticmethod

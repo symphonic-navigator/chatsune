@@ -72,24 +72,24 @@ async def cleanup_stale_empty_sessions() -> int:
     """Delete empty sessions older than 24 hours. Returns count of deleted sessions."""
     db = get_db()
     repo = ChatRepository(db)
-    stale_ids = await repo.delete_stale_empty_sessions(max_age_minutes=1440)
-    if stale_ids:
-        for sid in stale_ids:
-            await delete_bookmarks_for_session(sid)
-        _log.info("Cleaned up %d stale empty sessions", len(stale_ids))
-    return len(stale_ids)
+    stale = await repo.delete_stale_empty_sessions(max_age_minutes=1440)
+    if stale:
+        for sid, uid in stale:
+            await delete_bookmarks_for_session(sid, uid)
+        _log.info("Cleaned up %d stale empty sessions", len(stale))
+    return len(stale)
 
 
 async def cleanup_soft_deleted_sessions() -> int:
     """Hard-delete sessions that were soft-deleted more than 1 hour ago. Returns count."""
     db = get_db()
     repo = ChatRepository(db)
-    deleted_ids = await repo.hard_delete_expired_sessions(max_age_minutes=60)
-    if deleted_ids:
-        for sid in deleted_ids:
-            await delete_bookmarks_for_session(sid)
-        _log.info("Hard-deleted %d soft-deleted sessions", len(deleted_ids))
-    return len(deleted_ids)
+    deleted = await repo.hard_delete_expired_sessions(max_age_minutes=60)
+    if deleted:
+        for sid, uid in deleted:
+            await delete_bookmarks_for_session(sid, uid)
+        _log.info("Hard-deleted %d soft-deleted sessions", len(deleted))
+    return len(deleted)
 
 
 async def find_sessions_for_extraction(
