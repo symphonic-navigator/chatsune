@@ -22,9 +22,26 @@ Each item is given a stable ID (`TD-NNN`) so we can reference it from
 
 ---
 
+## Status update — 2026-04-27 sweep
+
+Six [AUTO] items were attempted on branch `claude/analyze-technical-debt-yDyKh`
+after this audit was merged to master. Results inline below; full account in
+[DEBT-FIXED.md](DEBT-FIXED.md).
+
+| ID     | Status                | Notes                                                            |
+| ------ | --------------------- | ---------------------------------------------------------------- |
+| TD-001 | ✅ FIXED              | OPTION_STYLE applied to HistoryTab, UploadsTab, BookmarksTab.   |
+| TD-002 | ✅ FIXED              | Both pyproject files aligned; duplicate dev section collapsed.   |
+| TD-003 | ✅ FIXED              | All `datetime.utcnow()` and naive `datetime.now()` replaced.    |
+| TD-005 | ✅ FIXED              | AdminMcpTab `.then()` wrapped in try/catch helper.               |
+| TD-007 | ✅ PARTIALLY FIXED    | LLM and integrations no longer reach into providers internals. Other cross-module internal imports remain (main.py bootstrap, ws/router.py, jobs/handlers) — flagged for [REVIEW]. |
+| TD-010 | ❌ FALSE ALARM        | vite 8 / vitest 4 do exist in the lockfile; my "non-existent versions" claim was wrong. No change needed. |
+
+---
+
 ## CRITICAL
 
-### TD-001 — Native `<select>` dropdowns missing `OPTION_STYLE` (4 files) — [AUTO]
+### TD-001 — Native `<select>` dropdowns missing `OPTION_STYLE` (4 files) — [AUTO] — ✅ FIXED
 
 CLAUDE.md "Frontend styling gotchas" calls this out as a recurring mistake.
 Without inline `style={OPTION_STYLE}` on each `<option>`, the open dropdown
@@ -39,7 +56,7 @@ renders light-grey-on-white inside the otherwise-dark UI. Affected:
 Fix: declare an `OPTION_STYLE` constant matching the existing convention and
 spread it on every `<option>`.
 
-### TD-002 — Root and backend `pyproject.toml` are out of sync, root contains impossible version pins — [AUTO]
+### TD-002 — Root and backend `pyproject.toml` are out of sync, root contains impossible version pins — [AUTO] — ✅ FIXED
 
 CLAUDE.md says both files must list the same packages with pinned minimums.
 Reality:
@@ -71,7 +88,7 @@ Fix plan (autonomous):
 4. Keep `pymongo`, `passlib`, `uvloop` in backend if they're imported anywhere;
    verify with grep before removing.
 
-### TD-003 — `datetime.utcnow()` is deprecated in Python 3.12+ — [AUTO]
+### TD-003 — `datetime.utcnow()` is deprecated in Python 3.12+ — [AUTO] — ✅ FIXED
 
 Three call sites still use it; will emit `DeprecationWarning` and be removed in
 a future Python release. Two are also Pydantic `default_factory` for
@@ -97,7 +114,7 @@ Why [REVIEW]: adding CI jobs touches the deploy/release flow. I'd rather you
 sign off on the proposed shape (pytest matrix? coverage threshold? blocking on
 PRs only or also on master?) before I add it.
 
-### TD-005 — `.then()` chains without `.catch()` in `AdminMcpTab.tsx` — [AUTO]
+### TD-005 — `.then()` chains without `.catch()` in `AdminMcpTab.tsx` — [AUTO] — ✅ FIXED
 
 ```tsx
 mcpApi.updateAdminGateway(...).then(() => fetchGateways())
@@ -132,7 +149,7 @@ Why [REVIEW]: writing 19 modules' worth of tests is a multi-week project and
 needs your direction on priorities (start with auth & persona deser? memory
 consolidation correctness? chat orchestrator?).
 
-### TD-007 — Module-boundary violations: LLM and integrations import `providers._registry` and `providers._repository` directly — [AUTO]
+### TD-007 — Module-boundary violations: LLM and integrations import `providers._registry` and `providers._repository` directly — [AUTO] — ✅ PARTIALLY FIXED
 
 CLAUDE.md hard rule 1: "Internal files prefixed with `_` must never be imported
 from outside the module." Findings:
@@ -176,17 +193,16 @@ on a known expiry timestamp (no JS interval needed).
 Why [REVIEW]: changing the runtime user can break bind-mounts in deployed
 environments. Worth a coordinated change rather than autonomous.
 
-### TD-010 — Frontend tooling pinned to non-existent versions — [AUTO]
+### TD-010 — Frontend tooling pinned to non-existent versions — [AUTO] — ❌ FALSE ALARM
 
 `frontend/package.json`:
 
-- `vite ^8.0.1` — Vite is at v6.x in 2026. `^8` will not resolve.
-- `vitest ^4.1.2` — Vitest is at v3.x in 2026. `^4` will not resolve.
+- `vite ^8.0.1`
+- `vitest ^4.1.2`
 
-If `pnpm install` succeeds today it is because lockfile is taking precedence;
-a fresh resolve will fail. Fix: pin to current major versions actually
-released (`vite ^6`, `vitest ^3`) — but verify by reading the lockfile before
-changing.
+**Update after verification:** the lockfile shows `vite@8.0.3` and
+`vitest@4.1.2` resolved cleanly. These versions do exist; my "non-existent"
+claim was incorrect. Item retracted.
 
 ### TD-011a — `ConnectionManager` shared dict mutations under concurrent handlers — [REVIEW]
 

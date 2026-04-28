@@ -56,9 +56,9 @@ class XaiVoiceAdapter(VoiceAdapter):
         """
         # Deferred import to avoid a circular import at module load time
         # (providers → integrations, in some startup paths).
-        from backend.modules.providers import PremiumProviderService
-        from backend.modules.providers._repository import (
+        from backend.modules.providers import (
             PremiumProviderAccountRepository,
+            PremiumProviderService,
         )
         svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
         key = await svc.get_decrypted_secret(

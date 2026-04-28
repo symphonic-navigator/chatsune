@@ -341,7 +341,11 @@ async def list_premium_provider_models(
         PremiumProviderAccountMissingError: the user has no account
             configured for this provider.
     """
-    from backend.modules.providers._registry import get as get_premium_definition
+    from backend.modules.providers import (
+        PremiumProviderAccountRepository,
+        PremiumProviderService,
+        get_definition as get_premium_definition,
+    )
 
     if get_premium_definition(provider_id) is None:
         raise PremiumProviderUnknownError(provider_id)
@@ -352,11 +356,6 @@ async def list_premium_provider_models(
         #   (b) the user has no account — surface a distinct error.
         # resolve_premium_for_listing returns None for both. Disambiguate
         # by consulting the service layer directly.
-        from backend.modules.providers import PremiumProviderService
-        from backend.modules.providers._repository import (
-            PremiumProviderAccountRepository,
-        )
-
         svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
         if not await svc.has_account(user_id, provider_id):
             raise PremiumProviderAccountMissingError(provider_id)
@@ -382,17 +381,16 @@ async def refresh_premium_provider_models(
         PremiumProviderAccountMissingError: user has no account.
         Exception: any adapter-level fetch error.
     """
-    from backend.modules.providers._registry import get as get_premium_definition
+    from backend.modules.providers import (
+        PremiumProviderAccountRepository,
+        PremiumProviderService,
+        get_definition as get_premium_definition,
+    )
 
     if get_premium_definition(provider_id) is None:
         raise PremiumProviderUnknownError(provider_id)
     c = await resolve_premium_for_listing(user_id, provider_id)
     if c is None:
-        from backend.modules.providers import PremiumProviderService
-        from backend.modules.providers._repository import (
-            PremiumProviderAccountRepository,
-        )
-
         svc = PremiumProviderService(PremiumProviderAccountRepository(get_db()))
         if not await svc.has_account(user_id, provider_id):
             raise PremiumProviderAccountMissingError(provider_id)

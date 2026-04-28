@@ -32,6 +32,19 @@ export function AdminMcpTab() {
   }, [fetchGateways])
 
   // ── curation handlers ────────────────────────────────────────────────
+  const persistGatewayUpdate = useCallback(
+    async (gatewayId: string, patch: Parameters<typeof mcpApi.updateAdminGateway>[1]) => {
+      try {
+        await mcpApi.updateAdminGateway(gatewayId, patch)
+        await fetchGateways()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update gateway')
+        await fetchGateways()
+      }
+    },
+    [fetchGateways],
+  )
+
   function handleToggleTool(gateway: McpGatewayConfig, toolName: string, serverName: string, hidden: boolean) {
     const overrides = [...(gateway.tool_overrides ?? [])]
     const idx = overrides.findIndex(o => o.original_name === toolName && o.server_name === serverName)
@@ -40,7 +53,7 @@ export function AdminMcpTab() {
     } else {
       overrides.push({ original_name: toolName, server_name: serverName, display_name: null, hidden })
     }
-    mcpApi.updateAdminGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchGateways())
+    void persistGatewayUpdate(gateway.id, { tool_overrides: overrides })
     setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
   }
 
@@ -52,7 +65,7 @@ export function AdminMcpTab() {
     } else {
       overrides.push({ original_name: originalName, server_name: serverName, display_name: displayName, hidden: false })
     }
-    mcpApi.updateAdminGateway(gateway.id, { tool_overrides: overrides }).then(() => fetchGateways())
+    void persistGatewayUpdate(gateway.id, { tool_overrides: overrides })
     setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, tool_overrides: overrides } : g))
   }
 
@@ -60,7 +73,7 @@ export function AdminMcpTab() {
     const configs = { ...(gateway.server_configs ?? {}) }
     const existing = configs[serverName] ?? { server_name: serverName, prefix_enabled: false, custom_prefix: null, hidden: false }
     configs[serverName] = { ...existing, ...config }
-    mcpApi.updateAdminGateway(gateway.id, { server_configs: configs }).then(() => fetchGateways())
+    void persistGatewayUpdate(gateway.id, { server_configs: configs })
     setGateways(prev => prev.map(g => g.id === gateway.id ? { ...g, server_configs: configs } : g))
   }
 
