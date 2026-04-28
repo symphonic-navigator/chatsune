@@ -72,8 +72,8 @@ async def _validate_model_unique_id(user_id: str, model_unique_id: str) -> None:
     may refer to either:
 
     * A reserved Premium Provider Account slug (``xai``, ``mistral``,
-      ``ollama_cloud``) — valid iff the user has a Premium Account for
-      that provider; or
+      ``ollama_cloud``, ``nano_gpt``, ``openrouter``) — valid iff the
+      user has a Premium Account for that provider; or
     * A per-user LLM Connection slug — valid iff a Connection exists for
       the user with that slug.
     """

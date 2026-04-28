@@ -511,9 +511,10 @@ async def run_inference(
         return
 
     llm_connection_slug, model_slug = model_unique_id.split(":", 1)
-    # Premium-aware resolve: handles reserved slugs (``xai``, ``ollama_cloud``)
-    # by routing through the Premium Provider service, otherwise falls back
-    # to the user's Connection repository. If neither matches we keep the
+    # Premium-aware resolve: handles reserved slugs (``xai``, ``mistral``,
+    # ``ollama_cloud``, ``nano_gpt``, ``openrouter``) by routing through the
+    # Premium Provider service, otherwise falls back to the user's Connection
+    # repository. If neither matches we keep the
     # historical fallback of (slug, "unknown") — inference will then fail
     # downstream with a proper ``LlmConnectionNotFoundError`` but debug
     # metadata remains non-None for event emission.

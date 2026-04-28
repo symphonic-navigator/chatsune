@@ -28,7 +28,9 @@ async def test_catalogue_lists_providers(client: AsyncClient, auth_headers):
     resp = await client.get("/api/providers/catalogue", headers=auth_headers)
     assert resp.status_code == 200
     ids = [p["id"] for p in resp.json()]
-    assert set(ids) == {"xai", "mistral", "ollama_cloud"}
+    assert set(ids) == {
+        "xai", "mistral", "ollama_cloud", "nano_gpt", "openrouter",
+    }
 
 
 async def test_list_accounts_empty(client: AsyncClient, auth_headers):

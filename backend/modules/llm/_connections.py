@@ -46,7 +46,9 @@ class SlugAlreadyExistsError(ValueError):
         self.suggested = suggested
 
 
-RESERVED_SLUGS: frozenset[str] = frozenset({"xai", "mistral", "ollama_cloud", "nano_gpt"})
+RESERVED_SLUGS: frozenset[str] = frozenset({
+    "xai", "mistral", "ollama_cloud", "nano_gpt", "openrouter",
+})
 
 
 class SlugReservedError(ValueError):

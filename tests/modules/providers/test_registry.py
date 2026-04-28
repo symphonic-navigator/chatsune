@@ -30,8 +30,10 @@ def test_ollama_cloud_registered():
     assert defn.linked_integrations == []
 
 
-def test_get_all_returns_three_providers():
-    assert set(get_all().keys()) == {"xai", "mistral", "ollama_cloud"}
+def test_get_all_returns_registered_providers():
+    assert set(get_all().keys()) == {
+        "xai", "mistral", "ollama_cloud", "nano_gpt", "openrouter",
+    }
 
 
 def test_unknown_provider_returns_none():
