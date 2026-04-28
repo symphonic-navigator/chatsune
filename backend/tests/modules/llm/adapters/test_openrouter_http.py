@@ -295,6 +295,7 @@ async def test_fetch_models_returns_empty_on_transport_error():
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     StreamDone,
+    StreamError,
     StreamRefused,
     ThinkingDelta,
     ToolCallEvent,
@@ -608,3 +609,64 @@ async def test_stream_completion_sends_attribution_headers():
     assert fake.captured_headers["HTTP-Referer"] == "https://chatsune.app"
     assert fake.captured_headers["X-Title"] == "Chatsune"
     assert fake.captured_headers["Authorization"].startswith("Bearer ")
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_401_yields_invalid_api_key():
+    fake = _FakeStreamingClient([], status_code=401)
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "invalid_api_key"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_429_yields_provider_unavailable():
+    fake = _FakeStreamingClient([], status_code=429)
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "provider_unavailable"
+    assert "rate limit" in errs[0].message.lower()
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_5xx_yields_provider_unavailable():
+    fake = _FakeStreamingClient([], status_code=500)
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "provider_unavailable"
