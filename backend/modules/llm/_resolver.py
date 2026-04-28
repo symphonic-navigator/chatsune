@@ -35,6 +35,7 @@ _PREMIUM_ADAPTER_TYPE: dict[str, str] = {
     "mistral": "mistral_http",
     "ollama_cloud": "ollama_http",
     "nano_gpt": "nano_gpt_http",
+    "openrouter": "openrouter_http",
 }
 
 
