@@ -992,3 +992,32 @@ module exposes user-owned resources via cross-module APIs, or when
 a refactor touches event-bus fanout / repository methods that
 currently carry `user_id`. The 8-finding pattern catalogue above is
 the checklist.
+
+## INS-032 — OpenRouter prompt caching is per-provider, not uniform (2026-04-28)
+
+**Context:** OpenRouter routes to 50+ upstream providers, each with a
+different caching story:
+
+- **OpenAI / Gemini / DeepSeek models** — automatic prefix caching
+  above ~1024 tokens. No marker needed, transparent savings. (List
+  grows empirically; validated via the OpenRouter dashboard.)
+- **Anthropic models** — require explicit
+  `cache_control: {type: "ephemeral"}` markers on individual
+  message-content blocks (typically system prompt and long tool
+  definitions). Without markers, every turn pays full token price.
+- **Others (Llama, Mistral on OR, etc.)** — usually no caching.
+
+**Phase-1 decision:** Pass-through with no `cache_control` markers.
+OpenAI / Gemini / DeepSeek auto-caching covers the bulk of realistic
+Chatsune traffic out of the box; Anthropic models run uncached.
+
+**What testers must know:** users who route mostly to Claude through
+OpenRouter will see no cache savings until we ship marker support.
+Iterate on real usage data before optimising.
+
+**Why not implement markers now:** `cache_control` belongs at the
+content-block level inside chat messages, not on the message itself.
+Adding it would require either an OR-specific message translator
+(more code, more divergence from Mistral / xAI / nano-gpt) or a
+parameter on the shared `CompletionMessage` model that every other
+adapter would ignore. Neither is justified before we have usage data.
