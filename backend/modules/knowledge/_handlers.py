@@ -97,7 +97,12 @@ async def _trigger_embedding(
     )
 
     texts = [c.text for c in chunks]
-    await embedding.embed_texts(texts, reference_id=doc_id, correlation_id=correlation_id)
+    await embedding.embed_texts(
+        texts,
+        reference_id=doc_id,
+        correlation_id=correlation_id,
+        user_id=user_id,
+    )
 
 
 # ------------------------------------------------------------------

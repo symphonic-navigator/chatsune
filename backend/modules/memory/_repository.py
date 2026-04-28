@@ -159,9 +159,14 @@ class MemoryRepository:
             {"_id": {"$in": ids}},
             {"$set": {"state": "committed", "committed_at": now, "auto_committed": True}},
         )
-        updated_cursor = self._entries.find({"_id": {"$in": ids}})
-        updated_docs = await updated_cursor.to_list(length=5000)
-        return [_entry_to_dict(doc) for doc in updated_docs]
+        # Apply the same updates locally — no need to refetch (which would lack
+        # the user_id scoping the first query inherits per-doc). This keeps the
+        # returned docs exactly in sync with what we just wrote.
+        for doc in docs:
+            doc["state"] = "committed"
+            doc["committed_at"] = now
+            doc["auto_committed"] = True
+        return [_entry_to_dict(doc) for doc in docs]
 
     async def discard_oldest_uncommitted(
         self, user_id: str, persona_id: str, *, max_count: int = 50,

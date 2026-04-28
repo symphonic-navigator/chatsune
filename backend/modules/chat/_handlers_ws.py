@@ -541,7 +541,7 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
         if last_msg["role"] == "assistant":
             # Delete the last assistant message — we're going to replace it.
             await repo.delete_message(last_msg["_id"])
-            await delete_bookmarks_for_message(last_msg["_id"])
+            await delete_bookmarks_for_message(last_msg["_id"], user_id)
 
             await event_bus.publish(
                 Topics.CHAT_MESSAGE_DELETED,

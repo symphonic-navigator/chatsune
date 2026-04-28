@@ -260,8 +260,15 @@ class ChatRepository:
             return
         await self._sessions.delete_many({"_id": {"$in": session_ids}})
 
-    async def delete_stale_empty_sessions(self, max_age_minutes: int = 1440) -> list[str]:
-        """Delete sessions older than max_age_minutes that have zero messages. Returns list of deleted session IDs."""
+    async def delete_stale_empty_sessions(
+        self, max_age_minutes: int = 1440,
+    ) -> list[tuple[str, str]]:
+        """Delete sessions older than max_age_minutes that have zero messages.
+
+        Returns a list of ``(session_id, user_id)`` pairs for each deleted
+        session so that downstream cascade-delete callers (e.g. bookmark
+        cleanup) can scope their deletes by owner.
+        """
         cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
         pipeline = [
             {"$match": {"created_at": {"$lt": cutoff}, "deleted_at": None}},
@@ -273,14 +280,14 @@ class ChatRepository:
                 "as": "_msgs",
             }},
             {"$match": {"_msgs": []}},
-            {"$project": {"_id": 1}},
+            {"$project": {"_id": 1, "user_id": 1}},
         ]
         stale = await self._sessions.aggregate(pipeline).to_list(length=1000)
         if not stale:
             return []
         stale_ids = [doc["_id"] for doc in stale]
         await self._sessions.delete_many({"_id": {"$in": stale_ids}})
-        return stale_ids
+        return [(doc["_id"], doc["user_id"]) for doc in stale]
 
     async def soft_delete_session(self, session_id: str, user_id: str) -> bool:
         result = await self._sessions.update_one(
@@ -298,12 +305,18 @@ class ChatRepository:
             return None
         return await self._sessions.find_one({"_id": session_id})
 
-    async def hard_delete_expired_sessions(self, max_age_minutes: int = 60) -> list[str]:
-        """Hard-delete sessions where deleted_at is older than max_age_minutes. Returns list of deleted IDs."""
+    async def hard_delete_expired_sessions(
+        self, max_age_minutes: int = 60,
+    ) -> list[tuple[str, str]]:
+        """Hard-delete sessions where deleted_at is older than max_age_minutes.
+
+        Returns a list of ``(session_id, user_id)`` pairs so cascade-delete
+        callers can scope their cleanups by owner.
+        """
         cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
         cursor = self._sessions.find(
             {"deleted_at": {"$ne": None, "$lt": cutoff}},
-            {"_id": 1},
+            {"_id": 1, "user_id": 1},
         )
         docs = await cursor.to_list(length=1000)
         if not docs:
@@ -311,7 +324,7 @@ class ChatRepository:
         ids = [doc["_id"] for doc in docs]
         await self._sessions.delete_many({"_id": {"$in": ids}})
         await self._messages.delete_many({"session_id": {"$in": ids}})
-        return ids
+        return [(doc["_id"], doc["user_id"]) for doc in docs]
 
     async def delete_by_persona(self, user_id: str, persona_id: str) -> int:
         """Hard-delete all sessions and their messages for a persona."""
