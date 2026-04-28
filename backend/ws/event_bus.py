@@ -16,20 +16,34 @@ _TWENTY_FOUR_HOURS_MS = 86_400_000
 
 # Fan-out rules: (roles_to_broadcast, also_send_to_target_user_ids)
 #
-# KNOWN LIMITATION (BD-031): Admin events broadcast to ALL connected admins
-# without resource-level scoping. Every admin sees every USER_CREATED,
-# USER_UPDATED, etc. event regardless of whether they manage that user.
-# Sensitive fields in USER_UPDATED payloads are visible to all admins.
-# Revisit if per-admin scoping or field-level filtering is needed.
+# DESIGN (BD-031): Sensitive user-management events (USER_UPDATED,
+# USER_DEACTIVATED, USER_PASSWORD_RESET, USER_DELETED, INVITATION_CREATED)
+# are restricted to master_admin only. Their payloads carry data that
+# regular admins should not necessarily see in real time — changed fields
+# like email/role, soft-delete markers, single-use invitation tokens. The
+# acting admin already learned what they did via the API response;
+# regular admins refetch on dashboard load.
+#
+# Low-sensitivity coordination signals (USER_CREATED, INVITATION_USED)
+# remain broadcast to all admins — they signal "something happened" without
+# leaking sensitive payload detail.
+#
+# Follow-up: delegated-admin teams that want real-time UPDATED/DEACTIVATED
+# notifications could move to an audit-pattern fanout (master_admin +
+# acting admin only), mirroring _fan_out_audit. Not implemented today.
 _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.USER_CREATED: (["admin", "master_admin"], False),
-    Topics.INVITATION_CREATED: (["admin", "master_admin"], False),
+    # Token id is sensitive (single-use signed token).
+    Topics.INVITATION_CREATED: (["master_admin"], False),
     Topics.INVITATION_USED: (["admin", "master_admin"], False),
-    Topics.USER_UPDATED: (["admin", "master_admin"], True),
-    Topics.USER_DEACTIVATED: (["admin", "master_admin"], True),
-    # USER_DELETED — admins only; the target user is already logged out.
-    Topics.USER_DELETED: (["admin", "master_admin"], False),
-    Topics.USER_PASSWORD_RESET: (["admin", "master_admin"], True),
+    # Sensitive — payload carries changed fields (email/role/etc).
+    Topics.USER_UPDATED: (["master_admin"], True),
+    # Sensitive — broadcasts the deactivation marker.
+    Topics.USER_DEACTIVATED: (["master_admin"], True),
+    # USER_DELETED — master_admin only; the target user is already logged out.
+    Topics.USER_DELETED: (["master_admin"], False),
+    # Sensitive — broadcasts the reset marker.
+    Topics.USER_PASSWORD_RESET: (["master_admin"], True),
     Topics.USER_PROFILE_UPDATED: ([], True),
     # Targeted to the user only; the LRU is private per-user state.
     Topics.USER_RECENT_EMOJIS_UPDATED: ([], True),
@@ -334,8 +348,9 @@ class EventBus:
 
         roles, send_to_targets = _FANOUT[topic]
 
-        # BD-031: broadcasts to ALL connected users with matching roles —
-        # no resource-level filtering (see comment on _FANOUT).
+        # Broadcasts to all users holding any of `roles` — coarse-grained
+        # by role, no resource-level filtering. Sensitive admin events are
+        # scoped to master_admin only via _FANOUT (BD-031 design note above).
         await self._manager.broadcast_to_roles(roles, event_dict)
 
         if target_connection_id is not None and target_user_ids:
