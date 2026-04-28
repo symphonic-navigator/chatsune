@@ -233,3 +233,59 @@ async def test_fetch_models_filters_non_text_output():
     ids = {m.model_id for m in models}
     # Only the strict text-only output model survives.
     assert ids == {"openai/gpt-4o"}
+
+
+class _FakeAsyncClient401(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=401,
+            content=b'{"error":{"code":401,"message":"Bad key"}}',
+            request=httpx.Request("GET", url),
+        )
+
+
+class _FakeAsyncClient500(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=500,
+            content=b"upstream blew up",
+            request=httpx.Request("GET", url),
+        )
+
+
+class _FakeAsyncClientTransport(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        raise httpx.ConnectError("network down")
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_401():
+    a = OpenRouterHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        _FakeAsyncClient401,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_5xx():
+    a = OpenRouterHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        _FakeAsyncClient500,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_transport_error():
+    a = OpenRouterHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        _FakeAsyncClientTransport,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
