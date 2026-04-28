@@ -18,8 +18,11 @@ separately.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
@@ -43,6 +46,16 @@ from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
 _PROBE_TIMEOUT = httpx.Timeout(10.0)
+
+GUTTER_SLOW_SECONDS: float = 30.0
+GUTTER_ABORT_SECONDS: float = float(
+    os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"),
+)
+_TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
+
+_OPENROUTER_REFERER = "https://chatsune.app"
+_OPENROUTER_X_TITLE = "Chatsune"
 
 
 def _supports(parameters: list[str], *names: str) -> bool:
@@ -322,5 +335,128 @@ class OpenRouterHttpAdapter(BaseAdapter):
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        raise NotImplementedError  # filled in Task 10
-        yield  # pragma: no cover  # makes the type checker accept the signature
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        payload = _build_chat_payload(request)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": _OPENROUTER_REFERER,
+            "X-Title": _OPENROUTER_X_TITLE,
+        }
+
+        acc = _ToolCallAccumulator()
+        seen_done = False
+        pending_next: asyncio.Task | None = None
+
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=openrouter-out url=%s payload=%s",
+                url, json.dumps(payload, default=str, sort_keys=True),
+            )
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            try:
+                async with client.stream(
+                    "POST", f"{url}/chat/completions",
+                    json=payload, headers=headers,
+                ) as resp:
+                    if resp.status_code in (401, 403):
+                        yield StreamError(
+                            error_code="invalid_api_key",
+                            message="OpenRouter rejected the API key",
+                        )
+                        return
+                    if resp.status_code == 429:
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message="OpenRouter rate limit hit",
+                        )
+                        return
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        detail = body.decode("utf-8", errors="replace")[:500]
+                        _log.error(
+                            "openrouter_http upstream %d: %s",
+                            resp.status_code, detail,
+                        )
+                        yield StreamError(
+                            error_code="provider_unavailable",
+                            message=f"OpenRouter returned {resp.status_code}: {detail}",
+                        )
+                        return
+
+                    stream_iter = resp.aiter_lines().__aiter__()
+                    line_start = time.monotonic()
+                    slow_fired = False
+
+                    while True:
+                        elapsed = time.monotonic() - line_start
+                        budget = (
+                            GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                            else GUTTER_SLOW_SECONDS - elapsed
+                        )
+                        if budget <= 0:
+                            if not slow_fired:
+                                _log.info(
+                                    "openrouter_http.gutter_slow model=%s idle=%.1fs",
+                                    payload.get("model"), elapsed,
+                                )
+                                yield StreamSlow()
+                                slow_fired = True
+                                continue
+                            _log.warning(
+                                "openrouter_http.gutter_abort model=%s idle=%.1fs",
+                                payload.get("model"), elapsed,
+                            )
+                            if pending_next is not None:
+                                pending_next.cancel()
+                            yield StreamAborted(reason="gutter_timeout")
+                            return
+                        if pending_next is None:
+                            pending_next = asyncio.ensure_future(
+                                stream_iter.__anext__(),
+                            )
+                        done, _pending = await asyncio.wait(
+                            {pending_next}, timeout=budget,
+                        )
+                        if not done:
+                            continue
+                        task = done.pop()
+                        pending_next = None
+                        try:
+                            line = task.result()
+                        except StopAsyncIteration:
+                            break
+                        line_start = time.monotonic()
+                        slow_fired = False
+
+                        parsed = _parse_sse_line(line)
+                        if parsed is None:
+                            continue
+                        if parsed is _SSE_DONE:
+                            break
+
+                        for event in _chunk_to_events(parsed, acc):
+                            if isinstance(event, StreamDone):
+                                seen_done = True
+                            yield event
+                            if isinstance(event, (StreamDone,
+                                                   StreamRefused,
+                                                   StreamError)):
+                                return
+
+            except asyncio.CancelledError:
+                if pending_next is not None and not pending_next.done():
+                    pending_next.cancel()
+                raise
+            except httpx.ConnectError:
+                yield StreamError(
+                    error_code="provider_unavailable",
+                    message="Cannot connect to OpenRouter",
+                )
+                return
+
+        if not seen_done:
+            yield StreamDone()

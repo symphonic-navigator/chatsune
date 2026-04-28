@@ -498,3 +498,83 @@ def test_reasoning_field_omitted_when_unsupported():
         supports_reasoning=False, reasoning_enabled=True,
     )
     assert "reasoning" not in _build_chat_payload(req)
+
+
+import asyncio
+
+
+class _FakeStreamResponse:
+    """httpx response stand-in that yields prepared SSE lines."""
+
+    def __init__(self, lines: list[str], status_code: int = 200):
+        self._lines = lines
+        self.status_code = status_code
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            await asyncio.sleep(0)
+            yield line
+
+    async def aread(self):
+        return b""
+
+
+class _FakeStreamingClient:
+    """httpx.AsyncClient stand-in that returns a canned SSE stream."""
+
+    def __init__(self, lines, status_code=200):
+        self._lines = lines
+        self._status = status_code
+
+    def __call__(self, *_, **__):  # used as ctor when patched
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+        return _FakeStreamResponse(self._lines, self._status)
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_content_then_done():
+    lines = [
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+        'data: {"choices":[{"delta":{"content":"lo"}}]}',
+        'data: {"choices":[{"finish_reason":"stop","delta":{}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClient(lines)
+
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="openai/gpt-4o",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="hi")],
+        )],
+    )
+
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_args, **_kw: fake,
+    ):
+        events = []
+        async for ev in a.stream_completion(_resolved(), req):
+            events.append(ev)
+
+    contents = [e for e in events if isinstance(e, ContentDelta)]
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    assert "".join(c.delta for c in contents) == "Hello"
+    assert len(dones) == 1
+    assert dones[0].input_tokens == 3
+    assert dones[0].output_tokens == 2
