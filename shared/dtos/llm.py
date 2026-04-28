@@ -32,6 +32,13 @@ class ModelMetaDto(BaseModel):
     # out-of-plan). Default ``None`` keeps pre-existing cached documents
     # readable — see CLAUDE.md §Data-Model Migrations.
     billing_category: Literal["free", "subscription", "pay_per_token"] | None = None
+    # ``True``/``False`` when the upstream provider makes an explicit
+    # statement (today: only OpenRouter via ``top_provider.is_moderated``).
+    # ``None`` = no statement — every other adapter leaves this default.
+    # A future "Allow moderated" filter must handle all three buckets
+    # (yes / no / unknown) sensibly. Default ``None`` keeps pre-existing
+    # cached documents readable — see CLAUDE.md §Data-Model Migrations.
+    is_moderated: bool | None = None
 
     @computed_field
     @property
