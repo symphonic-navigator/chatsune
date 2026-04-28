@@ -511,9 +511,13 @@ def test_reasoning_field_omitted_when_unsupported():
 class _FakeStreamResponse:
     """httpx response stand-in that yields prepared SSE lines."""
 
-    def __init__(self, lines: list[str], status_code: int = 200):
+    def __init__(
+        self, lines: list[str], status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ):
         self._lines = lines
         self.status_code = status_code
+        self.headers = headers or {}
 
     async def __aenter__(self):
         return self
@@ -637,9 +641,76 @@ async def test_stream_completion_401_yields_invalid_api_key():
     assert errs[0].error_code == "invalid_api_key"
 
 
+class _FakeStreamingClientWithStatusSeq(_FakeStreamingClient):
+    """Returns one response per attempt. ``status_codes_seq`` controls
+    the status code per call to ``stream()``; once the sequence is
+    exhausted, the last value is reused."""
+
+    def __init__(self, lines, status_codes_seq, response_headers=None):
+        super().__init__(lines)
+        self._status_seq = list(status_codes_seq)
+        self._response_headers = response_headers or {}
+        self.attempts = 0
+
+    def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+        self.captured_headers = headers
+        idx = min(self.attempts, len(self._status_seq) - 1)
+        status = self._status_seq[idx]
+        self.attempts += 1
+        return _FakeStreamResponse(
+            self._lines, status, headers=self._response_headers,
+        )
+
+
+async def _async_noop(*_a, **_k):
+    return None
+
+
 @pytest.mark.asyncio
-async def test_stream_completion_429_yields_provider_unavailable():
+async def test_stream_completion_retries_on_429_then_succeeds(monkeypatch):
+    """First attempt returns 429, second returns 200 with content.
+    The adapter should retry transparently and emit the success stream."""
+    lines = [
+        'data: {"choices":[{"delta":{"content":"OK"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClientWithStatusSeq(lines, status_codes_seq=[429, 200])
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._openrouter_http.asyncio.sleep",
+        _async_noop,
+    )
+
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+
+    contents = [e for e in events if isinstance(e, ContentDelta)]
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert "".join(c.delta for c in contents) == "OK"
+    assert len(dones) == 1
+    assert errs == []
+    assert fake.attempts == 2  # one retry happened
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_429_yields_provider_unavailable(monkeypatch):
+    """All retries return 429 — error is yielded only after exhaustion."""
     fake = _FakeStreamingClient([], status_code=429)
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._openrouter_http.asyncio.sleep",
+        _async_noop,
+    )
     a = OpenRouterHttpAdapter()
     req = CompletionRequest(
         model="m",
@@ -656,6 +727,7 @@ async def test_stream_completion_429_yields_provider_unavailable():
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
     assert "rate limit" in errs[0].message.lower()
+    assert "gave up" in errs[0].message.lower()
 
 
 @pytest.mark.asyncio
@@ -676,6 +748,134 @@ async def test_stream_completion_5xx_yields_provider_unavailable():
     errs = [e for e in events if isinstance(e, StreamError)]
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_does_not_retry_on_5xx():
+    """Retries are reserved for transient 429s. A 500 must surface
+    immediately so the user sees a real error rather than a 15-second
+    silent stall."""
+    fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[500])
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+    assert fake.attempts == 1  # no retry on 5xx
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_does_not_retry_on_401():
+    """Auth failures are not transient — never retry."""
+    fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[401])
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+    assert fake.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_429_honours_retry_after_header(monkeypatch):
+    """When the upstream sends a numeric Retry-After header on a 429,
+    we must use it as the delay rather than our exponential default."""
+    captured: list[float] = []
+
+    async def capture_sleep(delay: float) -> None:
+        captured.append(delay)
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._openrouter_http.asyncio.sleep",
+        capture_sleep,
+    )
+
+    fake = _FakeStreamingClientWithStatusSeq(
+        ['data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+         "data: [DONE]"],
+        status_codes_seq=[429, 200],
+        response_headers={"Retry-After": "7"},
+    )
+    a = OpenRouterHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+
+    # Filter out the zero-delay yield-control sleeps emitted by
+    # _FakeStreamResponse.aiter_lines; we only care about real backoff
+    # waits the adapter inserted between attempts.
+    backoff_sleeps = [s for s in captured if s > 0]
+    assert backoff_sleeps == [7.0]
+
+
+def test_retry_after_seconds_parses_numeric_header():
+    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
+    resp = httpx.Response(429, headers={"Retry-After": "3.5"})
+    assert _retry_after_seconds(resp) == 3.5
+
+
+def test_retry_after_seconds_returns_none_for_missing_header():
+    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
+    resp = httpx.Response(429)
+    assert _retry_after_seconds(resp) is None
+
+
+def test_retry_after_seconds_returns_none_for_http_date():
+    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
+    resp = httpx.Response(
+        429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
+    )
+    assert _retry_after_seconds(resp) is None
+
+
+def test_retry_after_seconds_clamps_to_max_delay():
+    from backend.modules.llm._adapters._openrouter_http import (
+        _RETRY_MAX_DELAY_SECONDS,
+        _retry_after_seconds,
+    )
+    resp = httpx.Response(429, headers={"Retry-After": "999"})
+    assert _retry_after_seconds(resp) == _RETRY_MAX_DELAY_SECONDS
+
+
+def test_retry_delay_uses_retry_after_when_present():
+    from backend.modules.llm._adapters._openrouter_http import _retry_delay_seconds
+    resp = httpx.Response(429, headers={"Retry-After": "2"})
+    # attempt is irrelevant when Retry-After is honoured
+    assert _retry_delay_seconds(resp, attempt=0) == 2.0
+    assert _retry_delay_seconds(resp, attempt=3) == 2.0
+
+
+def test_retry_delay_grows_exponentially_when_no_header():
+    from backend.modules.llm._adapters._openrouter_http import _retry_delay_seconds
+    resp = httpx.Response(429)
+    # base 1.0 * 2**2 = 4.0, with ±25% jitter → range [3.0, 5.0]
+    delay = _retry_delay_seconds(resp, attempt=2)
+    assert 3.0 <= delay <= 5.0
 
 
 def _make_app_with_test_route(monkeypatch):
