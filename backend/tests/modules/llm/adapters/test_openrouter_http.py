@@ -16,14 +16,35 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    StreamDone,
+    StreamError,
+    StreamRefused,
+    ThinkingDelta,
+)
 from backend.modules.llm._adapters._openrouter_http import (
+    _SSE_DONE,
     OpenRouterHttpAdapter,
+    _build_chat_payload,
+    _chunk_to_events,
+    _parse_sse_line,
+    _ToolCallAccumulator,
+    _translate_message,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     get_adapter_class,
+)
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ToolDefinition,
 )
 
 
@@ -292,22 +313,6 @@ async def test_fetch_models_returns_empty_on_transport_error():
     assert models == []
 
 
-from backend.modules.llm._adapters._events import (
-    ContentDelta,
-    StreamDone,
-    StreamError,
-    StreamRefused,
-    ThinkingDelta,
-    ToolCallEvent,
-)
-from backend.modules.llm._adapters._openrouter_http import (
-    _chunk_to_events,
-    _parse_sse_line,
-    _SSE_DONE,
-    _ToolCallAccumulator,
-)
-
-
 def test_parse_sse_line_returns_dict_for_data_line():
     out = _parse_sse_line('data: {"a":1}')
     assert out == {"a": 1}
@@ -378,19 +383,6 @@ def test_accumulator_collects_tool_call_across_fragments():
     assert finalised == [{
         "id": "call_1", "name": "lookup", "arguments": '{"q":"hello"}',
     }]
-
-
-from backend.modules.llm._adapters._openrouter_http import (
-    _build_chat_payload,
-    _translate_message,
-)
-from shared.dtos.inference import (
-    CompletionMessage,
-    CompletionRequest,
-    ContentPart,
-    ToolCallResult,
-    ToolDefinition,
-)
 
 
 def test_translate_text_only_user_message():
@@ -670,10 +662,6 @@ async def test_stream_completion_5xx_yields_provider_unavailable():
     errs = [e for e in events if isinstance(e, StreamError)]
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
-
-
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 
 def _make_app_with_test_route(monkeypatch):
