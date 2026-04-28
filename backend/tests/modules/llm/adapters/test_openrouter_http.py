@@ -376,3 +376,125 @@ def test_accumulator_collects_tool_call_across_fragments():
     assert finalised == [{
         "id": "call_1", "name": "lookup", "arguments": '{"q":"hello"}',
     }]
+
+
+from backend.modules.llm._adapters._openrouter_http import (
+    _build_chat_payload,
+    _translate_message,
+)
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ToolCallResult,
+    ToolDefinition,
+)
+
+
+def test_translate_text_only_user_message():
+    msg = CompletionMessage(role="user",
+                            content=[ContentPart(type="text", text="hi")])
+    assert _translate_message(msg) == {"role": "user", "content": "hi"}
+
+
+def test_translate_image_message_uses_openai_image_url_format():
+    msg = CompletionMessage(role="user", content=[
+        ContentPart(type="text", text="describe"),
+        ContentPart(type="image", data="aGVsbG8=", media_type="image/png"),
+    ])
+    out = _translate_message(msg)
+    assert out["role"] == "user"
+    assert isinstance(out["content"], list)
+    assert out["content"][0] == {"type": "text", "text": "describe"}
+    assert out["content"][1] == {
+        "type": "image_url",
+        "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+    }
+
+
+def test_build_payload_passes_model_through():
+    req = CompletionRequest(
+        model="openai/gpt-4o",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="hi")],
+        )],
+    )
+    payload = _build_chat_payload(req)
+    assert payload["model"] == "openai/gpt-4o"
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+
+
+def test_build_payload_includes_temperature_when_set():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        temperature=0.4,
+    )
+    assert _build_chat_payload(req)["temperature"] == 0.4
+
+
+def test_build_payload_omits_temperature_when_none():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    assert "temperature" not in _build_chat_payload(req)
+
+
+def test_build_payload_translates_tools():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        tools=[ToolDefinition(
+            name="lookup", description="d", parameters={"type": "object"},
+        )],
+    )
+    payload = _build_chat_payload(req)
+    assert payload["tools"] == [{
+        "type": "function",
+        "function": {
+            "name": "lookup", "description": "d",
+            "parameters": {"type": "object"},
+        },
+    }]
+
+
+def test_reasoning_field_omitted_when_enabled_and_supported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=True, reasoning_enabled=True,
+    )
+    assert "reasoning" not in _build_chat_payload(req)
+
+
+def test_reasoning_field_set_to_exclude_when_disabled_and_supported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=True, reasoning_enabled=False,
+    )
+    payload = _build_chat_payload(req)
+    assert payload["reasoning"] == {"exclude": True}
+
+
+def test_reasoning_field_omitted_when_unsupported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=False, reasoning_enabled=True,
+    )
+    assert "reasoning" not in _build_chat_payload(req)

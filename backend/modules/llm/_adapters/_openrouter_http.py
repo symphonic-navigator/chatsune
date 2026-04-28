@@ -38,7 +38,7 @@ from backend.modules.llm._adapters._events import (
     ToolCallEvent,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
-from shared.dtos.inference import CompletionRequest
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -202,6 +202,67 @@ def _parse_sse_line(line: str) -> dict | object | None:
     except json.JSONDecodeError:
         _log.warning("Skipping malformed SSE JSON: %s", payload[:200])
         return None
+
+
+def _translate_message(msg: CompletionMessage) -> dict:
+    text_parts = [p for p in msg.content if p.type == "text" and p.text]
+    image_parts = [p for p in msg.content if p.type == "image" and p.data]
+
+    if not image_parts:
+        content: str | list[dict] = "".join(p.text or "" for p in text_parts)
+    else:
+        content = []
+        for p in text_parts:
+            content.append({"type": "text", "text": p.text or ""})
+        for p in image_parts:
+            content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{p.media_type};base64,{p.data}",
+                },
+            })
+
+    result: dict = {"role": msg.role, "content": content}
+    if msg.tool_calls:
+        result["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+    if msg.tool_call_id is not None:
+        result["tool_call_id"] = msg.tool_call_id
+    return result
+
+
+def _build_chat_payload(request: CompletionRequest) -> dict:
+    payload: dict = {
+        "model": request.model,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "messages": [_translate_message(m) for m in request.messages],
+    }
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    if request.tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name, "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in request.tools
+        ]
+    # Reasoning: only emit when meaningful. We do not expose effort
+    # levels in this iteration. ``exclude: true`` controls visibility,
+    # not whether the model reasons; built-in reasoners ignore it.
+    if request.supports_reasoning and not request.reasoning_enabled:
+        payload["reasoning"] = {"exclude": True}
+    return payload
 
 
 class OpenRouterHttpAdapter(BaseAdapter):
