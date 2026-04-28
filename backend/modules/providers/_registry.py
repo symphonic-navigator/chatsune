@@ -89,5 +89,20 @@ def _register_builtins() -> None:
         linked_integrations=[],
     ))
 
+    register(PremiumProviderDefinition(
+        id="openrouter",
+        display_name="OpenRouter",
+        icon="openrouter",
+        base_url="https://openrouter.ai/api/v1",
+        capabilities=[Capability.LLM],
+        config_fields=[_api_key_field("OpenRouter API Key")],
+        # /models/user requires the key and 401s on bad keys, so it's
+        # the right probe target. /models is public and would falsely
+        # accept anything.
+        probe_url="https://openrouter.ai/api/v1/models/user?output_modalities=text",
+        probe_method="GET",
+        linked_integrations=[],
+    ))
+
 
 _register_builtins()
