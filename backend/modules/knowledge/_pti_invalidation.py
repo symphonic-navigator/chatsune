@@ -15,25 +15,49 @@ from backend.modules.knowledge._pti_index import PtiIndexCache
 async def on_document_created(
     *, cache: PtiIndexCache, db: AsyncIOMotorDatabase, payload: dict
 ) -> None:
-    library_id = payload.get("library_id")
-    if not library_id:
+    # Event payload shape: {"type": ..., "document": KnowledgeDocumentDto, ...}
+    # KnowledgeDocumentDto exposes id and library_id but NOT user_id, so we
+    # source user_id from the DB record by document id. This keeps the
+    # invalidation owner-scoped without changing the shared event contract.
+    document = payload.get("document") or {}
+    document_id = document.get("id")
+    library_id = document.get("library_id")
+    if not document_id or not library_id:
         return
-    await _invalidate_sessions_with_library(cache, db, library_id)
+    record = await db.knowledge_documents.find_one(
+        {"_id": document_id}, projection={"user_id": 1}
+    )
+    if record is None:
+        return
+    user_id = record.get("user_id")
+    if not user_id:
+        return
+    await _invalidate_sessions_with_library(cache, db, library_id, user_id)
 
 
 async def on_document_updated(
     *, cache: PtiIndexCache, db: AsyncIOMotorDatabase, payload: dict
 ) -> None:
-    document_id = payload.get("document_id")
+    # Event payload shape: {"type": ..., "document": KnowledgeDocumentDto, ...}
+    # The previous implementation read payload.get("document_id") which is
+    # always None under the actual event shape — the handler was effectively
+    # dead. Source document_id from the nested DTO, and read user_id from
+    # the DB record so the chat-session scan is owner-bound.
+    document = payload.get("document") or {}
+    document_id = document.get("id")
     if not document_id:
         return
     doc = await db.knowledge_documents.find_one(
-        {"_id": document_id}, projection={"library_id": 1}
+        {"_id": document_id}, projection={"library_id": 1, "user_id": 1}
     )
     if doc is None:
         await _invalidate_all(cache)
         return
-    await _invalidate_sessions_with_library(cache, db, doc["library_id"])
+    user_id = doc.get("user_id")
+    library_id = doc.get("library_id")
+    if not user_id or not library_id:
+        return
+    await _invalidate_sessions_with_library(cache, db, library_id, user_id)
 
 
 async def on_document_deleted(
@@ -78,10 +102,14 @@ async def on_library_detached_from_persona(
 
 
 async def _invalidate_sessions_with_library(
-    cache: PtiIndexCache, db: AsyncIOMotorDatabase, library_id: str
+    cache: PtiIndexCache,
+    db: AsyncIOMotorDatabase,
+    library_id: str,
+    user_id: str,
 ) -> None:
     cur = db.chat_sessions.find(
-        {"knowledge_library_ids": library_id}, projection={"_id": 1}
+        {"user_id": user_id, "knowledge_library_ids": library_id},
+        projection={"_id": 1},
     )
     async for sess in cur:
         cache.invalidate(sess["_id"])
