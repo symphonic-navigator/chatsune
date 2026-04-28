@@ -151,3 +151,85 @@ async def test_fetch_models_maps_fields_correctly():
     assert r1.supports_tool_calls is False   # "tools" missing
     assert r1.is_moderated is False
     assert r1.billing_category == "free"     # both pricing fields == "0"
+
+
+_MODELS_USER_RESPONSE_WITH_IMAGE_OUTPUT = {
+    "data": [
+        {
+            "id": "openai/gpt-4o",
+            "name": "OpenAI: GPT-4o",
+            "context_length": 128_000,
+            "architecture": {
+                "modality": "text+image->text",
+                "input_modalities": ["text", "image"],
+                "output_modalities": ["text"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "stability/sdxl",
+            "name": "SDXL",
+            "context_length": 2048,
+            "architecture": {
+                "modality": "text->image",
+                "input_modalities": ["text"],
+                "output_modalities": ["image"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "multimodal/text-and-image-output",
+            "name": "Mixed Output",
+            "context_length": 32_000,
+            "architecture": {
+                "modality": "text->text+image",
+                "input_modalities": ["text"],
+                "output_modalities": ["text", "image"],
+            },
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+        {
+            "id": "broken/missing-arch",
+            "name": "No Architecture",
+            "context_length": 1024,
+            "pricing": {"prompt": "0", "completion": "0"},
+            "top_provider": {"is_moderated": False},
+            "supported_parameters": [],
+            "expiration_date": None,
+        },
+    ],
+}
+
+
+class _FakeAsyncClientImageOutput(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=200,
+            content=json.dumps(
+                _MODELS_USER_RESPONSE_WITH_IMAGE_OUTPUT
+            ).encode(),
+            request=httpx.Request("GET", url),
+        )
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_filters_non_text_output():
+    a = OpenRouterHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
+        _FakeAsyncClientImageOutput,
+    ):
+        models = await a.fetch_models(_resolved())
+
+    ids = {m.model_id for m in models}
+    # Only the strict text-only output model survives.
+    assert ids == {"openai/gpt-4o"}

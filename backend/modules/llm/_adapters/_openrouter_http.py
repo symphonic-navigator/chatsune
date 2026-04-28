@@ -47,6 +47,12 @@ def _billing_category(pricing: dict) -> str:
 
 def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
     arch = entry.get("architecture") or {}
+    output_mods = arch.get("output_modalities")
+    # Strict: exactly ["text"]. Image-only, audio-only, and mixed
+    # output (e.g. text+image) are out of scope for Phase 1.
+    if output_mods != ["text"]:
+        return None
+
     input_mods = arch.get("input_modalities") or []
     params = entry.get("supported_parameters") or []
     pricing = entry.get("pricing") or {}
