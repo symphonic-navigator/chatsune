@@ -11,6 +11,7 @@ from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.chat._toggle_defaults import compute_persona_toggle_defaults
+from backend.modules.knowledge import verify_libraries_owned
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.ws.event_bus import get_event_bus
 from backend.modules.tools import get_all_groups
@@ -188,6 +189,9 @@ async def set_session_knowledge(
     session = await repo.get_session(session_id, user["sub"])
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    if not await verify_libraries_owned(user["sub"], body.library_ids):
+        raise HTTPException(status_code=404, detail="Library not found")
 
     old_ids = set(session.get("knowledge_library_ids") or [])
     new_ids = set(body.library_ids)

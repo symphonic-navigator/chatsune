@@ -168,6 +168,20 @@ async def list_library_ids_for_user(user_id: str) -> list[str]:
     return [lib["_id"] for lib in libs]
 
 
+async def verify_libraries_owned(user_id: str, library_ids: list[str]) -> bool:
+    """Return True iff every id in library_ids is a library owned by user_id.
+
+    Used by other modules to validate cross-references without reaching
+    into knowledge internals. Empty list returns True.
+    """
+    if not library_ids:
+        return True
+    repo = KnowledgeRepository(get_db())
+    owned = await repo.list_libraries(user_id)
+    owned_ids = {lib["_id"] for lib in owned}
+    return all(lid in owned_ids for lid in library_ids)
+
+
 __all__ = [
     "knowledge_router",
     "init_indexes",
@@ -176,6 +190,7 @@ __all__ = [
     "search",
     "cascade_delete_library",
     "list_library_ids_for_user",
+    "verify_libraries_owned",
     "get_pti_injections",
     "pti_index_cache",
 ]
