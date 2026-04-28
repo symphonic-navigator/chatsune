@@ -877,3 +877,118 @@ third use case.
 multi-tenant invitation variant) is the cue to pull a shared
 `useAccountSetup({ mode })` hook into `frontend/src/features/auth/`.
 Until then, two copies are fine.
+
+---
+
+## INS-031 — User-isolation audit: recurring patterns and the rules they break (2026-04-28)
+
+**Context:** A full multi-user data-isolation audit was run on
+2026-04-28 (branch `claude/audit-user-data-separation-SES1j`,
+merges `5a9f7cb` and `a386ae5`). It surfaced 8 findings across the
+chat, memory, bookmark, knowledge, embedding, and ws layers — two
+critical, three high, three medium. The architecture held: WebSocket
+scoping, BYOK credential handling, and the LLM connection resolver
+were already correct. What broke was always the same handful of
+shapes — and they're worth naming so future code review catches
+them without a second audit.
+
+**The five recurring shapes:**
+
+1. **"Body field naming a foreign entity, used without ownership
+   verification."** The single most exploitable finding (C1) was
+   `PUT /sessions/{id}/knowledge` accepting `library_ids` from the
+   request body and writing them to the session unchecked — a user
+   could attach a victim's knowledge library and have its documents
+   injected into their own LLM context. **Rule:** any list of IDs
+   that names another user-owned entity must be verified through
+   the owning module's public API before persistence. The new
+   `verify_libraries_owned()` in `backend/modules/knowledge/__init__.py`
+   is the canonical example.
+
+2. **"_id-only operation after upstream ownership check."** Several
+   repository methods (chat `update_session_*`, memory
+   `auto_commit_old_entries`'s second `find`, artefact `get_by_id`)
+   keyed only on `_id` because the caller had already verified
+   ownership. This is brittle: any future refactor that bypasses
+   the upstream check silently creates an IDOR primitive. **Rule:**
+   the lowest-level mutation/fetch should always carry `user_id`,
+   even when today's callers happen to be safe. Defense-in-depth
+   isn't paranoia, it's surviving the next refactor.
+
+3. **"Cascade operation forgets owner scope."** Bookmark
+   `delete_by_message` / `delete_by_session` (H1) filtered only on
+   the cascade key. UUIDs are unique in practice, so the bug was
+   latent — but unique-by-construction is an invariant, not an
+   enforced constraint. **Rule:** cascade primitives accept and
+   filter on `user_id` as a required parameter. System-maintenance
+   callers (cleanup loops) get the user_id from the triggering
+   entity — see how chat `delete_stale_empty_sessions` /
+   `hard_delete_expired_sessions` were changed to return
+   `(session_id, user_id)` tuples.
+
+4. **"Event payload trusts reference_id alone."** Embedding events
+   (H2) carried only `reference_id`; the consumer in knowledge
+   looked up `knowledge_documents` by `_id` without any owner check.
+   Today only the knowledge module publishes these events, but that's
+   an implicit invariant the event contract didn't express. **Rule:**
+   when an event crosses module boundaries, `user_id` is a
+   first-class field on the event. Make it `str | None = None` for
+   the deploy window (so in-flight events don't fail validation),
+   then tighten in a follow-up release once the legacy events have
+   drained from Redis Streams (24h TTL).
+
+5. **"Latent bug hides under an early-return."** PTI invalidation
+   (M1) had `payload.get("document_id")` always returning `None`
+   because `KnowledgeDocumentUpdatedEvent` nests the document under
+   `payload["document"]`. The handler silently returned early on
+   every event — effectively dead code. Audit-by-reading-code missed
+   it; only tracing the event flow caught it. **Rule:** when an
+   event handler has an early-return on a missing field, sanity-check
+   the field name against the event's actual `model_dump()` shape.
+   A unit test that publishes a real event and asserts the handler
+   reached its main path would have flagged this on day one.
+
+**Structural patterns the audit confirmed are correct:**
+
+- The LLM module's generic resolver dependency
+  (`resolve_connection_for_user` in `backend/modules/llm/_resolver.py`)
+  enforces `(connection_id, user_id)` ownership before any adapter
+  sub-router runs. Every LLM-connection endpoint inherits the check
+  via FastAPI `Depends`. This pattern should be the model for any
+  future "user-owned resource with a sub-router" feature.
+- WebSocket `scope` is metadata for persistence, not a subscribe
+  primitive. The frontend cannot opt into another user's scope;
+  delivery is decided server-side via `target_user_ids` and
+  role-based fan-out, and stream replay re-checks targets at
+  delivery time. Don't change this.
+- Vector-search filter fields (`user_id`, `library_id`) are declared
+  in the Atlas index AND used as `$vectorSearch` pre-filters. Without
+  the index declaration the filter is silently ignored or post-applied,
+  which leaks. Any new vector field used for filtering must be added
+  to the index in the same change.
+
+**The one finding deferred:** `/api/metrics` is unauthenticated (H3).
+Not a user-to-user leak — it exposes Prometheus internals (queue
+depth, cache stats, system load). Risk depends entirely on the
+deployment topology: behind a reverse proxy that filters
+`/api/metrics`, near zero; directly on the public internet,
+medium recon risk. The fix is a Prometheus-auth concept (bearer
+token, mTLS, or network-policy-only access) which the project
+hasn't decided on yet. Revisit when the deployment story for
+metrics scraping is settled.
+
+**Admin-event scoping (BD-031, now resolved as INS-031.M3):**
+sensitive admin actions (USER_UPDATED, USER_DEACTIVATED,
+USER_PASSWORD_RESET, USER_DELETED, INVITATION_CREATED) now go to
+`master_admin` only. USER_CREATED and INVITATION_USED stay broadcast
+to all admins as low-sensitivity coordination signals. If a future
+delegated-admin model needs real-time updates for non-master admins,
+adopt the audit-pattern fanout (master_admin + acting admin) — the
+precedent is `_fan_out_audit` in `backend/ws/event_bus.py:362`.
+This requires adding `actor_id` to the affected event schemas.
+
+**When to re-audit:** before alpha-to-beta transitions, when a new
+module exposes user-owned resources via cross-module APIs, or when
+a refactor touches event-bus fanout / repository methods that
+currently carry `user_id`. The 8-finding pattern catalogue above is
+the checklist.
