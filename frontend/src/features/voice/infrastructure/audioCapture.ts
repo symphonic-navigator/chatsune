@@ -1,5 +1,6 @@
 import { MicVAD } from '@ricky0123/vad-web'
 import type { VoiceActivationThreshold } from '../stores/voiceSettingsStore'
+import { VOICE_REDEMPTION_MS_DEFAULT } from '../stores/voiceSettingsStore'
 import { VAD_PRESETS } from './vadPresets'
 import type { CapturedAudio } from '../types'
 import { pickRecordingMimeType, createRecorder } from './audioRecording'
@@ -39,9 +40,8 @@ export interface StartContinuousOptions {
    */
   externalRecorder?: boolean
   /**
-   * VAD redemption window in ms. When omitted, falls back to the value the
-   * preset previously embedded — kept only so legacy callers that pass no
-   * options still work; new callers should always pass an explicit value.
+   * VAD redemption window in ms. When omitted, falls back to
+   * `VOICE_REDEMPTION_MS_DEFAULT` from voiceSettingsStore.
    */
   redemptionMs?: number
 }
@@ -295,10 +295,10 @@ class AudioCaptureImpl {
     const preset = VAD_PRESETS[threshold]
     const MS_PER_FRAME = 96
 
-    // Prefer the caller-supplied value; fall back to the preset so legacy
-    // callers (e.g. voicePipeline) that pass no options remain unaffected.
-    const effectiveRedemptionMs = options.redemptionMs
-      ?? preset.redemptionFrames * MS_PER_FRAME
+    // Prefer the caller-supplied value; fall back to the store default so
+    // legacy callers (e.g. voicePipeline) that pass no options get the same
+    // numerical default (1728 ms) from a single source of truth.
+    const effectiveRedemptionMs = options.redemptionMs ?? VOICE_REDEMPTION_MS_DEFAULT
 
     this.vad = await MicVAD.new({
       getStream,
