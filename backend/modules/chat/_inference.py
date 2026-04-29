@@ -21,6 +21,7 @@ from backend.modules.llm import (
     ThinkingDelta,
     ToolCallEvent,
 )
+from backend.modules.tools import ToolNotFoundError
 from shared.dtos.chat import (
     ArtefactRefDto,
     KnowledgeContextItem,
@@ -224,107 +225,123 @@ class InferenceRunner:
                         session_id, correlation_id, iteration,
                     )
 
-                async for event in stream:
-                    if cancel_event and cancel_event.is_set():
-                        cancelled = True
-                        status = "cancelled"
-                        stream_end_reason = "cancelled"
-                        break
+                # If the stream raises mid-iteration we still want any
+                # partial content/thinking the user already saw to be
+                # rolled up so the persistence guard (further down) can
+                # save them. Without this, a hard internal error after
+                # streaming begins drops every token between the last
+                # successful event and the exception.
+                try:
+                    async for event in stream:
+                        if cancel_event and cancel_event.is_set():
+                            cancelled = True
+                            status = "cancelled"
+                            stream_end_reason = "cancelled"
+                            break
 
-                    match event:
-                        case ContentDelta(delta=delta):
-                            if t_first_token is None:
-                                t_first_token = time.monotonic()
-                            iter_content += delta
-                            if _TRACE_DELTAS:
-                                _log.info(
-                                    "LLM_TRACE path=inference-emit kind=content "
-                                    "correlation_id=%s len=%d preview=%r",
-                                    correlation_id, len(delta), delta[:40],
+                        match event:
+                            case ContentDelta(delta=delta):
+                                if t_first_token is None:
+                                    t_first_token = time.monotonic()
+                                iter_content += delta
+                                if _TRACE_DELTAS:
+                                    _log.info(
+                                        "LLM_TRACE path=inference-emit kind=content "
+                                        "correlation_id=%s len=%d preview=%r",
+                                        correlation_id, len(delta), delta[:40],
+                                    )
+                                await emit_fn(ChatContentDeltaEvent(
+                                    correlation_id=correlation_id, delta=delta,
+                                ))
+
+                            case ThinkingDelta(delta=delta):
+                                if t_first_token is None:
+                                    t_first_token = time.monotonic()
+                                iter_thinking += delta
+                                if _TRACE_DELTAS:
+                                    _log.info(
+                                        "LLM_TRACE path=inference-emit kind=thinking "
+                                        "correlation_id=%s len=%d preview=%r",
+                                        correlation_id, len(delta), delta[:40],
+                                    )
+                                await emit_fn(ChatThinkingDeltaEvent(
+                                    correlation_id=correlation_id, delta=delta,
+                                ))
+
+                            case ToolCallEvent() as tc:
+                                iter_tool_calls.append(tc)
+
+                            case StreamDone() as done:
+                                usage = {}
+                                if done.input_tokens is not None:
+                                    usage["input_tokens"] = done.input_tokens
+                                if done.output_tokens is not None:
+                                    usage["output_tokens"] = done.output_tokens
+                                stream_end_reason = "done"
+
+                            case StreamError() as err:
+                                status = "error"
+                                stream_end_reason = f"error:{err.error_code}"
+                                await emit_fn(ChatStreamErrorEvent(
+                                    correlation_id=correlation_id,
+                                    error_code=err.error_code,
+                                    recoverable=err.error_code == "provider_unavailable",
+                                    user_message=err.message,
+                                    timestamp=datetime.now(timezone.utc),
+                                ))
+
+                            case StreamSlow():
+                                await emit_fn(ChatStreamSlowEvent(
+                                    correlation_id=correlation_id,
+                                    timestamp=datetime.now(timezone.utc),
+                                ))
+
+                            case StreamAborted() as ab:
+                                _log.warning(
+                                    "chat.stream.aborted session=%s correlation_id=%s reason=%s",
+                                    session_id, correlation_id, ab.reason,
                                 )
-                            await emit_fn(ChatContentDeltaEvent(
-                                correlation_id=correlation_id, delta=delta,
-                            ))
+                                status = "aborted"
+                                stream_end_reason = f"aborted:{ab.reason}"
+                                # Prometheus label name stays ``provider`` for
+                                # dashboard backwards-compatibility; the value is
+                                # now the adapter type (low-cardinality).
+                                inferences_aborted_total.labels(
+                                    model=model_slug or "unknown",
+                                    provider=adapter_type or "unknown",
+                                ).inc()
+                                await emit_fn(ChatStreamErrorEvent(
+                                    correlation_id=correlation_id,
+                                    error_code="stream_aborted",
+                                    recoverable=True,
+                                    user_message="The response was interrupted. Please regenerate.",
+                                    timestamp=datetime.now(timezone.utc),
+                                ))
 
-                        case ThinkingDelta(delta=delta):
-                            if t_first_token is None:
-                                t_first_token = time.monotonic()
-                            iter_thinking += delta
-                            if _TRACE_DELTAS:
-                                _log.info(
-                                    "LLM_TRACE path=inference-emit kind=thinking "
-                                    "correlation_id=%s len=%d preview=%r",
-                                    correlation_id, len(delta), delta[:40],
+                            case StreamRefused() as refused:
+                                _log.warning(
+                                    "chat.stream.refused session=%s correlation_id=%s reason=%s",
+                                    session_id, correlation_id, refused.reason,
                                 )
-                            await emit_fn(ChatThinkingDeltaEvent(
-                                correlation_id=correlation_id, delta=delta,
-                            ))
-
-                        case ToolCallEvent() as tc:
-                            iter_tool_calls.append(tc)
-
-                        case StreamDone() as done:
-                            usage = {}
-                            if done.input_tokens is not None:
-                                usage["input_tokens"] = done.input_tokens
-                            if done.output_tokens is not None:
-                                usage["output_tokens"] = done.output_tokens
-                            stream_end_reason = "done"
-
-                        case StreamError() as err:
-                            status = "error"
-                            stream_end_reason = f"error:{err.error_code}"
-                            await emit_fn(ChatStreamErrorEvent(
-                                correlation_id=correlation_id,
-                                error_code=err.error_code,
-                                recoverable=err.error_code == "provider_unavailable",
-                                user_message=err.message,
-                                timestamp=datetime.now(timezone.utc),
-                            ))
-
-                        case StreamSlow():
-                            await emit_fn(ChatStreamSlowEvent(
-                                correlation_id=correlation_id,
-                                timestamp=datetime.now(timezone.utc),
-                            ))
-
-                        case StreamAborted() as ab:
-                            _log.warning(
-                                "chat.stream.aborted session=%s correlation_id=%s reason=%s",
-                                session_id, correlation_id, ab.reason,
-                            )
-                            status = "aborted"
-                            stream_end_reason = f"aborted:{ab.reason}"
-                            # Prometheus label name stays ``provider`` for
-                            # dashboard backwards-compatibility; the value is
-                            # now the adapter type (low-cardinality).
-                            inferences_aborted_total.labels(
-                                model=model_slug or "unknown",
-                                provider=adapter_type or "unknown",
-                            ).inc()
-                            await emit_fn(ChatStreamErrorEvent(
-                                correlation_id=correlation_id,
-                                error_code="stream_aborted",
-                                recoverable=True,
-                                user_message="The response was interrupted. Please regenerate.",
-                                timestamp=datetime.now(timezone.utc),
-                            ))
-
-                        case StreamRefused() as refused:
-                            _log.warning(
-                                "chat.stream.refused session=%s correlation_id=%s reason=%s",
-                                session_id, correlation_id, refused.reason,
-                            )
-                            status = "refused"
-                            stream_end_reason = f"refused:{refused.reason or 'unspecified'}"
-                            iter_refusal_text = refused.refusal_text
-                            await emit_fn(ChatStreamErrorEvent(
-                                correlation_id=correlation_id,
-                                error_code="refusal",
-                                recoverable=True,
-                                user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
-                                timestamp=datetime.now(timezone.utc),
-                            ))
+                                status = "refused"
+                                stream_end_reason = f"refused:{refused.reason or 'unspecified'}"
+                                iter_refusal_text = refused.refusal_text
+                                await emit_fn(ChatStreamErrorEvent(
+                                    correlation_id=correlation_id,
+                                    error_code="refusal",
+                                    recoverable=True,
+                                    user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
+                                    timestamp=datetime.now(timezone.utc),
+                                ))
+                finally:
+                    # Accumulate per-iteration content/thinking onto the
+                    # full transcript even when the inner stream raised.
+                    # The outer ``except`` handler will then map the
+                    # exception to ``status="error"`` and the persistence
+                    # guard will save what the user already saw.
+                    full_content += iter_content
+                    if iter_thinking:
+                        full_thinking += iter_thinking
 
                 if settings.inference_logging:
                     _log.info(
@@ -333,11 +350,6 @@ class InferenceRunner:
                         session_id, correlation_id, iteration, stream_end_reason,
                         len(iter_tool_calls), len(iter_content), len(iter_thinking),
                     )
-
-                # Accumulate content/thinking across iterations
-                full_content += iter_content
-                if iter_thinking:
-                    full_thinking += iter_thinking
 
                 if cancelled or status in ("error", "aborted", "refused"):
                     break
@@ -392,7 +404,17 @@ class InferenceRunner:
 
                 for tc in iter_tool_calls:
                     now = datetime.now(timezone.utc)
-                    arguments = json.loads(tc.arguments)
+
+                    # Parse the model-supplied arguments. Malformed JSON here
+                    # is a model mistake — feed the parse error back so the
+                    # next iteration can self-correct, rather than aborting
+                    # the whole turn.
+                    try:
+                        arguments = json.loads(tc.arguments) if tc.arguments else {}
+                        args_parse_error: str | None = None
+                    except json.JSONDecodeError as e:
+                        arguments = {}
+                        args_parse_error = str(e)
 
                     if settings.inference_logging:
                         _log.info(
@@ -410,10 +432,46 @@ class InferenceRunner:
                         timestamp=now,
                     ))
 
-                    result_str = await tool_executor_fn(
-                        user_id, tc.name, tc.arguments,
-                        tool_call_id=tc.id,
-                    )
+                    # Recoverable failure path: the model produced something
+                    # invalid (unknown tool, malformed args). Feed a short
+                    # error back as the tool result, mark the call failed,
+                    # and continue the loop so the model can react. We catch
+                    # ToolNotFoundError and JSONDecodeError narrowly — broad
+                    # exceptions (DB errors, network drops) should still
+                    # bubble up to the outer handler and hard-abort.
+                    recoverable_error: str | None = None
+                    if args_parse_error is not None:
+                        recoverable_error = (
+                            f"Error: tool arguments are not valid JSON: "
+                            f"{args_parse_error}"
+                        )
+                        result_str = recoverable_error
+                    else:
+                        try:
+                            result_str = await tool_executor_fn(
+                                user_id, tc.name, tc.arguments,
+                                tool_call_id=tc.id,
+                            )
+                        except ToolNotFoundError as e:
+                            recoverable_error = (
+                                f"Error: tool '{tc.name}' is not available. "
+                                f"Pick a tool from the provided list, or answer "
+                                f"directly without calling a tool."
+                            )
+                            result_str = recoverable_error
+                            _log.warning(
+                                "inference.tool_call.unknown session=%s correlation_id=%s "
+                                "tool_call_id=%s tool=%s detail=%s",
+                                session_id, correlation_id, tc.id, tc.name, e,
+                            )
+                        except json.JSONDecodeError as e:
+                            # execute_tool itself parses arguments_json; if we
+                            # got past the local parse but it raises here, the
+                            # downstream parser disagreed — treat the same.
+                            recoverable_error = (
+                                f"Error: tool arguments are not valid JSON: {e}"
+                            )
+                            result_str = recoverable_error
 
                     if settings.inference_logging:
                         _log.info(
@@ -423,12 +481,16 @@ class InferenceRunner:
                             len(result_str) if result_str else 0,
                         )
 
-                    try:
-                        parsed_result = json.loads(result_str)
-                        tool_success = not (isinstance(parsed_result, dict) and "error" in parsed_result)
-                    except (json.JSONDecodeError, TypeError):
+                    if recoverable_error is not None:
                         parsed_result = None
-                        tool_success = True
+                        tool_success = False
+                    else:
+                        try:
+                            parsed_result = json.loads(result_str)
+                            tool_success = not (isinstance(parsed_result, dict) and "error" in parsed_result)
+                        except (json.JSONDecodeError, TypeError):
+                            parsed_result = None
+                            tool_success = True
 
                     # Capture artefact tool calls BEFORE emitting the completed event so
                     # the ref can be attached to the event payload.
@@ -579,7 +641,7 @@ class InferenceRunner:
         # streams (e.g. aborted mid-thinking, or ollama_local interrupted by
         # another request) are dropped so the user can simply regenerate.
         # See docs/superpowers/specs/2026-04-08-ollama-local-and-chat-ui-fixes-design.md.
-        if full_content or status == "refused":
+        if full_content or full_thinking or status == "refused":
             resolved_status: Literal["completed", "aborted", "refused"] = (
                 "refused" if status == "refused"
                 else "aborted" if status == "aborted"

@@ -228,7 +228,14 @@ export function handleChatEvent(
         useCockpitStore.getState().requestAutoRead(backendMessageId)
       }
 
-      if (backendMessageId && (content || thinking || messageStatus === 'refused')) {
+      // Trust ``backendMessageId`` whenever the backend sent one: the
+      // backend has the authoritative view of what was persisted, and any
+      // streamed content (or thinking, or refusal) has already been folded
+      // into the persisted document. Falling back to local content/thinking
+      // checks risked dropping a fully-streamed assistant turn whenever a
+      // non-fatal error (e.g. unknown tool) reset the per-iteration
+      // accumulators on the server before the persistence point.
+      if (backendMessageId) {
         getStore().finishStreaming(
           {
             id: backendMessageId,
@@ -256,6 +263,11 @@ export function handleChatEvent(
           maxTokens,
         )
       } else {
+        // No persisted message — discard the optimistic streaming state.
+        // After the backend's matching guard fix this branch should only
+        // fire on genuine internal errors that produced zero content AND
+        // zero thinking. If it ever fires with non-empty streamed content,
+        // investigate: it indicates a backend persistence regression.
         getStore().cancelStreaming()
       }
       getStore().setContextStatus(contextStatus)

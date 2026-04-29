@@ -418,4 +418,84 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     expect(messages[0].events).toHaveLength(1)
     expect(messages[0].events![0].kind).toBe('artefact')
   })
+
+  it('finishes streaming on backend message_id even when streamingContent is empty (trust the backend)', () => {
+    // Regression: an unknown-tool error used to reset full_content
+    // server-side, leaving the FE with empty streamingContent. The old
+    // guard ``(content || thinking || refused)`` then dropped into
+    // cancelStreaming and discarded the message the user just saw being
+    // streamed. With Fix C the FE trusts ``backendMessageId`` whenever
+    // present.
+    useChatStore.setState({
+      streamingContent: '',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm-from-backend',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    expect(messages[0].id).toBe('m-from-backend')
+    expect(messages[0].status).toBe('completed')
+  })
+
+  it('cancels streaming when no message_id is sent and no content was streamed', () => {
+    useChatStore.setState({
+      streamingContent: '',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+      messages: [],
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        // message_id deliberately absent
+        status: 'error',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    expect(useChatStore.getState().messages).toHaveLength(0)
+  })
+
+  it('cancels streaming when no message_id is sent even if content was streamed', () => {
+    // Backwards-compat safety: if a future regression reintroduces a path
+    // that streams content but fails to persist, we drop the optimistic
+    // streaming state rather than fabricating an unpersisted message.
+    useChatStore.setState({
+      streamingContent: 'streamed but unpersisted',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+      messages: [],
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        // message_id deliberately absent
+        status: 'error',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    expect(useChatStore.getState().messages).toHaveLength(0)
+  })
 })
