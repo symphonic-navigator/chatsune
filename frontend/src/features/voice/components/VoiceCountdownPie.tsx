@@ -48,30 +48,38 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // DPR clamped to 1 — decorative shape, saves memory at 4K.
-    // Canvas covers the full viewport (matching VoiceVisualiser's approach).
-    // The pie centre is derived from the chatview bounds at draw time.
-    const cssW = window.innerWidth
-    const cssH = window.innerHeight
-    canvas.width = cssW
-    canvas.height = cssH
-    canvas.style.width = `${cssW}px`
-    canvas.style.height = `${cssH}px`
-
-    const diameter = Math.max(
-      PIE_DIAMETER_MIN,
-      Math.min(PIE_DIAMETER_MAX, chatview.w * PIE_DIAMETER_RATIO),
-    )
-    const radius = diameter / 2
-
-    // Horizontally centred on the chatview; vertically centred on the viewport.
-    const cx = chatview.x + chatview.w / 2
-    const cy = cssH / 2
-
+    const dpr = window.devicePixelRatio ?? 1
     const rgb = hexToRgb(personaColourHex)
     const rgbLight = brighten(rgb)
 
     const tick = () => {
+      // Use getBoundingClientRect rather than window.innerWidth/innerHeight:
+      // under `body { zoom: --ui-scale }` those values are pre-zoom CSS pixels
+      // while chatview.x comes from getBoundingClientRect() (post-zoom). Using
+      // getBoundingClientRect here keeps both coordinate spaces consistent.
+      const rect = canvas.getBoundingClientRect()
+      const cssW = rect.width
+      const cssH = rect.height
+      const wPx = Math.round(cssW * dpr)
+      const hPx = Math.round(cssH * dpr)
+      if (canvas.width !== wPx || canvas.height !== hPx) {
+        canvas.width = wPx
+        canvas.height = hPx
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      }
+
+      // chatview.x and chatview.w are post-zoom CSS pixels (getBoundingClientRect
+      // in useReportBounds); cssH from getBoundingClientRect above is also
+      // post-zoom — both are in the same coordinate space.
+      const cx = chatview.x + chatview.w / 2
+      const cy = cssH / 2
+
+      const diameter = Math.max(
+        PIE_DIAMETER_MIN,
+        Math.min(PIE_DIAMETER_MAX, Math.min(chatview.w, cssH) * PIE_DIAMETER_RATIO),
+      )
+      const radius = diameter / 2
+
       ctx.clearRect(0, 0, cssW, cssH)
       const elapsed = startedAt === null ? 0 : performance.now() - startedAt
       const remainingFraction = windowMs > 0
