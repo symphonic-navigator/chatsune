@@ -146,6 +146,24 @@ describe('OverlayMobileNav — panel behaviour', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('renders section headers and leaves as siblings, not nested li', () => {
+    // Regression: an earlier version wrapped the section header and its
+    // children in one outer <li>, which produced an invalid <li> in <li>
+    // nesting flagged by React in dev mode.
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="voice"
+        onSelect={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    const listbox = screen.getByRole('listbox')
+    for (const option of screen.getAllByRole('option')) {
+      expect(option.parentElement).toBe(listbox)
+    }
+  })
+
   it('closes the panel on Escape', () => {
     render(
       <OverlayMobileNav

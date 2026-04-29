@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { resolveCrumb } from './resolveCrumb'
 import { isSection, type NavLeaf, type NavNode } from './types'
 
@@ -151,22 +151,24 @@ export function OverlayMobileNav({
           >
             {tree.map((node) =>
               isSection(node) ? (
-                <li key={node.id} role="presentation">
-                  <div
-                    aria-hidden
-                    className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none flex items-center gap-1.5"
-                  >
-                    {node.label}
-                    {node.children.some((c) => c.badge) && (
-                      <span
-                        data-testid="section-badge"
-                        aria-label="Attention required"
-                        className="text-red-400 text-[10px] normal-case"
-                      >
-                        !
-                      </span>
-                    )}
-                  </div>
+                <Fragment key={node.id}>
+                  <li role="presentation">
+                    <div
+                      aria-hidden
+                      className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none flex items-center gap-1.5"
+                    >
+                      {node.label}
+                      {node.children.some((c) => c.badge) && (
+                        <span
+                          data-testid="section-badge"
+                          aria-label="Attention required"
+                          className="text-red-400 text-[10px] normal-case"
+                        >
+                          !
+                        </span>
+                      )}
+                    </div>
+                  </li>
                   {node.children.map((child) => (
                     <LeafRow
                       key={child.id}
@@ -177,7 +179,7 @@ export function OverlayMobileNav({
                       onClick={() => handleLeafClick(child)}
                     />
                   ))}
-                </li>
+                </Fragment>
               ) : (
                 <LeafRow
                   key={node.id}
