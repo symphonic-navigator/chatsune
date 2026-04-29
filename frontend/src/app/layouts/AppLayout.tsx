@@ -25,6 +25,7 @@ import { ToastContainer } from "../components/toast/ToastContainer"
 import { MobileToastContainer } from "../components/toast/MobileToastContainer"
 import { InstallHint } from "../components/pwa/InstallHint"
 import { VoiceVisualiser } from "../../features/voice/components/VoiceVisualiser"
+import { VoiceCountdownPie } from "../../features/voice/components/VoiceCountdownPie"
 import { VoiceVisualiserHitStrip } from "../../features/voice/components/VoiceVisualiserHitStrip"
 import { personaHex } from "../components/sidebar/personaColour"
 import { Topics } from "../../core/types/events"
@@ -348,6 +349,7 @@ export default function AppLayout() {
         </main>
       </div>
       <VoiceVisualiser personaColourHex={activePersonaHex} />
+      <VoiceCountdownPie personaColourHex={activePersonaHex} />
       <VoiceVisualiserHitStrip />
       <ToastContainer />
       <MobileToastContainer />
