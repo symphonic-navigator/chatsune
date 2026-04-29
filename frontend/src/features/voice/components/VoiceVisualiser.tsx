@@ -9,6 +9,7 @@ import { fillNoiseBins } from '../infrastructure/visualiserNoise'
 import { useTtsExpected } from '../infrastructure/useTtsExpected'
 import { useVoicePipeline } from '../stores/voicePipelineStore'
 import { usePhase } from '../usePhase'
+import { usePauseRedemptionStore } from '../stores/pauseRedemptionStore'
 
 const MAX_HEIGHT_FRACTION = 0.28
 const FADE_RATE = 0.05
@@ -41,6 +42,10 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
 
   const paused = useVisualiserPauseStore((s) => s.paused)
 
+  // When the countdown pie is on screen we fade the visualiser bars out so
+  // the two do not compete for the same canvas pixels. 120 ms ease-in/out.
+  const redemptionActive = usePauseRedemptionStore((s) => s.active)
+
   const chatview = useVisualiserLayoutStore((s) => s.chatview)
   const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
 
@@ -61,6 +66,15 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
   const dotsActiveRef = useRef(0)
   const reducedMotionRef = useRef(false)
   const frozenBinsRef = useRef<Float32Array | null>(null)
+
+  // Mirror of redemptionActive for the RAF loop — avoids re-binding the closure
+  // every time the store changes.
+  const redemptionRef = useRef(redemptionActive)
+  useEffect(() => { redemptionRef.current = redemptionActive }, [redemptionActive])
+
+  // Tracks the bar-fade envelope driven by redemptionActive. 1 = fully visible,
+  // 0 = fully hidden. Eased at ~0.12 per frame ≈ 120 ms at 60 Hz.
+  const barsFadeRef = useRef(1)
 
   // Buffer used when the noise branch is the data source.
   // Stable across renders; resized when barCount changes.
@@ -147,12 +161,15 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
         }
         const t = performance.now() / 1000
         const breath = 0.8 + 0.2 * Math.sin((t * 2 * Math.PI) / 2.5)  // 0.6..1.0
+        // Ease the redemption-fade envelope independently of the breath envelope.
+        const barsFadeTarget = redemptionRef.current ? 0 : 1
+        barsFadeRef.current += (barsFadeTarget - barsFadeRef.current) * 0.12
         const rgb = hexToRgb(personaColourHex)
         const rgbLight = brighten(rgb)
         drawVisualiserFrame(style, ctx, h, frozenBinsRef.current, {
           rgb,
           rgbLight,
-          opacity: opacity * breath,
+          opacity: opacity * breath * barsFadeRef.current,
           maxHeightFraction: MAX_HEIGHT_FRACTION,
         }, geometry)
         rafRef.current = requestAnimationFrame(tick)
@@ -176,6 +193,12 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       const dotsTarget = transcribing ? 1 : 0
       dotsActiveRef.current += (dotsTarget - dotsActiveRef.current) * FADE_RATE
 
+      // Ease the redemption-fade envelope. Multiplies onto the master opacity
+      // so all existing fades (idle, paused-breath) compose naturally with
+      // the pie cross-fade.
+      const barsFadeTarget = redemptionRef.current ? 0 : 1
+      barsFadeRef.current += (barsFadeTarget - barsFadeRef.current) * 0.12
+
       if (activeRef.current > 0.005) {
         let bins: Float32Array | null = null
         if (playing) {
@@ -190,7 +213,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
           drawVisualiserFrame(style, ctx, h, bins, {
             rgb,
             rgbLight,
-            opacity: opacity * activeRef.current,
+            opacity: opacity * activeRef.current * barsFadeRef.current,
             maxHeightFraction: MAX_HEIGHT_FRACTION,
           }, geometry)
         }
@@ -207,6 +230,10 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
           opacity: opacity * dotsActiveRef.current,
           maxHeightFraction: MAX_HEIGHT_FRACTION,
         }, geometry, performance.now() / 1000)
+        rafRef.current = requestAnimationFrame(tick)
+      } else if (redemptionRef.current || barsFadeRef.current > 0.005) {
+        // Redemption pie is active or the bars are still cross-fading — keep
+        // the loop running so the envelope reaches its target.
         rafRef.current = requestAnimationFrame(tick)
       } else {
         // Fully faded out and nothing expected — pause RAF until next event.
@@ -244,7 +271,7 @@ export function VoiceVisualiser({ personaColourHex = DEFAULT_HEX }: Props) {
       unsubAudio()
       resumeRafRef.current = null
     }
-  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn, transcribing])
+  }, [enabled, style, opacity, barCount, personaColourHex, accessors, paused, ttsExpected, chatview, textColumn, transcribing, redemptionActive])
 
   return (
     <canvas

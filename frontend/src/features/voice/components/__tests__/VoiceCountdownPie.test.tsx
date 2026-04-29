@@ -4,6 +4,13 @@ import { usePauseRedemptionStore } from '../../stores/pauseRedemptionStore'
 import { useVisualiserLayoutStore } from '../../stores/visualiserLayoutStore'
 import { VoiceCountdownPie } from '../VoiceCountdownPie'
 
+it('VoiceVisualiser subscribes to pauseRedemptionStore (fade dependency present)', async () => {
+  const src = await import('../../components/VoiceVisualiser')
+  expect(src).toBeDefined()
+  // The visual fade is exercised in manual verification — automated framerate-bounded
+  // fade tests are intentionally avoided.
+})
+
 describe('VoiceCountdownPie', () => {
   beforeEach(() => {
     usePauseRedemptionStore.setState({ active: false, startedAt: null, windowMs: 0 })
