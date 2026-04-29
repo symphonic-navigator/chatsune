@@ -3,6 +3,8 @@ import { UsersTab } from './UsersTab'
 import { SystemTab } from './SystemTab'
 import { DebugTab } from './DebugTab'
 import { AdminMcpTab } from './AdminMcpTab'
+import { OverlayMobileNav } from '../overlay-mobile-nav/OverlayMobileNav'
+import type { NavLeaf } from '../overlay-mobile-nav/types'
 
 export type AdminModalTab = 'users' | 'system' | 'debug' | 'mcp'
 
@@ -66,6 +68,8 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
     }
   }, [onClose])
 
+  const mobileTree: NavLeaf[] = TABS.map((tab) => ({ id: tab.id, label: tab.label }))
+
   return (
     <>
       <div
@@ -97,7 +101,7 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
           </button>
         </div>
 
-        <div role="tablist" aria-label="Admin sections" className="flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
+        <div role="tablist" aria-label="Admin sections" className="hidden lg:flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
           {TABS.map((tab) => {
             const selected = activeTab === tab.id
             return (
@@ -121,6 +125,16 @@ export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps)
               </button>
             )
           })}
+        </div>
+
+        {/* Mobile nav row — replaces the desktop tab row below lg */}
+        <div className="lg:hidden border-b border-white/6 px-4 py-2 bg-white/2 flex-shrink-0">
+          <OverlayMobileNav
+            tree={mobileTree}
+            activeId={activeTab}
+            onSelect={(id) => onTabChange(id as AdminModalTab)}
+            ariaLabel="Open admin navigation"
+          />
         </div>
 
         <div
