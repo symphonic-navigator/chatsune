@@ -38,6 +38,12 @@ export interface StartContinuousOptions {
    * per hold-cycle spanning multiple VAD sub-segments.
    */
   externalRecorder?: boolean
+  /**
+   * VAD redemption window in ms. When omitted, falls back to the value the
+   * preset previously embedded — kept only so legacy callers that pass no
+   * options still work; new callers should always pass an explicit value.
+   */
+  redemptionMs?: number
 }
 
 // vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
@@ -289,6 +295,11 @@ class AudioCaptureImpl {
     const preset = VAD_PRESETS[threshold]
     const MS_PER_FRAME = 96
 
+    // Prefer the caller-supplied value; fall back to the preset so legacy
+    // callers (e.g. voicePipeline) that pass no options remain unaffected.
+    const effectiveRedemptionMs = options.redemptionMs
+      ?? preset.redemptionFrames * MS_PER_FRAME
+
     this.vad = await MicVAD.new({
       getStream,
       onnxWASMBasePath: ORT_CDN,
@@ -296,7 +307,7 @@ class AudioCaptureImpl {
       positiveSpeechThreshold: preset.positiveSpeechThreshold,
       negativeSpeechThreshold: preset.negativeSpeechThreshold,
       minSpeechMs: preset.minSpeechFrames * MS_PER_FRAME,
-      redemptionMs: preset.redemptionFrames * MS_PER_FRAME,
+      redemptionMs: effectiveRedemptionMs,
       onSpeechStart: () => {
         this.handleVadSpeechStart()
       },
