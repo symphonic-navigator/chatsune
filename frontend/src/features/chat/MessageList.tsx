@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../../core/api/chat'
+import type {
+  ChatMessageDto,
+  KnowledgeContextItem,
+  PtiOverflow,
+  TimelineEntry,
+  TimelineEntryKnowledgeSearch,
+  ToolCallRef,
+} from '../../core/api/chat'
 import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
@@ -26,8 +33,7 @@ interface MessageListProps {
   messages: ChatMessageDto[]
   streamingContent: string
   streamingThinking: string
-  streamingWebSearchContext: WebSearchContextItem[]
-  streamingKnowledgeContext: KnowledgeContextItem[]
+  streamingEvents: TimelineEntry[]
   activeToolCalls: ActiveToolCall[]
   isWaitingForResponse: boolean
   isStreaming: boolean
@@ -45,8 +51,100 @@ interface MessageListProps {
   persona?: PersonaDto | null
 }
 
+/**
+ * Fold the preceding user message's PTI items into the assistant message's
+ * first `knowledge_search` entry — render-only, never mutates the store.
+ *
+ * Rules per spec:
+ *   1. If there is at least one `knowledge_search` entry, prepend `ptiItems`
+ *      to its `items` and attach `_overflow = ptiOverflow`.
+ *   2. Else if `ptiItems` is non-empty or `ptiOverflow` is set, prepend a
+ *      synthetic entry at index 0 with `seq = -1`.
+ *   3. Else return `rawEvents` unchanged.
+ */
+export function mergePtiIntoFirstKnowledgeEntry(
+  rawEvents: TimelineEntry[],
+  ptiItems: KnowledgeContextItem[],
+  ptiOverflow: PtiOverflow | null,
+): TimelineEntry[] {
+  const idx = rawEvents.findIndex((e) => e.kind === 'knowledge_search')
+  if (idx >= 0) {
+    const existing = rawEvents[idx] as TimelineEntryKnowledgeSearch
+    const merged: TimelineEntryKnowledgeSearch = {
+      ...existing,
+      items: [...ptiItems, ...existing.items],
+      _overflow: ptiOverflow,
+    }
+    const next = [...rawEvents]
+    next[idx] = merged
+    return next
+  }
+  if (ptiItems.length > 0 || ptiOverflow) {
+    const synthetic: TimelineEntryKnowledgeSearch = {
+      kind: 'knowledge_search',
+      seq: -1,
+      items: ptiItems,
+      _overflow: ptiOverflow,
+    }
+    return [synthetic, ...rawEvents]
+  }
+  return rawEvents
+}
+
+function renderTimelineEntry(
+  entry: TimelineEntry,
+  sessionId: string,
+  keyPrefix: string,
+): React.ReactNode {
+  const k = `${keyPrefix}-${entry.seq}-${entry.kind}`
+  switch (entry.kind) {
+    case 'knowledge_search':
+      return (
+        <KnowledgePills
+          key={k}
+          items={entry.items}
+          overflow={entry._overflow ?? null}
+        />
+      )
+    case 'web_search':
+      return <WebSearchPills key={k} items={entry.items} />
+    case 'tool_call': {
+      // ToolCallPills consumes the ToolCallRef shape — the timeline entry
+      // already carries the same identifying fields, just re-wrapped.
+      const ref: ToolCallRef = {
+        tool_call_id: entry.tool_call_id,
+        tool_name: entry.tool_name,
+        arguments: entry.arguments,
+        success: entry.success,
+        moderated_count: entry.moderated_count,
+      }
+      return <ToolCallPills key={k} toolCalls={[ref]} />
+    }
+    case 'artefact':
+      return (
+        <div key={k} className="my-2 flex flex-col gap-2">
+          <ArtefactCard
+            handle={entry.ref.handle}
+            title={entry.ref.title}
+            artefactType={entry.ref.artefact_type}
+            isUpdate={entry.ref.operation === 'update'}
+            sessionId={sessionId}
+          />
+        </div>
+      )
+    case 'image':
+      return (
+        <InlineImageBlock
+          key={k}
+          refs={entry.refs}
+          moderatedCount={entry.moderated_count ?? 0}
+        />
+      )
+  }
+}
+
 export function MessageList({
-  sessionId, messages, streamingContent, streamingThinking, streamingWebSearchContext, streamingKnowledgeContext, activeToolCalls,
+  sessionId, messages, streamingContent, streamingThinking, streamingEvents, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
 }: MessageListProps) {
@@ -120,6 +218,19 @@ export function MessageList({
     .chat-scroll::-webkit-scrollbar-thumb:hover { background: ${accentColour}66; }
   `
 
+  // Build the live-streaming events list once, including the PTI merge from
+  // the most recent user message. Same merge applied to persisted messages
+  // below — that's what keeps live and reload renders DOM-identical.
+  const lastUserMsg = useMemo(() => {
+    const idx = messages.findLastIndex((m) => m.role === 'user')
+    return idx === -1 ? null : messages[idx]
+  }, [messages])
+  const liveMergedEvents = useMemo(() => {
+    const ptiItems = lastUserMsg?.knowledge_context ?? []
+    const ptiOverflow = lastUserMsg?.pti_overflow ?? null
+    return mergePtiIntoFirstKnowledgeEntry(streamingEvents, ptiItems, ptiOverflow)
+  }, [streamingEvents, lastUserMsg])
+
   return (
     <div className="relative flex-1">
       {/*
@@ -161,52 +272,25 @@ export function MessageList({
           }
           if (msg.role === 'assistant') {
             // PTI items live on the preceding user message but represent
-            // context the assistant used to answer — render them above the
-            // assistant bubble combined with the assistant's own retrieval
-            // results (knowledge_search). pti_overflow likewise travels with
-            // the user message that triggered it.
+            // context the assistant used. The render merge folds them into
+            // the assistant's first knowledge_search entry so live and
+            // reload paths produce the same DOM structure.
             const prev = messages[i - 1]
             const ptiItems =
               prev && prev.role === 'user' ? (prev.knowledge_context ?? []) : []
             const ptiOverflow =
               prev && prev.role === 'user' ? (prev.pti_overflow ?? null) : null
-            const combinedItems = [...ptiItems, ...(msg.knowledge_context ?? [])]
+            const events = mergePtiIntoFirstKnowledgeEntry(
+              msg.events ?? [],
+              ptiItems,
+              ptiOverflow,
+            )
             return (
               <div key={msg.id}>
                 <div id={`msg-${msg.id}`} />
-                {msg.web_search_context && msg.web_search_context.length > 0 && (
-                  <WebSearchPills items={msg.web_search_context} />
+                {events.map((entry) =>
+                  renderTimelineEntry(entry, sessionId ?? '', msg.id),
                 )}
-                {(combinedItems.length > 0 || ptiOverflow) && (
-                  <KnowledgePills items={combinedItems} overflow={ptiOverflow} />
-                )}
-                {msg.tool_calls && msg.tool_calls.length > 0 && (
-                  <ToolCallPills toolCalls={msg.tool_calls} />
-                )}
-                {msg.artefact_refs && msg.artefact_refs.length > 0 && (
-                  <div className="my-2 flex flex-col gap-2">
-                    {msg.artefact_refs.map((ref) => (
-                      <ArtefactCard
-                        key={`${msg.id}-${ref.artefact_id || ref.handle}-${ref.operation}`}
-                        handle={ref.handle}
-                        title={ref.title}
-                        artefactType={ref.artefact_type}
-                        isUpdate={ref.operation === 'update'}
-                        sessionId={sessionId ?? ''}
-                      />
-                    ))}
-                  </div>
-                )}
-                {/* Inline generated images — rendered after artefact cards, before the message body. */}
-                {(() => {
-                  const imageToolCall = msg.tool_calls?.find(
-                    (tc) => tc.tool_name === 'generate_image',
-                  )
-                  const moderatedCount = imageToolCall?.moderated_count ?? 0
-                  const refs = msg.image_refs ?? []
-                  if (refs.length === 0 && moderatedCount === 0) return null
-                  return <InlineImageBlock refs={refs} moderatedCount={moderatedCount} />
-                })()}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
@@ -234,25 +318,20 @@ export function MessageList({
 
         {isStreaming && (
           <div>
+            {liveMergedEvents.map((entry) =>
+              renderTimelineEntry(entry, sessionId ?? '', 'live'),
+            )}
+            {/*
+              In-flight tool indicators are the only piece that legitimately
+              differs between live and reload — by definition there are no
+              running tools after reload. They are placed AFTER the events
+              list and BEFORE the message body so that, when a tool
+              completes, the activity indicator vanishes at the same moment
+              the corresponding pill appears above it.
+            */}
             {activeToolCalls.filter((tc) => tc.status === 'running').map((tc) => (
               <ToolCallActivity key={tc.id} toolName={tc.toolName} arguments={tc.arguments} />
             ))}
-            {activeToolCalls.filter((tc) => tc.status === 'done' && (tc.toolName === 'create_artefact' || tc.toolName === 'update_artefact')).map((tc) => (
-              <ArtefactCard
-                key={tc.id}
-                handle={(tc.arguments.handle as string) ?? ''}
-                title={(tc.arguments.title as string) ?? (tc.arguments.handle as string) ?? ''}
-                artefactType={(tc.arguments.type as string) ?? 'code'}
-                isUpdate={tc.toolName === 'update_artefact'}
-                sessionId={sessionId ?? ''}
-              />
-            ))}
-            {streamingWebSearchContext.length > 0 && (
-              <WebSearchPills items={streamingWebSearchContext} />
-            )}
-            {streamingKnowledgeContext.length > 0 && (
-              <KnowledgePills items={streamingKnowledgeContext} overflow={null} />
-            )}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}
                 isStreaming={true} accentColour={accentColour} highlighter={highlighter}

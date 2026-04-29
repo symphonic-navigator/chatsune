@@ -21,7 +21,16 @@ from backend.modules.llm import (
     ThinkingDelta,
     ToolCallEvent,
 )
-from shared.dtos.chat import ArtefactRefDto
+from shared.dtos.chat import (
+    ArtefactRefDto,
+    KnowledgeContextItem,
+    TimelineEntryArtefact,
+    TimelineEntryImage,
+    TimelineEntryKnowledgeSearch,
+    TimelineEntryToolCall,
+    TimelineEntryWebSearch,
+    WebSearchContextItemDto,
+)
 from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
@@ -40,6 +49,71 @@ _TRACE_DELTAS = os.environ.get("LLM_TRACE_DELTAS") == "1"
 
 _MAX_TOOL_ITERATIONS = 5
 _REFUSAL_FALLBACK_TEXT = "The model declined this request."
+
+
+def make_timeline_entry(
+    *,
+    seq: int,
+    tool_name: str,
+    tool_call_id: str,
+    arguments: dict,
+    success: bool,
+    moderated_count: int = 0,
+    knowledge_results: list | None = None,
+    web_items: list | None = None,
+    artefact_ref: ArtefactRefDto | None = None,
+    image_refs: list | None = None,
+):
+    """Map one completed tool call to its TimelineEntry variant.
+
+    A failed tool always becomes a generic ``tool_call`` entry, regardless
+    of which tool it was — empty knowledge/web pills would be confusing
+    and a failed image generation has no refs to render.
+    """
+    if not success:
+        return TimelineEntryToolCall(
+            seq=seq,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            success=False,
+            moderated_count=moderated_count,
+        )
+
+    if tool_name == "knowledge_search":
+        items = [
+            r if isinstance(r, KnowledgeContextItem)
+            else KnowledgeContextItem.model_validate(r)
+            for r in (knowledge_results or [])
+        ]
+        return TimelineEntryKnowledgeSearch(seq=seq, items=items)
+
+    if tool_name in ("web_search", "web_fetch"):
+        items = [
+            w if isinstance(w, WebSearchContextItemDto)
+            else WebSearchContextItemDto.model_validate(w)
+            for w in (web_items or [])
+        ]
+        return TimelineEntryWebSearch(seq=seq, items=items)
+
+    if tool_name in ("create_artefact", "update_artefact") and artefact_ref is not None:
+        return TimelineEntryArtefact(seq=seq, ref=artefact_ref)
+
+    if tool_name == "generate_image":
+        return TimelineEntryImage(
+            seq=seq,
+            refs=list(image_refs or []),
+            moderated_count=moderated_count,
+        )
+
+    return TimelineEntryToolCall(
+        seq=seq,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        arguments=arguments,
+        success=success,
+        moderated_count=moderated_count,
+    )
 
 
 class InferenceRunner:
@@ -107,20 +181,23 @@ class InferenceRunner:
         usage = None
         status = "completed"
         iter_refusal_text: str | None = None
+
+        # Single chronological timeline of tool-derived events. Replaces
+        # the four/five parallel lists (web_search_context,
+        # knowledge_context, artefact_refs, image_refs, tool_calls) we
+        # used to accumulate. ``next_seq`` is the per-message ordering key.
+        events: list = []
+        next_seq = 0
+
+        # Mirror of the cumulative web-search context for the streaming
+        # ChatWebSearchContextEvent payload — kept in lockstep with the
+        # web_search/web_fetch entries we append to ``events``. Not
+        # persisted; only used to feed the live event payload.
         web_search_context: list[dict] = []
-        knowledge_context: list[dict] = []
-        artefact_refs: list[dict] = []
-        # Collected image refs from generate_image tool calls — drained out
-        # of the side-channel exposed by ImageGenerationToolExecutor and
-        # persisted on the assistant message for inline rendering.
-        image_refs: list[dict] = []
 
         # Extra messages accumulated across tool-loop iterations.
         # Each iteration appends: assistant (with tool_calls) + tool result messages.
         extra_messages: list[CompletionMessage] = []
-
-        # Collected tool call metadata for persistence on the assistant message.
-        all_tool_calls: list[dict] = []
 
         t_stream_start = time.monotonic()
         t_first_token: float | None = None
@@ -367,7 +444,6 @@ class InferenceRunner:
                                     "create" if tc.name == "create_artefact" else "update"
                                 ),
                             )
-                            artefact_refs.append(ref_for_event.model_dump())
 
                     # Drain the structured image-generation outcome (if any).
                     # `generate_image` produces image_refs + a moderated_count;
@@ -376,14 +452,14 @@ class InferenceRunner:
                     # the inline image block live without a session reload.
                     moderated_count = 0
                     image_refs_for_event: list[ImageRefDto] | None = None
+                    image_refs_for_entry: list = []
                     if tc.name == "generate_image":
                         from backend.modules.images._tool_executor import (
                             drain_image_outcome,
                         )
                         outcome = drain_image_outcome(tc.id)
                         if outcome is not None:
-                            for ref in outcome.image_refs:
-                                image_refs.append(ref.model_dump())
+                            image_refs_for_entry = list(outcome.image_refs)
                             moderated_count = outcome.moderated_count
                             image_refs_for_event = (
                                 list(outcome.image_refs) if outcome.image_refs else None
@@ -396,14 +472,6 @@ class InferenceRunner:
                             if outcome.all_moderated:
                                 tool_success = False
 
-                    all_tool_calls.append({
-                        "tool_call_id": tc.id,
-                        "tool_name": tc.name,
-                        "arguments": arguments,
-                        "success": tool_success,
-                        "moderated_count": moderated_count,
-                    })
-
                     await emit_fn(ChatToolCallCompletedEvent(
                         correlation_id=correlation_id,
                         tool_call_id=tc.id,
@@ -415,13 +483,17 @@ class InferenceRunner:
                         timestamp=datetime.now(timezone.utc),
                     ))
 
-                    # Capture web search/fetch context for metadata + pills
+                    # Capture web search/fetch context for metadata + pills.
+                    # Each web_search/web_fetch call gets its own timeline
+                    # entry carrying only the items returned by THAT call,
+                    # so multiple calls in one turn render as multiple pills.
+                    web_items_for_entry: list[dict] = []
                     if tc.name in ("web_search", "web_fetch"):
                         try:
                             parsed = json.loads(result_str)
                             if tc.name == "web_search" and isinstance(parsed, list):
                                 for r in parsed:
-                                    web_search_context.append({
+                                    web_items_for_entry.append({
                                         "title": r.get("title", ""),
                                         "url": r.get("url", ""),
                                         "snippet": r.get("snippet", ""),
@@ -430,32 +502,51 @@ class InferenceRunner:
                             elif tc.name == "web_fetch" and isinstance(parsed, dict):
                                 content = parsed.get("content", "")
                                 snippet = (content[:200] + "...") if len(content) > 200 else content
-                                web_search_context.append({
+                                web_items_for_entry.append({
                                     "title": parsed.get("title") or parsed.get("url", ""),
                                     "url": parsed.get("url", ""),
                                     "snippet": snippet,
                                     "source_type": "fetch",
                                 })
-                            # Emit full accumulated list so frontend stays in sync
+                            web_search_context.extend(web_items_for_entry)
+                            # Emit per-call delta. One ChatWebSearchContextEvent
+                            # per tool call → one web_search timeline entry on
+                            # the frontend, matching the persisted shape and
+                            # the per-call granularity of make_timeline_entry.
                             await emit_fn(ChatWebSearchContextEvent(
                                 correlation_id=correlation_id,
                                 items=[
                                     WebSearchContextItem(**ctx)
-                                    for ctx in web_search_context
+                                    for ctx in web_items_for_entry
                                 ],
                             ))
                         except (json.JSONDecodeError, TypeError):
                             pass
 
-                    # Capture knowledge search context for metadata + pills
+                    # Capture knowledge search context for metadata + pills.
+                    knowledge_items_for_entry: list = []
                     if tc.name == "knowledge_search":
                         try:
                             parsed = json.loads(result_str)
                             if isinstance(parsed, dict) and "results" in parsed:
-                                for r in parsed["results"]:
-                                    knowledge_context.append(r)
+                                knowledge_items_for_entry = list(parsed["results"])
                         except (json.JSONDecodeError, TypeError):
                             pass
+
+                    # Map this completed tool call to one timeline entry.
+                    events.append(make_timeline_entry(
+                        seq=next_seq,
+                        tool_name=tc.name,
+                        tool_call_id=tc.id,
+                        arguments=arguments,
+                        success=tool_success,
+                        moderated_count=moderated_count,
+                        knowledge_results=knowledge_items_for_entry,
+                        web_items=web_items_for_entry,
+                        artefact_ref=ref_for_event,
+                        image_refs=image_refs_for_entry,
+                    ))
+                    next_seq += 1
 
                     # Add tool result message for LLM context
                     extra_messages.append(CompletionMessage(
@@ -498,11 +589,7 @@ class InferenceRunner:
                 content=full_content,
                 thinking=full_thinking or None,
                 usage=usage,
-                web_search_context=web_search_context or None,
-                knowledge_context=knowledge_context or None,
-                artefact_refs=artefact_refs or None,
-                tool_calls=all_tool_calls or None,
-                image_refs=image_refs or None,
+                events=events or None,
                 refusal_text=iter_refusal_text,
                 status=resolved_status,
             )
@@ -536,5 +623,6 @@ class InferenceRunner:
             generation_duration_ms=gen_duration_ms,
             provider_name=connection_display_name,
             model_name=model_name,
+            events=[e.model_dump() for e in events] if events else None,
             timestamp=datetime.now(timezone.utc),
         ))

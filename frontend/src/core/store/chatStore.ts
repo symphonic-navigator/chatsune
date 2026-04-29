@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import type { ArtefactRef, ChatMessageDto, KnowledgeContextItem, WebSearchContextItem } from '../api/chat'
-import type { ImageRefDto } from '../api/images'
+import type { ChatMessageDto, TimelineEntry } from '../api/chat'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -33,10 +32,12 @@ interface ChatState {
   correlationId: string | null
   streamingContent: string
   streamingThinking: string
-  streamingWebSearchContext: WebSearchContextItem[]
-  streamingKnowledgeContext: KnowledgeContextItem[]
-  streamingArtefactRefs: ArtefactRef[]
-  streamingImageRefs: ImageRefDto[]
+  /**
+   * Chronological timeline of tool-derived events for the in-flight assistant
+   * message. The store assigns a monotonic `seq` to every entry it appends,
+   * scoped per stream — callers do not coordinate seq numbers themselves.
+   */
+  streamingEvents: TimelineEntry[]
   streamingRefusalText: string | null
   activeToolCalls: ActiveToolCall[]
   visionDescriptions: Record<string, LiveVisionDescription>
@@ -57,10 +58,13 @@ interface ChatState {
   appendStreamingContent: (delta: string) => void
   replaceInStreamingContent: (search: string, replacement: string) => void
   appendStreamingThinking: (delta: string) => void
-  setStreamingWebSearchContext: (items: WebSearchContextItem[]) => void
-  setStreamingKnowledgeContext: (items: KnowledgeContextItem[]) => void
-  appendArtefactRef: (ref: ArtefactRef) => void
-  appendImageRefs: (refs: ImageRefDto[]) => void
+  /**
+   * Append a timeline entry to the active stream. The store assigns the
+   * `seq` automatically (monotonic per stream); any `seq` on the supplied
+   * entry is ignored. This frees the two hooks that produce timeline entries
+   * (`useChatStream`, `useKnowledgeEvents`) from having to share a counter.
+   */
+  appendStreamingEvent: (entry: TimelineEntry) => void
   setStreamingRefusalText: (text: string | null) => void
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
@@ -92,10 +96,7 @@ const INITIAL_STATE = {
   correlationId: null as string | null,
   streamingContent: '',
   streamingThinking: '',
-  streamingWebSearchContext: [] as WebSearchContextItem[],
-  streamingKnowledgeContext: [] as KnowledgeContextItem[],
-  streamingArtefactRefs: [] as ArtefactRef[],
-  streamingImageRefs: [] as ImageRefDto[],
+  streamingEvents: [] as TimelineEntry[],
   streamingRefusalText: null as string | null,
   activeToolCalls: [] as ActiveToolCall[],
   visionDescriptions: {} as Record<string, LiveVisionDescription>,
@@ -122,8 +123,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({
       isWaitingForResponse: false, isStreaming: true, correlationId,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [], visionDescriptions: {}, error: null,
-      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
+      streamingEvents: [], activeToolCalls: [], visionDescriptions: {}, error: null,
+      streamingRefusalText: null,
       streamingSlow: false,
     }),
   appendStreamingContent: (delta) =>
@@ -134,14 +135,12 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     })),
   appendStreamingThinking: (delta) =>
     set((s) => ({ streamingThinking: s.streamingThinking + delta, streamingSlow: false })),
-  setStreamingWebSearchContext: (items) =>
-    set({ streamingWebSearchContext: items }),
-  setStreamingKnowledgeContext: (items) =>
-    set({ streamingKnowledgeContext: items }),
-  appendArtefactRef: (ref) =>
-    set((s) => ({ streamingArtefactRefs: [...s.streamingArtefactRefs, ref] })),
-  appendImageRefs: (refs) =>
-    set((s) => ({ streamingImageRefs: [...s.streamingImageRefs, ...refs] })),
+  appendStreamingEvent: (entry) =>
+    set((s) => {
+      const seq = s.streamingEvents.length
+      const next = { ...entry, seq } as TimelineEntry
+      return { streamingEvents: [...s.streamingEvents, next] }
+    }),
   setStreamingRefusalText: (text) =>
     set({ streamingRefusalText: text }),
   addToolCall: (tc) =>
@@ -173,11 +172,13 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       },
     })),
   finishStreaming: (finalMessage, contextStatus, fillPercentage, usedTokens = 0, maxTokens = 0) =>
+    // The persisted message's `events` is the source of truth at stream end.
+    // We discard `streamingEvents` rather than carrying anything across.
     set((s) => ({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
-      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
+      streamingEvents: [], activeToolCalls: [],
+      streamingRefusalText: null,
       streamingSlow: false,
       messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
       contextUsedTokens: usedTokens, contextMaxTokens: maxTokens,
@@ -186,8 +187,8 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
       streamingContent: '', streamingThinking: '',
-      streamingWebSearchContext: [], streamingKnowledgeContext: [], activeToolCalls: [],
-      streamingArtefactRefs: [], streamingImageRefs: [], streamingRefusalText: null,
+      streamingEvents: [], activeToolCalls: [],
+      streamingRefusalText: null,
       streamingSlow: false,
     }),
   truncateAfter: (messageId) =>

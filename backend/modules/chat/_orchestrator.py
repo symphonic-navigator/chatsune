@@ -212,6 +212,11 @@ def _make_tool_executor(
             args["_session_library_ids"] = session_lib_ids
             args["_sanitised"] = sanitised
             args["_session_id"] = session.get("_id", "")
+            # Stitch the chat-stream's correlation id onto the published
+            # KnowledgeSearchCompletedEvent so it groups with the other
+            # events from this turn, instead of getting a fresh UUID
+            # disconnected from the stream.
+            args["_correlation_id"] = correlation_id
             arguments_json = json.dumps(args)
 
         artefact_tools = {
@@ -787,11 +792,7 @@ async def run_inference(
         content: str,
         thinking: str | None = None,
         usage: dict | None = None,
-        web_search_context: list[dict] | None = None,
-        knowledge_context: list[dict] | None = None,
-        artefact_refs: list | None = None,
-        tool_calls: list[dict] | None = None,
-        image_refs: list[dict] | None = None,
+        events: list | None = None,
         refusal_text: str | None = None,
         status: Literal["completed", "aborted", "refused"] = "completed",
     ) -> str | None:
@@ -803,11 +804,7 @@ async def run_inference(
             token_count=token_count,
             thinking=thinking,
             usage=usage,
-            web_search_context=web_search_context,
-            knowledge_context=knowledge_context,
-            artefact_refs=artefact_refs,
-            tool_calls=tool_calls,
-            image_refs=image_refs,
+            events=events,
             refusal_text=refusal_text,
             status=status,
         )

@@ -9,11 +9,214 @@ from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
     ChatSessionDto,
+    KnowledgeContextItem,
+    TimelineEntryArtefact,
+    TimelineEntryImage,
+    TimelineEntryKnowledgeSearch,
+    TimelineEntryToolCall,
+    TimelineEntryWebSearch,
     ToolCallRefDto,
     VisionDescriptionSnapshotDto,
     WebSearchContextItemDto,
 )
+from shared.dtos.images import ImageRefDto
 from shared.dtos.storage import AttachmentRefDto
+
+
+# Tagged-union variants the repository writes / synthesises. Kept as a tuple
+# so callers can use ``isinstance(x, _TIMELINE_ENTRY_TYPES)`` if needed.
+_TIMELINE_ENTRY_TYPES = (
+    TimelineEntryKnowledgeSearch,
+    TimelineEntryWebSearch,
+    TimelineEntryToolCall,
+    TimelineEntryArtefact,
+    TimelineEntryImage,
+)
+
+
+def _coerce_knowledge_items(raw: list | None) -> list[KnowledgeContextItem]:
+    if not raw:
+        return []
+    out: list[KnowledgeContextItem] = []
+    for item in raw:
+        if isinstance(item, KnowledgeContextItem):
+            out.append(item)
+        else:
+            out.append(KnowledgeContextItem.model_validate(item))
+    return out
+
+
+def _coerce_web_items(raw: list | None) -> list[WebSearchContextItemDto]:
+    if not raw:
+        return []
+    out: list[WebSearchContextItemDto] = []
+    for item in raw:
+        if isinstance(item, WebSearchContextItemDto):
+            out.append(item)
+        else:
+            out.append(WebSearchContextItemDto(
+                title=item.get("title", ""),
+                url=item.get("url", ""),
+                snippet=item.get("snippet", ""),
+                source_type=item.get("source_type", "search"),
+            ))
+    return out
+
+
+def _coerce_artefact_ref(raw) -> ArtefactRefDto:
+    if isinstance(raw, ArtefactRefDto):
+        return raw
+    return ArtefactRefDto(
+        artefact_id=raw.get("artefact_id", ""),
+        handle=raw.get("handle", ""),
+        title=raw.get("title", ""),
+        artefact_type=raw.get("artefact_type", ""),
+        operation=raw.get("operation", "create"),
+    )
+
+
+def _coerce_image_refs(raw: list | None) -> list[ImageRefDto]:
+    if not raw:
+        return []
+    out: list[ImageRefDto] = []
+    for r in raw:
+        if isinstance(r, ImageRefDto):
+            out.append(r)
+        else:
+            out.append(ImageRefDto(
+                id=r.get("id", ""),
+                blob_url=r.get("blob_url", ""),
+                thumb_url=r.get("thumb_url", ""),
+                width=r.get("width", 0),
+                height=r.get("height", 0),
+                prompt=r.get("prompt", ""),
+                model_id=r.get("model_id", ""),
+                tool_call_id=r.get("tool_call_id", ""),
+                thumbnail_b64=r.get("thumbnail_b64"),
+            ))
+    return out
+
+
+def _validate_timeline_entry(raw):
+    """Coerce a stored events-list element into the matching Pydantic model.
+
+    Documents written by this codebase carry plain dicts in ``doc["events"]``
+    (the result of ``model_dump`` at write time). This helper switches on
+    the ``kind`` discriminator and reconstructs the typed model so the DTO
+    receives properly-validated entries.
+    """
+    if isinstance(raw, _TIMELINE_ENTRY_TYPES):
+        return raw
+    kind = raw.get("kind")
+    if kind == "knowledge_search":
+        return TimelineEntryKnowledgeSearch.model_validate(raw)
+    if kind == "web_search":
+        return TimelineEntryWebSearch.model_validate(raw)
+    if kind == "tool_call":
+        return TimelineEntryToolCall.model_validate(raw)
+    if kind == "artefact":
+        return TimelineEntryArtefact.model_validate(raw)
+    if kind == "image":
+        return TimelineEntryImage.model_validate(raw)
+    raise ValueError(f"unknown timeline entry kind: {kind!r}")
+
+
+def synthesise_events(doc: dict) -> list | None:
+    """Build a timeline-events list from a legacy assistant message.
+
+    Returns a list of ``TimelineEntry*`` model instances, or ``None`` if the
+    document carries none of the legacy artefact fields. Deterministic: the
+    same input always produces the same output. Provenance is lossy for
+    legacy data (e.g. multiple ``knowledge_search`` calls collapse into one
+    entry) — that is accepted per the spec; consistency across reloads is
+    the hard guarantee.
+    """
+    legacy_keys = (
+        "tool_calls", "knowledge_context", "web_search_context",
+        "artefact_refs", "image_refs",
+    )
+    if not any(k in doc for k in legacy_keys):
+        return None
+
+    events: list = []
+    seq = 0
+    tool_calls = doc.get("tool_calls") or []
+
+    knowledge_pool = _coerce_knowledge_items(doc.get("knowledge_context"))
+    web_pool = _coerce_web_items(doc.get("web_search_context"))
+    artefact_pool: list = list(doc.get("artefact_refs") or [])
+    image_pool = _coerce_image_refs(doc.get("image_refs"))
+
+    for tc in tool_calls:
+        name = tc.get("tool_name", "")
+        success = tc.get("success", True)
+        # Failed tool calls always fall through to the generic pill,
+        # regardless of which tool they originated from.
+        if not success:
+            events.append(TimelineEntryToolCall(
+                seq=seq,
+                tool_call_id=tc.get("tool_call_id", ""),
+                tool_name=name,
+                arguments=tc.get("arguments") or {},
+                success=False,
+                moderated_count=tc.get("moderated_count", 0),
+            ))
+        elif name == "knowledge_search":
+            # Drain pool entirely into the FIRST search call; subsequent
+            # calls in the same legacy document get an empty list.
+            events.append(TimelineEntryKnowledgeSearch(
+                seq=seq, items=knowledge_pool,
+            ))
+            knowledge_pool = []
+        elif name in ("web_search", "web_fetch"):
+            events.append(TimelineEntryWebSearch(
+                seq=seq, items=web_pool,
+            ))
+            web_pool = []
+        elif name in ("create_artefact", "update_artefact"):
+            ref = artefact_pool.pop(0) if artefact_pool else None
+            if ref is not None:
+                events.append(TimelineEntryArtefact(
+                    seq=seq, ref=_coerce_artefact_ref(ref),
+                ))
+            else:
+                events.append(TimelineEntryToolCall(
+                    seq=seq,
+                    tool_call_id=tc.get("tool_call_id", ""),
+                    tool_name=name,
+                    arguments=tc.get("arguments") or {},
+                    success=success,
+                    moderated_count=tc.get("moderated_count", 0),
+                ))
+        elif name == "generate_image":
+            events.append(TimelineEntryImage(
+                seq=seq,
+                refs=image_pool,
+                moderated_count=tc.get("moderated_count", 0),
+            ))
+            image_pool = []
+        else:
+            events.append(TimelineEntryToolCall(
+                seq=seq,
+                tool_call_id=tc.get("tool_call_id", ""),
+                tool_name=name,
+                arguments=tc.get("arguments") or {},
+                success=success,
+                moderated_count=tc.get("moderated_count", 0),
+            ))
+        seq += 1
+
+    # Very early documents may carry knowledge/web results without a
+    # corresponding ``tool_calls`` entry. Surface them as standalone
+    # entries so the pills remain visible after the migration.
+    if knowledge_pool:
+        events.append(TimelineEntryKnowledgeSearch(seq=seq, items=knowledge_pool))
+        seq += 1
+    if web_pool:
+        events.append(TimelineEntryWebSearch(seq=seq, items=web_pool))
+        seq += 1
+
+    return events
 
 
 class ChatRepository:
@@ -394,12 +597,20 @@ class ChatRepository:
         token_count: int,
         thinking: str | None = None,
         usage: dict | None = None,
-        web_search_context: list[dict] | None = None,
+        # ``knowledge_context`` is only written on USER messages now, where
+        # it carries the PTI (phrase-trigger injection) items that fired
+        # for that prompt. Assistant-message knowledge results live on the
+        # ``events`` timeline instead.
         knowledge_context: list[dict] | None = None,
         pti_overflow: dict | None = None,
         attachment_ids: list[str] | None = None,
         attachment_refs: list[dict] | None = None,
         vision_descriptions_used: list[dict] | None = None,
+        events: list | None = None,
+        # Legacy kwargs preserved so existing tests / one-off scripts still
+        # work; production assistant writes pass ``events`` instead. New
+        # documents written via ``events`` do NOT also write these fields.
+        web_search_context: list[dict] | None = None,
         artefact_refs: list[dict] | None = None,
         tool_calls: list[dict] | None = None,
         image_refs: list[dict] | None = None,
@@ -422,8 +633,6 @@ class ChatRepository:
         }
         if user_id:
             doc["user_id"] = user_id
-        if web_search_context:
-            doc["web_search_context"] = web_search_context
         if knowledge_context:
             doc["knowledge_context"] = knowledge_context
         if pti_overflow:
@@ -436,12 +645,28 @@ class ChatRepository:
             doc["vision_descriptions_used"] = vision_descriptions_used
         if usage:
             doc["usage"] = usage
-        if artefact_refs:
-            doc["artefact_refs"] = artefact_refs
-        if tool_calls:
-            doc["tool_calls"] = tool_calls
-        if image_refs:
-            doc["image_refs"] = image_refs
+        if events:
+            # New assistant documents persist the chronological timeline.
+            # Legacy parallel fields (tool_calls, web_search_context,
+            # artefact_refs, image_refs) are no longer written for
+            # assistant messages — the renderer reads ``events`` instead.
+            doc["events"] = [
+                e.model_dump() if hasattr(e, "model_dump") else e
+                for e in events
+            ]
+        else:
+            # Legacy write path — preserved for tests and ad-hoc scripts.
+            # The production inference pipeline always passes ``events``
+            # for assistant messages now, so this branch only fires for
+            # callers that haven't migrated.
+            if web_search_context:
+                doc["web_search_context"] = web_search_context
+            if artefact_refs:
+                doc["artefact_refs"] = artefact_refs
+            if tool_calls:
+                doc["tool_calls"] = tool_calls
+            if image_refs:
+                doc["image_refs"] = image_refs
         if refusal_text:
             doc["refusal_text"] = refusal_text
         await self._messages.insert_one(doc)
@@ -706,7 +931,6 @@ class ChatRepository:
             if raw_tool_calls
             else None
         )
-        from shared.dtos.images import ImageRefDto
         raw_image_refs = doc.get("image_refs")
         image_refs = (
             [
@@ -726,6 +950,17 @@ class ChatRepository:
             if raw_image_refs
             else None
         )
+
+        # Timeline of tool-derived events. New documents ship ``events``
+        # directly; legacy documents lack it and the synthesis path
+        # rebuilds an equivalent list from the parallel legacy fields.
+        if "events" in doc and doc["events"] is not None:
+            events_list = [
+                _validate_timeline_entry(e) for e in (doc.get("events") or [])
+            ]
+        else:
+            events_list = synthesise_events(doc)
+
         return ChatMessageDto(
             id=doc["_id"],
             session_id=doc["session_id"],
@@ -743,5 +978,6 @@ class ChatRepository:
             artefact_refs=artefact_refs,
             tool_calls=tool_calls,
             image_refs=image_refs,
+            events=events_list,
             usage=doc.get("usage"),
         )

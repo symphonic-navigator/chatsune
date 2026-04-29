@@ -66,7 +66,12 @@ export function useKnowledgeEvents() {
         case Topics.KNOWLEDGE_SEARCH_COMPLETED: {
           const chunks = p.results as RetrievedChunkDto[]
           const items: KnowledgeContextItem[] = chunks.map((c) => ({ ...c, source: 'search' as const }))
-          chatStore().setStreamingKnowledgeContext(items)
+          // The store assigns `seq` itself, so `0` here is a placeholder.
+          chatStore().appendStreamingEvent({
+            kind: 'knowledge_search',
+            seq: 0,
+            items,
+          })
           break
         }
       }

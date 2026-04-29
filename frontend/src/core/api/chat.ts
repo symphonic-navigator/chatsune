@@ -63,6 +63,57 @@ interface ToolCallRef {
   moderated_count?: number
 }
 
+// Discriminated-union timeline entries — mirror of the Pydantic
+// `TimelineEntryDto` union in shared/dtos/chat.py. The `kind` discriminator
+// must match exactly. Order within a message is established by `seq`.
+interface TimelineEntryKnowledgeSearch {
+  kind: 'knowledge_search'
+  seq: number
+  items: KnowledgeContextItem[]
+  /**
+   * Render-only attachment used by `mergePtiIntoFirstKnowledgeEntry` to fold
+   * the preceding user message's PTI overflow notice into the first
+   * knowledge_search entry. Never persisted, never set by the backend.
+   */
+  _overflow?: PtiOverflow | null
+}
+
+interface TimelineEntryWebSearch {
+  kind: 'web_search'
+  seq: number
+  items: WebSearchContextItem[]
+}
+
+interface TimelineEntryToolCall {
+  kind: 'tool_call'
+  seq: number
+  tool_call_id: string
+  tool_name: string
+  arguments: Record<string, unknown>
+  success: boolean
+  moderated_count?: number
+}
+
+interface TimelineEntryArtefact {
+  kind: 'artefact'
+  seq: number
+  ref: ArtefactRef
+}
+
+interface TimelineEntryImage {
+  kind: 'image'
+  seq: number
+  refs: ImageRefDto[]
+  moderated_count?: number
+}
+
+type TimelineEntry =
+  | TimelineEntryKnowledgeSearch
+  | TimelineEntryWebSearch
+  | TimelineEntryToolCall
+  | TimelineEntryArtefact
+  | TimelineEntryImage
+
 interface ChatMessageDto {
   id: string
   session_id: string
@@ -81,6 +132,7 @@ interface ChatMessageDto {
   artefact_refs?: ArtefactRef[] | null
   tool_calls?: ToolCallRef[] | null
   image_refs?: ImageRefDto[] | null
+  events?: TimelineEntry[] | null
   usage?: { input_tokens?: number; output_tokens?: number } | null
   time_to_first_token_ms?: number | null
   tokens_per_second?: number | null
@@ -106,6 +158,12 @@ export type {
   ToolCallRef,
   ToolGroupDto,
   AttachmentRefDto,
+  TimelineEntry,
+  TimelineEntryKnowledgeSearch,
+  TimelineEntryWebSearch,
+  TimelineEntryToolCall,
+  TimelineEntryArtefact,
+  TimelineEntryImage,
 }
 
 export const chatApi = {

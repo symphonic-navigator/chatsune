@@ -378,6 +378,9 @@ class ImageService:
         messages with already-embedded ``thumbnail_b64`` are zero-cost.
         """
         # Collect all (image_id -> [refs]) for refs missing thumbnail_b64.
+        # Walk both the legacy ``image_refs`` list (pre-timeline messages)
+        # and the new ``events`` list (timeline-shaped messages, where
+        # image refs live inside an ``image`` entry's ``refs``).
         pending: dict[str, list[dict]] = {}
         for msg in messages:
             for ref in (msg.get("image_refs") or []):
@@ -387,6 +390,16 @@ class ImageService:
                 if not ref_id:
                     continue
                 pending.setdefault(ref_id, []).append(ref)
+            for entry in (msg.get("events") or []):
+                if not isinstance(entry, dict) or entry.get("kind") != "image":
+                    continue
+                for ref in (entry.get("refs") or []):
+                    if ref.get("thumbnail_b64"):
+                        continue
+                    ref_id = ref.get("id")
+                    if not ref_id:
+                        continue
+                    pending.setdefault(ref_id, []).append(ref)
         if not pending:
             return
 

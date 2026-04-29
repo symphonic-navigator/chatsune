@@ -67,6 +67,11 @@ class ChatStreamEndedEvent(BaseModel):
     generation_duration_ms: int | None = None
     provider_name: str | None = None
     model_name: str | None = None
+    # Persisted assistant-message timeline. Frontend adopts this verbatim,
+    # discarding anything it accumulated during the stream — guarantees
+    # live and reload renders match. None on early-error paths where
+    # nothing was persisted.
+    events: list[dict] | None = None
     timestamp: datetime
 
 

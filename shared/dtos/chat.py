@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -85,6 +85,64 @@ class PtiOverflow(BaseModel):
     dropped_titles: list[str]
 
 
+# --- chronological timeline entries for an assistant message ---------------
+#
+# Each tool-derived artefact (knowledge results, web-search results, generic
+# tool-call metadata, artefact handle, image refs) becomes one entry on the
+# message's ``events`` list. ``seq`` is monotonic per message (starts at 0)
+# and is the single ordering key that the renderer follows. The legacy
+# parallel lists (``tool_calls``, ``knowledge_context``, ...) remain on the
+# DTO for read-back of historical documents but are no longer written by
+# new inference runs.
+
+
+class TimelineEntryKnowledgeSearch(BaseModel):
+    kind: Literal["knowledge_search"] = "knowledge_search"
+    seq: int
+    items: list[KnowledgeContextItem]
+
+
+class TimelineEntryWebSearch(BaseModel):
+    kind: Literal["web_search"] = "web_search"
+    seq: int
+    items: list[WebSearchContextItemDto]
+
+
+class TimelineEntryToolCall(BaseModel):
+    """Generic tool call — used for tools without a specialised renderer
+    and for any failed tool call regardless of which tool it was."""
+    kind: Literal["tool_call"] = "tool_call"
+    seq: int
+    tool_call_id: str
+    tool_name: str
+    arguments: dict
+    success: bool
+    moderated_count: int = 0
+
+
+class TimelineEntryArtefact(BaseModel):
+    kind: Literal["artefact"] = "artefact"
+    seq: int
+    ref: ArtefactRefDto
+
+
+class TimelineEntryImage(BaseModel):
+    kind: Literal["image"] = "image"
+    seq: int
+    refs: list[ImageRefDto]
+    moderated_count: int = 0
+
+
+TimelineEntryDto = Annotated[
+    TimelineEntryKnowledgeSearch
+    | TimelineEntryWebSearch
+    | TimelineEntryToolCall
+    | TimelineEntryArtefact
+    | TimelineEntryImage,
+    Field(discriminator="kind"),
+]
+
+
 class ChatMessageDto(BaseModel):
     id: str
     session_id: str
@@ -103,6 +161,10 @@ class ChatMessageDto(BaseModel):
     artefact_refs: list[ArtefactRefDto] | None = None
     tool_calls: list[ToolCallRefDto] | None = None
     image_refs: list[ImageRefDto] | None = None
+    # Chronological timeline of tool-derived events for this message.
+    # New documents populate this list; legacy documents lack it and the
+    # repository synthesises one on read.
+    events: list[TimelineEntryDto] | None = None
     usage: dict | None = None
 
 

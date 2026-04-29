@@ -70,6 +70,11 @@ class KnowledgeSearchExecutor:
             sanitised = arguments.get("_sanitised", False)
 
             session_id = arguments.get("_session_id", "")
+            # Pulled from the chat-stream context by the orchestrator
+            # tool-wrapper. Falls back to a fresh UUID so the event still
+            # validates if the executor is invoked outside a chat stream
+            # (e.g. from tests or future ad-hoc callers).
+            stream_correlation_id = arguments.get("_correlation_id") or ""
 
             results = await search(
                 user_id=user_id,
@@ -88,7 +93,7 @@ class KnowledgeSearchExecutor:
                 from shared.topics import Topics
 
                 event_bus = get_event_bus()
-                correlation_id = str(uuid4())
+                correlation_id = stream_correlation_id or str(uuid4())
                 await event_bus.publish(
                     Topics.KNOWLEDGE_SEARCH_COMPLETED,
                     KnowledgeSearchCompletedEvent(

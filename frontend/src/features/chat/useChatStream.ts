@@ -7,6 +7,7 @@ import type { BaseEvent } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 import type { ImageRefDto } from '../../core/api/images'
+import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroup } from './responseTaskGroup'
@@ -86,23 +87,84 @@ export function handleChatEvent(
       if (event.correlation_id !== getStore().correlationId) return
       getStore().completeToolCall(p.tool_call_id as string)
       const artefactRef = p.artefact_ref as ArtefactRef | null | undefined
-      if (artefactRef) {
-        getStore().appendArtefactRef(artefactRef)
-      }
-      // Mirrors the artefact_ref pattern: the inference loop attaches
-      // image_refs to the tool_call.completed event for generate_image so
-      // the frontend can render the inline images live without waiting
-      // for a session reload.
       const imageRefsRaw = p.image_refs as unknown
-      if (Array.isArray(imageRefsRaw) && imageRefsRaw.length > 0) {
-        getStore().appendImageRefs(imageRefsRaw as ImageRefDto[])
+      const moderatedCount = (p.moderated_count as number | undefined) ?? 0
+      const toolName = p.tool_name as string | undefined
+      const success = (p.success as boolean | undefined) ?? true
+      const toolCallId = p.tool_call_id as string
+      const args = (p.arguments as Record<string, unknown> | undefined) ?? {}
+
+      // Failed tool call — always becomes a generic pill regardless of
+      // tool name (a failed knowledge_search must NOT render as an empty
+      // KnowledgePills). This branch is hoisted above the tool-name
+      // dispatch so failures of knowledge_search, web_search, and
+      // web_fetch are not silently swallowed.
+      if (toolName && !success) {
+        const entry: TimelineEntry = {
+          kind: 'tool_call',
+          seq: 0,
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          arguments: args,
+          success: false,
+          moderated_count: moderatedCount,
+        }
+        getStore().appendStreamingEvent(entry)
+      } else if (artefactRef) {
+        const entry: TimelineEntry = {
+          kind: 'artefact',
+          seq: 0,
+          ref: artefactRef,
+        }
+        getStore().appendStreamingEvent(entry)
+      } else if (toolName === 'generate_image') {
+        // Mirrors the artefact_ref pattern: the inference loop attaches
+        // image_refs to the tool_call.completed event for generate_image so
+        // the frontend can render the inline images live without waiting
+        // for a session reload.
+        const refs: ImageRefDto[] = Array.isArray(imageRefsRaw) ? (imageRefsRaw as ImageRefDto[]) : []
+        if (refs.length > 0 || moderatedCount > 0) {
+          const entry: TimelineEntry = {
+            kind: 'image',
+            seq: 0,
+            refs,
+            moderated_count: moderatedCount,
+          }
+          getStore().appendStreamingEvent(entry)
+        }
+      } else if (
+        toolName
+        && toolName !== 'knowledge_search'
+        && toolName !== 'web_search'
+        && toolName !== 'web_fetch'
+      ) {
+        // Successful generic tool — gets a `tool_call` entry. The three
+        // search/fetch tools are intentionally excluded on success
+        // because their dedicated events (KNOWLEDGE_SEARCH_COMPLETED /
+        // CHAT_WEB_SEARCH_CONTEXT) carry the result data needed for
+        // their typed entries.
+        const entry: TimelineEntry = {
+          kind: 'tool_call',
+          seq: 0,
+          tool_call_id: toolCallId,
+          tool_name: toolName,
+          arguments: args,
+          success,
+          moderated_count: moderatedCount,
+        }
+        getStore().appendStreamingEvent(entry)
       }
       break
     }
     case Topics.CHAT_WEB_SEARCH_CONTEXT: {
       if (event.correlation_id !== getStore().correlationId) return
-      const items = p.items as Array<{ title: string; url: string; snippet: string }>
-      getStore().setStreamingWebSearchContext(items)
+      const items = p.items as Array<{ title: string; url: string; snippet: string; source_type?: 'search' | 'fetch' }>
+      const entry: TimelineEntry = {
+        kind: 'web_search',
+        seq: 0,
+        items,
+      }
+      getStore().appendStreamingEvent(entry)
       break
     }
     case Topics.CHAT_STREAM_ENDED: {
@@ -142,12 +204,16 @@ export function handleChatEvent(
       const backendMessageId = p.message_id as string | undefined
       const content = getStore().streamingContent
       const thinking = getStore().streamingThinking
-      const webSearchContext = getStore().streamingWebSearchContext
-      const knowledgeContext = getStore().streamingKnowledgeContext
-      const artefactRefs = getStore().streamingArtefactRefs
-      const imageRefs = getStore().streamingImageRefs
       const refusalText = getStore().streamingRefusalText
-      const toolCalls = getStore().activeToolCalls
+      // The persisted timeline arrives on the stream-ended payload as
+      // `events`. We adopt it verbatim — anything we accumulated client-side
+      // during the stream is discarded by `finishStreaming`. While the
+      // backend is in transition (BE rollout lags FE), fall back to the
+      // client-built list so live runs still show pills.
+      const persistedEvents = p.events as TimelineEntry[] | null | undefined
+      const events: TimelineEntry[] = Array.isArray(persistedEvents)
+        ? persistedEvents
+        : getStore().streamingEvents
       // Auto-read trigger: if the session has auto-read on and the message
       // completed normally with content, signal the ReadAloudButton for this
       // messageId to start playback. Lives here (not in AssistantMessage)
@@ -172,18 +238,9 @@ export function handleChatEvent(
             thinking: thinking || null,
             token_count: 0,
             attachments: null,
-            web_search_context: webSearchContext.length > 0 ? webSearchContext : null,
-            knowledge_context: knowledgeContext.length > 0 ? knowledgeContext : null,
-            artefact_refs: artefactRefs.length > 0 ? artefactRefs : null,
-            tool_calls: toolCalls.length > 0
-              ? toolCalls.map((tc) => ({
-                  tool_call_id: tc.id,
-                  tool_name: tc.toolName,
-                  arguments: tc.arguments,
-                  success: tc.status === 'done',
-                }))
-              : null,
-            image_refs: imageRefs.length > 0 ? imageRefs : null,
+            web_search_context: null,
+            knowledge_context: null,
+            events: events.length > 0 ? events : null,
             refusal_text: refusalText || null,
             created_at: new Date().toISOString(),
             status: messageStatus,

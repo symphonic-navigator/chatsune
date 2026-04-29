@@ -741,12 +741,14 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
 
         async def save_fn(
             content: str,
-            thinking: str | None,
-            usage: dict | None,
-            web_search_context: list[dict] | None = None,
-            knowledge_context: list[dict] | None = None,
+            thinking: str | None = None,
+            usage: dict | None = None,
+            events: list | None = None,
+            refusal_text: str | None = None,
+            status: str = "completed",
         ) -> None:
-            pass
+            # Incognito mode discards everything by design.
+            return None
 
         try:
             await _runner.run(
