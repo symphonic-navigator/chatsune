@@ -178,6 +178,7 @@ export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
           className="z-50 w-80 rounded-lg border border-white/10 bg-[#1a1625] p-3 text-sm shadow-xl"
           role="dialog"
           aria-label="Image generation settings"
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {!toolsOn && (
             <div className="mb-3 rounded-md border border-white/10 bg-white/5 p-2 text-xs text-white/70">
