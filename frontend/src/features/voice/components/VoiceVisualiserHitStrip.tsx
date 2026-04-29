@@ -45,9 +45,9 @@ export function VoiceVisualiserHitStrip() {
         style={{
           position: 'fixed',
           left: 0,
-          width: '100vw',
-          top: '35vh',
-          height: '30vh',
+          width: '100%',
+          top: '35%',
+          height: '30%',
           background: 'transparent',
           border: 0,
           padding: 0,
