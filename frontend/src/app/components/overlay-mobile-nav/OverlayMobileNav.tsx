@@ -80,10 +80,10 @@ export function OverlayMobileNav({
       e.preventDefault()
       moveFocus(-1)
     } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
       const focused = document.activeElement as HTMLElement | null
       const id = focused?.getAttribute('data-leaf-id')
       if (id) {
-        e.preventDefault()
         onSelect(id)
         setOpen(false)
       }

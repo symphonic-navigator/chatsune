@@ -318,4 +318,19 @@ describe('OverlayMobileNav — keyboard and focus', () => {
     await user.keyboard('{ArrowDown}{Enter}')
     expect(onSelect).toHaveBeenCalledWith('llm-providers')
   })
+
+  it('selects the focused leaf on Space', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="about-me"
+        onSelect={onSelect}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    await user.keyboard('{ArrowDown} ')
+    expect(onSelect).toHaveBeenCalledWith('llm-providers')
+  })
 })
