@@ -488,6 +488,9 @@ class AudioCaptureImpl {
 
     // Probability rose again — reset the silence counter.
     this.silenceFrames = 0
+    // Hysteresis: stay open while probability sits in the ambiguous band
+    // between negative and positive thresholds. Closing the redemption
+    // requires a frame that crosses fully back into "speech".
     if (this.redemptionOpen && probs.isSpeech > this.framePosThreshold) {
       this.redemptionOpen = false
       usePauseRedemptionStore.getState().clear()

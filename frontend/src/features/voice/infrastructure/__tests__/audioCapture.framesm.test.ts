@@ -139,4 +139,20 @@ describe('audioCapture frame state machine — pauseRedemptionStore edges', () =
     ;(capture as unknown as { handleVadMisfire(): void }).handleVadMisfire()
     expect(usePauseRedemptionStore.getState().active).toBe(false)
   })
+
+  it('a frame in the ambiguous band keeps redemption open (hysteresis)', () => {
+    ;(capture as unknown as { handleVadSpeechStart(): void }).handleVadSpeechStart()
+    for (let i = 0; i < 4; i++) frameProcessed!({ isSpeech: 0.1 })
+    expect(usePauseRedemptionStore.getState().active).toBe(true)
+
+    // 0.55 sits between negativeSpeechThreshold (0.5) and positiveSpeechThreshold (0.65).
+    // The silence counter resets, but redemption must stay open until a frame
+    // crosses fully above the positive threshold.
+    frameProcessed!({ isSpeech: 0.55 })
+    expect(usePauseRedemptionStore.getState().active).toBe(true)
+
+    // A clearly-speaking frame finally closes it.
+    frameProcessed!({ isSpeech: 0.9 })
+    expect(usePauseRedemptionStore.getState().active).toBe(false)
+  })
 })
