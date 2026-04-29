@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { resolveCrumb } from './resolveCrumb'
 import { isSection, type NavLeaf, type NavNode } from './types'
 
@@ -30,6 +30,65 @@ export function OverlayMobileNav({
   const [open, setOpen] = useState(false)
   const crumb = resolveCrumb(tree, activeId)
   const panelId = useId()
+
+  const listboxRef = useRef<HTMLUListElement>(null)
+
+  // Flat list of clickable leaf ids in render order — used for ArrowUp / ArrowDown.
+  const orderedLeafIds = useMemo(() => {
+    const ids: string[] = []
+    for (const node of tree) {
+      if (isSection(node)) {
+        for (const child of node.children) ids.push(child.id)
+      } else {
+        ids.push(node.id)
+      }
+    }
+    return ids
+  }, [tree])
+
+  // On open: focus the active option and scroll it into view.
+  useEffect(() => {
+    if (!open) return
+    const root = listboxRef.current
+    if (!root) return
+    const activeEl =
+      root.querySelector<HTMLElement>(`[data-leaf-id="${activeId}"]`) ??
+      root.querySelector<HTMLElement>('[role="option"]')
+    if (activeEl) {
+      activeEl.focus()
+      activeEl.scrollIntoView({ block: 'nearest' })
+    }
+  }, [open, activeId])
+
+  function moveFocus(delta: 1 | -1) {
+    const root = listboxRef.current
+    if (!root) return
+    const focused = document.activeElement as HTMLElement | null
+    const currentId = focused?.getAttribute('data-leaf-id') ?? activeId
+    const idx = orderedLeafIds.indexOf(currentId)
+    const nextIdx = Math.max(0, Math.min(orderedLeafIds.length - 1, idx + delta))
+    const nextId = orderedLeafIds[nextIdx]
+    const next = root.querySelector<HTMLElement>(`[data-leaf-id="${nextId}"]`)
+    next?.focus()
+  }
+
+  function handleListboxKeyDown(e: React.KeyboardEvent<HTMLUListElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      moveFocus(1)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      moveFocus(-1)
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      const focused = document.activeElement as HTMLElement | null
+      const id = focused?.getAttribute('data-leaf-id')
+      if (id) {
+        e.preventDefault()
+        onSelect(id)
+        setOpen(false)
+      }
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -85,7 +144,9 @@ export function OverlayMobileNav({
           />
           <ul
             id={panelId}
+            ref={listboxRef}
             role="listbox"
+            onKeyDown={handleListboxKeyDown}
             className="absolute left-0 right-0 mt-1.5 max-h-[min(70vh,460px)] overflow-y-auto rounded-md border border-white/12 bg-[#13101e] shadow-2xl z-30"
           >
             {tree.map((node) =>
@@ -149,6 +210,7 @@ function LeafRow({ leaf, indented, active, accentColour, onClick }: LeafRowProps
       role="option"
       aria-selected={active}
       tabIndex={active ? 0 : -1}
+      data-leaf-id={leaf.id}
       onClick={onClick}
       style={
         active
@@ -156,7 +218,7 @@ function LeafRow({ leaf, indented, active, accentColour, onClick }: LeafRowProps
           : undefined
       }
       className={[
-        'flex items-center gap-2 cursor-pointer border-b border-white/4 last:border-b-0',
+        'flex items-center gap-2 cursor-pointer border-b border-white/4 last:border-b-0 outline-none focus:bg-white/8',
         indented ? 'pl-6 pr-3.5 py-2.5 text-[12.5px]' : 'px-3.5 py-2.5 text-[13px]',
         active ? '' : 'text-white/70',
       ].join(' ')}

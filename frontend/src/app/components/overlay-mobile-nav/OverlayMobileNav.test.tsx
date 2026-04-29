@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { OverlayMobileNav } from './OverlayMobileNav'
 import type { NavNode } from './types'
@@ -265,5 +266,56 @@ describe('OverlayMobileNav — accent colour', () => {
     const active = screen.getByRole('option', { name: 'Voice' })
     expect(active.style.color).toMatch(/#ff00aa|rgb\(255,\s*0,\s*170\)/i)
     expect(active.style.backgroundColor).not.toBe('')
+  })
+})
+
+describe('OverlayMobileNav — keyboard and focus', () => {
+  it('focuses the active option and scrolls it into view on open', () => {
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView')
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="voice"
+        onSelect={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    expect(screen.getByRole('option', { name: 'Voice' })).toHaveFocus()
+    expect(scrollSpy).toHaveBeenCalled()
+    scrollSpy.mockRestore()
+  })
+
+  it('moves focus through clickable leaves with ArrowDown / ArrowUp', async () => {
+    const user = userEvent.setup()
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="about-me"
+        onSelect={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    expect(screen.getByRole('option', { name: 'About me' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('option', { name: 'LLM Providers' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('option', { name: 'Voice' })).toHaveFocus()
+    await user.keyboard('{ArrowUp}')
+    expect(screen.getByRole('option', { name: 'LLM Providers' })).toHaveFocus()
+  })
+
+  it('selects the focused leaf on Enter', async () => {
+    const onSelect = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="about-me"
+        onSelect={onSelect}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onSelect).toHaveBeenCalledWith('llm-providers')
   })
 })
