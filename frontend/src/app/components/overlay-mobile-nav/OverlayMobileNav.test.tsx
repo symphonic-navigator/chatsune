@@ -34,7 +34,7 @@ describe('OverlayMobileNav — trigger rendering', () => {
         onSelect={vi.fn()}
       />,
     )
-    const trigger = screen.getByRole('button', { name: /system/i })
+    const trigger = screen.getByRole('button', { name: /open navigation/i })
     expect(trigger).toBeInTheDocument()
     expect(trigger.textContent).toContain('System')
     expect(trigger.textContent).not.toContain('–')

@@ -33,11 +33,11 @@ export function OverlayMobileNav({
   void _setOpen
   void open
   void accentColour
-  void ariaLabel
 
   return (
     <button
       type="button"
+      aria-label={ariaLabel}
       aria-haspopup="listbox"
       aria-expanded={open}
       className="w-full flex items-center justify-between rounded-md border border-white/12 bg-white/4 px-3 py-2.5"
