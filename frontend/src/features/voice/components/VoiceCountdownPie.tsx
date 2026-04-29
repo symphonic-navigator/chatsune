@@ -38,12 +38,17 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
   const enabled = useVoiceSettingsStore((s) => s.visualisation.enabled)
 
   const chatview = useVisualiserLayoutStore((s) => s.chatview)
+  const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
+  // Use the textColumn rect to match the visualiser's horizontal centre (spec §3.2).
+  // Fall back to chatview when textColumn is not yet measured (e.g. on first render
+  // or in tests that only seed chatview).
+  const layout = textColumn ?? chatview
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!active || !enabled || !chatview || !canvasRef.current) return
+    if (!active || !enabled || !layout || !canvasRef.current) return
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -55,7 +60,7 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
     const tick = () => {
       // Use getBoundingClientRect rather than window.innerWidth/innerHeight:
       // under `body { zoom: --ui-scale }` those values are pre-zoom CSS pixels
-      // while chatview.x comes from getBoundingClientRect() (post-zoom). Using
+      // while layout.x comes from getBoundingClientRect() (post-zoom). Using
       // getBoundingClientRect here keeps both coordinate spaces consistent.
       const rect = canvas.getBoundingClientRect()
       const cssW = rect.width
@@ -68,15 +73,15 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       }
 
-      // chatview.x and chatview.w are post-zoom CSS pixels (getBoundingClientRect
+      // layout.x and layout.w are post-zoom CSS pixels (getBoundingClientRect
       // in useReportBounds); cssH from getBoundingClientRect above is also
       // post-zoom — both are in the same coordinate space.
-      const cx = chatview.x + chatview.w / 2
+      const cx = layout.x + layout.w / 2
       const cy = cssH / 2
 
       const diameter = Math.max(
         PIE_DIAMETER_MIN,
-        Math.min(PIE_DIAMETER_MAX, Math.min(chatview.w, cssH) * PIE_DIAMETER_RATIO),
+        Math.min(PIE_DIAMETER_MAX, Math.min(layout.w, cssH) * PIE_DIAMETER_RATIO),
       )
       const radius = diameter / 2
 
@@ -100,9 +105,9 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
         rafRef.current = null
       }
     }
-  }, [active, enabled, chatview, startedAt, windowMs, style, opacity, personaColourHex])
+  }, [active, enabled, layout, textColumn, chatview, startedAt, windowMs, style, opacity, personaColourHex])
 
-  if (!active || !enabled || !chatview) return null
+  if (!active || !enabled || !layout) return null
 
   return (
     <canvas
@@ -114,7 +119,7 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
         width: '100%',
         height: '100%',
         pointerEvents: 'none',
-        zIndex: 60,
+        zIndex: 1,
       }}
     />
   )
