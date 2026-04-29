@@ -56,16 +56,10 @@ function drawPieSoft(ctx: CanvasRenderingContext2D, o: PieRenderOpts, endAngle: 
   const [r, g, b] = o.rgb
   const [lr, lg, lb] = o.rgbLight
   const grd = ctx.createRadialGradient(o.cx, o.cy, 0, o.cx, o.cy, o.radius)
-  // Guard: some minimal canvas environments (e.g. test stubs) return a
-  // non-object here. Fall back to a solid fill so the renderer never throws.
-  if (grd != null) {
-    grd.addColorStop(0,   `rgba(${lr},${lg},${lb},${o.opacity})`)
-    grd.addColorStop(0.6, `rgba(${r},${g},${b},${o.opacity * 0.85})`)
-    grd.addColorStop(1,   `rgba(${r},${g},${b},${o.opacity * 0.25})`)
-    ctx.fillStyle = grd
-  } else {
-    ctx.fillStyle = `rgba(${lr},${lg},${lb},${o.opacity})`
-  }
+  grd.addColorStop(0,   `rgba(${lr},${lg},${lb},${o.opacity})`)
+  grd.addColorStop(0.6, `rgba(${r},${g},${b},${o.opacity * 0.85})`)
+  grd.addColorStop(1,   `rgba(${r},${g},${b},${o.opacity * 0.25})`)
+  ctx.fillStyle = grd
   tracePie(ctx, o, endAngle)
   ctx.fill()
 }
@@ -82,13 +76,13 @@ function drawPieGlow(ctx: CanvasRenderingContext2D, o: PieRenderOpts, endAngle: 
 }
 
 function drawPieGlass(ctx: CanvasRenderingContext2D, o: PieRenderOpts, endAngle: number): void {
-  const [r, g, b] = o.rgb
+  const [lr, lg, lb] = o.rgbLight
   // Milky core fill.
   ctx.fillStyle = `rgba(255,255,255,${o.opacity * 0.45})`
   tracePie(ctx, o, endAngle)
   ctx.fill()
-  // Coloured stroke around the wedge.
-  ctx.strokeStyle = `rgba(${r},${g},${b},${o.opacity * 0.85})`
+  // Coloured stroke around the wedge — matches visualiser's drawGlass convention.
+  ctx.strokeStyle = `rgba(${lr},${lg},${lb},${o.opacity * 0.85})`
   ctx.lineWidth = 1
   tracePie(ctx, o, endAngle)
   ctx.stroke()

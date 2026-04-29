@@ -8,6 +8,12 @@ function makeCtx(): CanvasRenderingContext2D {
     get(_t, key: string) {
       if (key === 'calls') return calls
       if (key === 'canvas') return { width: 200, height: 200 }
+      if (key === 'createRadialGradient') {
+        return (...args: unknown[]) => {
+          calls.push(`createRadialGradient(${args.length})`)
+          return { addColorStop: () => {} }
+        }
+      }
       return (...args: unknown[]) => { calls.push(`${key}(${args.length})`) }
     },
     set() { return true },
@@ -50,5 +56,12 @@ describe('drawPieFrame', () => {
     expect(() =>
       drawPieFrame('sharp', ctx, { ...baseOpts, remainingFraction: 5 }),
     ).not.toThrow()
+  })
+
+  it('soft style invokes createRadialGradient (genuine gradient code path)', () => {
+    const ctx = makeCtx()
+    drawPieFrame('soft', ctx, baseOpts)
+    const calls = (ctx as any).calls as string[]
+    expect(calls.some((c) => c.startsWith('createRadialGradient('))).toBe(true)
   })
 })
