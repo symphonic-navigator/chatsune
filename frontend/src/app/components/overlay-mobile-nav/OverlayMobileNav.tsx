@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { resolveCrumb } from './resolveCrumb'
 import { isSection, type NavLeaf, type NavNode } from './types'
 
@@ -25,6 +25,15 @@ export function OverlayMobileNav({
   const [open, setOpen] = useState(false)
   const crumb = resolveCrumb(tree, activeId)
   const panelId = useId()
+
+  useEffect(() => {
+    if (!open) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
 
   function handleLeafClick(leaf: NavLeaf) {
     onSelect(leaf.id)
@@ -58,41 +67,49 @@ export function OverlayMobileNav({
       </button>
 
       {open && (
-        <ul
-          id={panelId}
-          role="listbox"
-          className="absolute left-0 right-0 mt-1.5 max-h-[min(70vh,460px)] overflow-y-auto rounded-md border border-white/12 bg-[#13101e] shadow-2xl z-30"
-        >
-          {tree.map((node) =>
-            isSection(node) ? (
-              <li key={node.id} role="presentation">
-                <div
-                  aria-hidden
-                  className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none"
-                >
-                  {node.label}
-                </div>
-                {node.children.map((child) => (
-                  <LeafRow
-                    key={child.id}
-                    leaf={child}
-                    indented
-                    active={child.id === activeId}
-                    onClick={() => handleLeafClick(child)}
-                  />
-                ))}
-              </li>
-            ) : (
-              <LeafRow
-                key={node.id}
-                leaf={node}
-                indented={false}
-                active={node.id === activeId}
-                onClick={() => handleLeafClick(node)}
-              />
-            ),
-          )}
-        </ul>
+        <>
+          <div
+            data-testid="overlay-mobile-nav-backdrop"
+            aria-hidden
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-20"
+          />
+          <ul
+            id={panelId}
+            role="listbox"
+            className="absolute left-0 right-0 mt-1.5 max-h-[min(70vh,460px)] overflow-y-auto rounded-md border border-white/12 bg-[#13101e] shadow-2xl z-30"
+          >
+            {tree.map((node) =>
+              isSection(node) ? (
+                <li key={node.id} role="presentation">
+                  <div
+                    aria-hidden
+                    className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none"
+                  >
+                    {node.label}
+                  </div>
+                  {node.children.map((child) => (
+                    <LeafRow
+                      key={child.id}
+                      leaf={child}
+                      indented
+                      active={child.id === activeId}
+                      onClick={() => handleLeafClick(child)}
+                    />
+                  ))}
+                </li>
+              ) : (
+                <LeafRow
+                  key={node.id}
+                  leaf={node}
+                  indented={false}
+                  active={node.id === activeId}
+                  onClick={() => handleLeafClick(node)}
+                />
+              ),
+            )}
+          </ul>
+        </>
       )}
     </div>
   )

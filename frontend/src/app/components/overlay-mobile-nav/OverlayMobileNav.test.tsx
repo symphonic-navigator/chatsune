@@ -144,4 +144,48 @@ describe('OverlayMobileNav — panel behaviour', () => {
     expect(onSelect).not.toHaveBeenCalled()
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
+
+  it('closes the panel on Escape', () => {
+    render(
+      <OverlayMobileNav
+        tree={flatTree}
+        activeId="users"
+        onSelect={vi.fn()}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /open navigation/i })
+    fireEvent.click(trigger)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('closes the panel on backdrop click', () => {
+    render(
+      <OverlayMobileNav
+        tree={flatTree}
+        activeId="users"
+        onSelect={vi.fn()}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /open navigation/i })
+    fireEvent.click(trigger)
+    const backdrop = screen.getByTestId('overlay-mobile-nav-backdrop')
+    fireEvent.click(backdrop)
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('does not close on click inside the listbox', () => {
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="about-me"
+        onSelect={vi.fn()}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /open navigation/i })
+    fireEvent.click(trigger)
+    // Click on a non-clickable section header — panel must stay open.
+    fireEvent.click(screen.getByText('Settings'))
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
 })
