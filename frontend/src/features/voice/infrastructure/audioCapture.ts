@@ -1,9 +1,11 @@
 import { MicVAD } from '@ricky0123/vad-web'
 import type { VoiceActivationThreshold } from '../stores/voiceSettingsStore'
+import { VOICE_REDEMPTION_MS_DEFAULT } from '../stores/voiceSettingsStore'
 import { VAD_PRESETS } from './vadPresets'
 import type { CapturedAudio } from '../types'
 import { pickRecordingMimeType, createRecorder } from './audioRecording'
 import { float32ToWavBlob } from './wavEncoder'
+import { usePauseRedemptionStore } from '../stores/pauseRedemptionStore'
 
 export interface AudioCaptureCallbacks {
   onSpeechStart: () => void
@@ -38,6 +40,11 @@ export interface StartContinuousOptions {
    * per hold-cycle spanning multiple VAD sub-segments.
    */
   externalRecorder?: boolean
+  /**
+   * VAD redemption window in ms. When omitted, falls back to
+   * `VOICE_REDEMPTION_MS_DEFAULT` from voiceSettingsStore.
+   */
+  redemptionMs?: number
 }
 
 // vad-web bundles its own onnxruntime-web (1.22.x, isolated by pnpm).
@@ -84,6 +91,27 @@ class AudioCaptureImpl {
   private vadRecorderChunks: Blob[] = []
   private vadSegmentStartedAt = 0
   private vadExternalRecorder = false
+
+  // -- Silence-edge state machine (drives pauseRedemptionStore) --
+
+  /** Number of consecutive frames whose probability sat below negativeSpeechThreshold. */
+  private silenceFrames = 0
+  /** True while VAD has confirmed a speech segment (between speech-start and speech-end). */
+  private inSpeechSegment = false
+  /** True while pauseRedemptionStore is currently open (we own the toggle). */
+  private redemptionOpen = false
+  /** Snapshotted positiveSpeechThreshold for the current session — set in startContinuous. */
+  private framePosThreshold = 0.65
+  /** Snapshotted negativeSpeechThreshold for the current session — set in startContinuous. */
+  private frameNegThreshold = 0.5
+  /** Snapshotted redemption window in ms for the current session — set in startContinuous. */
+  private currentRedemptionMs = 1_728
+
+  /**
+   * 4 frames × 96 ms/frame = 384 ms grace before the redemption pie may appear.
+   * Frame-counted (not wall-clock) so it is robust against VAD frame-cadence jitter.
+   */
+  private static readonly GRACE_FRAMES = 4
 
   /**
    * Returns the active MediaStream (PTT or continuous/VAD), or `null` if
@@ -289,6 +317,19 @@ class AudioCaptureImpl {
     const preset = VAD_PRESETS[threshold]
     const MS_PER_FRAME = 96
 
+    // Prefer the caller-supplied value; fall back to the store default so
+    // legacy callers (e.g. voicePipeline) that pass no options get the same
+    // numerical default (1728 ms) from a single source of truth.
+    const effectiveRedemptionMs = options.redemptionMs ?? VOICE_REDEMPTION_MS_DEFAULT
+
+    // Snapshot threshold values and reset state-machine fields for this session.
+    this.framePosThreshold = preset.positiveSpeechThreshold
+    this.frameNegThreshold = preset.negativeSpeechThreshold
+    this.currentRedemptionMs = effectiveRedemptionMs
+    this.silenceFrames = 0
+    this.inSpeechSegment = false
+    this.redemptionOpen = false
+
     this.vad = await MicVAD.new({
       getStream,
       onnxWASMBasePath: ORT_CDN,
@@ -296,7 +337,7 @@ class AudioCaptureImpl {
       positiveSpeechThreshold: preset.positiveSpeechThreshold,
       negativeSpeechThreshold: preset.negativeSpeechThreshold,
       minSpeechMs: preset.minSpeechFrames * MS_PER_FRAME,
-      redemptionMs: preset.redemptionFrames * MS_PER_FRAME,
+      redemptionMs: effectiveRedemptionMs,
       onSpeechStart: () => {
         this.handleVadSpeechStart()
       },
@@ -305,6 +346,9 @@ class AudioCaptureImpl {
       },
       onVADMisfire: () => {
         this.handleVadMisfire()
+      },
+      onFrameProcessed: (probs: { isSpeech: number }) => {
+        this.handleVadFrame(probs)
       },
     })
 
@@ -322,6 +366,8 @@ class AudioCaptureImpl {
   }
 
   private handleVadSpeechStart(): void {
+    this.inSpeechSegment = true
+    this.silenceFrames = 0
     this.vadSegmentStartedAt = performance.now()
     // External-recorder mode: caller (e.g. useConversationMode) owns
     // recording lifecycle. We only forward the VAD edge.
@@ -351,6 +397,12 @@ class AudioCaptureImpl {
   }
 
   private handleVadSpeechEnd(pcm: Float32Array): void {
+    this.inSpeechSegment = false
+    this.silenceFrames = 0
+    if (this.redemptionOpen) {
+      this.redemptionOpen = false
+      usePauseRedemptionStore.getState().clear()
+    }
     const cb = this.callbacks
     const durationMs = Math.max(0, performance.now() - this.vadSegmentStartedAt)
 
@@ -394,6 +446,12 @@ class AudioCaptureImpl {
   }
 
   private handleVadMisfire(): void {
+    this.inSpeechSegment = false
+    this.silenceFrames = 0
+    if (this.redemptionOpen) {
+      this.redemptionOpen = false
+      usePauseRedemptionStore.getState().clear()
+    }
     // Drop the recorder silently — no utterance to deliver.
     const recorder = this.vadRecorder
     this.vadRecorder = null
@@ -406,9 +464,49 @@ class AudioCaptureImpl {
   }
 
   /**
+   * Called on every VAD frame while continuous mode is running (~96 ms cadence).
+   *
+   * Maintains a running silence counter. Once `GRACE_FRAMES` consecutive frames
+   * fall below `frameNegThreshold` inside an active speech segment, the pause
+   * redemption window opens. Any frame that climbs back above `framePosThreshold`
+   * resets the counter (and closes the window if it was open).
+   *
+   * The grace period is frame-counted rather than wall-clock-counted so that
+   * it is robust against any jitter in the VAD's frame cadence.
+   */
+  private handleVadFrame(probs: { isSpeech: number }): void {
+    if (!this.inSpeechSegment) return
+
+    if (probs.isSpeech < this.frameNegThreshold) {
+      this.silenceFrames += 1
+      if (!this.redemptionOpen && this.silenceFrames >= AudioCaptureImpl.GRACE_FRAMES) {
+        this.redemptionOpen = true
+        usePauseRedemptionStore.getState().start(this.currentRedemptionMs)
+      }
+      return
+    }
+
+    // Probability rose again — reset the silence counter.
+    this.silenceFrames = 0
+    // Hysteresis: stay open while probability sits in the ambiguous band
+    // between negative and positive thresholds. Closing the redemption
+    // requires a frame that crosses fully back into "speech".
+    if (this.redemptionOpen && probs.isSpeech > this.framePosThreshold) {
+      this.redemptionOpen = false
+      usePauseRedemptionStore.getState().clear()
+    }
+  }
+
+  /**
    * Stop continuous (VAD) recording.
    */
   stopContinuous(): void {
+    this.inSpeechSegment = false
+    this.silenceFrames = 0
+    if (this.redemptionOpen) {
+      this.redemptionOpen = false
+      usePauseRedemptionStore.getState().clear()
+    }
     this.stopVolumeMeter()
     this.vad?.pause()
     this.vad?.destroy()
@@ -455,3 +553,9 @@ class AudioCaptureImpl {
 }
 
 export const audioCapture = new AudioCaptureImpl()
+
+/**
+ * Named export of the implementation class so that unit tests can instantiate
+ * isolated instances (rather than sharing the module-level singleton).
+ */
+export { AudioCaptureImpl as AudioCapture }

@@ -15,7 +15,7 @@ let captured: CapturedCallbacks | null = null
 
 vi.mock('../../infrastructure/audioCapture', () => ({
   audioCapture: {
-    startContinuous: vi.fn(async (cbs: CapturedCallbacks) => {
+    startContinuous: vi.fn(async (cbs: CapturedCallbacks, _options?: unknown) => {
       captured = cbs
     }),
     stopContinuous: vi.fn(() => {

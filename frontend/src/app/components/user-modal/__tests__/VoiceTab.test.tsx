@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { VoiceTab } from '../VoiceTab'
-import { useVoiceSettingsStore } from '../../../../features/voice/stores/voiceSettingsStore'
+import { useVoiceSettingsStore, VOICE_REDEMPTION_MS_DEFAULT } from '../../../../features/voice/stores/voiceSettingsStore'
 import { useIntegrationsStore } from '../../../../features/integrations/store'
 
 describe('VoiceTab', () => {
@@ -49,5 +50,38 @@ describe('VoiceTab', () => {
     render(<MemoryRouter><VoiceTab /></MemoryRouter>)
     await user.click(screen.getByRole('button', { name: /voice activation threshold high/i }))
     expect(useVoiceSettingsStore.getState().voiceActivationThreshold).toBe('high')
+  })
+})
+
+describe('VoiceTab — Pause-Toleranz slider', () => {
+  beforeEach(() => {
+    useVoiceSettingsStore.setState({ redemptionMs: VOICE_REDEMPTION_MS_DEFAULT })
+    useIntegrationsStore.setState({
+      definitions: [],
+      configs: {},
+      healthStatus: {},
+      loaded: true,
+      loading: false,
+    })
+  })
+
+  it('renders with the current redemptionMs value displayed in seconds', () => {
+    render(<MemoryRouter><VoiceTab /></MemoryRouter>)
+    expect(screen.getByText(/1\.7s/)).toBeInTheDocument()
+  })
+
+  it('updates the store when dragged', () => {
+    render(<MemoryRouter><VoiceTab /></MemoryRouter>)
+    const slider = screen.getByLabelText(/Pause-Toleranz/i) as HTMLInputElement
+    fireEvent.change(slider, { target: { value: '3000' } })
+    expect(useVoiceSettingsStore.getState().redemptionMs).toBe(3000)
+  })
+
+  it('snaps to whole-frame steps (96 ms) via the step attribute', () => {
+    render(<MemoryRouter><VoiceTab /></MemoryRouter>)
+    const slider = screen.getByLabelText(/Pause-Toleranz/i) as HTMLInputElement
+    expect(slider.step).toBe('96')
+    expect(slider.min).toBe('576')
+    expect(slider.max).toBe('11520')
   })
 })

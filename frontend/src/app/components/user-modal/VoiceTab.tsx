@@ -1,6 +1,12 @@
 import { useMemo, type CSSProperties } from 'react'
 import { useMatch } from 'react-router-dom'
-import { useVoiceSettingsStore, type VoiceActivationThreshold, type VisualiserStyle } from '../../../features/voice/stores/voiceSettingsStore'
+import {
+  useVoiceSettingsStore,
+  VOICE_REDEMPTION_MS_MIN,
+  VOICE_REDEMPTION_MS_MAX,
+  type VoiceActivationThreshold,
+  type VisualiserStyle,
+} from '../../../features/voice/stores/voiceSettingsStore'
 import { useIntegrationsStore } from '../../../features/integrations/store'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { personaHex } from '../sidebar/personaColour'
@@ -33,6 +39,8 @@ export function VoiceTab() {
   const setAutoSend = useVoiceSettingsStore((s) => s.setAutoSendTranscription)
   const threshold = useVoiceSettingsStore((s) => s.voiceActivationThreshold)
   const setThreshold = useVoiceSettingsStore((s) => s.setVoiceActivationThreshold)
+  const redemptionMs = useVoiceSettingsStore((s) => s.redemptionMs)
+  const setRedemptionMs = useVoiceSettingsStore((s) => s.setRedemptionMs)
   const sttProviderId = useVoiceSettingsStore((s) => s.stt_provider_id)
   const setSttProviderId = useVoiceSettingsStore((s) => s.setSttProviderId)
 
@@ -112,6 +120,28 @@ export function VoiceTab() {
             )
           })}
         </div>
+      </div>
+
+      <div>
+        <label className={LABEL} htmlFor="voice-redemption">
+          Pause-Toleranz <span className="text-white/85">{(redemptionMs / 1000).toFixed(1)}s</span>
+        </label>
+        <p className="text-[11px] text-white/40 font-mono mb-2 leading-relaxed">
+          How long the conversation waits in silence before sending what you have
+          just said. Move the slider right for more time to think between
+          sentences.
+        </p>
+        <input
+          id="voice-redemption"
+          aria-label="Pause-Toleranz"
+          type="range"
+          min={VOICE_REDEMPTION_MS_MIN}
+          max={VOICE_REDEMPTION_MS_MAX}
+          step={96}
+          value={redemptionMs}
+          onChange={(e) => setRedemptionMs(Number(e.target.value))}
+          className="w-full mb-4 accent-white/70"
+        />
       </div>
 
       {sttProviders.length > 0 && (

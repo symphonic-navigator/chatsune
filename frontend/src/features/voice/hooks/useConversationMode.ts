@@ -133,6 +133,11 @@ export function useConversationMode({
   const voiceActivationThresholdRef = useRef(voiceActivationThreshold)
   useEffect(() => { voiceActivationThresholdRef.current = voiceActivationThreshold }, [voiceActivationThreshold])
 
+  // Snapshot the user's redemption window preference the same way.
+  const redemptionMs = useVoiceSettingsStore((s) => s.redemptionMs)
+  const redemptionMsRef = useRef(redemptionMs)
+  useEffect(() => { redemptionMsRef.current = redemptionMs }, [redemptionMs])
+
   // Stable controller instance, created lazily once per hook lifetime.
   // Using a ref (rather than useMemo) guarantees identity is preserved even
   // under React 18 StrictMode's double-invoke of the render function.
@@ -535,6 +540,7 @@ export function useConversationMode({
         onMisfire: handleMisfire,
       }, {
         threshold: voiceActivationThresholdRef.current,
+        redemptionMs: redemptionMsRef.current,
         // We drive our own per-hold-cycle MediaRecorder lifecycle. The blob
         // delivered by audioCapture in external-recorder mode is the Tier-3
         // WAV fallback and is ignored here.
