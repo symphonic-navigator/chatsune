@@ -3,6 +3,8 @@
  * Provides type definitions, the tree itself, and resolver helpers.
  */
 
+import type { NavLeaf, NavNode, NavSection } from '../overlay-mobile-nav/types'
+
 export type TopTabId =
   | 'about-me'
   | 'personas'
@@ -122,4 +124,38 @@ export function resolveLeaf(leaf: LeafId | string): { top: TopTabId; sub?: SubTa
 export function firstSubOf(topId: TopTabId): SubTabId | undefined {
   const top = TABS_TREE.find((t) => t.id === topId)
   return top?.children?.[0]?.id
+}
+
+/**
+ * Convert `TABS_TREE` to the shape `OverlayMobileNav` consumes.
+ *
+ * `badges` is keyed by leaf id; pass `true` to flag a leaf so the mobile
+ * nav renders the leaf and its containing section header with the
+ * red-`!` indicator.
+ */
+export function toMobileNavTree(
+  badges: Record<string, boolean> = {},
+): NavNode[] {
+  return TABS_TREE.map((top): NavNode => {
+    if (top.children) {
+      const section: NavSection = {
+        id: top.id,
+        label: top.label,
+        children: top.children.map(
+          (sub): NavLeaf => ({
+            id: sub.id,
+            label: sub.label,
+            badge: badges[sub.id] || undefined,
+          }),
+        ),
+      }
+      return section
+    }
+    const leaf: NavLeaf = {
+      id: top.id,
+      label: top.label,
+      badge: badges[top.id] || undefined,
+    }
+    return leaf
+  })
 }

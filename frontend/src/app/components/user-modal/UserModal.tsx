@@ -17,8 +17,9 @@ import { LlmProvidersTab } from './LlmProvidersTab'
 import { VoiceTab } from './VoiceTab'
 import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
-import { TABS_TREE, type TopTabId, type SubTabId } from './userModalTree'
+import { TABS_TREE, resolveLeaf, toMobileNavTree, type TopTabId, type SubTabId } from './userModalTree'
 import { useSubtabStore } from './userModalSubtabStore'
+import { OverlayMobileNav } from '../overlay-mobile-nav/OverlayMobileNav'
 
 // Re-export for backwards compatibility — consumers that imported UserModalTab
 // by name from this module will still compile.
@@ -77,6 +78,19 @@ export function UserModal({
 
   // Only flag currently feeding the Settings top-pill badge.
   const settingsHasProblem = hasNoLlmConnection
+
+  const mobileTree = toMobileNavTree({ 'llm-providers': hasNoLlmConnection })
+  const mobileActiveId: string = activeSub ?? activeTop
+
+  function handleMobileSelect(id: string) {
+    const resolved = resolveLeaf(id)
+    if (resolved.sub) {
+      setLastSub(resolved.top, resolved.sub)
+      onTabChange(resolved.top, resolved.sub)
+    } else {
+      onTabChange(resolved.top)
+    }
+  }
 
   // Focus trap + Escape key
   useEffect(() => {
@@ -169,7 +183,7 @@ export function UserModal({
         </div>
 
         {/* Top-level tab bar (row 1) */}
-        <div role="tablist" aria-label="User area sections" className="flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
+        <div role="tablist" aria-label="User area sections" className="hidden lg:flex flex-wrap border-b border-white/6 px-4 flex-shrink-0">
           {TABS_TREE.map((tab) => {
             const selected = activeTop === tab.id
             const showBadge = tab.id === 'settings' && settingsHasProblem
@@ -201,7 +215,7 @@ export function UserModal({
 
         {/* Sub-tab bar (row 2) — only rendered when the active top has children */}
         {subTabs.length > 0 && (
-          <div role="tablist" aria-label={`${activeTopNode?.label ?? ''} sub-sections`} className="flex flex-wrap gap-1 px-4 py-2 border-b border-white/6 bg-white/2 flex-shrink-0">
+          <div role="tablist" aria-label={`${activeTopNode?.label ?? ''} sub-sections`} className="hidden lg:flex flex-wrap gap-1 px-4 py-2 border-b border-white/6 bg-white/2 flex-shrink-0">
             {subTabs.map((sub) => {
               const selected = activeSub === sub.id
               const showSubBadge = sub.id === 'llm-providers' && hasNoLlmConnection
@@ -230,6 +244,16 @@ export function UserModal({
             })}
           </div>
         )}
+
+        {/* Mobile nav row — replaces the desktop tab rows below lg */}
+        <div className="lg:hidden border-b border-white/6 px-4 py-2 bg-white/2 flex-shrink-0">
+          <OverlayMobileNav
+            tree={mobileTree}
+            activeId={mobileActiveId}
+            onSelect={handleMobileSelect}
+            ariaLabel="Open user area navigation"
+          />
+        </div>
 
         {/* Tab content */}
         <div

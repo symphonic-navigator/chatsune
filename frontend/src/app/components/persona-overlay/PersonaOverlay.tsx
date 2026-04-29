@@ -16,6 +16,8 @@ import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
 import { resolveSTTEngine, resolveTTSEngine } from '../../../features/voice/engines/resolver'
 import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 import { useSecretsStore } from '../../../features/integrations/secretsStore'
+import { OverlayMobileNav } from '../overlay-mobile-nav/OverlayMobileNav'
+import type { NavLeaf } from '../overlay-mobile-nav/types'
 
 export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations' | 'voice'
 
@@ -163,6 +165,12 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
   const chakra = CHAKRA_PALETTE[resolved.colour_scheme]
   const borderColour = `${chakra.hex}26`
 
+  const mobileTree: NavLeaf[] = TABS.filter((tab) => {
+    if (isCreating && tab.id !== 'edit') return false
+    if (tab.id === 'voice' && !voiceEnabled && activeTab !== 'voice') return false
+    return true
+  }).map((tab) => ({ id: tab.id, label: tab.label }))
+
   return (
     <>
       <div
@@ -214,9 +222,9 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           </button>
         </div>
 
-        {/* Tab bar */}
+        {/* Tab bar — desktop only */}
         <div
-          className="flex flex-wrap px-4 flex-shrink-0"
+          className="hidden lg:flex flex-wrap px-4 flex-shrink-0"
           role="tablist"
           aria-label="Persona sections"
           style={{ borderBottom: `1px solid ${borderColour}` }}
@@ -259,6 +267,23 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                 </button>
               )
             })}
+        </div>
+
+        {/* Mobile nav row — replaces the desktop tab bar below lg */}
+        <div
+          className="lg:hidden px-4 py-2 flex-shrink-0"
+          style={{
+            borderBottom: `1px solid ${borderColour}`,
+            background: 'rgba(255,255,255,0.02)',
+          }}
+        >
+          <OverlayMobileNav
+            tree={mobileTree}
+            activeId={activeTab}
+            onSelect={(id) => onTabChange(id as PersonaOverlayTab)}
+            accentColour={chakra.hex}
+            ariaLabel="Open persona navigation"
+          />
         </div>
 
         {/* Tab content — `relative` anchors the in-parent ModelSelectionModal */}
