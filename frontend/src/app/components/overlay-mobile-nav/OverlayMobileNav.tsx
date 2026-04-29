@@ -5,6 +5,11 @@ import { isSection, type NavLeaf, type NavNode } from './types'
 const EN_DASH = '–'
 const DEFAULT_ACCENT = '#f5c542'
 
+function accentBackground(colour: string): string {
+  // ~8% opacity over the panel background. Hex+alpha is widely supported.
+  return colour + '14'
+}
+
 export interface OverlayMobileNavProps {
   tree: NavNode[]
   activeId: string
@@ -40,9 +45,6 @@ export function OverlayMobileNav({
     setOpen(false)
   }
 
-  // Temporary scaffolding — used in later tasks.
-  void accentColour
-
   return (
     <div className="relative">
       <button
@@ -52,6 +54,7 @@ export function OverlayMobileNav({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
+        style={open ? { borderColor: accentColour } : undefined}
         className="w-full flex items-center justify-between rounded-md border border-white/12 bg-white/4 px-3 py-2.5"
       >
         <span className="text-[13px] font-medium text-white/92">
@@ -63,7 +66,13 @@ export function OverlayMobileNav({
           )}
           {crumb.leaf}
         </span>
-        <span className="text-white/50 text-[14px]" aria-hidden>{open ? '▴' : '▾'}</span>
+        <span
+          className="text-[14px]"
+          style={{ color: open ? accentColour : 'rgba(255,255,255,0.5)' }}
+          aria-hidden
+        >
+          {open ? '▴' : '▾'}
+        </span>
       </button>
 
       {open && (
@@ -103,6 +112,7 @@ export function OverlayMobileNav({
                       leaf={child}
                       indented
                       active={child.id === activeId}
+                      accentColour={accentColour}
                       onClick={() => handleLeafClick(child)}
                     />
                   ))}
@@ -113,6 +123,7 @@ export function OverlayMobileNav({
                   leaf={node}
                   indented={false}
                   active={node.id === activeId}
+                  accentColour={accentColour}
                   onClick={() => handleLeafClick(node)}
                 />
               ),
@@ -128,20 +139,26 @@ interface LeafRowProps {
   leaf: NavLeaf
   indented: boolean
   active: boolean
+  accentColour: string
   onClick: () => void
 }
 
-function LeafRow({ leaf, indented, active, onClick }: LeafRowProps) {
+function LeafRow({ leaf, indented, active, accentColour, onClick }: LeafRowProps) {
   return (
     <li
       role="option"
       aria-selected={active}
       tabIndex={active ? 0 : -1}
       onClick={onClick}
+      style={
+        active
+          ? { color: accentColour, backgroundColor: accentBackground(accentColour) }
+          : undefined
+      }
       className={[
         'flex items-center gap-2 cursor-pointer border-b border-white/4 last:border-b-0',
         indented ? 'pl-6 pr-3.5 py-2.5 text-[12.5px]' : 'px-3.5 py-2.5 text-[13px]',
-        active ? 'text-[#f5c542] bg-[#f5c54214]' : 'text-white/70',
+        active ? '' : 'text-white/70',
       ].join(' ')}
     >
       <span className="flex-1">{leaf.label}</span>

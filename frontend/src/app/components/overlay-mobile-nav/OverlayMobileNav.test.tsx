@@ -245,3 +245,25 @@ describe('OverlayMobileNav — badge propagation', () => {
     expect(screen.queryByTestId('section-badge')).toBeNull()
   })
 })
+
+describe('OverlayMobileNav — accent colour', () => {
+  it('applies the override colour to the open trigger border and active row', () => {
+    render(
+      <OverlayMobileNav
+        tree={hierarchicalTree}
+        activeId="voice"
+        onSelect={vi.fn()}
+        accentColour="#ff00aa"
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /open navigation/i })
+    fireEvent.click(trigger)
+    // Trigger picks up the accent on its inline border-color when open.
+    // jsdom normalises hex to rgb(), so match either form.
+    expect(trigger.style.borderColor).toMatch(/#ff00aa|rgb\(255,\s*0,\s*170\)/i)
+    // Active leaf picks up the accent on its inline color + background.
+    const active = screen.getByRole('option', { name: 'Voice' })
+    expect(active.style.color).toMatch(/#ff00aa|rgb\(255,\s*0,\s*170\)/i)
+    expect(active.style.backgroundColor).not.toBe('')
+  })
+})
