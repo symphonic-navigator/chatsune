@@ -84,9 +84,18 @@ export function OverlayMobileNav({
                 <li key={node.id} role="presentation">
                   <div
                     aria-hidden
-                    className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none"
+                    className="px-3.5 pt-3.5 pb-1.5 text-[10px] uppercase tracking-wider text-white/32 font-medium select-none flex items-center gap-1.5"
                   >
                     {node.label}
+                    {node.children.some((c) => c.badge) && (
+                      <span
+                        data-testid="section-badge"
+                        aria-label="Attention required"
+                        className="text-red-400 text-[10px] normal-case"
+                      >
+                        !
+                      </span>
+                    )}
                   </div>
                   {node.children.map((child) => (
                     <LeafRow
@@ -136,6 +145,16 @@ function LeafRow({ leaf, indented, active, onClick }: LeafRowProps) {
       ].join(' ')}
     >
       <span className="flex-1">{leaf.label}</span>
+      {leaf.badge && (
+        <span
+          data-testid="leaf-badge"
+          aria-label="Attention required"
+          title="Attention required"
+          className="text-red-400 text-[10px]"
+        >
+          !
+        </span>
+      )}
     </li>
   )
 }

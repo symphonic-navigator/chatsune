@@ -189,3 +189,59 @@ describe('OverlayMobileNav — panel behaviour', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 })
+
+const treeWithBadge: NavNode[] = [
+  { id: 'about-me', label: 'About me' },
+  {
+    id: 'settings',
+    label: 'Settings',
+    children: [
+      { id: 'llm-providers', label: 'LLM Providers', badge: true },
+      { id: 'voice', label: 'Voice' },
+    ],
+  },
+]
+
+describe('OverlayMobileNav — badge propagation', () => {
+  it('renders a badge on the flagged leaf', () => {
+    render(
+      <OverlayMobileNav
+        tree={treeWithBadge}
+        activeId="about-me"
+        onSelect={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    const llm = screen.getByRole('option', { name: /LLM Providers/i })
+    expect(llm.querySelector('[data-testid="leaf-badge"]')).toBeTruthy()
+  })
+
+  it('renders a badge on the section header containing a flagged leaf', () => {
+    render(
+      <OverlayMobileNav
+        tree={treeWithBadge}
+        activeId="about-me"
+        onSelect={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    // Only Settings has a flagged child in this tree, so exactly one
+    // section-badge should render.
+    expect(screen.queryAllByTestId('section-badge')).toHaveLength(1)
+  })
+
+  it('does not render a section badge if no child is flagged', () => {
+    const tree: NavNode[] = [
+      {
+        id: 'chats',
+        label: 'Chats',
+        children: [{ id: 'history', label: 'History' }],
+      },
+    ]
+    render(
+      <OverlayMobileNav tree={tree} activeId="history" onSelect={vi.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /open navigation/i }))
+    expect(screen.queryByTestId('section-badge')).toBeNull()
+  })
+})
