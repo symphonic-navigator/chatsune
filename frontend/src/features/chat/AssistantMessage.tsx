@@ -6,6 +6,7 @@ import { StatsLine } from './StatsLine'
 import { ReadAloudButton } from '../voice/components/ReadAloudButton'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
+import { useChatStore } from '../../core/store/chatStore'
 import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
@@ -133,6 +134,18 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
     ? (getActiveGroup()?.renderedPillsMap ?? null)
     : null
 
+  // Cached pill map for this message id, populated by `finishStreaming`
+  // from the active Group's `renderedPillsMap`. This survives the live →
+  // persisted transition where the message's `content` already holds
+  // placeholders (no raw tags), so the persisted-render buffer alone would
+  // produce an empty pill map and the rehype plugin would strip the
+  // placeholders. Empty / undefined for messages loaded from the backend
+  // (F5, history-load) — those carry raw tags so the persisted-render path
+  // reconstructs the map by re-parsing.
+  const cachedPillContents = useChatStore((s) =>
+    messageId ? s.messagePillContents[messageId] : undefined,
+  )
+
   // Stable signature of the integration definitions that declare response
   // tag support. Used as a dep of the persisted-render memo below so that
   // when the integrations store hydrates AFTER chat history has loaded
@@ -188,7 +201,7 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
   // reads the per-message memoised map.
   const pillContents = isStreaming
     ? liveStreamPillContents ?? undefined
-    : persistedRender?.pillContents
+    : (cachedPillContents ?? persistedRender?.pillContents)
   const rehypePluginsForRender = useMemo(
     () => buildRehypePlugins({ pillContents }),
     [pillContents],
