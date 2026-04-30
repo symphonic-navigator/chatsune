@@ -24,6 +24,8 @@ import ProjectsPage from "./app/pages/ProjectsPage"
 import HistoryPage from "./app/pages/HistoryPage"
 import KnowledgePage from "./app/pages/KnowledgePage"
 import { safeLocalStorage } from "./core/utils/safeStorage"
+import { registerCoreBuiltins } from "./features/voice-commands"
+import { VoiceCommandDebugAlert } from "./app/components/VoiceCommandDebugAlert"
 
 
 /** Persists current /chat/... route to localStorage for bootstrap redirect */
@@ -82,6 +84,7 @@ function AppRoutes() {
   useEffect(() => {
     if (!isAuthenticated) return
 
+    registerCoreBuiltins()
     const unregisterClientTool = registerClientToolHandler()
     const unregisterSecrets = registerSecretsEventHandler()
     const unregisterIntegrations = registerIntegrationsEventHandler()
@@ -141,6 +144,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/personas" replace />} />
       </Routes>
       <ScreenEffectsOverlay />
+      <VoiceCommandDebugAlert />
     </>
   )
 }
