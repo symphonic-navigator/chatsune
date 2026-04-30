@@ -819,6 +819,13 @@ Open `frontend/src/features/voice/components/ReadAloudButton.tsx`. Locate `runRe
 
 - [ ] **Step 2: Add a fresh `pendingEffectsMap` and ResponseTagBuffer pre-pass**
 
+> **Plan correction (post-implementation):** the original snippet below
+> chained `buffer.process(originalContent) + buffer.flush()`. That ordering
+> is wrong — flushing before `parseForSpeech` would drain the pending map
+> and defeat sentence-sync. The implementation reflects the correct
+> ordering: `process` → `parseForSpeech` (claims sentence-bound entries
+> off the shared map) → `flush` (drains genuine orphans only).
+
 In `runReadAloud`, before the `parseForSpeech` call, add:
 
 ```
@@ -834,12 +841,18 @@ const buffer = new ResponseTagBuffer(
   pending,
   (event) => eventBus.emit(Topics.INTEGRATION_INLINE_TRIGGER, event),
 )
-const sanitisedContent = buffer.process(originalContent) + buffer.flush()
+const sanitisedContent = buffer.process(originalContent)
+// parseForSpeech then claims sentence-bound entries from `pending`
+const segments = parseForSpeech(sanitisedContent, mode, supportsExpressive, pending, 'read_aloud')
+buffer.flush()  // drains genuine orphans only
 ```
 
-(`flush()` returns the buffered residual text and emits any orphan pending effects.)
+(`flush()` returns any unterminated-tag remainder and emits inline triggers
+for pending effects that no SpeechSegment claimed.)
 
 - [ ] **Step 3: Pass `pending` and `'read_aloud'` to `parseForSpeech`**
+
+(Already shown in Step 2 above — kept here for the original step structure.)
 
 ```
 const segments = parseForSpeech(sanitisedContent, pending, 'read_aloud')
