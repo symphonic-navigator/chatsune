@@ -53,12 +53,28 @@ export interface ResponseTaskGroupDeps {
   children: GroupChild[]
   sendWsMessage: (msg: WsOutbound) => void
   logger: GroupLogger
+  /** Per-stream parking lot for inline-trigger effects awaiting a sentence
+   *  boundary. Owned by the Group's caller (ChatView), shared with the
+   *  ResponseTagBuffer constructed in `useChatStream` and with the
+   *  audioParser invoked inside the sentencer child. Optional so non-voice
+   *  text-only streams and tests can omit it. */
+  pendingEffectsMap?: Map<string, import('../integrations/responseTagProcessor').PendingEffect>
+  /** Origin of this Group's stream. Stamped onto every inline-trigger
+   *  event emitted from this Group's pipeline. `'live_stream'` for active
+   *  voice-mode replies, `'text_only'` for text-only chat streams. */
+  streamSource?: 'live_stream' | 'text_only'
 }
 
 export interface ResponseTaskGroup {
   readonly id: string
   readonly sessionId: string
   readonly state: GroupState
+  /** See `ResponseTaskGroupDeps.pendingEffectsMap`. Exposed so siblings
+   *  outside the children chain (e.g. the chat-stream event handler) can
+   *  share the same map with the audio pipeline. */
+  readonly pendingEffectsMap: Map<string, import('../integrations/responseTagProcessor').PendingEffect> | null
+  /** See `ResponseTaskGroupDeps.streamSource`. */
+  readonly streamSource: 'live_stream' | 'text_only'
   onDelta(delta: string): void
   onStreamEnd(): void
   pause(): void
@@ -72,6 +88,8 @@ function hash8(id: string): string {
 
 export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTaskGroup {
   const { correlationId, sessionId, children, sendWsMessage, logger } = deps
+  const pendingEffectsMap = deps.pendingEffectsMap ?? null
+  const streamSource = deps.streamSource ?? 'text_only'
   const prefix = `[group ${hash8(correlationId)}]`
   let state: GroupState = 'before-first-delta'
 
@@ -97,6 +115,8 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
     get id() { return correlationId },
     get sessionId() { return sessionId },
     get state() { return state },
+    get pendingEffectsMap() { return pendingEffectsMap },
+    get streamSource() { return streamSource },
 
     onDelta(delta: string): void {
       if (state === 'before-first-delta') transition('streaming')

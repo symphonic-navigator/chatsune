@@ -1,7 +1,6 @@
 import type { GroupChild } from '../../chat/responseTaskGroup'
 import { audioPlayback } from '../infrastructure/audioPlayback'
-import { eventBus } from '../../../core/websocket/eventBus'
-import { Topics } from '../../../core/types/events'
+import { emitInlineTrigger } from '../../integrations/inlineTriggerBus'
 
 export interface PlaybackChildOpts {
   correlationId: string
@@ -29,23 +28,11 @@ export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
       drainResolve = null
     },
     onInlineTrigger: (event) => {
-      // Wrap the trigger payload in the standard BaseEvent envelope so the
-      // shared frontend event bus dispatches it like any other typed event.
-      // Sequence is unused for purely client-emitted events; stamp something
-      // monotonic-ish so it cannot be confused with a real backend stream.
       // `event.source` is already stamped by audioPlayback from the queue
-      // entry's per-segment source — do NOT override it here, otherwise
+      // entry's per-segment source — do NOT override it, otherwise
       // read-aloud triggers fed through this same child would be
       // mis-stamped as live_stream.
-      eventBus.emit({
-        id: `inline-trig-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        type: Topics.INTEGRATION_INLINE_TRIGGER,
-        sequence: '0',
-        scope: 'frontend',
-        correlation_id: event.correlation_id || correlationId,
-        timestamp: event.timestamp,
-        payload: { ...event },
-      })
+      emitInlineTrigger(event, correlationId)
     },
   })
 

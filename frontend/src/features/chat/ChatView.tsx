@@ -539,11 +539,24 @@ export function ChatView({ persona }: ChatViewProps) {
       }
     }
 
+    // Per-stream parking lot for inline-trigger effects awaiting a sentence
+    // boundary. Shared between the ResponseTagBuffer (constructed in
+    // useChatStream at stream-start) and the audio pipeline's parser; the
+    // map MUST be the same identity in both places, otherwise the audio
+    // side claims nothing and triggers fall back to immediate emit.
+    const pendingEffectsMap = new Map<string, import('../integrations/responseTagProcessor').PendingEffect>()
+    // Voice-mode active for this stream → the sentencer/synth chain runs and
+    // sentence-synced triggers fire on segment-start. Otherwise the buffer
+    // emits triggers immediately on tag detection.
+    const streamSource: 'live_stream' | 'text_only' = mode === 'voice' ? 'live_stream' : 'text_only'
+
     const children = buildChildren({
       correlationId,
       sessionId,
       mode,
       voice: voiceOpts,
+      pendingEffectsMap,
+      streamSource: mode === 'voice' ? 'live_stream' : undefined,
     })
     const group = createResponseTaskGroup({
       correlationId,
@@ -551,6 +564,8 @@ export function ChatView({ persona }: ChatViewProps) {
       userId: '',
       children,
       sendWsMessage: sendMessage,
+      pendingEffectsMap,
+      streamSource,
       logger: {
         info: (m, ...a) => console.info(m, ...a),
         debug: (m, ...a) => console.debug(m, ...a),

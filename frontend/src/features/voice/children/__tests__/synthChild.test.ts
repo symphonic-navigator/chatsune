@@ -26,7 +26,7 @@ describe('synthChild', () => {
     const seg = { type: 'voice', text: 'hi', speed: 1, pitch: 0 } as any
     await child.enqueueSegment(seg, 'c1')
     expect(fakeTts.synthesise).toHaveBeenCalled()
-    expect(audioPlayback.enqueue).toHaveBeenCalledWith(audio, seg, 'c1')
+    expect(audioPlayback.enqueue).toHaveBeenCalledWith(audio, seg, 'c1', 'live_stream')
   })
 
   it('skips enqueue after onCancel', async () => {

@@ -8,7 +8,8 @@ import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 import type { ImageRefDto } from '../../core/api/images'
 import type { TimelineEntry } from '../../core/api/chat'
-import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
+import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
+import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroup } from './responseTaskGroup'
 import { useCockpitStore } from './cockpit/cockpitStore'
@@ -29,12 +30,36 @@ export function handleChatEvent(
     case Topics.CHAT_STREAM_STARTED: {
       if (p.session_id !== sessionId) return
       getStore().startStreaming(event.correlation_id)
-      // Create tag buffer for this streaming session
+      // Create tag buffer for this streaming session.
       const enabledIds = useIntegrationsStore.getState().getEnabledIds()
       if (enabledIds.length > 0) {
-        activeTagBuffer = new ResponseTagBuffer((placeholder, replacement) => {
-          getStore().replaceInStreamingContent(placeholder, replacement)
-        })
+        // The active Group (created by ChatView before the WS send) carries
+        // the per-stream pendingEffectsMap and streamSource. The buffer must
+        // share both with the audio pipeline's parser so sentence-synced
+        // tags are claimed by the matching SpeechSegment instead of firing
+        // immediately. When no Group is active (e.g. server-initiated
+        // assistant turn before our send path runs), fall back to a fresh
+        // local map and `'text_only'` so the buffer still works in
+        // immediate-emit mode.
+        const activeGroup = getActiveGroup()
+        const fallbackMap = new Map<string, PendingEffect>()
+        const sharedMap =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? (activeGroup.pendingEffectsMap ?? fallbackMap)
+            : fallbackMap
+        const streamSource: 'live_stream' | 'text_only' =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? activeGroup.streamSource
+            : 'text_only'
+        const correlationId = event.correlation_id
+        activeTagBuffer = new ResponseTagBuffer(
+          (placeholder, replacement) => {
+            getStore().replaceInStreamingContent(placeholder, replacement)
+          },
+          streamSource,
+          sharedMap,
+          (trigger) => emitInlineTrigger(trigger, correlationId),
+        )
       } else {
         activeTagBuffer = null
       }
@@ -300,6 +325,16 @@ export function handleChatEvent(
         userMessage,
       })
       getStore().setWaitingForResponse(false)
+
+      // Flush the tag buffer here too: a stream that errors before its
+      // CHAT_STREAM_ENDED counterpart still has parked effects in the
+      // pending map, and dropping the buffer without flush() would lose
+      // those triggers entirely.
+      if (activeTagBuffer) {
+        const remainder = activeTagBuffer.flush()
+        if (remainder) getStore().appendStreamingContent(remainder)
+        activeTagBuffer = null
+      }
 
       if (errorCode === 'refusal') {
         getStore().setStreamingRefusalText(userMessage)

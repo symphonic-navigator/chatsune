@@ -87,17 +87,26 @@ export class ResponseTagBuffer {
    *   stream. For successfully executed tags this is currently the same
    *   placeholder (rendering is handled elsewhere); for error pills the
    *   replacement is the human-readable error text.
-   * @param streamSource Which kind of stream this buffer feeds. Defaults to
-   *   `'live_stream'` so existing 1-arg callers continue to compile while
-   *   Phase 5 wires up the real source.
+   * @param streamSource Which kind of stream this buffer feeds.
+   *   @deprecated The default exists only to keep legacy 1-arg construction
+   *   compiling; no caller should rely on it. Pass an explicit source —
+   *   `'live_stream'` / `'text_only'` for live LLM streams, `'read_aloud'`
+   *   when re-running an existing message through the buffer.
    * @param pendingEffectsMap External map that holds parked triggers waiting
    *   for a sentence boundary. The buffer mutates it: tags whose effect
    *   syncs with TTS get inserted; immediate-emit and flush()ed entries get
    *   deleted. The caller owns the map's lifetime — it MUST outlive the
    *   buffer so the audio pipeline can claim entries. Sharing one map
    *   across multiple concurrent buffers is unsupported.
-   * @param emitTrigger Callback for immediate trigger emission. Defaults to
-   *   a no-op — Phase 5 will pass an event-bus dispatcher.
+   *   @deprecated The default (a fresh per-call map) exists only to keep
+   *   legacy 1-arg construction compiling; no caller should rely on it.
+   *   Always pass the same map you also hand to `parseForSpeech`.
+   * @param emitTrigger Callback for immediate trigger emission. Wires the
+   *   buffer to the frontend event bus.
+   *   @deprecated The no-op default exists only to keep legacy 1-arg
+   *   construction compiling; no caller should rely on it. Pass a
+   *   dispatcher that wraps the trigger payload in a `BaseEvent` envelope
+   *   and emits it on the shared event bus.
    */
   constructor(
     onTagResolved: (placeholder: string, replacement: string) => void,

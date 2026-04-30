@@ -11,12 +11,18 @@ export interface SynthChildOpts {
   narratorVoice: VoicePreset
   mode: NarratorMode
   modulation: VoiceModulation
+  /** Origin of the synth chunks fed into audioPlayback. Forwarded as the
+   *  4th arg of `audioPlayback.enqueue` so segment-bound inline-trigger
+   *  events can be stamped with the correct source at fire time.
+   *  Defaults to `'live_stream'` to keep existing 6-arg call sites working. */
+  streamSource?: 'live_stream' | 'read_aloud'
 }
 
 export function createSynthChild(opts: SynthChildOpts): GroupChild & {
   enqueueSegment: (segment: SpeechSegment, token: string) => Promise<void>
 } {
   const { correlationId, tts, voice, narratorVoice, modulation } = opts
+  const streamSource = opts.streamSource ?? 'live_stream'
   // mode is kept in opts for future use (e.g. narrator-mode gating) but is
   // not forwarded to tts.synthesise — the actual TTSEngine.synthesise
   // signature is (text, voice) with no options bag; modulation is applied
@@ -38,7 +44,7 @@ export function createSynthChild(opts: SynthChildOpts): GroupChild & {
       if (cancelled || token !== correlationId) return
       // Apply speed/pitch modulation to the segment before enqueuing so
       // audioPlayback can process it via the SoundTouch worklet.
-      audioPlayback.enqueue(audio, applyModulation(segment, modulation), token)
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation), token, streamSource)
       console.log(`${prefix} done  "${preview}" ${Math.round(performance.now() - start)}ms`)
     } catch (err) {
       console.warn(`${prefix} fail  "${preview}":`, err)

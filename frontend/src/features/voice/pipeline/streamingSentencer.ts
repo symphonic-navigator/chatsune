@@ -2,6 +2,7 @@ import type { NarratorMode, SpeechSegment } from '../types'
 import { parseForSpeech } from './audioParser'
 import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
 import { effectiveLength } from './effectiveLength'
+import type { PendingEffect } from '../../integrations/responseTagProcessor'
 
 export interface StreamingSentencer {
   push(delta: string): SpeechSegment[]
@@ -248,6 +249,8 @@ class StreamingSentencerImpl implements StreamingSentencer {
   private committedIndex = 0
   private readonly mode: NarratorMode
   private readonly supportsExpressiveMarkup: boolean
+  private readonly pendingEffectsMap: Map<string, PendingEffect> | null
+  private readonly streamSource: 'live_stream' | 'text_only' | 'read_aloud'
   private wrapStack: string[] = []
   // True once at least one speakable SpeechSegment has been emitted. Gates
   // the length-threshold choice (20 chars for the very first sentence,
@@ -256,9 +259,16 @@ class StreamingSentencerImpl implements StreamingSentencer {
   // "first sentence" mode until real speech has left the sentencer.
   private hasEmitted = false
 
-  constructor(mode: NarratorMode, supportsExpressiveMarkup: boolean) {
+  constructor(
+    mode: NarratorMode,
+    supportsExpressiveMarkup: boolean,
+    pendingEffectsMap: Map<string, PendingEffect> | null = null,
+    streamSource: 'live_stream' | 'text_only' | 'read_aloud' = 'live_stream',
+  ) {
     this.mode = mode
     this.supportsExpressiveMarkup = supportsExpressiveMarkup
+    this.pendingEffectsMap = pendingEffectsMap
+    this.streamSource = streamSource
   }
 
   push(delta: string): SpeechSegment[] {
@@ -294,20 +304,23 @@ class StreamingSentencerImpl implements StreamingSentencer {
   }
 
   private emitChunk(chunk: string): SpeechSegment[] {
+    const map = this.pendingEffectsMap ?? undefined
     if (!this.supportsExpressiveMarkup) {
-      return parseForSpeech(chunk, this.mode, this.supportsExpressiveMarkup)
+      return parseForSpeech(chunk, this.mode, this.supportsExpressiveMarkup, map, this.streamSource)
     }
     const entering = [...this.wrapStack]
     const leaving = scanSegment(chunk, entering)
     const wrapped = wrapSegmentWithActiveStack(chunk, entering, leaving)
     this.wrapStack = leaving
-    return parseForSpeech(wrapped, this.mode, this.supportsExpressiveMarkup)
+    return parseForSpeech(wrapped, this.mode, this.supportsExpressiveMarkup, map, this.streamSource)
   }
 }
 
 export function createStreamingSentencer(
   mode: NarratorMode,
   supportsExpressiveMarkup: boolean = false,
+  pendingEffectsMap: Map<string, PendingEffect> | null = null,
+  streamSource: 'live_stream' | 'text_only' | 'read_aloud' = 'live_stream',
 ): StreamingSentencer {
-  return new StreamingSentencerImpl(mode, supportsExpressiveMarkup)
+  return new StreamingSentencerImpl(mode, supportsExpressiveMarkup, pendingEffectsMap, streamSource)
 }
