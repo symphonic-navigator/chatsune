@@ -58,10 +58,15 @@ export function handleChatEvent(
         // immediate-emit mode.
         const activeGroup = getActiveGroup()
         const fallbackMap = new Map<string, PendingEffect>()
+        const fallbackPillMap = new Map<string, string>()
         const sharedMap =
           activeGroup && activeGroup.id === event.correlation_id
             ? (activeGroup.pendingEffectsMap ?? fallbackMap)
             : fallbackMap
+        const sharedPillMap =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? (activeGroup.renderedPillsMap ?? fallbackPillMap)
+            : fallbackPillMap
         const streamSource: 'live_stream' | 'text_only' =
           activeGroup && activeGroup.id === event.correlation_id
             ? activeGroup.streamSource
@@ -74,6 +79,7 @@ export function handleChatEvent(
           streamSource,
           sharedMap,
           (trigger) => emitInlineTrigger(trigger, correlationId),
+          sharedPillMap,
         )
       } else {
         activeTagBuffer = null

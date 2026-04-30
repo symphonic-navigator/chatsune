@@ -59,6 +59,13 @@ export interface ResponseTaskGroupDeps {
    *  audioParser invoked inside the sentencer child. Optional so non-voice
    *  text-only streams and tests can omit it. */
   pendingEffectsMap?: Map<string, import('../integrations/responseTagProcessor').PendingEffect>
+  /** Per-stream durable mirror of every rendered pill, keyed by effectId.
+   *  Owned by ChatView, shared with the ResponseTagBuffer in `useChatStream`
+   *  and with the rehype plugin that resolves placeholders at render time.
+   *  Distinct from `pendingEffectsMap` because the buffer never drains it —
+   *  entries live for the streaming bubble's render lifetime. Optional so
+   *  legacy tests can omit it. */
+  renderedPillsMap?: Map<string, string>
   /** Origin of this Group's stream. Stamped onto every inline-trigger
    *  event emitted from this Group's pipeline. `'live_stream'` for active
    *  voice-mode replies, `'text_only'` for text-only chat streams. */
@@ -73,6 +80,10 @@ export interface ResponseTaskGroup {
    *  outside the children chain (e.g. the chat-stream event handler) can
    *  share the same map with the audio pipeline. */
   readonly pendingEffectsMap: Map<string, import('../integrations/responseTagProcessor').PendingEffect> | null
+  /** See `ResponseTaskGroupDeps.renderedPillsMap`. Exposed so consumers
+   *  outside the children chain (e.g. the live-stream renderer) can read
+   *  the same map the buffer is mirroring into. */
+  readonly renderedPillsMap: Map<string, string> | null
   /** See `ResponseTaskGroupDeps.streamSource`. */
   readonly streamSource: 'live_stream' | 'text_only'
   onDelta(delta: string): void
@@ -89,6 +100,7 @@ function hash8(id: string): string {
 export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTaskGroup {
   const { correlationId, sessionId, children, sendWsMessage, logger } = deps
   const pendingEffectsMap = deps.pendingEffectsMap ?? null
+  const renderedPillsMap = deps.renderedPillsMap ?? null
   const streamSource = deps.streamSource ?? 'text_only'
   const prefix = `[group ${hash8(correlationId)}]`
   let state: GroupState = 'before-first-delta'
@@ -116,6 +128,7 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
     get sessionId() { return sessionId },
     get state() { return state },
     get pendingEffectsMap() { return pendingEffectsMap },
+    get renderedPillsMap() { return renderedPillsMap },
     get streamSource() { return streamSource },
 
     onDelta(delta: string): void {

@@ -545,6 +545,12 @@ export function ChatView({ persona }: ChatViewProps) {
     // map MUST be the same identity in both places, otherwise the audio
     // side claims nothing and triggers fall back to immediate emit.
     const pendingEffectsMap = new Map<string, import('../integrations/responseTagProcessor').PendingEffect>()
+    // Per-stream durable mirror of pill content keyed by effectId. Shared
+    // between the buffer (writes on every successful tag) and the rehype
+    // plugin that renders the streaming bubble (reads to resolve
+    // placeholders). Distinct from pendingEffectsMap because the buffer
+    // never drains this map — entries live for the bubble's render lifetime.
+    const renderedPillsMap = new Map<string, string>()
     // Voice-mode active for this stream → the sentencer/synth chain runs and
     // sentence-synced triggers fire on segment-start. Otherwise the buffer
     // emits triggers immediately on tag detection.
@@ -565,6 +571,7 @@ export function ChatView({ persona }: ChatViewProps) {
       children,
       sendWsMessage: sendMessage,
       pendingEffectsMap,
+      renderedPillsMap,
       streamSource,
       logger: {
         info: (m, ...a) => console.info(m, ...a),
