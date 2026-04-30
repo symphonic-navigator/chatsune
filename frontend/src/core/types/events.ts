@@ -129,6 +129,11 @@ export const Topics = {
   INTEGRATION_EMERGENCY_STOP: "integration.emergency_stop",
   INTEGRATION_SECRETS_HYDRATED: "integration.secrets.hydrated",
   INTEGRATION_SECRETS_CLEARED: "integration.secrets.cleared",
+  // Mirrors shared/topics.py — fired client-side by the audio pipeline at
+  // sentence-start, and by the text-only path in ResponseTagBuffer for
+  // tags whose plugin opts out of TTS sync. Subscribers (plugin handlers,
+  // pill renderers) react to this to drive UI / hardware effects.
+  INTEGRATION_INLINE_TRIGGER: "integration.inline.trigger",
 } as const
 
 export type TopicType = (typeof Topics)[keyof typeof Topics]
