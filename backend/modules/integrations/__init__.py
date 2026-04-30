@@ -68,7 +68,14 @@ async def effective_enabled_map(user_id: str) -> dict[str, bool]:
             )
         else:
             cfg = cfg_map.get(iid)
-            result[iid] = bool(cfg and cfg.get("enabled", False))
+            if cfg is None:
+                # No explicit config doc — fall back to the integration's
+                # default. This makes "default-on" a code property, not
+                # something we have to backfill into the database.
+                result[iid] = defn.default_enabled
+            else:
+                # Explicit user choice always wins (True or False).
+                result[iid] = bool(cfg.get("enabled", False))
     return result
 
 
