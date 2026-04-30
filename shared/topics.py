@@ -101,6 +101,7 @@ class Topics:
     INTEGRATION_TOOL_DISPATCH = "integration.tool.dispatch"
     INTEGRATION_TOOL_RESULT = "integration.tool.result"
     INTEGRATION_ACTION_EXECUTED = "integration.action.executed"
+    INTEGRATION_INLINE_TRIGGER = "integration.inline.trigger"
     INTEGRATION_EMERGENCY_STOP = "integration.emergency_stop"
     # Storage
     STORAGE_FILE_UPLOADED = "storage.file.uploaded"

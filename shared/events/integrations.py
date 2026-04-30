@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -41,5 +41,21 @@ class IntegrationSecretsHydratedEvent(BaseModel):
 class IntegrationSecretsClearedEvent(BaseModel):
     type: Literal["integration.secrets.cleared"] = "integration.secrets.cleared"
     integration_id: str
+    correlation_id: str
+    timestamp: datetime
+
+
+class IntegrationInlineTriggerEvent(BaseModel):
+    """Frontend-emitted event signalling an inline integration tag fired.
+
+    The foundation only emits this on the front-end event bus; the topic
+    and DTO live in shared/ so a future backend audit-emit path is a
+    non-breaking addition.
+    """
+    integration_id: str
+    command: str
+    args: list[str]
+    payload: Any
+    source: Literal["live_stream", "text_only", "read_aloud"]
     correlation_id: str
     timestamp: datetime
