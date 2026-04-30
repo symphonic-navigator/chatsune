@@ -27,6 +27,18 @@ export interface LiveVisionDescription {
 
 interface ChatState {
   messages: ChatMessageDto[]
+  /**
+   * Cache of inline-trigger pill contents (effectId → pillContent) per
+   * persisted message id. Populated by `finishStreaming` from the active
+   * Group's `renderedPillsMap`. Read by `AssistantMessage` to render
+   * pills for messages that just finished streaming, where the persisted
+   * `content` field already contains placeholders (no raw tags) and the
+   * persisted-render buffer would otherwise produce an empty map.
+   *
+   * F5 / history-load do NOT populate this — the on-disk message has raw
+   * tags so the persisted-render path reconstructs the map by re-parsing.
+   */
+  messagePillContents: Record<string, Map<string, string>>
   isWaitingForResponse: boolean
   isStreaming: boolean
   correlationId: string | null
@@ -69,7 +81,14 @@ interface ChatState {
   addToolCall: (tc: ActiveToolCall) => void
   completeToolCall: (toolCallId: string) => void
   upsertVisionDescription: (correlationId: string, payload: LiveVisionDescription) => void
-  finishStreaming: (finalMessage: ChatMessageDto, contextStatus: ContextStatus, fillPercentage: number, usedTokens?: number, maxTokens?: number) => void
+  finishStreaming: (
+    finalMessage: ChatMessageDto,
+    contextStatus: ContextStatus,
+    fillPercentage: number,
+    usedTokens?: number,
+    maxTokens?: number,
+    pillContents?: Map<string, string>,
+  ) => void
   cancelStreaming: () => void
   truncateAfter: (messageId: string) => void
   updateMessage: (messageId: string, content: string, tokenCount: number) => void
@@ -91,6 +110,7 @@ interface ChatState {
 
 const INITIAL_STATE = {
   messages: [] as ChatMessageDto[],
+  messagePillContents: {} as Record<string, Map<string, string>>,
   isWaitingForResponse: false,
   isStreaming: false,
   correlationId: null as string | null,
@@ -171,18 +191,28 @@ export const useChatStore = create<ChatState>((set, _get) => ({
         [`${correlationId}:${payload.file_id}`]: payload,
       },
     })),
-  finishStreaming: (finalMessage, contextStatus, fillPercentage, usedTokens = 0, maxTokens = 0) =>
+  finishStreaming: (finalMessage, contextStatus, fillPercentage, usedTokens = 0, maxTokens = 0, pillContents) =>
     // The persisted message's `events` is the source of truth at stream end.
     // We discard `streamingEvents` rather than carrying anything across.
-    set((s) => ({
-      isWaitingForResponse: false, isStreaming: false, correlationId: null,
-      streamingContent: '', streamingThinking: '',
-      streamingEvents: [], activeToolCalls: [],
-      streamingRefusalText: null,
-      streamingSlow: false,
-      messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
-      contextUsedTokens: usedTokens, contextMaxTokens: maxTokens,
-    })),
+    set((s) => {
+      // Only cache pill contents when there is at least one inline-trigger
+      // entry for this message — keeps the cache lean for plain-text
+      // messages and matches the post-stream render path's expectations.
+      const nextPillCache =
+        pillContents && pillContents.size > 0 && finalMessage.id
+          ? { ...s.messagePillContents, [finalMessage.id]: pillContents }
+          : s.messagePillContents
+      return {
+        isWaitingForResponse: false, isStreaming: false, correlationId: null,
+        streamingContent: '', streamingThinking: '',
+        streamingEvents: [], activeToolCalls: [],
+        streamingRefusalText: null,
+        streamingSlow: false,
+        messages: [...s.messages, finalMessage], contextStatus, contextFillPercentage: fillPercentage,
+        contextUsedTokens: usedTokens, contextMaxTokens: maxTokens,
+        messagePillContents: nextPillCache,
+      }
+    }),
   cancelStreaming: () =>
     set({
       isWaitingForResponse: false, isStreaming: false, correlationId: null,
@@ -195,7 +225,13 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((s) => {
       const idx = s.messages.findIndex((m) => m.id === messageId)
       if (idx === -1) return s
-      return { messages: s.messages.slice(0, idx + 1) }
+      const nextMessages = s.messages.slice(0, idx + 1)
+      const surviving = new Set(nextMessages.map((m) => m.id))
+      const nextCache: Record<string, Map<string, string>> = {}
+      for (const [k, v] of Object.entries(s.messagePillContents)) {
+        if (surviving.has(k)) nextCache[k] = v
+      }
+      return { messages: nextMessages, messagePillContents: nextCache }
     }),
   updateMessage: (messageId, content, tokenCount) =>
     set((s) => ({
@@ -204,13 +240,25 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       ),
     })),
   swapMessageId: (clientId, realId, patch) =>
-    set((s) => ({
-      messages: s.messages.map((m) =>
+    set((s) => {
+      const messages = s.messages.map((m) =>
         m.id === clientId ? { ...m, id: realId, ...(patch ?? {}) } : m,
-      ),
-    })),
+      )
+      let messagePillContents = s.messagePillContents
+      if (clientId in messagePillContents) {
+        const { [clientId]: cached, ...rest } = messagePillContents
+        messagePillContents = { ...rest, [realId]: cached }
+      }
+      return { messages, messagePillContents }
+    }),
   deleteMessage: (messageId) =>
-    set((s) => ({ messages: s.messages.filter((m) => m.id !== messageId) })),
+    set((s) => {
+      const { [messageId]: _removed, ...nextCache } = s.messagePillContents
+      return {
+        messages: s.messages.filter((m) => m.id !== messageId),
+        messagePillContents: nextCache,
+      }
+    }),
   setError: (error) => set({ error }),
   clearError: () => set({ error: null }),
   setStreamingSlow: (slow) => set({ streamingSlow: slow }),

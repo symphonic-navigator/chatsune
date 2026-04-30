@@ -217,6 +217,15 @@ export function handleChatEvent(
       if (p.session_id !== sessionId) return
       const g = getActiveGroup()
       if (g && g.id === event.correlation_id) g.onStreamEnd()
+      // Capture the live pill map BEFORE buffer.flush() so any flushed
+      // residual content can still mutate it. The Map reference is shared
+      // with the active Group; we hand a snapshot to the chat store so the
+      // post-stream Message renders pills correctly even though `content`
+      // now carries placeholders instead of raw tags.
+      const livePillContents: Map<string, string> | undefined =
+        g && g.id === event.correlation_id && g.renderedPillsMap
+          ? new Map(g.renderedPillsMap)
+          : undefined
       // Flush incomplete tag buffer
       if (activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
@@ -307,6 +316,7 @@ export function handleChatEvent(
           fillPercentage,
           usedTokens,
           maxTokens,
+          livePillContents,
         )
       } else {
         // No persisted message — discard the optimistic streaming state.
