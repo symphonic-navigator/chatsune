@@ -9,7 +9,12 @@ const SIMPLE_ACTIONS = new Set<string>([
 ])
 
 /**
- * Parse and execute a Lovense response tag.
+ * Parse a Lovense response tag synchronously.
+ *
+ * Returns a `TagExecutionResult` describing the inline pill, the trigger-
+ * event payload, and an optional fire-and-forget `sideEffect` thunk that
+ * carries the actual hardware call. The buffer (responseTagProcessor) drives
+ * pill rendering and trigger emission from the synchronous fields alone.
  *
  * Tag format:
  *   <lovense TOYNAME ACTION STRENGTH [SECONDS] [loop RUN PAUSE] [layer]>
@@ -24,106 +29,138 @@ const SIMPLE_ACTIONS = new Set<string>([
  *   <lovense nova stroke 50 10 5>
  *   <lovense nova stop>
  *   <lovense stopall>
+ *
+ * Hardware actions are always `syncWithTts: false` so they fire when the tag
+ * is parsed rather than when the surrounding sentence reaches TTS — this
+ * keeps the response feeling immediate.
  */
-export async function executeTag(
+export function executeTag(
   command: string,
   args: string[],
   config: Record<string, unknown>,
-): Promise<TagExecutionResult> {
+): TagExecutionResult {
   const ip = config.ip as string | undefined
   if (!ip) {
-    return { success: false, displayText: '_[Lovense: no IP configured]_' }
+    return {
+      pillContent: 'Lovense: no IP configured',
+      syncWithTts: false,
+      effectPayload: { error: 'no_ip' },
+    }
   }
 
   const cmd = command.toLowerCase()
 
-  try {
-    // <lovense stopall>
-    if (cmd === 'stopall' && args.length === 0) {
-      await api.stopAll(ip)
-      return { success: true, displayText: '_stop all toys_' }
+  // <lovense stopall>
+  if (cmd === 'stopall' && args.length === 0) {
+    return {
+      pillContent: 'stop all toys',
+      syncWithTts: false,
+      effectPayload: { kind: 'stopall' },
+      sideEffect: () => api.stopAll(ip).then(() => undefined),
+    }
+  }
+
+  // All other commands need at least a toy name.
+  // The "command" from the tag parser is the first word after "lovense",
+  // which is the toy name. The action is in args[0].
+  const toyName = command
+  const action = (args[0] ?? '').toLowerCase()
+
+  // <lovense TOYNAME stop>
+  if (action === 'stop') {
+    return {
+      pillContent: `stop ${toyName}`,
+      syncWithTts: false,
+      effectPayload: { kind: 'stop', toy: toyName },
+      sideEffect: () => api.stopToy(ip, toyName).then(() => undefined),
+    }
+  }
+
+  // <lovense TOYNAME stroke STROKE_POS THRUST_STRENGTH [SECONDS]>
+  if (action === 'stroke') {
+    const strokePos = parseInt(args[1], 10) || 50
+    const thrustStrength = parseInt(args[2], 10) || 10
+    const seconds = parseInt(args[3], 10) || 0
+    const timeText = seconds > 0 ? ` for ${seconds}s` : ''
+    return {
+      pillContent: `stroke ${toyName} at ${strokePos}/${thrustStrength}${timeText}`,
+      syncWithTts: false,
+      effectPayload: { kind: 'stroke', toy: toyName, strokePos, thrustStrength, seconds },
+      sideEffect: async () => {
+        const r = await api.strokeCommand(ip, strokePos, thrustStrength, seconds, toyName)
+        if (r.code === 400) throw new Error(String(r.message ?? 'stroke command rejected'))
+      },
+    }
+  }
+
+  // <lovense TOYNAME ACTION STRENGTH [SECONDS] [loop RUN PAUSE] [layer]>
+  if (SIMPLE_ACTIONS.has(action)) {
+    const strength = parseInt(args[1], 10) || 5
+    const cappedAction = (action.charAt(0).toUpperCase() + action.slice(1)) as Action
+
+    // Parse remaining args for seconds, loop, layer
+    let seconds = 0
+    let loopRun: number | undefined
+    let loopPause: number | undefined
+    let layer = false
+    let i = 2
+
+    // Next arg could be seconds (number), 'loop', or 'layer'
+    if (args[i] && !isNaN(parseInt(args[i], 10)) && args[i] !== 'loop' && args[i] !== 'layer') {
+      seconds = parseInt(args[i], 10) || 0
+      i++
     }
 
-    // All other commands need at least a toy name
-    // The "command" from the tag parser is the first word after "lovense",
-    // which is the toy name. The action is in args[0].
-    const toyName = command
-    const action = (args[0] ?? '').toLowerCase()
-
-    // <lovense TOYNAME stop>
-    if (action === 'stop') {
-      await api.stopToy(ip, toyName)
-      return { success: true, displayText: `_stop ${toyName}_` }
+    // Check for 'loop RUN PAUSE'
+    if (args[i]?.toLowerCase() === 'loop') {
+      loopRun = parseInt(args[i + 1], 10) || undefined
+      loopPause = parseInt(args[i + 2], 10) || undefined
+      i += 3
     }
 
-    // <lovense TOYNAME stroke STROKE_POS THRUST_STRENGTH [SECONDS]>
-    if (action === 'stroke') {
-      const strokePos = parseInt(args[1], 10) || 50
-      const thrustStrength = parseInt(args[2], 10) || 10
-      const seconds = parseInt(args[3], 10) || 0
-      const result = await api.strokeCommand(ip, strokePos, thrustStrength, seconds, toyName)
-      if (result.code === 400) {
-        return { success: false, displayText: `_[Lovense: ${result.message}]_` }
-      }
-      const timeText = seconds > 0 ? ` for ${seconds}s` : ''
-      return {
-        success: true,
-        displayText: `_stroke ${toyName} at ${strokePos}/${thrustStrength}${timeText}_`,
-      }
+    // Check for 'layer'
+    if (args[i]?.toLowerCase() === 'layer' || args[i - 1]?.toLowerCase() === 'layer') {
+      layer = true
     }
 
-    // <lovense TOYNAME ACTION STRENGTH [SECONDS] [loop RUN PAUSE] [layer]>
-    if (SIMPLE_ACTIONS.has(action)) {
-      const strength = parseInt(args[1], 10) || 5
-      const cappedAction = (action.charAt(0).toUpperCase() + action.slice(1)) as Action
+    // Build pill text by joining parts with spaces (no leading/trailing
+    // underscores — pill rendering is handled by IntegrationPill now).
+    const parts: string[] = [`${action} ${toyName} at ${strength}`]
+    if (seconds > 0) parts.push(`for ${seconds}s`)
+    if (loopRun && loopPause) parts.push(`(${loopRun}s on, ${loopPause}s pause)`)
+    if (layer) parts.push('[layered]')
 
-      // Parse remaining args for seconds, loop, layer
-      let seconds = 0
-      let loopRun: number | undefined
-      let loopPause: number | undefined
-      let layer = false
-      let i = 2
-
-      // Next arg could be seconds (number), 'loop', or 'layer'
-      if (args[i] && !isNaN(parseInt(args[i], 10)) && args[i] !== 'loop' && args[i] !== 'layer') {
-        seconds = parseInt(args[i], 10) || 0
-        i++
-      }
-
-      // Check for 'loop RUN PAUSE'
-      if (args[i]?.toLowerCase() === 'loop') {
-        loopRun = parseInt(args[i + 1], 10) || undefined
-        loopPause = parseInt(args[i + 2], 10) || undefined
-        i += 3
-      }
-
-      // Check for 'layer'
-      if (args[i]?.toLowerCase() === 'layer' || args[i - 1]?.toLowerCase() === 'layer') {
-        layer = true
-      }
-
-      await api.functionCommand(ip, {
+    return {
+      pillContent: parts.join(' '),
+      syncWithTts: false,
+      effectPayload: {
+        kind: 'simple',
+        toy: toyName,
         action: cappedAction,
         strength,
-        timeSec: seconds,
-        toy: toyName,
-        loopRunningSec: loopRun,
-        loopPauseSec: loopPause,
-        stopPrevious: layer ? false : undefined,
-      })
-
-      // Build display text
-      const parts: string[] = [`_${action} ${toyName} at ${strength}`]
-      if (seconds > 0) parts.push(`for ${seconds}s`)
-      if (loopRun && loopPause) parts.push(`(${loopRun}s on, ${loopPause}s pause)`)
-      if (layer) parts.push('[layered]')
-
-      return { success: true, displayText: parts.join(' ') + '_' }
+        seconds,
+        loopRun,
+        loopPause,
+        layer,
+      },
+      sideEffect: () =>
+        api
+          .functionCommand(ip, {
+            action: cappedAction,
+            strength,
+            timeSec: seconds,
+            toy: toyName,
+            loopRunningSec: loopRun,
+            loopPauseSec: loopPause,
+            stopPrevious: layer ? false : undefined,
+          })
+          .then(() => undefined),
     }
+  }
 
-    return { success: false, displayText: `_[Lovense: unknown action "${action}"]_` }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return { success: false, displayText: `_[Lovense error: ${msg}]_` }
+  return {
+    pillContent: `Lovense: unknown action "${action}"`,
+    syncWithTts: false,
+    effectPayload: { error: 'unknown_action', action },
   }
 }
