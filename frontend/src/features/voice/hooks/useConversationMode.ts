@@ -12,6 +12,7 @@ import { float32ToWavBlob } from '../infrastructure/wavEncoder'
 import { createBargeController, type BargeController } from '../bargeController'
 import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
+import { tryDispatchCommand } from '../../voice-commands'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -343,7 +344,16 @@ export function useConversationMode({
     if (result.text.trim() === '') {
       controller.resume(barge)
     } else {
-      controller.commit(barge, result.text.trim())
+      const dispatch = await tryDispatchCommand(result.text)
+      if (dispatch.dispatched) {
+        if (dispatch.onTriggerWhilePlaying === 'abandon') {
+          controller.abandonAll()
+        } else {
+          controller.resume(barge)
+        }
+      } else {
+        controller.commit(barge, result.text.trim())
+      }
     }
     publishBargeState()
   }, [controller, exitStore, publishBargeState, setSttInFlight])
