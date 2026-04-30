@@ -71,6 +71,22 @@ function newEffectId(): string {
  *
  * Use one instance per streaming session (correlation).
  */
+/**
+ * Optional behaviour flags for {@link ResponseTagBuffer}. Kept as a single
+ * object so additional toggles can be added without changing the constructor
+ * arity again.
+ */
+export interface ResponseTagBufferOptions {
+  /**
+   * When `false`, the buffer skips invocation of `result.sideEffect` thunks.
+   * Used by the persisted-message render pre-pass: rendering an existing
+   * message must not re-trigger Lovense vibrations or similar hardware
+   * actions every time the chat scrolls. Defaults to `true` (live stream
+   * and read-aloud paths still want side effects to fire).
+   */
+  runSideEffects?: boolean
+}
+
 export class ResponseTagBuffer {
   private buffer = ''
   private insideTag = false
@@ -80,6 +96,8 @@ export class ResponseTagBuffer {
   private streamSource: StreamSource
   private pending: Map<string, PendingEffect>
   private emitTrigger: (event: IntegrationInlineTrigger) => void
+  private renderedPills: Map<string, string>
+  private runSideEffects: boolean
 
   /**
    * @param onTagResolved Called when a tag's pill content is decided. Carries
@@ -107,18 +125,35 @@ export class ResponseTagBuffer {
    *   construction compiling; no caller should rely on it. Pass a
    *   dispatcher that wraps the trigger payload in a `BaseEvent` envelope
    *   and emits it on the shared event bus.
+   * @param renderedPillsMap Durable mirror map written for every successful
+   *   tag execution: `effectId → pillContent`. Unlike `pendingEffectsMap`
+   *   (which is drained by the audio pipeline as soon as a sentence claims
+   *   it), this map is NEVER drained by the buffer — it lives for the
+   *   lifetime of the rendering pass so a rehype plugin can resolve every
+   *   `​[effect:UUID]​` placeholder back to its pill text. The caller owns
+   *   the map and must keep its identity stable for any consumer (e.g. the
+   *   rehype plugin) that snapshots it.
+   *   @deprecated The default (a fresh per-call map) exists only to keep
+   *   legacy 4-arg construction compiling; no real caller should rely on
+   *   it. Pass the same map you read from in your renderer.
+   * @param options Optional behaviour flags. See
+   *   {@link ResponseTagBufferOptions}.
    */
   constructor(
     onTagResolved: (placeholder: string, replacement: string) => void,
     streamSource: StreamSource = 'live_stream',
     pendingEffectsMap: Map<string, PendingEffect> = new Map(),
     emitTrigger: (event: IntegrationInlineTrigger) => void = () => undefined,
+    renderedPillsMap: Map<string, string> = new Map(),
+    options: ResponseTagBufferOptions = {},
   ) {
     this.tagPrefixes = getTagPrefixes()
     this.onTagResolved = onTagResolved
     this.streamSource = streamSource
     this.pending = pendingEffectsMap
     this.emitTrigger = emitTrigger
+    this.renderedPills = renderedPillsMap
+    this.runSideEffects = options.runSideEffects ?? true
   }
 
   /**
@@ -201,7 +236,7 @@ export class ResponseTagBuffer {
       return placeholder
     }
 
-    if (result.sideEffect) {
+    if (result.sideEffect && this.runSideEffects) {
       // Fire-and-forget: hardware calls etc. must not block the pill or the
       // trigger event. Any rejection is logged and ignored.
       void result.sideEffect().catch((err) => {
@@ -211,6 +246,13 @@ export class ResponseTagBuffer {
         )
       })
     }
+
+    // Durable pill mirror: written for every successful tag execution and
+    // NEVER drained by the buffer. The rehype plugin reads this map at
+    // render time to resolve `​[effect:UUID]​` placeholders back into pill
+    // text. Mirroring happens before the immediate-emit branch below so
+    // the entry is reachable regardless of `syncWithTts` / source.
+    this.renderedPills.set(effectId, result.pillContent)
 
     const entry: PendingEffect = {
       effectId,

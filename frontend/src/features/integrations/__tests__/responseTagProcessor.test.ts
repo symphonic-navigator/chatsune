@@ -284,6 +284,65 @@ describe('ResponseTagBuffer', () => {
     }
   })
 
+  it('mirrors every successful tag into renderedPillsMap, never draining it', async () => {
+    const executeTag = vi.fn(
+      (cmd: string): TagExecutionResult => ({
+        pillContent: `fx ${cmd}`,
+        syncWithTts: true,
+        effectPayload: {},
+      }),
+    )
+
+    await withMocks({ executeTag }, async ({ ResponseTagBuffer }) => {
+      const pending = new Map()
+      const rendered = new Map<string, string>()
+      const buffer = new ResponseTagBuffer(
+        vi.fn(),
+        'live_stream',
+        pending,
+        vi.fn(),
+        rendered,
+      )
+
+      buffer.process('<fx a> <fx b>')
+
+      // Both pill contents present in renderedPillsMap.
+      const values = [...rendered.values()].sort()
+      expect(values).toEqual(['fx a', 'fx b'])
+      // Map identity preserved across flush — entries must NOT be drained.
+      buffer.flush()
+      expect(rendered.size).toBe(2)
+    })
+  })
+
+  it('skips sideEffect invocation when runSideEffects=false (persisted-render mode)', async () => {
+    const sideEffect = vi.fn(() => Promise.resolve())
+    const executeTag = vi.fn(
+      (): TagExecutionResult => ({
+        pillContent: 'pill',
+        syncWithTts: false,
+        effectPayload: {},
+        sideEffect,
+      }),
+    )
+
+    await withMocks({ executeTag }, async ({ ResponseTagBuffer }) => {
+      const buffer = new ResponseTagBuffer(
+        vi.fn(),
+        'text_only',
+        new Map(),
+        vi.fn(),
+        new Map(),
+        { runSideEffects: false },
+      )
+
+      buffer.process('<fx go>')
+
+      expect(executeTag).toHaveBeenCalledTimes(1)
+      expect(sideEffect).not.toHaveBeenCalled()
+    })
+  })
+
   it('renders an error pill, emits no event, and stores no entry when executeTag throws synchronously', async () => {
     const executeTag = vi.fn((): TagExecutionResult => {
       throw new Error('kaput')
