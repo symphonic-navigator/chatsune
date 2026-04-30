@@ -72,6 +72,12 @@ class ChatStreamEndedEvent(BaseModel):
     # live and reload renders match. None on early-error paths where
     # nothing was persisted.
     events: list[dict] | None = None
+    # Raw assistant content as the LLM emitted it, including unprocessed
+    # integration tags (e.g. "<screen_effect rising_emojis 💖🤘🔥>"). The
+    # frontend uses this to populate the persisted message in the chat
+    # store, so the read-aloud path can re-parse the tags without a
+    # database round-trip. None on error paths where nothing was persisted.
+    raw_content: str | None = None
     timestamp: datetime
 
 

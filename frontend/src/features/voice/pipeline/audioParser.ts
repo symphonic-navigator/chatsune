@@ -128,7 +128,12 @@ export function parseForSpeech(
   // emoji, etc.) cannot accidentally damage the placeholder syntax. The
   // placeholder is built from ASCII characters wrapped in zero-width
   // spaces, so removing it here also makes preprocess() see clean text.
+  // Tentative claims: collected without removing entries from the shared
+  // map. We only commit (delete from the map) if we end up returning
+  // segments to attach them to. Otherwise we leave the entries in place
+  // so the caller's flush() path can still emit them via immediate-emit.
   const claimedEffects: IntegrationInlineTrigger[] = []
+  const claimedIds: string[] = []
   let working = text
   if (pendingEffectsMap && pendingEffectsMap.size > 0) {
     for (const match of working.matchAll(EFFECT_PLACEHOLDER_RE)) {
@@ -146,7 +151,7 @@ export function parseForSpeech(
         correlation_id: '',
         timestamp: new Date().toISOString(),
       })
-      pendingEffectsMap.delete(effectId)
+      claimedIds.push(effectId)
     }
   }
   // Always strip the placeholder pattern, even when no map was supplied or
@@ -173,10 +178,21 @@ export function parseForSpeech(
     }
   }
 
-  // Attach all claimed effects to the first speakable segment so the trigger
-  // fires at the very start of the synth chunk that contained the tag.
-  if (claimedEffects.length > 0 && segments.length > 0) {
-    segments[0] = { ...segments[0], effects: claimedEffects }
+  // Commit-or-rollback the tentative claims. If we have segments, attach
+  // all claimed effects to the first one (so the trigger fires at the
+  // start of the synth chunk that contained the tag) and remove the
+  // entries from the shared map. If we have no segments — which happens
+  // for a chunk that contains ONLY a placeholder, e.g. when the LLM emits
+  // a `<screen_effect rising_emojis ...>` tag at the end of its response —
+  // leave the entries parked so the caller's flush() path can still pick
+  // them up and dispatch them immediately.
+  if (claimedIds.length > 0) {
+    if (segments.length > 0) {
+      segments[0] = { ...segments[0], effects: claimedEffects }
+      if (pendingEffectsMap) {
+        for (const id of claimedIds) pendingEffectsMap.delete(id)
+      }
+    }
   }
   return segments
 }

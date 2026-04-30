@@ -448,4 +448,60 @@ describe('parseForSpeech — inline-trigger placeholder claiming', () => {
 
     expect(segments[0].effects?.[0].source).toBe('read_aloud')
   })
+
+  it('placeholder-only chunk leaves the entry in pendingEffectsMap so the buffer can still emit it', () => {
+    // Regression: rising_emojis at the END of a response arrives as a
+    // standalone chunk that contains only the effect placeholder. After
+    // preprocess() the chunk has no speakable content and parseForSpeech
+    // returns []. Previously the entry was eagerly deleted from the map
+    // before that decision, so the buffer's flush() found nothing to
+    // emit and the effect was silently dropped. The fix re-parks the
+    // claimed entry when no segment is available to attach it to.
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+    pending.set('orphan', {
+      effectId: 'orphan',
+      integration_id: 'screen_effect',
+      command: 'rising_emojis',
+      args: ['\u{1F496}', '\u{1F918}', '\u{1F525}'],
+      pillContent: 'screen_effect rising_emojis \u{1F496}\u{1F918}\u{1F525}',
+      effectPayload: { emojis: ['\u{1F496}', '\u{1F918}', '\u{1F525}'] },
+    })
+
+    const segments = parseForSpeech(
+      wrap('orphan'),
+      'off',
+      false,
+      pending,
+      'live_stream',
+    )
+
+    expect(segments).toEqual([])
+    expect(pending.has('orphan')).toBe(true)
+  })
+
+  it('placeholder followed by emoji-only content (no letters) re-parks the entry', () => {
+    // Defensive cousin of the above: a chunk whose only "content" is
+    // emojis is also non-speakable after preprocess() (emojis stripped),
+    // so it lands on the same orphaned-segments path.
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+    pending.set('orphan2', {
+      effectId: 'orphan2',
+      integration_id: 'screen_effect',
+      command: 'rising_emojis',
+      args: ['\u{1F496}'],
+      pillContent: 'screen_effect rising_emojis \u{1F496}',
+      effectPayload: { emojis: ['\u{1F496}'] },
+    })
+
+    const segments = parseForSpeech(
+      `${wrap('orphan2')} \u{1F496}`,
+      'off',
+      false,
+      pending,
+      'live_stream',
+    )
+
+    expect(segments).toEqual([])
+    expect(pending.has('orphan2')).toBe(true)
+  })
 })

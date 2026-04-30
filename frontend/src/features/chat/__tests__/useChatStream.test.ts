@@ -450,6 +450,87 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     expect(messages[0].status).toBe('completed')
   })
 
+  it('uses raw_content from payload as persisted message content when present', () => {
+    // Regression: when the backend includes raw_content (the assistant
+    // text with unprocessed integration tags), the persisted store
+    // message must carry that raw form so ReadAloud can re-parse the
+    // tags without an F5 reload. Without this, voice-mode replies
+    // ending in `<screen_effect rising_emojis ...>` only fired the
+    // effect after a hard refresh.
+    useChatStore.setState({
+      streamingContent: 'visible body​[effect:abc]​',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm-raw',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+        raw_content: 'visible body <screen_effect rising_emojis 💖>',
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    expect(messages[0].content).toBe('visible body <screen_effect rising_emojis 💖>')
+  })
+
+  it('falls back to streamingContent when raw_content is absent (BE rollout lag)', () => {
+    useChatStore.setState({
+      streamingContent: 'streamed body',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm-fallback',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+        // raw_content deliberately absent
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    expect(messages[0].content).toBe('streamed body')
+  })
+
+  it('falls back to streamingContent when raw_content is null', () => {
+    useChatStore.setState({
+      streamingContent: 'streamed body',
+      streamingThinking: '',
+      streamingEvents: [],
+      streamingRefusalText: null,
+    } as Partial<StoreState> as StoreState)
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'c1',
+      payload: {
+        session_id: 's1',
+        message_id: 'm-null',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+        raw_content: null,
+      },
+    })
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+    const messages = useChatStore.getState().messages
+    expect(messages).toHaveLength(1)
+    expect(messages[0].content).toBe('streamed body')
+  })
+
   it('cancels streaming when no message_id is sent and no content was streamed', () => {
     useChatStore.setState({
       streamingContent: '',

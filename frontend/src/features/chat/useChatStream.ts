@@ -261,6 +261,14 @@ export function handleChatEvent(
       // the refusal band shows immediately without a page refresh.
       const backendMessageId = p.message_id as string | undefined
       const content = getStore().streamingContent
+      // Backend sends raw assistant content (with unprocessed integration
+      // tags) so the persisted message in the store carries the same
+      // string the database holds. ReadAloud re-parses the tags from this
+      // raw form — without it, only F5 reload would surface the tags.
+      // Falls back to the placeholder-form `streamingContent` on older
+      // backends that have not rolled out raw_content yet.
+      const rawContent = (p.raw_content as string | null | undefined) ?? null
+      const persistedContent = rawContent ?? content
       const thinking = getStore().streamingThinking
       const refusalText = getStore().streamingRefusalText
       // The persisted timeline arrives on the stream-ended payload as
@@ -299,7 +307,7 @@ export function handleChatEvent(
             id: backendMessageId,
             session_id: sessionId ?? '',
             role: 'assistant',
-            content,
+            content: persistedContent,
             thinking: thinking || null,
             token_count: 0,
             attachments: null,

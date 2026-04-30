@@ -686,5 +686,11 @@ class InferenceRunner:
             provider_name=connection_display_name,
             model_name=model_name,
             events=[e.model_dump() for e in events] if events else None,
+            # Carry the raw assistant content (including unprocessed
+            # integration tags) so the frontend can populate its persisted
+            # message in raw form. This lets ReadAloud re-parse the tags
+            # without a DB round-trip after a continuous-voice run. None
+            # when nothing was persisted (no message_id).
+            raw_content=full_content if message_id else None,
             timestamp=datetime.now(timezone.utc),
         ))
