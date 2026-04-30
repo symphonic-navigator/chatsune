@@ -131,7 +131,6 @@ export function parseForSpeech(
   const claimedEffects: IntegrationInlineTrigger[] = []
   let working = text
   if (pendingEffectsMap && pendingEffectsMap.size > 0) {
-    EFFECT_PLACEHOLDER_RE.lastIndex = 0
     for (const match of working.matchAll(EFFECT_PLACEHOLDER_RE)) {
       const effectId = match[1]
       const entry = pendingEffectsMap.get(effectId)

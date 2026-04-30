@@ -18,9 +18,11 @@ type TextishNode = Text | RawNode
  * where <ZWSP> is U+200B. The UUID body is captured but kept permissive —
  * `crypto.randomUUID` produces RFC 4122 v4 ids, but the buffer falls back to
  * a Math.random hex shape on older test environments, so we accept any
- * `[0-9a-fA-F-]+` body.
+ * `[0-9a-f-]+` body. Lowercase only because that is what both
+ * `crypto.randomUUID` and the Math.random fallback emit; kept in sync with
+ * `audioParser.ts`'s `EFFECT_PLACEHOLDER_RE` to avoid drift.
  */
-const PLACEHOLDER_RE = /​\[effect:([0-9a-fA-F-]+)\]​/g
+const PLACEHOLDER_RE = /​\[effect:([0-9a-f-]+)\]​/g
 
 export interface RehypeIntegrationPillsOptions {
   /** Map of effectId → pill content. Populated by the ResponseTagBuffer's
