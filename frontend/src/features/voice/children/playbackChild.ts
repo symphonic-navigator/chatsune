@@ -8,17 +8,10 @@ export interface PlaybackChildOpts {
   gapMs: number
   onSegmentStart?: () => void
   onFinished?: () => void
-  /** Origin of the synth chunks fed into this child. Stamped onto every
-   *  inline-trigger event emitted from the audio pipeline so downstream
-   *  consumers can distinguish active LLM streaming from re-triggered
-   *  read-aloud playback. Defaults to `'live_stream'` for the existing
-   *  voice-pipeline call sites until Phase 5 wires the explicit source. */
-  streamSource?: 'live_stream' | 'read_aloud'
 }
 
 export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
   const { correlationId, gapMs, onSegmentStart, onFinished } = opts
-  const streamSource = opts.streamSource ?? 'live_stream'
   const prefix = `[playback ${correlationId.slice(0, 8)}]`
   let drainResolve: (() => void) | null = null
 
@@ -40,6 +33,10 @@ export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
       // shared frontend event bus dispatches it like any other typed event.
       // Sequence is unused for purely client-emitted events; stamp something
       // monotonic-ish so it cannot be confused with a real backend stream.
+      // `event.source` is already stamped by audioPlayback from the queue
+      // entry's per-segment source — do NOT override it here, otherwise
+      // read-aloud triggers fed through this same child would be
+      // mis-stamped as live_stream.
       eventBus.emit({
         id: `inline-trig-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         type: Topics.INTEGRATION_INLINE_TRIGGER,
@@ -47,7 +44,7 @@ export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
         scope: 'frontend',
         correlation_id: event.correlation_id || correlationId,
         timestamp: event.timestamp,
-        payload: { ...event, source: streamSource },
+        payload: { ...event },
       })
     },
   })
