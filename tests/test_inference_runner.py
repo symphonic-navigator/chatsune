@@ -5,7 +5,11 @@ import pytest
 
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.llm import ContentDelta, StreamAborted, StreamDone, StreamError, StreamRefused, StreamSlow, ThinkingDelta, ToolCallEvent
-from shared.dtos.chat import ArtefactRefDto
+from shared.dtos.chat import (
+    ArtefactRefDto,
+    TimelineEntryArtefact,
+    TimelineEntryToolCall,
+)
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
@@ -311,8 +315,8 @@ async def test_run_inference_refused_with_provider_body(
 async def test_run_inference_captures_create_artefact_ref(
     runner, mock_emit, mock_save,
 ):
-    """A successful create_artefact tool call must append a ref to artefact_refs
-    and attach an ArtefactRefDto to the ChatToolCallCompletedEvent."""
+    """A successful create_artefact tool call must append a TimelineEntryArtefact
+    to the events list and attach an ArtefactRefDto to the ChatToolCallCompletedEvent."""
     call_count = 0
 
     async def two_phase_stream(extra_messages=None):
@@ -330,7 +334,7 @@ async def test_run_inference_captures_create_artefact_ref(
             yield ContentDelta(delta="Artefact created.")
             yield StreamDone(input_tokens=2, output_tokens=2)
 
-    async def fake_tool_executor(user_id, tool_name, arguments_str):
+    async def fake_tool_executor(user_id, tool_name, arguments_str, *, tool_call_id):
         return json.dumps({"ok": True, "artefact_id": "a1", "handle": "h1"})
 
     await runner.run(
@@ -341,9 +345,16 @@ async def test_run_inference_captures_create_artefact_ref(
 
     mock_save.assert_awaited_once()
     save_kwargs = mock_save.call_args.kwargs
-    assert save_kwargs["artefact_refs"] == [
-        {"artefact_id": "a1", "handle": "h1", "title": "Hello snippet", "artefact_type": "code", "operation": "create"}
+    artefact_entries = [
+        e for e in (save_kwargs["events"] or []) if isinstance(e, TimelineEntryArtefact)
     ]
+    assert len(artefact_entries) == 1
+    ref = artefact_entries[0].ref
+    assert ref.artefact_id == "a1"
+    assert ref.handle == "h1"
+    assert ref.title == "Hello snippet"
+    assert ref.artefact_type == "code"
+    assert ref.operation == "create"
 
     emitted = [call.args[0] for call in mock_emit.call_args_list]
     completed_events = [e for e in emitted if isinstance(e, ChatToolCallCompletedEvent)]
@@ -357,7 +368,7 @@ async def test_run_inference_captures_update_artefact_without_artefact_id(
     runner, mock_emit, mock_save,
 ):
     """A successful update_artefact result that omits artefact_id must store
-    an empty string for that field."""
+    an empty string for that field on the timeline entry's ref."""
     call_count = 0
 
     async def two_phase_stream(extra_messages=None):
@@ -373,7 +384,7 @@ async def test_run_inference_captures_update_artefact_without_artefact_id(
             yield ContentDelta(delta="Updated.")
             yield StreamDone(input_tokens=2, output_tokens=2)
 
-    async def fake_tool_executor(user_id, tool_name, arguments_str):
+    async def fake_tool_executor(user_id, tool_name, arguments_str, *, tool_call_id):
         return json.dumps({"ok": True, "handle": "h2", "version": 3})
 
     await runner.run(
@@ -383,17 +394,22 @@ async def test_run_inference_captures_update_artefact_without_artefact_id(
     )
 
     save_kwargs = mock_save.call_args.kwargs
-    refs = save_kwargs["artefact_refs"]
-    assert refs[0]["artefact_id"] == ""
-    assert refs[0]["handle"] == "h2"
-    assert refs[0]["operation"] == "update"
+    artefact_entries = [
+        e for e in (save_kwargs["events"] or []) if isinstance(e, TimelineEntryArtefact)
+    ]
+    assert len(artefact_entries) == 1
+    ref = artefact_entries[0].ref
+    assert ref.artefact_id == ""
+    assert ref.handle == "h2"
+    assert ref.operation == "update"
 
 
 async def test_run_inference_skips_failed_artefact_tool_call(
     runner, mock_emit, mock_save,
 ):
     """A failed artefact tool call (result contains 'error') must not
-    add to artefact_refs; save_fn receives artefact_refs=None."""
+    produce a TimelineEntryArtefact; instead a generic TimelineEntryToolCall
+    with success=False is appended."""
     call_count = 0
 
     async def two_phase_stream(extra_messages=None):
@@ -409,7 +425,7 @@ async def test_run_inference_skips_failed_artefact_tool_call(
             yield ContentDelta(delta="Could not create.")
             yield StreamDone(input_tokens=2, output_tokens=2)
 
-    async def fake_tool_executor(user_id, tool_name, arguments_str):
+    async def fake_tool_executor(user_id, tool_name, arguments_str, *, tool_call_id):
         return json.dumps({"error": "validation failed"})
 
     await runner.run(
@@ -419,14 +435,22 @@ async def test_run_inference_skips_failed_artefact_tool_call(
     )
 
     save_kwargs = mock_save.call_args.kwargs
-    assert save_kwargs["artefact_refs"] is None
+    events = save_kwargs["events"] or []
+    assert not any(isinstance(e, TimelineEntryArtefact) for e in events)
+    failed_calls = [
+        e for e in events
+        if isinstance(e, TimelineEntryToolCall)
+        and e.tool_name == "create_artefact"
+        and e.success is False
+    ]
+    assert len(failed_calls) == 1
 
 
 async def test_run_inference_preserves_artefact_call_order(
     runner, mock_emit, mock_save,
 ):
-    """Two artefact tool calls in sequence must appear in artefact_refs
-    in the same order they were executed."""
+    """Two artefact tool calls in sequence must appear on the events
+    timeline in the same order they were executed."""
     call_count = 0
 
     async def two_phase_stream(extra_messages=None):
@@ -446,7 +470,7 @@ async def test_run_inference_preserves_artefact_call_order(
             yield ContentDelta(delta="Done.")
             yield StreamDone(input_tokens=3, output_tokens=3)
 
-    async def fake_tool_executor(user_id, tool_name, arguments_str):
+    async def fake_tool_executor(user_id, tool_name, arguments_str, *, tool_call_id):
         if tool_name == "create_artefact":
             return json.dumps({"ok": True, "artefact_id": "a", "handle": "h"})
         return json.dumps({"ok": True, "handle": "h", "version": 2})
@@ -458,10 +482,15 @@ async def test_run_inference_preserves_artefact_call_order(
     )
 
     save_kwargs = mock_save.call_args.kwargs
-    refs = save_kwargs["artefact_refs"]
-    assert [r["operation"] for r in refs] == ["create", "update"]
-    assert refs[0]["title"] == "t1"
-    assert refs[1]["title"] == "t2"
+    artefact_entries = [
+        e for e in (save_kwargs["events"] or []) if isinstance(e, TimelineEntryArtefact)
+    ]
+    assert [e.ref.operation for e in artefact_entries] == ["create", "update"]
+    assert artefact_entries[0].ref.title == "t1"
+    assert artefact_entries[1].ref.title == "t2"
+    # seq must increase monotonically across the timeline so the renderer
+    # follows the same order.
+    assert artefact_entries[0].seq < artefact_entries[1].seq
 
 
 def test_history_filter_excludes_aborted_and_refused():

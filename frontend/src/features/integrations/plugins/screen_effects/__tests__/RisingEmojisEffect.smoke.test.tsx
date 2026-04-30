@@ -19,7 +19,7 @@ describe('RisingEmojisEffect smoke', () => {
     )
     // Spawning happens inside useEffect on mount; jsdom executes it immediately.
     const spans = container.querySelectorAll('span.screen-effect-rising-emoji')
-    expect(spans.length).toBe(14) // PROFILE_FULL.count
+    expect(spans.length).toBe(40) // PROFILE_FULL.count
   })
 
   it('uses the reduced profile when reduced=true', () => {
