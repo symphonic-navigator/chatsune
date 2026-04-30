@@ -11,6 +11,8 @@ import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import './features/integrations/plugins/mistral_voice'
 import './features/integrations/plugins/xai_voice'
+import './features/integrations/plugins/screen_effects'
+import { ScreenEffectsOverlay } from './features/integrations/plugins/screen_effects/overlay/ScreenEffectsOverlay'
 import AppLayout from "./app/layouts/AppLayout"
 import LoginPage from "./app/pages/LoginPage"
 import ChangePasswordPage from "./app/pages/ChangePasswordPage"
@@ -138,6 +140,7 @@ function AppRoutes() {
         </Route>
         <Route path="*" element={<Navigate to="/personas" replace />} />
       </Routes>
+      <ScreenEffectsOverlay />
     </>
   )
 }

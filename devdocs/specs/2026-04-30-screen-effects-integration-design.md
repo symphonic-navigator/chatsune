@@ -56,7 +56,7 @@ frontend/src/features/integrations/plugins/screen_effects/
     RisingEmojisEffect.tsx               ← NEW: particle animation component
 ```
 
-**Mount point:** `<ScreenEffectsOverlay />` is rendered once near the App root (sibling to `<Routes>`). Container is `position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 90`. It sits above ordinary chat UI but below modals and toasts.
+**Mount point:** `<ScreenEffectsOverlay />` is rendered once near the App root (sibling to `<Routes>`). Container is `position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 90`. It sits above ordinary chat UI and intentionally above modals/toasts as well — the storms are short visual flourishes and shouldn't get hidden behind a backdrop. `pointer-events: none` ensures it never blocks interaction with whatever sits below.
 
 **Data flow** (existing infrastructure unless marked NEW):
 
@@ -257,7 +257,7 @@ export function ScreenEffectsOverlay() {
       if (trigger.integration_id !== 'screen_effect') return
       const payload = trigger.payload as { effect?: string; emojis?: string[] }
       if (payload.effect !== 'rising_emojis') return
-      const id = trigger.effectId ?? crypto.randomUUID()
+      const id = crypto.randomUUID()
       setActive((prev) => [
         ...prev,
         {

@@ -59,10 +59,8 @@ async function withMocks(
     useIntegrationsStore: {
       getState: () => ({
         definitions: [
-          {
-            id: 'lovense',
-            has_response_tags: true,
-          },
+          { id: 'lovense', has_response_tags: true },
+          { id: 'screen_effect', has_response_tags: true },
         ],
         getConfig: (_id: string) => undefined,
       }),
@@ -209,6 +207,85 @@ describe('live vs persisted pill equivalence', () => {
 
       // Live fires both side effects; persisted fires none.
       expect(sideEffect).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('produces identical pill DOM for a screen_effect tag in both paths', async () => {
+    const { executeTag: realExecuteTag } = await import(
+      '../../integrations/plugins/screen_effects/tags'
+    )
+    const executeTag = (
+      cmd: string,
+      args: string[],
+      cfg: Record<string, unknown>,
+    ): TagExecutionResult => realExecuteTag(cmd, args, cfg)
+
+    await withMocks({ executeTag }, async ({ ResponseTagBuffer }) => {
+      const rawTag = '<screen_effect rising_emojis 💖 🤘 🔥>'
+
+      // LIVE path: side effects ON, source = live_stream.
+      const livePending = new Map<string, PendingEffect>()
+      const livePills = new Map<string, string>()
+      const liveBuffer = new ResponseTagBuffer(
+        () => undefined,
+        'live_stream',
+        livePending,
+        () => undefined,
+        livePills,
+        { runSideEffects: true },
+      )
+      const liveOut = liveBuffer.process(rawTag)
+
+      // PERSISTED path: side effects OFF, source = text_only.
+      const persistedPending = new Map<string, PendingEffect>()
+      const persistedPills = new Map<string, string>()
+      const persistedBuffer = new ResponseTagBuffer(
+        () => undefined,
+        'text_only',
+        persistedPending,
+        () => undefined,
+        persistedPills,
+        { runSideEffects: false },
+      )
+      const persistedOut = persistedBuffer.process(rawTag)
+
+      // 1. Same pill content string in both maps.
+      expect(livePills.size).toBe(1)
+      expect(persistedPills.size).toBe(1)
+      const livePillContent = [...livePills.values()][0]
+      const persistedPillContent = [...persistedPills.values()][0]
+      expect(livePillContent).toBe(persistedPillContent)
+      expect(livePillContent).toBe('✨ rising_emojis 💖🤘🔥')
+
+      // 2. Both outputs are placeholders (UUIDs differ by design).
+      expect(liveOut).toMatch(PLACEHOLDER_RE)
+      expect(persistedOut).toMatch(PLACEHOLDER_RE)
+
+      // 3. Rehype DOM is identical when fed either path's map after
+      //    placeholder UUIDs are normalised to a fixed sentinel.
+      const liveId = [...livePills.keys()][0]
+      const persistedId = [...persistedPills.keys()][0]
+      const SENTINEL = '00000000-0000-4000-8000-000000000000'
+      const liveNormalised = liveOut.replace(liveId, SENTINEL)
+      const persistedNormalised = persistedOut.replace(persistedId, SENTINEL)
+      expect(liveNormalised).toBe(persistedNormalised)
+
+      const liveDom = renderPills(
+        liveNormalised,
+        new Map([[SENTINEL, livePillContent]]),
+      )
+      const persistedDom = renderPills(
+        persistedNormalised,
+        new Map([[SENTINEL, persistedPillContent]]),
+      )
+      expect(liveDom).toBe(persistedDom)
+      expect(liveDom).toContain(
+        '<span class="integration-pill">✨ rising_emojis 💖🤘🔥</span>',
+      )
+
+      // 4. screen_effect plugin has no sideEffect, so there is nothing to
+      //    assert about side-effect invocation. The lovense test covers the
+      //    runSideEffects flag separately.
     })
   })
 })

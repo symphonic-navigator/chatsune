@@ -6,6 +6,7 @@ and system prompt template. Plugins are registered at import time.
 
 import logging
 from backend.modules.integrations._models import IntegrationDefinition
+from backend.modules.integrations._screen_effects_prompt import SCREEN_EFFECT_PROMPT
 from backend.modules.integrations._voice_expression_tags import build_system_prompt_extension
 from shared.dtos.inference import ToolDefinition
 from shared.dtos.integrations import IntegrationCapability, OptionsSource
@@ -279,6 +280,21 @@ def _register_builtins() -> None:
             },
         ],
         tool_definitions=[],
+    ))
+
+    register(IntegrationDefinition(
+        id="screen_effect",
+        display_name="Screen Effects",
+        description="Visual inline flourishes the persona drops over the screen.",
+        icon="sparkles",
+        execution_mode="frontend",
+        config_fields=[],
+        capabilities=[],
+        system_prompt_template=SCREEN_EFFECT_PROMPT,
+        response_tag_prefix="screen_effect",
+        tool_definitions=[],
+        default_enabled=True,
+        assignable=False,
     ))
 
 
