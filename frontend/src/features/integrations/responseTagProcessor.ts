@@ -91,8 +91,11 @@ export class ResponseTagBuffer {
    *   `'live_stream'` so existing 1-arg callers continue to compile while
    *   Phase 5 wires up the real source.
    * @param pendingEffectsMap External map that holds parked triggers waiting
-   *   for a sentence boundary. Defaults to a fresh local map; legacy callers
-   *   that don't consume the map keep working unchanged.
+   *   for a sentence boundary. The buffer mutates it: tags whose effect
+   *   syncs with TTS get inserted; immediate-emit and flush()ed entries get
+   *   deleted. The caller owns the map's lifetime — it MUST outlive the
+   *   buffer so the audio pipeline can claim entries. Sharing one map
+   *   across multiple concurrent buffers is unsupported.
    * @param emitTrigger Callback for immediate trigger emission. Defaults to
    *   a no-op — Phase 5 will pass an event-bus dispatcher.
    */
@@ -193,7 +196,10 @@ export class ResponseTagBuffer {
       // Fire-and-forget: hardware calls etc. must not block the pill or the
       // trigger event. Any rejection is logged and ignored.
       void result.sideEffect().catch((err) => {
-        console.error(`[integrations] sideEffect failed for ${integrationId}:`, err)
+        console.error(
+          `[integrations] sideEffect failed for ${integrationId} command=${command} args=${JSON.stringify(args)} effectId=${effectId}:`,
+          err,
+        )
       })
     }
 
