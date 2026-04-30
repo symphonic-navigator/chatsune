@@ -90,6 +90,8 @@ import { useConversationMode } from '../useConversationMode'
 import { useConversationModeStore } from '../../stores/conversationModeStore'
 import { useChatStore } from '../../../../core/store/chatStore'
 import { useNotificationStore } from '../../../../core/store/notificationStore'
+import { registerCommand, unregisterCommand } from '../../../voice-commands'
+import type { CommandSpec } from '../../../voice-commands'
 
 function resetConvModeStore() {
   useConversationModeStore.setState({
@@ -346,5 +348,91 @@ describe('useConversationMode — hold-release VAD-state gating', () => {
     expect(transcribeMock).toHaveBeenCalledTimes(1)
     const sent = transcribeMock.mock.calls[0][0]
     expect(sent.pcm.length).toBe(audio1.length)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// §15.2 — Voice-command dispatch path integration test
+// ---------------------------------------------------------------------------
+// Exercises the real tryDispatchCommand wiring in useConversationMode lines
+// 344-357: when the STT result matches a registered trigger, controller.commit
+// (and therefore sendChatMessage) must NOT be called; a toast notification
+// must appear via respondToUser → useNotificationStore.
+
+describe('useConversationMode — voice-command dispatch', () => {
+  // Register a minimal test command whose trigger is unlikely to collide with
+  // any real command. The handler returns a deterministic displayText so the
+  // notification assertion can be exact.
+  const TEST_TRIGGER = 'testfoo'
+  const fooHandler = vi.fn(async (body: string) => ({
+    level: 'info' as const,
+    spokenText: 'ok',
+    displayText: `foo body: '${body}'`,
+  }))
+  const fooCommand: CommandSpec = {
+    trigger: TEST_TRIGGER,
+    onTriggerWhilePlaying: 'resume',
+    source: 'core',
+    execute: fooHandler,
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    captured = null
+    resetConvModeStore()
+    resetChatStore()
+    resetNotifications()
+    transcribeMock.mockReset()
+    fooHandler.mockClear()
+    registerCommand(fooCommand)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    unregisterCommand(TEST_TRIGGER)
+  })
+
+  it('STT result matching a registered trigger does not call sendChatMessage; a notification is emitted', async () => {
+    const sendChatMessage = vi.fn()
+    // "testfoo ping" → normalise → ['testfoo', 'ping'] → trigger='testfoo', body='ping'.
+    transcribeMock.mockResolvedValue({ text: 'testfoo ping' })
+
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage,
+    }))
+
+    await act(async () => {
+      useConversationModeStore.getState().enter()
+      await flushMicrotasks()
+    })
+    expect(captured).not.toBeNull()
+
+    // Synthesise a speech-start → speech-end cycle (same pattern as the
+    // existing hold-release tests: advance 200 ms past the 150 ms barge
+    // window so the barge is accepted, then fire speech-end with a small PCM
+    // buffer to trigger transcription).
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    const pcm = new Float32Array(16_000) // 1 second of silence at 16 kHz
+    act(() => { captured!.onSpeechEnd(captureFromPcm(pcm)) })
+    await act(async () => { await flushMicrotasks() })
+
+    // STT must have been called exactly once.
+    expect(transcribeMock).toHaveBeenCalledTimes(1)
+
+    // The command handler must have been invoked with just the body ('ping').
+    expect(fooHandler).toHaveBeenCalledWith('ping')
+
+    // The dispatch path must NOT have called sendChatMessage.
+    expect(sendChatMessage).not.toHaveBeenCalled()
+
+    // respondToUser must have pushed exactly one notification with the
+    // handler's displayText.
+    expect(useNotificationStore.getState().notifications).toHaveLength(1)
+    expect(useNotificationStore.getState().notifications[0].message).toBe(`foo body: 'ping'`)
   })
 })
