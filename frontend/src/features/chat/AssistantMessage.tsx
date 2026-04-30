@@ -1,13 +1,27 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { createMarkdownComponents, remarkPlugins, rehypePlugins, preprocessMath } from './markdownComponents'
+import { buildRehypePlugins, createMarkdownComponents, remarkPlugins, preprocessMath } from './markdownComponents'
 import { ThinkingBubble } from './ThinkingBubble'
 import { StatsLine } from './StatsLine'
 import { ReadAloudButton } from '../voice/components/ReadAloudButton'
+import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
+import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 
 const REFUSAL_FALLBACK_TEXT = 'The model declined this request.'
+
+// useSyncExternalStore plumbing for the active-Group registry. Pattern
+// mirrors usePhase: snapshot is `<groupId>:<groupState>` so React's
+// Object.is identity check reacts to state-only changes; the actual Group
+// reference (and its mutated renderedPillsMap) is still read live below.
+function activeGroupSnapshot(): string {
+  const g = getActiveGroup()
+  return g === null ? 'none' : `${g.id}:${g.state}`
+}
+function serverSnapshot(): string {
+  return 'none'
+}
 
 interface AssistantMessageProps {
   content: string; thinking: string | null; isStreaming: boolean;
@@ -84,6 +98,70 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
 
   const components = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
 
+  // Live-stream pill resolution: while streaming, the active Group's
+  // renderedPillsMap is mutated by ResponseTagBuffer.handleTag every time a
+  // tag is detected. Subscribe to the registry (re-evaluating whenever the
+  // active Group changes) and pass that map into the rehype-plugin factory.
+  // The map is mutated in place, but each new content delta triggers a
+  // re-render via the chat store anyway, so the rehype plugin always reads
+  // the latest contents at render time without an explicit version counter.
+  useSyncExternalStore(
+    subscribeActiveGroup,
+    activeGroupSnapshot,
+    serverSnapshot,
+  )
+  const liveStreamPillContents = isStreaming
+    ? (getActiveGroup()?.renderedPillsMap ?? null)
+    : null
+
+  // Persisted-message pill resolution: when this message is no longer
+  // streaming AND it has a messageId, run the content once through a
+  // ResponseTagBuffer with side effects suppressed to capture pill content
+  // for every `<integration ...>` tag in the persisted text. Memoised on
+  // (messageId, content) so the heavy regex / plugin lookup only runs when
+  // the message identity or text actually changes; scrolling the chat does
+  // not re-fire it.
+  const persistedRender = useMemo(() => {
+    if (isStreaming) return null
+    if (!effectiveContent) return null
+    const pending = new Map<string, PendingEffect>()
+    const pills = new Map<string, string>()
+    const buffer = new ResponseTagBuffer(
+      () => undefined,
+      'text_only',
+      pending,
+      () => undefined,
+      pills,
+      { runSideEffects: false },
+    )
+    const sanitised = buffer.process(effectiveContent)
+    // Intentionally NOT calling buffer.flush(): flush emits any residual
+    // parked triggers, which we must not do at render time. The pending
+    // map (which we discard) is in any case empty for `text_only` source
+    // because every successful tag immediately fired its (no-op) emitter.
+    return { renderedText: sanitised, pillContents: pills }
+    // messageId is part of the dep list so a swap from optimistic →
+    // backend id refreshes the cached render.
+  }, [isStreaming, effectiveContent, messageId])
+
+  // Pick which pill map feeds the rehype plugin. Live-stream branch reads
+  // the active Group's mirror (mutated as tokens arrive); persisted branch
+  // reads the per-message memoised map.
+  const pillContents = isStreaming
+    ? liveStreamPillContents ?? undefined
+    : persistedRender?.pillContents
+  const rehypePluginsForRender = useMemo(
+    () => buildRehypePlugins({ pillContents }),
+    [pillContents],
+  )
+
+  // For persisted messages we feed the buffer's sanitised output (raw tags
+  // already replaced with placeholders); for live streams the chat store
+  // already holds the pre-sanitised content so we render it directly.
+  const renderText = isStreaming
+    ? effectiveContent
+    : (persistedRender?.renderedText ?? effectiveContent)
+
   return (
     <div className="animate-message-entrance">
       {thinking && (
@@ -91,8 +169,8 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
       )}
       <div className="max-w-[92%] lg:max-w-[85%] min-w-0 break-words [overflow-wrap:anywhere]">
         <div className="chat-text chat-prose text-white/80">
-          <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-            {preprocessMath(effectiveContent)}
+          <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePluginsForRender} components={components}>
+            {preprocessMath(renderText)}
           </ReactMarkdown>
         </div>
         {status === 'aborted' && !isStreaming && (
