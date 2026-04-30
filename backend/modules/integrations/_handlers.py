@@ -1,6 +1,5 @@
 """REST endpoints for the integrations module."""
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, TypeVar
@@ -9,12 +8,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, R
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from backend._retry import execute_with_retry
 from backend.dependencies import require_active_session
 from backend.modules.integrations._registry import get_all, get as get_definition
 from backend.modules.integrations._repository import IntegrationRepository
 from backend.modules.integrations._voice_adapters import (
     get_adapter,
     VoiceAdapterError,
+    VoiceRateLimitError,
     VoiceUnavailableError,
 )
 # Deferred at call site to break the __init__ → _handlers → __init__ circular import.
@@ -213,11 +214,20 @@ def _voice_error_response(exc: VoiceAdapterError) -> JSONResponse:
     )
 
 
-# Single retry after a transient upstream 5xx. Real provider downtime is
-# rare; most 500s on api.x.ai / api.mistral.ai are momentary glitches that
-# clear within a few hundred milliseconds. Retrying once doubles the worst
-# case but avoids bouncing a 502 back to the user for a blip.
-_VOICE_RETRY_DELAY_SECONDS = 0.25
+# Voice retry policy lives in :mod:`backend._retry` and is shared with
+# the LLM adapters: 4 retries with exponential back-off (1s, 2s, 4s, 8s
+# ±25 % jitter, capped at 16 s) on rate-limit (429) and upstream-
+# unavailable (5xx) errors. Auth, bad-request, and unexpected-status
+# errors still bubble up on the first try — they are not transient.
+_VOICE_TRANSIENT_ERRORS: tuple[type[VoiceAdapterError], ...] = (
+    VoiceRateLimitError,
+    VoiceUnavailableError,
+)
+
+
+def _voice_is_retriable(exc: BaseException) -> bool:
+    return isinstance(exc, _VOICE_TRANSIENT_ERRORS)
+
 
 T = TypeVar("T")
 
@@ -227,25 +237,25 @@ async def _with_transient_retry(
     integration_id: str,
     fn: Callable[[], Awaitable[T]],
 ) -> T:
-    """Execute ``fn`` with a single retry on :class:`VoiceUnavailableError`.
+    """Execute ``fn`` with exponential back-off on transient voice errors.
 
-    Only retries the "upstream 5xx / transport failure" class — auth,
-    rate-limit, bad-request and unexpected-status errors bubble up on
-    the first try since they are not transient.
+    Retries on :class:`VoiceRateLimitError` (HTTP 429) and
+    :class:`VoiceUnavailableError` (HTTP 5xx). Auth, bad-request, and
+    unexpected-status errors bubble up on the first try.
 
     The helper lives in the handler layer (not the adapters) so every
     adapter — xAI, Mistral, and any future one — benefits uniformly
-    without each implementation having to remember to retry.
+    without each implementation having to remember to retry. After all
+    retries are exhausted the original exception bubbles up unchanged
+    (the proxy route then maps it to the right HTTP status).
     """
-    try:
-        return await fn()
-    except VoiceUnavailableError as first:
-        _log.warning(
-            "voice.transient_retry integration_id=%s operation=%s first_error=%r",
-            integration_id, operation, str(first),
-        )
-        await asyncio.sleep(_VOICE_RETRY_DELAY_SECONDS)
-        return await fn()
+    return await execute_with_retry(
+        fn,
+        is_retriable=_voice_is_retriable,
+        operation_name=f"voice.{operation}",
+        logger=_log,
+        correlation_id=integration_id,
+    )
 
 
 @router.get("/{integration_id}/voice/voices")

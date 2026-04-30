@@ -110,6 +110,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const sttEnabled = !!resolveSTTEngine()?.isReady()
   const pipelineState = useVoicePipeline((s) => s.state)
   const setPipelineState = useVoicePipeline((s) => s.setState)
+  // Read the continuous-voice phase early so the auto-focus effects below
+  // can suppress focus while a live voice conversation is active. Focusing
+  // the prompt textarea pops the on-screen keyboard on mobile, which is
+  // hostile during hands-free voice mode.
+  const conversationPhase = usePhase()
   const [transcription, setTranscription] = useState('')
   const [partialSavedNotice, setPartialSavedNotice] = useState(false)
   // TODO(optimistic-retry): track failed message IDs and surface a retry button on the bubble.
@@ -456,20 +461,24 @@ export function ChatView({ persona }: ChatViewProps) {
       } else {
         scrollToBottom()
       }
-      chatInputRef.current?.focus()
+      // Suppress focus while a live voice conversation is active — see
+      // conversationPhase declaration above.
+      if (conversationPhase === 'idle') chatInputRef.current?.focus()
     }
     prevIsLoadingRef.current = isLoading
-  }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams, highlighter])
+  }, [isLoading, messages.length, scrollToBottom, scrollToMessage, searchParams, highlighter, conversationPhase])
 
   // Focus the prompt input when a brand-new chat is opened. New sessions
   // start with zero messages so the load effect above does not fire — handle
   // this case explicitly via `pendingFocus`.
   useEffect(() => {
     if (pendingFocus && sessionId && !isLoading) {
-      chatInputRef.current?.focus()
+      // Suppress focus while a live voice conversation is active — see
+      // conversationPhase declaration above.
+      if (conversationPhase === 'idle') chatInputRef.current?.focus()
       setPendingFocus(false)
     }
-  }, [pendingFocus, sessionId, isLoading])
+  }, [pendingFocus, sessionId, isLoading, conversationPhase])
 
   const accentColour = CHAKRA_PALETTE[(persona?.colour_scheme as ChakraColour) ?? 'solar']?.hex ?? '#C9A84C'
 
@@ -484,7 +493,6 @@ export function ChatView({ persona }: ChatViewProps) {
   // auto_read while the user is in a live conversation.
   const conversationActive = useConversationModeStore((s) => s.active)
   const conversationMicMuted = useConversationModeStore((s) => s.micMuted)
-  const conversationPhase = usePhase()
   const conversationIsHolding = useConversationModeStore((s) => s.isHolding)
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
   const enterConversationMode = useConversationModeStore((s) => s.enter)

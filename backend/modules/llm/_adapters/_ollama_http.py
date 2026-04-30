@@ -17,6 +17,13 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from datetime import UTC, datetime
 
+from backend._retry import (
+    MAX_RETRY_ATTEMPTS,
+    compute_retry_delay,
+    log_retry,
+    parse_retry_after,
+    should_retry_status,
+)
 from backend.config import settings
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -324,140 +331,181 @@ class OllamaHttpAdapter(BaseAdapter):
         seen_done = False
         pending_next: asyncio.Task | None = None
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            try:
-                async with client.stream(
-                    "POST", f"{url}/api/chat",
-                    json=payload, headers=_auth_headers(api_key),
-                ) as resp:
-                    if resp.status_code in (401, 403):
-                        yield StreamError(error_code="invalid_api_key", message="Invalid API key")
-                        return
-                    if resp.status_code != 200:
-                        body = await resp.aread()
-                        detail = body.decode("utf-8", errors="replace")[:500]
-                        _log.error("Upstream %d for model %s: %s",
-                                   resp.status_code, payload.get("model"), detail)
-                        yield StreamError(
-                            error_code="provider_unavailable",
-                            message=f"Upstream returned {resp.status_code}: {detail}",
-                        )
-                        return
-
-                    stream_iter = resp.aiter_lines().__aiter__()
-                    line_start = time.monotonic()
-                    slow_fired = False
-                    while True:
-                        elapsed = time.monotonic() - line_start
-                        budget = (
-                            GUTTER_ABORT_SECONDS - elapsed if slow_fired
-                            else GUTTER_SLOW_SECONDS - elapsed
-                        )
-                        if budget <= 0:
-                            if not slow_fired:
-                                _log.info(
-                                    "ollama_base.gutter_slow model=%s idle=%.1fs",
-                                    payload.get("model"), elapsed,
-                                )
-                                yield StreamSlow()
-                                slow_fired = True
-                                continue
-                            _log.warning(
-                                "ollama_base.gutter_abort model=%s idle=%.1fs",
-                                payload.get("model"), elapsed,
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                # Self-hosted Ollama rarely returns 429/503; Ollama Cloud
+                # can — same retry policy applies harmlessly to both.
+                retry_delay: float | None = None
+                try:
+                    async with client.stream(
+                        "POST", f"{url}/api/chat",
+                        json=payload, headers=_auth_headers(api_key),
+                    ) as resp:
+                        if (
+                            should_retry_status(resp.status_code)
+                            and attempt < MAX_RETRY_ATTEMPTS
+                        ):
+                            retry_delay = compute_retry_delay(
+                                attempt,
+                                parse_retry_after(resp.headers),
                             )
-                            if pending_next is not None:
-                                pending_next.cancel()
-                            yield StreamAborted(reason="gutter_timeout")
+                            log_retry(
+                                _log,
+                                operation="ollama_http",
+                                attempt=attempt,
+                                delay_seconds=retry_delay,
+                                status_code=resp.status_code,
+                                extra={"model": payload.get("model")},
+                            )
+                            # Fall through to outer ``await sleep``.
+                        elif resp.status_code in (401, 403):
+                            yield StreamError(error_code="invalid_api_key", message="Invalid API key")
                             return
-                        if pending_next is None:
-                            pending_next = asyncio.ensure_future(stream_iter.__anext__())
-                        done, _ = await asyncio.wait({pending_next}, timeout=budget)
-                        if not done:
-                            continue
-                        task = done.pop()
-                        pending_next = None
-                        try:
-                            line = task.result()
-                        except StopAsyncIteration:
-                            break
-                        line_start = time.monotonic()
-                        slow_fired = False
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            chunk = json.loads(line)
-                        except json.JSONDecodeError:
-                            _log.warning("Skipping malformed NDJSON: %s", line)
-                            continue
-                        if settings.inference_logging:
-                            msg = chunk.get("message") or {}
-                            tcs = msg.get("tool_calls") or []
-                            _log.info(
-                                "ollama_base.chunk model=%s done=%s done_reason=%s "
-                                "content_chars=%d thinking_chars=%d tool_calls=%d",
-                                payload.get("model"),
-                                bool(chunk.get("done")),
-                                chunk.get("done_reason"),
-                                len(msg.get("content") or ""),
-                                len(msg.get("thinking") or ""),
-                                len(tcs),
+                        elif should_retry_status(resp.status_code):
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=(
+                                    f"Upstream returned {resp.status_code}; "
+                                    f"gave up after {MAX_RETRY_ATTEMPTS + 1} attempts"
+                                ),
                             )
-                            if tcs:
-                                for _tc in tcs:
-                                    _fn = _tc.get("function") or {}
-                                    _log.info(
-                                        "ollama_base.chunk.tool_call model=%s name=%s "
-                                        "args_chars=%d",
-                                        payload.get("model"),
-                                        _fn.get("name"),
-                                        len(json.dumps(_fn.get("arguments") or {})),
+                            return
+                        elif resp.status_code != 200:
+                            body = await resp.aread()
+                            detail = body.decode("utf-8", errors="replace")[:500]
+                            _log.error("Upstream %d for model %s: %s",
+                                       resp.status_code, payload.get("model"), detail)
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=f"Upstream returned {resp.status_code}: {detail}",
+                            )
+                            return
+                        else:
+                            # 200 — process the NDJSON body. Once we begin
+                            # yielding stream events, no further retry is
+                            # safe (partial tokens may already be in the
+                            # user's UI).
+                            try:
+                                stream_iter = resp.aiter_lines().__aiter__()
+                                line_start = time.monotonic()
+                                slow_fired = False
+                                while True:
+                                    elapsed = time.monotonic() - line_start
+                                    budget = (
+                                        GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                                        else GUTTER_SLOW_SECONDS - elapsed
                                     )
-                        if chunk.get("done"):
-                            seen_done = True
-                            done_reason = chunk.get("done_reason")
-                            if done_reason and done_reason not in ("stop", "length"):
-                                _log.info(
-                                    "ollama_base.done_reason model=%s reason=%s",
-                                    payload.get("model"), done_reason,
-                                )
-                            if _is_refusal_reason(done_reason):
-                                msg = chunk.get("message", {})
-                                yield StreamRefused(
-                                    reason=done_reason,
-                                    refusal_text=msg.get("refusal") or None,
-                                )
-                                return
-                            yield StreamDone(
-                                input_tokens=chunk.get("prompt_eval_count"),
-                                output_tokens=chunk.get("eval_count"),
-                            )
-                            break
-                        message = chunk.get("message", {})
-                        thinking = message.get("thinking", "")
-                        if thinking:
-                            yield ThinkingDelta(delta=thinking)
-                        content = message.get("content", "")
-                        if content:
-                            yield ContentDelta(delta=content)
-                        for tc in message.get("tool_calls", []):
-                            fn = tc.get("function", {})
-                            yield ToolCallEvent(
-                                id=f"call_{uuid4().hex[:12]}",
-                                name=fn.get("name", ""),
-                                arguments=json.dumps(fn.get("arguments", {})),
-                            )
-            except asyncio.CancelledError:
-                if pending_next is not None and not pending_next.done():
-                    pending_next.cancel()
-                _log.warning("Stream cancelled mid-flight (model=%s)",
-                             payload.get("model"))
-                raise
-            except httpx.ConnectError:
-                yield StreamError(error_code="provider_unavailable", message="Connection failed")
-                return
-        if not seen_done:
-            yield StreamDone()
+                                    if budget <= 0:
+                                        if not slow_fired:
+                                            _log.info(
+                                                "ollama_base.gutter_slow model=%s idle=%.1fs",
+                                                payload.get("model"), elapsed,
+                                            )
+                                            yield StreamSlow()
+                                            slow_fired = True
+                                            continue
+                                        _log.warning(
+                                            "ollama_base.gutter_abort model=%s idle=%.1fs",
+                                            payload.get("model"), elapsed,
+                                        )
+                                        if pending_next is not None:
+                                            pending_next.cancel()
+                                        yield StreamAborted(reason="gutter_timeout")
+                                        return
+                                    if pending_next is None:
+                                        pending_next = asyncio.ensure_future(stream_iter.__anext__())
+                                    done, _ = await asyncio.wait({pending_next}, timeout=budget)
+                                    if not done:
+                                        continue
+                                    task = done.pop()
+                                    pending_next = None
+                                    try:
+                                        line = task.result()
+                                    except StopAsyncIteration:
+                                        break
+                                    line_start = time.monotonic()
+                                    slow_fired = False
+                                    line = line.strip()
+                                    if not line:
+                                        continue
+                                    try:
+                                        chunk = json.loads(line)
+                                    except json.JSONDecodeError:
+                                        _log.warning("Skipping malformed NDJSON: %s", line)
+                                        continue
+                                    if settings.inference_logging:
+                                        msg = chunk.get("message") or {}
+                                        tcs = msg.get("tool_calls") or []
+                                        _log.info(
+                                            "ollama_base.chunk model=%s done=%s done_reason=%s "
+                                            "content_chars=%d thinking_chars=%d tool_calls=%d",
+                                            payload.get("model"),
+                                            bool(chunk.get("done")),
+                                            chunk.get("done_reason"),
+                                            len(msg.get("content") or ""),
+                                            len(msg.get("thinking") or ""),
+                                            len(tcs),
+                                        )
+                                        if tcs:
+                                            for _tc in tcs:
+                                                _fn = _tc.get("function") or {}
+                                                _log.info(
+                                                    "ollama_base.chunk.tool_call model=%s name=%s "
+                                                    "args_chars=%d",
+                                                    payload.get("model"),
+                                                    _fn.get("name"),
+                                                    len(json.dumps(_fn.get("arguments") or {})),
+                                                )
+                                    if chunk.get("done"):
+                                        seen_done = True
+                                        done_reason = chunk.get("done_reason")
+                                        if done_reason and done_reason not in ("stop", "length"):
+                                            _log.info(
+                                                "ollama_base.done_reason model=%s reason=%s",
+                                                payload.get("model"), done_reason,
+                                            )
+                                        if _is_refusal_reason(done_reason):
+                                            msg = chunk.get("message", {})
+                                            yield StreamRefused(
+                                                reason=done_reason,
+                                                refusal_text=msg.get("refusal") or None,
+                                            )
+                                            return
+                                        yield StreamDone(
+                                            input_tokens=chunk.get("prompt_eval_count"),
+                                            output_tokens=chunk.get("eval_count"),
+                                        )
+                                        break
+                                    message = chunk.get("message", {})
+                                    thinking = message.get("thinking", "")
+                                    if thinking:
+                                        yield ThinkingDelta(delta=thinking)
+                                    content = message.get("content", "")
+                                    if content:
+                                        yield ContentDelta(delta=content)
+                                    for tc in message.get("tool_calls", []):
+                                        fn = tc.get("function", {})
+                                        yield ToolCallEvent(
+                                            id=f"call_{uuid4().hex[:12]}",
+                                            name=fn.get("name", ""),
+                                            arguments=json.dumps(fn.get("arguments", {})),
+                                        )
+                            except asyncio.CancelledError:
+                                if pending_next is not None and not pending_next.done():
+                                    pending_next.cancel()
+                                _log.warning("Stream cancelled mid-flight (model=%s)",
+                                             payload.get("model"))
+                                raise
+                            if not seen_done:
+                                yield StreamDone()
+                            return
+                except httpx.ConnectError:
+                    yield StreamError(error_code="provider_unavailable", message="Connection failed")
+                    return
+
+                # Retry path: 429/503 with attempts remaining set retry_delay.
+                # Sleep with the stream context closed.
+                assert retry_delay is not None
+                await asyncio.sleep(retry_delay)
 
 
 # ----- adapter sub-router (test + diagnostics) -----

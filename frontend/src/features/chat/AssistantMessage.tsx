@@ -281,7 +281,7 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
             </div>
           </div>
         )}
-        {!isStreaming && effectiveContent && (
+        {!isStreaming && (effectiveContent || status === 'aborted') && (
           <>
             <div className="mt-2.5 flex gap-3 border-t border-white/6 pt-2">
               <button type="button" onClick={handleCopy}

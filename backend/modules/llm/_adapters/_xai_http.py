@@ -18,6 +18,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from PIL import Image
 from pydantic import BaseModel
 
+from backend._retry import (
+    MAX_RETRY_ATTEMPTS,
+    compute_retry_delay,
+    log_retry,
+    parse_retry_after,
+    should_retry_status,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -365,7 +372,6 @@ class XaiHttpAdapter(BaseAdapter):
         if request.cache_hint:
             headers["x-grok-conv-id"] = request.cache_hint
 
-        acc = _ToolCallAccumulator()
         seen_done = False
         pending_next: asyncio.Task | None = None
 
@@ -377,107 +383,141 @@ class XaiHttpAdapter(BaseAdapter):
             )
 
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            try:
-                async with client.stream(
-                    "POST", f"{url}/chat/completions",
-                    json=payload, headers=headers,
-                ) as resp:
-                    if resp.status_code in (401, 403):
-                        yield StreamError(
-                            error_code="invalid_api_key",
-                            message="xAI rejected the API key",
-                        )
-                        return
-                    if resp.status_code == 429:
-                        yield StreamError(
-                            error_code="provider_unavailable",
-                            message="xAI rate limit hit",
-                        )
-                        return
-                    if resp.status_code != 200:
-                        body = await resp.aread()
-                        detail = body.decode("utf-8", errors="replace")[:500]
-                        _log.error("xai_http upstream %d: %s",
-                                   resp.status_code, detail)
-                        yield StreamError(
-                            error_code="provider_unavailable",
-                            message=f"xAI returned {resp.status_code}: {detail}",
-                        )
-                        return
-
-                    stream_iter = resp.aiter_lines().__aiter__()
-                    line_start = time.monotonic()
-                    slow_fired = False
-
-                    while True:
-                        elapsed = time.monotonic() - line_start
-                        budget = (
-                            GUTTER_ABORT_SECONDS - elapsed if slow_fired
-                            else GUTTER_SLOW_SECONDS - elapsed
-                        )
-                        if budget <= 0:
-                            if not slow_fired:
-                                _log.info(
-                                    "xai_http.gutter_slow model=%s idle=%.1fs",
-                                    payload.get("model"), elapsed,
-                                )
-                                yield StreamSlow()
-                                slow_fired = True
-                                continue
-                            _log.warning(
-                                "xai_http.gutter_abort model=%s idle=%.1fs",
-                                payload.get("model"), elapsed,
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                # Re-init per attempt — retries only happen before any
+                # stream event has been yielded, so it is safe to reset.
+                acc = _ToolCallAccumulator()
+                retry_delay: float | None = None
+                try:
+                    async with client.stream(
+                        "POST", f"{url}/chat/completions",
+                        json=payload, headers=headers,
+                    ) as resp:
+                        if (
+                            should_retry_status(resp.status_code)
+                            and attempt < MAX_RETRY_ATTEMPTS
+                        ):
+                            retry_delay = compute_retry_delay(
+                                attempt,
+                                parse_retry_after(resp.headers),
                             )
-                            if pending_next is not None:
-                                pending_next.cancel()
-                            yield StreamAborted(reason="gutter_timeout")
+                            log_retry(
+                                _log,
+                                operation="xai_http",
+                                attempt=attempt,
+                                delay_seconds=retry_delay,
+                                status_code=resp.status_code,
+                                extra={"model": payload.get("model")},
+                            )
+                            # Fall through to outer ``await sleep``.
+                        elif resp.status_code in (401, 403):
+                            yield StreamError(
+                                error_code="invalid_api_key",
+                                message="xAI rejected the API key",
+                            )
                             return
-                        if pending_next is None:
-                            pending_next = asyncio.ensure_future(
-                                stream_iter.__anext__(),
+                        elif should_retry_status(resp.status_code):
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=(
+                                    f"xAI returned {resp.status_code}; "
+                                    f"gave up after {MAX_RETRY_ATTEMPTS + 1} attempts"
+                                ),
                             )
-                        done, _ = await asyncio.wait(
-                            {pending_next}, timeout=budget,
-                        )
-                        if not done:
-                            continue
-                        task = done.pop()
-                        pending_next = None
-                        try:
-                            line = task.result()
-                        except StopAsyncIteration:
-                            break
-                        line_start = time.monotonic()
-                        slow_fired = False
+                            return
+                        elif resp.status_code != 200:
+                            body = await resp.aread()
+                            detail = body.decode("utf-8", errors="replace")[:500]
+                            _log.error("xai_http upstream %d: %s",
+                                       resp.status_code, detail)
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=f"xAI returned {resp.status_code}: {detail}",
+                            )
+                            return
+                        else:
+                            # 200 — process the SSE body. Once we begin
+                            # yielding stream events, no further retry is
+                            # safe (partial tokens may already be in the
+                            # user's UI).
+                            try:
+                                stream_iter = resp.aiter_lines().__aiter__()
+                                line_start = time.monotonic()
+                                slow_fired = False
 
-                        parsed = _parse_sse_line(line)
-                        if parsed is None:
-                            continue
-                        if parsed is _SSE_DONE:
-                            break
+                                while True:
+                                    elapsed = time.monotonic() - line_start
+                                    budget = (
+                                        GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                                        else GUTTER_SLOW_SECONDS - elapsed
+                                    )
+                                    if budget <= 0:
+                                        if not slow_fired:
+                                            _log.info(
+                                                "xai_http.gutter_slow model=%s idle=%.1fs",
+                                                payload.get("model"), elapsed,
+                                            )
+                                            yield StreamSlow()
+                                            slow_fired = True
+                                            continue
+                                        _log.warning(
+                                            "xai_http.gutter_abort model=%s idle=%.1fs",
+                                            payload.get("model"), elapsed,
+                                        )
+                                        if pending_next is not None:
+                                            pending_next.cancel()
+                                        yield StreamAborted(reason="gutter_timeout")
+                                        return
+                                    if pending_next is None:
+                                        pending_next = asyncio.ensure_future(
+                                            stream_iter.__anext__(),
+                                        )
+                                    done, _ = await asyncio.wait(
+                                        {pending_next}, timeout=budget,
+                                    )
+                                    if not done:
+                                        continue
+                                    task = done.pop()
+                                    pending_next = None
+                                    try:
+                                        line = task.result()
+                                    except StopAsyncIteration:
+                                        break
+                                    line_start = time.monotonic()
+                                    slow_fired = False
 
-                        for event in _chunk_to_events(parsed, acc):
-                            if isinstance(event, StreamDone):
-                                seen_done = True
-                            yield event
-                            if isinstance(event, (StreamDone,
-                                                   StreamRefused,
-                                                   StreamError)):
-                                return
+                                    parsed = _parse_sse_line(line)
+                                    if parsed is None:
+                                        continue
+                                    if parsed is _SSE_DONE:
+                                        break
 
-            except asyncio.CancelledError:
-                if pending_next is not None and not pending_next.done():
-                    pending_next.cancel()
-                raise
-            except httpx.ConnectError:
-                yield StreamError(
-                    error_code="provider_unavailable",
-                    message="Cannot connect to xAI",
-                )
-                return
+                                    for event in _chunk_to_events(parsed, acc):
+                                        if isinstance(event, StreamDone):
+                                            seen_done = True
+                                        yield event
+                                        if isinstance(event, (StreamDone,
+                                                               StreamRefused,
+                                                               StreamError)):
+                                            return
+                            except asyncio.CancelledError:
+                                if pending_next is not None and not pending_next.done():
+                                    pending_next.cancel()
+                                raise
+                            if not seen_done:
+                                yield StreamDone()
+                            return
+                except httpx.ConnectError:
+                    yield StreamError(
+                        error_code="provider_unavailable",
+                        message="Cannot connect to xAI",
+                    )
+                    return
 
-        if not seen_done:
-            yield StreamDone()
+                # Retry path: 429/503 with attempts remaining set retry_delay.
+                # Sleep with the stream context closed.
+                assert retry_delay is not None
+                await asyncio.sleep(retry_delay)
 
     async def image_groups(self, connection: ResolvedConnection) -> list[str]:
         # xAI offers exactly one image group today.

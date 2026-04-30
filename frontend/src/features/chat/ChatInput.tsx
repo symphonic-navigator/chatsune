@@ -83,8 +83,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   }, [text])
 
   useEffect(() => {
-    if (!isStreaming) textareaRef.current?.focus()
-  }, [isStreaming])
+    // Skip auto-focus while a voice conversation is active — focusing the
+    // textarea pops the on-screen keyboard on mobile, which is hostile during
+    // hands-free voice mode. Treat an unset voicePhase as idle.
+    if (!isStreaming && (voicePhase ?? 'idle') === 'idle') textareaRef.current?.focus()
+  }, [isStreaming, voicePhase])
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim()

@@ -42,13 +42,19 @@ function UserBubbleBase({ content, attachments, visionDescriptionsUsed, liveVisi
   const [editText, setEditText] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // One-shot focus + caret-to-end on entering edit mode; keystrokes must not reset the cursor.
+  useEffect(() => {
+    if (!isEditing || !textareaRef.current) return
+    const el = textareaRef.current
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [isEditing])
+
   useEffect(() => {
     if (!isEditing || !textareaRef.current) return
     const el = textareaRef.current
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-    el.focus()
-    el.setSelectionRange(el.value.length, el.value.length)
   }, [isEditing, editText])
 
   const startEdit = useCallback(() => { setEditText(content); setIsEditing(true) }, [content])

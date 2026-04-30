@@ -22,7 +22,6 @@ import asyncio
 import json
 import logging
 import os
-import random
 import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
@@ -30,6 +29,13 @@ from uuid import uuid4
 import httpx
 from fastapi import APIRouter, Depends
 
+from backend._retry import (
+    MAX_RETRY_ATTEMPTS,
+    compute_retry_delay,
+    log_retry,
+    parse_retry_after,
+    should_retry_status,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -56,15 +62,10 @@ GUTTER_ABORT_SECONDS: float = float(
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 _TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 
-# Retry policy for transient 429s. OpenRouter routes between many
-# upstream providers; an individual provider can briefly rate-limit
-# even when the user's account has no global ceiling. Total worst-case
-# back-off across four attempts is roughly 1+2+4+8 ≈ 15s, capped per
-# step at ``_RETRY_MAX_DELAY_SECONDS``.
-_MAX_RETRY_ATTEMPTS = 4
-_RETRY_BASE_DELAY_SECONDS = 1.0
-_RETRY_MAX_DELAY_SECONDS = 16.0
-_RETRY_JITTER_FRACTION = 0.25
+# Retry policy for transient 429 / 503s lives in ``backend._retry``.
+# OpenRouter routes between many upstream providers; an individual
+# provider can briefly rate-limit (429) or be momentarily unavailable
+# (503) even when the user's account has no global ceiling.
 
 _OPENROUTER_REFERER = "https://chatsune.app"
 _OPENROUTER_X_TITLE = "Chatsune"
@@ -311,39 +312,6 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     return payload
 
 
-def _retry_after_seconds(resp: httpx.Response) -> float | None:
-    """Parse a numeric ``Retry-After`` response header into seconds.
-
-    HTTP allows the header to be either an integer (or float) second
-    count or an HTTP date. We honour the numeric form; date form is
-    rare on OpenRouter and falls back to the exponential delay below.
-    """
-    raw = resp.headers.get("Retry-After")
-    if raw is None:
-        return None
-    try:
-        seconds = float(raw.strip())
-    except (ValueError, AttributeError):
-        return None
-    if seconds < 0:
-        return None
-    return min(seconds, _RETRY_MAX_DELAY_SECONDS)
-
-
-def _retry_delay_seconds(resp: httpx.Response, attempt: int) -> float:
-    """Pick a delay before the next retry.
-
-    Honours upstream ``Retry-After`` if present, otherwise falls back to
-    ``base * 2**attempt`` with ±jitter, hard-capped at the maximum.
-    """
-    retry_after = _retry_after_seconds(resp)
-    if retry_after is not None:
-        return retry_after
-    base = _RETRY_BASE_DELAY_SECONDS * (2 ** attempt)
-    jitter = base * _RETRY_JITTER_FRACTION * (random.random() * 2 - 1)
-    return max(0.1, min(base + jitter, _RETRY_MAX_DELAY_SECONDS))
-
-
 class OpenRouterHttpAdapter(BaseAdapter):
     adapter_type = "openrouter_http"
     display_name = "OpenRouter"
@@ -423,7 +391,7 @@ class OpenRouterHttpAdapter(BaseAdapter):
             )
 
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            for attempt in range(_MAX_RETRY_ATTEMPTS):
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Set inside the inner block when we decide to retry.
                 # Read after the inner ``async with`` exits so we can
                 # sleep with the connection already closed.
@@ -433,13 +401,21 @@ class OpenRouterHttpAdapter(BaseAdapter):
                         "POST", f"{url}/chat/completions",
                         json=payload, headers=headers,
                     ) as resp:
-                        if resp.status_code == 429 and attempt < _MAX_RETRY_ATTEMPTS - 1:
-                            retry_delay = _retry_delay_seconds(resp, attempt)
-                            _log.info(
-                                "openrouter_http.rate_limit_retry "
-                                "attempt=%d/%d delay=%.1fs model=%s",
-                                attempt + 1, _MAX_RETRY_ATTEMPTS,
-                                retry_delay, payload.get("model"),
+                        if (
+                            should_retry_status(resp.status_code)
+                            and attempt < MAX_RETRY_ATTEMPTS
+                        ):
+                            retry_delay = compute_retry_delay(
+                                attempt,
+                                parse_retry_after(resp.headers),
+                            )
+                            log_retry(
+                                _log,
+                                operation="openrouter_http",
+                                attempt=attempt,
+                                delay_seconds=retry_delay,
+                                status_code=resp.status_code,
+                                extra={"model": payload.get("model")},
                             )
                             # Fall through to the outer ``await sleep``.
                         elif resp.status_code in (401, 403):
@@ -448,12 +424,13 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                 message="OpenRouter rejected the API key",
                             )
                             return
-                        elif resp.status_code == 429:
+                        elif should_retry_status(resp.status_code):
                             yield StreamError(
                                 error_code="provider_unavailable",
                                 message=(
-                                    f"OpenRouter rate limit hit; "
-                                    f"gave up after {_MAX_RETRY_ATTEMPTS} attempts"
+                                    f"OpenRouter returned "
+                                    f"{resp.status_code}; gave up after "
+                                    f"{MAX_RETRY_ATTEMPTS + 1} attempts"
                                 ),
                             )
                             return
