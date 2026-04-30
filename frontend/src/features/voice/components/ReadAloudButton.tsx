@@ -139,10 +139,27 @@ async function runReadAloud(
     onInlineTrigger: (event) => emitInlineTrigger(event, `read-aloud-${messageId}`),
   })
 
-  // Pre-pipe the content through a fresh ResponseTagBuffer so the same
-  // tag-detection / placeholder logic that the live stream uses also runs
-  // here. The map is shared with parseForSpeech below: sentence-bound tags
-  // get parked, claimed by the matching SpeechSegment, and fired at
+  const cached = cacheGet(cacheKey)
+  if (cached) {
+    // Cache hit: cached segments already carry their `effects` from the
+    // original parseForSpeech run, so audioPlayback's onInlineTrigger
+    // callback (wired above) will re-fire them in lockstep with playback.
+    // We must NOT run the buffer pre-pass here — process() would allocate
+    // fresh effectIds, re-run every plugin's sideEffect (e.g. Lovense
+    // hardware calls) and then flush() would emit a second set of inline
+    // triggers on the bus, in addition to the segment-bound replay below.
+    setActiveReader(messageId, 'playing')
+    for (const { audio, segment } of cached.segments) {
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation), undefined, 'read_aloud')
+    }
+    audioPlayback.closeStream()
+    return
+  }
+
+  // Cache miss: pipe the content through a fresh ResponseTagBuffer so the
+  // same tag-detection / placeholder logic that the live stream uses also
+  // runs here. The map is shared with parseForSpeech below: sentence-bound
+  // tags get parked, claimed by the matching SpeechSegment, and fired at
   // segment-start; tags outside any speakable segment fall through to the
   // immediate-emit path via emitInlineTrigger when buffer.flush() runs.
   //
@@ -158,23 +175,6 @@ async function runReadAloud(
     (trigger) => emitInlineTrigger(trigger, `read-aloud-${messageId}`),
   )
   const sanitisedContent = buffer.process(content)
-
-  const cached = cacheGet(cacheKey)
-  if (cached) {
-    // Cached segments already carry their `effects` from the original
-    // parseForSpeech run, so audioPlayback will fire onInlineTrigger as
-    // each segment plays. Anything still in `pending` here is therefore
-    // an orphan: drain it via flush() so those triggers still fire
-    // (immediately, not segment-synced) and the map ends up empty.
-    buffer.flush()
-    setActiveReader(messageId, 'playing')
-    for (const { audio, segment } of cached.segments) {
-      audioPlayback.enqueue(audio, applyModulation(segment, modulation), undefined, 'read_aloud')
-    }
-    audioPlayback.closeStream()
-    return
-  }
-
   const parsed = parseForSpeech(sanitisedContent, mode, supportsExpressive, pending, 'read_aloud')
   // Drain any pending entries that parseForSpeech did not claim (text was
   // stripped before reaching a speakable segment, or no speakable segment
