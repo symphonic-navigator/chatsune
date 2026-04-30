@@ -58,11 +58,12 @@ async def assemble(
     """Assemble the full XML system prompt for LLM consumption.
 
     ``supports_reasoning`` and ``reasoning_enabled_for_call`` drive the
-    Soft-CoT visibility decision. ``tools_enabled`` gates integration
-    prompt extensions: when False, the instructions that tell the model
-    how to invoke integration tools are omitted, matching the empty
-    tool list the orchestrator sends. Defaults preserve legacy behaviour
-    for callers that don't know about these layers (preview, scripts).
+    Soft-CoT visibility decision. ``tools_enabled`` gates only the
+    prompt extensions of integrations that provide tools — those
+    instructions are misleading when no tools are callable. Tool-less
+    integrations (e.g. voice providers, screen effects) inject their
+    extensions regardless. Defaults preserve legacy behaviour for
+    callers that don't know about these layers (preview, scripts).
     """
     from backend.modules.chat._soft_cot import (
         SOFT_COT_INSTRUCTIONS,
@@ -120,22 +121,12 @@ async def assemble(
     # otherwise its instructions on how to call tools would be misleading.
     # Extensions for tool-less integrations (xai_voice, screen_effects, ...)
     # are always injected when the integration is active.
-    from backend.modules.integrations import (
-        get_enabled_integration_ids,
-        get_integration,
+    from backend.modules.integrations import get_integration_prompt_extensions
+    extensions = await get_integration_prompt_extensions(
+        user_id, persona_id, tools_enabled=tools_enabled,
     )
-    enabled_ids = await get_enabled_integration_ids(user_id, persona_id)
-    extensions: list[str] = []
-    for iid in enabled_ids:
-        defn = get_integration(iid)
-        if not defn or not defn.system_prompt_template:
-            continue
-        has_tools = bool(defn.tool_definitions)
-        if has_tools and not tools_enabled:
-            continue
-        extensions.append(defn.system_prompt_template)
     if extensions:
-        parts.append("\n\n".join(extensions))
+        parts.append(extensions)
 
     if not tools_enabled:
         # Without an explicit "no tools available" instruction, the model

@@ -52,6 +52,7 @@ class IntegrationInlineTriggerEvent(BaseModel):
     and DTO live in shared/ so a future backend audit-emit path is a
     non-breaking addition.
     """
+    type: Literal["integration.inline.trigger"] = "integration.inline.trigger"
     integration_id: str
     command: str
     args: list[str]

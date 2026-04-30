@@ -141,14 +141,25 @@ async def get_integration_tools(
 async def get_integration_prompt_extensions(
     user_id: str,
     persona_id: str | None = None,
+    tools_enabled: bool = True,
 ) -> str | None:
-    """Return combined system prompt extension for all active integrations."""
+    """Return combined system prompt extension for all active integrations.
+
+    When ``tools_enabled`` is False, integrations that have their own
+    ``tool_definitions`` are skipped — their prompt extensions explain
+    how to call tools that are no longer reachable, so injecting them
+    would mislead the model.
+    """
     enabled_ids = await get_enabled_integration_ids(user_id, persona_id)
     parts: list[str] = []
     for iid in enabled_ids:
         defn = get_integration(iid)
-        if defn and defn.system_prompt_template:
-            parts.append(defn.system_prompt_template)
+        if not defn or not defn.system_prompt_template:
+            continue
+        has_tools = bool(defn.tool_definitions)
+        if has_tools and not tools_enabled:
+            continue
+        parts.append(defn.system_prompt_template)
     return "\n\n".join(parts) if parts else None
 
 
