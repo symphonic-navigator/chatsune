@@ -11,13 +11,13 @@ interface Profile {
 }
 
 const PROFILE_FULL: Profile = {
-  count: 14,
-  spawnMs: 1400,
+  count: 40,
+  spawnMs: 2800,
   sizeMin: 22,
   sizeMax: 38,
   drift: 30,
-  riseMsMin: 1900,
-  riseMsMax: 2500,
+  riseMsMin: 2850,
+  riseMsMax: 3750,
 }
 
 const PROFILE_REDUCED: Profile = {
