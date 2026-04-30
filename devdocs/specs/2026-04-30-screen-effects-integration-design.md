@@ -257,7 +257,7 @@ export function ScreenEffectsOverlay() {
       if (trigger.integration_id !== 'screen_effect') return
       const payload = trigger.payload as { effect?: string; emojis?: string[] }
       if (payload.effect !== 'rising_emojis') return
-      const id = trigger.effectId ?? crypto.randomUUID()
+      const id = crypto.randomUUID()
       setActive((prev) => [
         ...prev,
         {
