@@ -14,6 +14,7 @@ import { useIntegrationsStore } from './store'
 import { useSecretsStore } from './secretsStore'
 import { getPlugin } from './registry'
 import type { IntegrationConfigField } from './types'
+import { registerCommand, unregisterCommand } from '../voice-commands'
 
 type PluginState = 'inactive' | 'active'
 const pluginStates = new Map<string, PluginState>()
@@ -53,8 +54,14 @@ function reconcileOne(integrationId: string): void {
 
   if (desired === 'active') {
     plugin.onActivate?.()
+    for (const spec of plugin.voiceCommands ?? []) {
+      registerCommand({ ...spec, source: `integration:${integrationId}` })
+    }
   } else {
     plugin.onDeactivate?.()
+    for (const spec of plugin.voiceCommands ?? []) {
+      unregisterCommand(spec.trigger)
+    }
   }
   pluginStates.set(integrationId, desired)
 }

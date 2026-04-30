@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import type { CommandSpec } from '../voice-commands'
 
 /** Option for select/dropdown fields with dynamic sources. */
 export interface Option {
@@ -134,6 +135,14 @@ export interface IntegrationPlugin {
 
   /** Called when the integration is disabled or its secrets are cleared. */
   onDeactivate?(): void
+
+  /**
+   * Voice commands this integration provides. Registered when the plugin
+   * activates (with source `integration:${id}`) and unregistered when it
+   * deactivates. The lifecycle code overwrites the `source` field so
+   * plugins cannot misrepresent their origin.
+   */
+  voiceCommands?: CommandSpec[]
 }
 
 /** Frontend-bus event payload for INTEGRATION_INLINE_TRIGGER.
