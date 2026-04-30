@@ -116,15 +116,28 @@ async def assemble(
             parts.append(memory_xml)
 
     # Layer: Integration prompt extensions (active integrations for this persona).
-    # Skipped when the session has tools disabled — the tool list sent to the
-    # LLM is empty in that case, and the prompt extensions instruct the model
-    # how to call tools it no longer has.
-    if tools_enabled:
-        from backend.modules.integrations import get_integration_prompt_extensions
-        integration_prompt = await get_integration_prompt_extensions(user_id, persona_id)
-        if integration_prompt:
-            parts.append(integration_prompt)
-    else:
+    # An extension whose integration has tools is gated on tools_enabled —
+    # otherwise its instructions on how to call tools would be misleading.
+    # Extensions for tool-less integrations (xai_voice, screen_effects, ...)
+    # are always injected when the integration is active.
+    from backend.modules.integrations import (
+        get_enabled_integration_ids,
+        get_integration,
+    )
+    enabled_ids = await get_enabled_integration_ids(user_id, persona_id)
+    extensions: list[str] = []
+    for iid in enabled_ids:
+        defn = get_integration(iid)
+        if not defn or not defn.system_prompt_template:
+            continue
+        has_tools = bool(defn.tool_definitions)
+        if has_tools and not tools_enabled:
+            continue
+        extensions.append(defn.system_prompt_template)
+    if extensions:
+        parts.append("\n\n".join(extensions))
+
+    if not tools_enabled:
         # Without an explicit "no tools available" instruction, the model
         # answers "which tools do you have?" from its own training / the
         # prior assistant turns in the conversation history — where
