@@ -11,10 +11,25 @@ import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
 import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
-import { getActiveGroup } from './responseTaskGroup'
+import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
 import { useCockpitStore } from './cockpit/cockpitStore'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
+
+/**
+ * Flush the module-level active tag buffer if one exists, then null it out.
+ * Exported so cancellation paths (Group cancellation via barge / supersede /
+ * teardown / user-stop) can drain parked inline-trigger entries before the
+ * buffer reference is replaced. Without this, a stream cancelled before
+ * CHAT_STREAM_ENDED / CHAT_STREAM_ERROR would leak its parked entries when
+ * the next CHAT_STREAM_STARTED installs a fresh buffer.
+ */
+export function flushActiveTagBufferOnCancel(): void {
+  if (activeTagBuffer) {
+    activeTagBuffer.flush()
+    activeTagBuffer = null
+  }
+}
 
 // Module-level handler exported for unit testing. The hook wires this into
 // the event bus; tests call it directly without mounting a component.
@@ -453,8 +468,19 @@ export function useChatStream(sessionId: string | null) {
     const handleEvent = (event: BaseEvent) => handleChatEvent(event, sendMessage, sessionId)
 
     const unsub = eventBus.on('chat.*', handleEvent)
+    // A stream that gets cancelled (barge, supersede, user-stop, teardown)
+    // never reaches CHAT_STREAM_ENDED or CHAT_STREAM_ERROR, so the buffer
+    // flush in those handlers does not run. Subscribe to the active-group
+    // registry and flush whenever a Group transitions to `cancelled` so
+    // parked entries do not leak into the next stream's buffer.
+    const unsubGroup = subscribeActiveGroup((group) => {
+      if (group && group.state === 'cancelled') {
+        flushActiveTagBufferOnCancel()
+      }
+    })
     return () => {
       unsub()
+      unsubGroup()
     }
   }, [sessionId])
 }
