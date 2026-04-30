@@ -40,14 +40,24 @@ interface Props {
 
 /**
  * Renders one burst of rising emojis. Self-contained: appends spans to its
- * own container on mount, removes them on animationend, calls onDone after
- * the last particle finishes. Random parameters per particle are picked
- * here so persisted re-renders (which never invoke this component) cannot
- * differ visually from live ones.
+ * own container on mount, removes each particle when its animation ends
+ * (or via a safety timeout for jsdom / backgrounded-tab cases), and calls
+ * onDone after the last particle finishes. Random parameters per particle
+ * are picked here so persisted re-renders (which never invoke this
+ * component) cannot differ visually from live ones.
  */
 export function RisingEmojisEffect({ emojis, reduced, onDone }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const calledDoneRef = useRef(false)
+
+  // onDone is captured via a ref so identity changes from the parent
+  // (e.g. fresh `() => remove(e.id)` closure on every render) do NOT
+  // retrigger the spawn effect. Without this, every parent re-render
+  // would wipe live particles and re-spawn from scratch.
+  const onDoneRef = useRef(onDone)
+  useEffect(() => {
+    onDoneRef.current = onDone
+  }, [onDone])
 
   useEffect(() => {
     const container = containerRef.current
@@ -63,7 +73,7 @@ export function RisingEmojisEffect({ emojis, reduced, onDone }: Props) {
       remaining -= 1
       if (remaining <= 0 && !calledDoneRef.current) {
         calledDoneRef.current = true
-        onDone()
+        onDoneRef.current()
       }
     }
 
@@ -119,7 +129,7 @@ export function RisingEmojisEffect({ emojis, reduced, onDone }: Props) {
         container.removeChild(container.firstChild)
       }
     }
-  }, [emojis, reduced, onDone])
+  }, [emojis, reduced])
 
   return (
     <>
