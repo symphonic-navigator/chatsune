@@ -7,7 +7,7 @@
  * them directly from outside this module.
  */
 
-import { registerCommand } from './registry'
+import { registerCommand, unregisterCommand } from './registry'
 import { debugCommand } from './handlers/debug'
 
 export { tryDispatchCommand } from './dispatcher'
@@ -22,4 +22,13 @@ export type { CommandSpec, CommandResponse, DispatchResult } from './types'
  */
 export function registerCoreBuiltins(): void {
   registerCommand(debugCommand)
+}
+
+/**
+ * Unregister all core built-ins. Call from the cleanup of the same effect
+ * that registers them — this keeps the bootstrap symmetric and prevents
+ * StrictMode's dev-only double-invoke from throwing on re-register.
+ */
+export function unregisterCoreBuiltins(): void {
+  unregisterCommand(debugCommand.trigger)
 }

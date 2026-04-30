@@ -24,7 +24,7 @@ import ProjectsPage from "./app/pages/ProjectsPage"
 import HistoryPage from "./app/pages/HistoryPage"
 import KnowledgePage from "./app/pages/KnowledgePage"
 import { safeLocalStorage } from "./core/utils/safeStorage"
-import { registerCoreBuiltins } from "./features/voice-commands"
+import { registerCoreBuiltins, unregisterCoreBuiltins } from "./features/voice-commands"
 import { VoiceCommandDebugAlert } from "./app/components/VoiceCommandDebugAlert"
 
 
@@ -94,6 +94,7 @@ function AppRoutes() {
       unregisterSecrets()
       unregisterIntegrations()
       cleanupPluginLifecycle()
+      unregisterCoreBuiltins()
     }
   }, [isAuthenticated])
 
