@@ -450,7 +450,8 @@ body {
 .markdown-preview .katex .minner { color: inherit; }
 .markdown-preview .katex-display { margin: 0.75em 0; overflow-x: auto; }
 
-.voice-tag {
+.voice-tag,
+.integration-pill {
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
   font-size: 0.75em;
   padding: 0.05em 0.3em;
