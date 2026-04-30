@@ -8,12 +8,28 @@ import { sendMessage } from '../../core/websocket/connection'
 import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
 import type { ImageRefDto } from '../../core/api/images'
 import type { TimelineEntry } from '../../core/api/chat'
-import { ResponseTagBuffer } from '../integrations/responseTagProcessor'
+import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
+import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
-import { getActiveGroup } from './responseTaskGroup'
+import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
 import { useCockpitStore } from './cockpit/cockpitStore'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
+
+/**
+ * Flush the module-level active tag buffer if one exists, then null it out.
+ * Exported so cancellation paths (Group cancellation via barge / supersede /
+ * teardown / user-stop) can drain parked inline-trigger entries before the
+ * buffer reference is replaced. Without this, a stream cancelled before
+ * CHAT_STREAM_ENDED / CHAT_STREAM_ERROR would leak its parked entries when
+ * the next CHAT_STREAM_STARTED installs a fresh buffer.
+ */
+export function flushActiveTagBufferOnCancel(): void {
+  if (activeTagBuffer) {
+    activeTagBuffer.flush()
+    activeTagBuffer = null
+  }
+}
 
 // Module-level handler exported for unit testing. The hook wires this into
 // the event bus; tests call it directly without mounting a component.
@@ -29,12 +45,42 @@ export function handleChatEvent(
     case Topics.CHAT_STREAM_STARTED: {
       if (p.session_id !== sessionId) return
       getStore().startStreaming(event.correlation_id)
-      // Create tag buffer for this streaming session
+      // Create tag buffer for this streaming session.
       const enabledIds = useIntegrationsStore.getState().getEnabledIds()
       if (enabledIds.length > 0) {
-        activeTagBuffer = new ResponseTagBuffer((placeholder, replacement) => {
-          getStore().replaceInStreamingContent(placeholder, replacement)
-        })
+        // The active Group (created by ChatView before the WS send) carries
+        // the per-stream pendingEffectsMap and streamSource. The buffer must
+        // share both with the audio pipeline's parser so sentence-synced
+        // tags are claimed by the matching SpeechSegment instead of firing
+        // immediately. When no Group is active (e.g. server-initiated
+        // assistant turn before our send path runs), fall back to a fresh
+        // local map and `'text_only'` so the buffer still works in
+        // immediate-emit mode.
+        const activeGroup = getActiveGroup()
+        const fallbackMap = new Map<string, PendingEffect>()
+        const fallbackPillMap = new Map<string, string>()
+        const sharedMap =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? (activeGroup.pendingEffectsMap ?? fallbackMap)
+            : fallbackMap
+        const sharedPillMap =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? (activeGroup.renderedPillsMap ?? fallbackPillMap)
+            : fallbackPillMap
+        const streamSource: 'live_stream' | 'text_only' =
+          activeGroup && activeGroup.id === event.correlation_id
+            ? activeGroup.streamSource
+            : 'text_only'
+        const correlationId = event.correlation_id
+        activeTagBuffer = new ResponseTagBuffer(
+          (placeholder, replacement) => {
+            getStore().replaceInStreamingContent(placeholder, replacement)
+          },
+          streamSource,
+          sharedMap,
+          (trigger) => emitInlineTrigger(trigger, correlationId),
+          sharedPillMap,
+        )
       } else {
         activeTagBuffer = null
       }
@@ -301,6 +347,16 @@ export function handleChatEvent(
       })
       getStore().setWaitingForResponse(false)
 
+      // Flush the tag buffer here too: a stream that errors before its
+      // CHAT_STREAM_ENDED counterpart still has parked effects in the
+      // pending map, and dropping the buffer without flush() would lose
+      // those triggers entirely.
+      if (activeTagBuffer) {
+        const remainder = activeTagBuffer.flush()
+        if (remainder) getStore().appendStreamingContent(remainder)
+        activeTagBuffer = null
+      }
+
       if (errorCode === 'refusal') {
         getStore().setStreamingRefusalText(userMessage)
       }
@@ -418,8 +474,19 @@ export function useChatStream(sessionId: string | null) {
     const handleEvent = (event: BaseEvent) => handleChatEvent(event, sendMessage, sessionId)
 
     const unsub = eventBus.on('chat.*', handleEvent)
+    // A stream that gets cancelled (barge, supersede, user-stop, teardown)
+    // never reaches CHAT_STREAM_ENDED or CHAT_STREAM_ERROR, so the buffer
+    // flush in those handlers does not run. Subscribe to the active-group
+    // registry and flush whenever a Group transitions to `cancelled` so
+    // parked entries do not leak into the next stream's buffer.
+    const unsubGroup = subscribeActiveGroup((group) => {
+      if (group && group.state === 'cancelled') {
+        flushActiveTagBufferOnCancel()
+      }
+    })
     return () => {
       unsub()
+      unsubGroup()
     }
   }, [sessionId])
 }

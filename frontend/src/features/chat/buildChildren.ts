@@ -8,6 +8,7 @@ import { createStreamingSentencer } from '../voice/pipeline/streamingSentencer'
 import { useChatStore } from '../../core/store/chatStore'
 import type { NarratorMode, TTSEngine, VoicePreset } from '../voice/types'
 import type { VoiceModulation } from '../voice/pipeline/applyModulation'
+import type { PendingEffect } from '../integrations/responseTagProcessor'
 
 export type Mode = 'text' | 'voice'
 
@@ -27,6 +28,14 @@ export interface BuildChildrenOpts {
   sessionId: string
   mode: Mode
   voice?: VoiceBuildOpts
+  /** Per-stream parking lot for inline-trigger effects awaiting a sentence
+   *  boundary. Threaded into the sentencer's parser so sentence-bound
+   *  triggers can be claimed and stamped onto the matching SpeechSegment. */
+  pendingEffectsMap?: Map<string, PendingEffect>
+  /** Origin of the synth chunks emitted by this Group. Stamped onto every
+   *  inline-trigger event surfaced from this pipeline. Defaults to
+   *  `'live_stream'` for the active voice-mode chat reply. */
+  streamSource?: 'live_stream' | 'read_aloud'
 }
 
 /**
@@ -37,6 +46,7 @@ export interface BuildChildrenOpts {
  */
 export function buildChildren(opts: BuildChildrenOpts): GroupChild[] {
   const { correlationId, sessionId, mode, voice } = opts
+  const streamSource = opts.streamSource ?? 'live_stream'
 
   const children: GroupChild[] = [
     createChatStoreSink({
@@ -54,6 +64,8 @@ export function buildChildren(opts: BuildChildrenOpts): GroupChild[] {
     const sentencer = createStreamingSentencer(
       voice.narratorMode,
       voice.supportsExpressiveMarkup ?? false,
+      opts.pendingEffectsMap ?? null,
+      streamSource,
     )
 
     const synth = createSynthChild({
@@ -63,6 +75,7 @@ export function buildChildren(opts: BuildChildrenOpts): GroupChild[] {
       narratorVoice: voice.narratorVoice,
       mode: voice.narratorMode,
       modulation: voice.modulation,
+      streamSource,
     })
 
     const pauser = createPauserChild({

@@ -9,6 +9,8 @@ import { readAloudCacheKey } from '../pipeline/readAloudCacheKey'
 import type { NarratorMode, SpeechSegment, VoicePreset } from '../types'
 import { useSecretsStore } from '../../integrations/secretsStore'
 import { useIntegrationsStore } from '../../integrations/store'
+import { ResponseTagBuffer, type PendingEffect } from '../../integrations/responseTagProcessor'
+import { emitInlineTrigger } from '../../integrations/inlineTriggerBus'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { applyModulation, resolveModulation, type VoiceModulation } from '../pipeline/applyModulation'
@@ -130,19 +132,55 @@ async function runReadAloud(
     gapMs,
     onSegmentStart: () => { if (activeMessageId === messageId) setActiveReader(messageId, 'playing') },
     onFinished: () => { if (activeMessageId === messageId) setActiveReader(null, 'idle') },
+    // Re-emit any segment-bound inline triggers parked by the pre-pass below.
+    // The trigger fires in lockstep with TTS playback start, mirroring the
+    // live-stream path. `event.source` is already stamped 'read_aloud' by
+    // audioPlayback from the queue entry's source field.
+    onInlineTrigger: (event) => emitInlineTrigger(event, `read-aloud-${messageId}`),
   })
 
   const cached = cacheGet(cacheKey)
   if (cached) {
+    // Cache hit: cached segments already carry their `effects` from the
+    // original parseForSpeech run, so audioPlayback's onInlineTrigger
+    // callback (wired above) will re-fire them in lockstep with playback.
+    // We must NOT run the buffer pre-pass here — process() would allocate
+    // fresh effectIds, re-run every plugin's sideEffect (e.g. Lovense
+    // hardware calls) and then flush() would emit a second set of inline
+    // triggers on the bus, in addition to the segment-bound replay below.
     setActiveReader(messageId, 'playing')
     for (const { audio, segment } of cached.segments) {
-      audioPlayback.enqueue(audio, applyModulation(segment, modulation))
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation), undefined, 'read_aloud')
     }
     audioPlayback.closeStream()
     return
   }
 
-  const parsed = parseForSpeech(content, mode, supportsExpressive)
+  // Cache miss: pipe the content through a fresh ResponseTagBuffer so the
+  // same tag-detection / placeholder logic that the live stream uses also
+  // runs here. The map is shared with parseForSpeech below: sentence-bound
+  // tags get parked, claimed by the matching SpeechSegment, and fired at
+  // segment-start; tags outside any speakable segment fall through to the
+  // immediate-emit path via emitInlineTrigger when buffer.flush() runs.
+  //
+  // Note the ordering: process(...) parks tags, parseForSpeech below claims
+  // them off the shared map, then flush() emits any orphan that parser did
+  // not claim. Calling flush() before parseForSpeech would drain the map
+  // first and defeat sentence-sync.
+  const pending = new Map<string, PendingEffect>()
+  const buffer = new ResponseTagBuffer(
+    () => {}, // onTagResolved no-op: read-aloud renders from already-rendered HTML, not stream tokens.
+    'read_aloud',
+    pending,
+    (trigger) => emitInlineTrigger(trigger, `read-aloud-${messageId}`),
+  )
+  const sanitisedContent = buffer.process(content)
+  const parsed = parseForSpeech(sanitisedContent, mode, supportsExpressive, pending, 'read_aloud')
+  // Drain any pending entries that parseForSpeech did not claim (text was
+  // stripped before reaching a speakable segment, or no speakable segment
+  // existed at all). Also returns any unterminated-tag remainder, which
+  // is irrelevant for read-aloud (full message in, no truncation).
+  buffer.flush()
   if (parsed.length === 0) { setActiveReader(null, 'idle'); return }
 
   setActiveReader(messageId, 'synthesising')
@@ -155,7 +193,7 @@ async function runReadAloud(
       const audio = await tts.synthesise(segment.text, voice)
       if (activeMessageId !== messageId) return
       results.push({ audio, segment })
-      audioPlayback.enqueue(audio, applyModulation(segment, modulation))
+      audioPlayback.enqueue(audio, applyModulation(segment, modulation), undefined, 'read_aloud')
     }
     cachePut(cacheKey, { segments: results })
     audioPlayback.closeStream()

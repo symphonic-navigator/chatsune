@@ -1,3 +1,5 @@
+import type { IntegrationInlineTrigger } from '../integrations/types'
+
 /* -- Engine interfaces -- */
 export interface STTOptions { language?: string }
 export interface STTResult { text: string; language?: string; segments?: TranscriptSegment[] }
@@ -46,6 +48,10 @@ export interface SpeechSegment {
   text: string
   speed?: number   // default 1.0 at playback
   pitch?: number   // semitones; default 0
+  /** Inline-trigger events bound to this segment by audioParser.
+   *  audioPlayback emits each one to the eventBus when this segment
+   *  starts playing. */
+  effects?: IntegrationInlineTrigger[]
 }
 export type PipelinePhase = 'idle' | 'listening' | 'recording' | 'transcribing' | 'waiting-for-llm' | 'speaking'
 export interface PipelineState { phase: PipelinePhase; segment?: number; total?: number }

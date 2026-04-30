@@ -35,6 +35,12 @@ async def _stub_prompt_layers(monkeypatch, persona_doc):
     # get_memory_context lives in backend.modules.memory — stub via import path
     import backend.modules.memory as memory_module
     monkeypatch.setattr(memory_module, "get_memory_context", _async_return(None))
+    # get_enabled_integration_ids is invoked unconditionally; stub to keep
+    # the assembler off the integrations DB path in this isolation test.
+    import backend.modules.integrations as integrations_module
+    monkeypatch.setattr(
+        integrations_module, "get_enabled_integration_ids", _async_return([]),
+    )
 
 
 @pytest.mark.asyncio

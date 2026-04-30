@@ -342,3 +342,110 @@ describe('splitSegments — wrap-aware', () => {
     ])
   })
 })
+
+describe('parseForSpeech — inline-trigger placeholder claiming', () => {
+  // Placeholder uses zero-width-space wrappers (​). Mirrors the format
+  // emitted by ResponseTagBuffer in responseTagProcessor.ts.
+  const wrap = (id: string) => `​[effect:${id}]​`
+
+  it('strips effect placeholder from synth text and binds payload to segment', () => {
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+    pending.set('aaa', {
+      effectId: 'aaa',
+      integration_id: 'fx',
+      command: 'shower',
+      args: ['\u{1F496}'],
+      pillContent: 'fx shower \u{1F496}',
+      effectPayload: { emojis: ['\u{1F496}'] },
+    })
+
+    const segments = parseForSpeech(
+      `Sehr gut! ${wrap('aaa')} Wie geht's?`,
+      'off',
+      false,
+      pending,
+      'live_stream',
+    )
+
+    expect(segments.length).toBeGreaterThan(0)
+    expect(segments[0].text).not.toContain('[effect:')
+    expect(segments[0].text).not.toContain('​')
+    expect(segments[0].effects).toBeDefined()
+    expect(segments[0].effects).toHaveLength(1)
+    expect(segments[0].effects?.[0].command).toBe('shower')
+    expect(pending.has('aaa')).toBe(false)
+  })
+
+  it('multiple placeholders attach in encounter order', () => {
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+    pending.set('a1', {
+      effectId: 'a1',
+      integration_id: 'fx',
+      command: 'one',
+      args: [],
+      pillContent: 'fx one',
+      effectPayload: null,
+    })
+    pending.set('a2', {
+      effectId: 'a2',
+      integration_id: 'fx',
+      command: 'two',
+      args: [],
+      pillContent: 'fx two',
+      effectPayload: null,
+    })
+
+    const segments = parseForSpeech(
+      `${wrap('a1')} hello ${wrap('a2')} world`,
+      'off',
+      false,
+      pending,
+      'live_stream',
+    )
+
+    expect(segments.length).toBeGreaterThan(0)
+    expect(segments[0].effects?.map((e) => e.command)).toEqual(['one', 'two'])
+  })
+
+  it('placeholder for an unknown effectId is removed but no effect bound', () => {
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+
+    const segments = parseForSpeech(
+      `Hallo Welt ${wrap('ghost')} alles gut.`,
+      'off',
+      false,
+      pending,
+      'live_stream',
+    )
+
+    expect(segments.length).toBeGreaterThan(0)
+    for (const seg of segments) {
+      expect(seg.text).not.toContain('[effect:')
+      expect(seg.text).not.toContain('​')
+    }
+    const total = segments.reduce((n, s) => n + (s.effects?.length ?? 0), 0)
+    expect(total).toBe(0)
+  })
+
+  it('source is propagated to the bound effect events', () => {
+    const pending = new Map<string, import('../../integrations/responseTagProcessor').PendingEffect>()
+    pending.set('bbb', {
+      effectId: 'bbb',
+      integration_id: 'fx',
+      command: 'shower',
+      args: [],
+      pillContent: 'fx shower',
+      effectPayload: null,
+    })
+
+    const segments = parseForSpeech(
+      `Hallo ${wrap('bbb')} Welt.`,
+      'off',
+      false,
+      pending,
+      'read_aloud',
+    )
+
+    expect(segments[0].effects?.[0].source).toBe('read_aloud')
+  })
+})

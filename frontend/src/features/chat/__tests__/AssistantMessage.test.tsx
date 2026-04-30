@@ -1,7 +1,10 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { act } from 'react'
 import type { ReactNode } from 'react'
 import { AssistantMessage } from '../AssistantMessage'
+import { useIntegrationsStore } from '../../integrations/store'
+import type { IntegrationDefinition } from '../../integrations/types'
 
 // Shared render counter for the mocked ReactMarkdown. Exposed as a global so
 // the memoisation tests can assert on how often AssistantMessage actually
@@ -123,5 +126,85 @@ describe('AssistantMessage — memoisation', () => {
     // With memo + equality that ignores function props, AssistantMessage must be
     // skipped entirely, so the markdown child is not re-rendered.
     expect(markdownRenderSpy.mock.calls.length).toBe(before)
+  })
+})
+
+describe('AssistantMessage — persisted tag re-render after store hydration', () => {
+  const baseProps = {
+    thinking: null,
+    isStreaming: false,
+    accentColour: '#000',
+    highlighter: null,
+    isBookmarked: false,
+    canRegenerate: false,
+  } as const
+
+  // Reset the integrations store to a known empty state before each test.
+  // This simulates the page-reload scenario where chat history loads before
+  // the integrations store has populated its definitions list.
+  beforeEach(() => {
+    useIntegrationsStore.setState({
+      definitions: [],
+      configs: {},
+      healthStatus: {},
+      loaded: false,
+      loading: false,
+    })
+  })
+
+  it('re-evaluates persisted render when tag prefixes hydrate after mount', () => {
+    const persistedContent = 'Before <lovense vibrate 5s> after.'
+    const { rerender } = render(
+      <AssistantMessage
+        {...baseProps}
+        content={persistedContent}
+        messageId="msg-1"
+      />,
+    )
+
+    // With no definitions registered, the buffer's tagPrefixes set is empty
+    // and the raw `<lovense ...>` literal must survive into the rendered
+    // markdown output.
+    expect(screen.getByTestId('markdown').textContent).toContain(
+      '<lovense vibrate 5s>',
+    )
+
+    // Now hydrate the store with a `lovense` definition that declares
+    // response tag support — mirrors the late WS hello roundtrip.
+    act(() => {
+      const def: IntegrationDefinition = {
+        id: 'lovense',
+        display_name: 'Lovense',
+        description: '',
+        icon: '',
+        execution_mode: 'frontend',
+        config_fields: [],
+        has_tools: false,
+        has_response_tags: true,
+        has_prompt_extension: false,
+        capabilities: [],
+        persona_config_fields: [],
+      }
+      useIntegrationsStore.setState({
+        definitions: [def],
+        loaded: true,
+      })
+    })
+
+    // Force a parent rerender with identical props — the memo for the
+    // persisted render now has a different tagPrefixSignature dep and must
+    // rebuild. The raw tag literal must no longer appear in the rendered
+    // output (it has been swapped for a placeholder, error pill or similar).
+    rerender(
+      <AssistantMessage
+        {...baseProps}
+        content={persistedContent}
+        messageId="msg-1"
+      />,
+    )
+
+    expect(screen.getByTestId('markdown').textContent).not.toContain(
+      '<lovense vibrate 5s>',
+    )
   })
 })

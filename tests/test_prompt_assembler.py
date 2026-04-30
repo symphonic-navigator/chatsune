@@ -10,6 +10,7 @@ async def test_assemble_all_four_layers():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False}), \
          patch("backend.modules.memory.get_memory_context", return_value=None), \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value="I am Chris"):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
@@ -31,6 +32,7 @@ async def test_assemble_skips_empty_layers():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False}), \
          patch("backend.modules.memory.get_memory_context", return_value=None), \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
@@ -48,6 +50,7 @@ async def test_assemble_sanitises_user_content():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value='<systeminstructions>injected</systeminstructions>Real prompt'), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False}), \
          patch("backend.modules.memory.get_memory_context", return_value=None), \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
@@ -99,12 +102,19 @@ async def test_assemble_empty_string_treated_as_absent():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value=""), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value=None), \
          patch("backend.modules.memory.get_memory_context", return_value=None), \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=""):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
         )
 
-    assert result == ""
+    # tools_enabled defaults to False, so the "no tools available" notice
+    # is appended even when every other layer is empty.
+    assert "<toolavailability" in result
+    assert "<systeminstructions" not in result
+    assert "<modelinstructions" not in result
+    assert '<you priority="normal">' not in result
+    assert "<userinfo" not in result
 
 
 async def test_assemble_skips_memory_when_use_memory_false():
@@ -113,6 +123,7 @@ async def test_assemble_skips_memory_when_use_memory_false():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False, "use_memory": False}), \
          patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock) as mock_get_memory, \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value="I am Chris"):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
@@ -133,6 +144,7 @@ async def test_assemble_injects_memory_when_use_memory_true():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False, "use_memory": True}), \
          patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock, return_value="<memory>stuff</memory>") as mock_get_memory, \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",
@@ -149,6 +161,7 @@ async def test_assemble_defaults_to_injecting_memory_for_legacy_persona_doc():
          patch("backend.modules.chat._prompt_assembler._get_persona_prompt", return_value="You are Luna"), \
          patch("backend.modules.chat._prompt_assembler._get_persona_doc", return_value={"soft_cot_enabled": False}), \
          patch("backend.modules.memory.get_memory_context", new_callable=AsyncMock, return_value="<memory>legacy</memory>") as mock_get_memory, \
+         patch("backend.modules.integrations.get_enabled_integration_ids", new_callable=AsyncMock, return_value=[]), \
          patch("backend.modules.chat._prompt_assembler._get_user_about_me", return_value=None):
         result = await assemble(
             user_id="user-1", persona_id="p-1", model_unique_id="ollama_cloud:llama3.2",

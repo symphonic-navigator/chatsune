@@ -74,10 +74,25 @@ export interface UserIntegrationConfig {
   effective_enabled: boolean
 }
 
-/** Result of a response tag execution. */
+/** Result of a response tag execution.
+ *
+ * Returned synchronously by plugins. Async work (e.g. hardware API calls)
+ * goes into the optional sideEffect thunk, which the ResponseTagBuffer
+ * fires-and-forgets — the pill and the optional sentence-synced trigger
+ * event are decided from the synchronous fields alone. */
 export interface TagExecutionResult {
-  success: boolean
-  displayText: string
+  /** Text shown in the inline pill. Plain text — rendered as a
+   *  `<span class="integration-pill">` by `rehypeIntegrationPills`. */
+  pillContent: string
+  /** When true, the trigger event fires in lockstep with TTS sentence-start.
+   *  When false, fires immediately on detection. Ignored in text-only streams
+   *  (always fires immediately when no TTS pipeline is active). */
+  syncWithTts: boolean
+  /** Free, plugin-specific data carried in the trigger event payload. */
+  effectPayload: unknown
+  /** Optional async work invoked fire-and-forget by ResponseTagBuffer.
+   *  Errors are logged; do not affect pill or event emission. */
+  sideEffect?: () => Promise<void>
 }
 
 /** Health status reported by a plugin's healthCheck. */
@@ -91,8 +106,10 @@ export type HealthStatus = 'connected' | 'reachable' | 'unreachable' | 'unknown'
 export interface IntegrationPlugin {
   id: string
 
-  /** Execute a response tag found in the LLM output. */
-  executeTag?: (command: string, args: string[], config: Record<string, unknown>) => Promise<TagExecutionResult>
+  /** Execute a response tag found in the LLM output. Synchronous — must
+   *  return pill content and sync-decision without awaiting. Async work
+   *  goes into the optional sideEffect field of the result. */
+  executeTag?: (command: string, args: string[], config: Record<string, unknown>) => TagExecutionResult
 
   /** Execute a tool call dispatched from the backend. */
   executeTool?: (toolName: string, args: Record<string, unknown>, config: Record<string, unknown>) => Promise<string>
@@ -117,4 +134,17 @@ export interface IntegrationPlugin {
 
   /** Called when the integration is disabled or its secrets are cleared. */
   onDeactivate?(): void
+}
+
+/** Frontend-bus event payload for INTEGRATION_INLINE_TRIGGER.
+ *  Mirrors the shared backend DTO (kept structurally identical so a
+ *  future backend audit-emit path is a non-breaking addition). */
+export interface IntegrationInlineTrigger {
+  integration_id: string
+  command: string
+  args: string[]
+  payload: unknown
+  source: 'live_stream' | 'text_only' | 'read_aloud'
+  correlation_id: string
+  timestamp: string
 }

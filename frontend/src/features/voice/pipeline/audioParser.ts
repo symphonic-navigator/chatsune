@@ -2,6 +2,14 @@ import type { NarratorMode, SpeechSegment } from '../types'
 import { splitSentences } from './sentenceSplitter'
 import { INLINE_TAG_PATTERN, WRAPPING_OPEN_PATTERN, WRAPPING_CLOSE_PATTERN } from '../expressionTags'
 import { scanSegment, wrapSegmentWithActiveStack } from './wrapStack'
+import type { PendingEffect } from '../../integrations/responseTagProcessor'
+import type { IntegrationInlineTrigger } from '../../integrations/types'
+
+// Matches the placeholder format emitted by ResponseTagBuffer.handleTag —
+// a UUID wrapped in zero-width spaces. The placeholder is invisible in the
+// rendered text but lets us correlate a synth-bound sentence with the
+// pending effect that originated from the same point in the LLM stream.
+const EFFECT_PLACEHOLDER_RE = /​\[effect:([0-9a-f-]+)\]​/g
 
 function preprocess(text: string, mode: NarratorMode, supportsExpressiveMarkup: boolean): string {
   let s = text
@@ -112,20 +120,63 @@ export function parseForSpeech(
   text: string,
   mode: NarratorMode,
   supportsExpressiveMarkup: boolean = false,
+  pendingEffectsMap?: Map<string, PendingEffect>,
+  streamSource?: 'live_stream' | 'text_only' | 'read_aloud',
 ): SpeechSegment[] {
-  const cleaned = preprocess(text, mode, supportsExpressiveMarkup)
-  if (!cleaned) return []
-  if (mode === 'off') {
-    return splitSentences(cleaned)
-      .filter(hasSpeakableContent)
-      .map((s) => ({ type: 'voice' as const, text: s }))
-  }
-  const coarse = splitSegments(cleaned, supportsExpressiveMarkup)
-  const result: SpeechSegment[] = []
-  for (const seg of coarse) {
-    for (const expanded of expandToSentences(seg)) {
-      if (hasSpeakableContent(expanded.text)) result.push(expanded)
+  // Phase 1: claim any inline-trigger placeholders embedded in the input.
+  // We scan BEFORE preprocess() so that downstream stripping (markdown,
+  // emoji, etc.) cannot accidentally damage the placeholder syntax. The
+  // placeholder is built from ASCII characters wrapped in zero-width
+  // spaces, so removing it here also makes preprocess() see clean text.
+  const claimedEffects: IntegrationInlineTrigger[] = []
+  let working = text
+  if (pendingEffectsMap && pendingEffectsMap.size > 0) {
+    for (const match of working.matchAll(EFFECT_PLACEHOLDER_RE)) {
+      const effectId = match[1]
+      const entry = pendingEffectsMap.get(effectId)
+      if (!entry) continue
+      claimedEffects.push({
+        integration_id: entry.integration_id,
+        command: entry.command,
+        args: entry.args,
+        payload: entry.effectPayload,
+        source: streamSource ?? 'live_stream',
+        // The caller (Phase 5 event-bus dispatcher) populates correlation_id
+        // from the active stream; left blank here to keep audioParser pure.
+        correlation_id: '',
+        timestamp: new Date().toISOString(),
+      })
+      pendingEffectsMap.delete(effectId)
     }
   }
-  return result
+  // Always strip the placeholder pattern, even when no map was supplied or
+  // an entry was missing — orphaned placeholders must never reach the TTS
+  // engine. The id character class is broader than the canonical UUID class
+  // above so that malformed or stale placeholders are still removed.
+  working = working.replace(/​\[effect:[^\]]*\]​/g, '')
+
+  const cleaned = preprocess(working, mode, supportsExpressiveMarkup)
+  if (!cleaned) return []
+
+  let segments: SpeechSegment[]
+  if (mode === 'off') {
+    segments = splitSentences(cleaned)
+      .filter(hasSpeakableContent)
+      .map((s) => ({ type: 'voice' as const, text: s }))
+  } else {
+    const coarse = splitSegments(cleaned, supportsExpressiveMarkup)
+    segments = []
+    for (const seg of coarse) {
+      for (const expanded of expandToSentences(seg)) {
+        if (hasSpeakableContent(expanded.text)) segments.push(expanded)
+      }
+    }
+  }
+
+  // Attach all claimed effects to the first speakable segment so the trigger
+  // fires at the very start of the synth chunk that contained the tag.
+  if (claimedEffects.length > 0 && segments.length > 0) {
+    segments[0] = { ...segments[0], effects: claimedEffects }
+  }
+  return segments
 }

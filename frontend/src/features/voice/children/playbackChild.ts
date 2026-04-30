@@ -1,5 +1,6 @@
 import type { GroupChild } from '../../chat/responseTaskGroup'
 import { audioPlayback } from '../infrastructure/audioPlayback'
+import { emitInlineTrigger } from '../../integrations/inlineTriggerBus'
 
 export interface PlaybackChildOpts {
   correlationId: string
@@ -25,6 +26,13 @@ export function createPlaybackChild(opts: PlaybackChildOpts): GroupChild {
       onFinished?.()
       drainResolve?.()
       drainResolve = null
+    },
+    onInlineTrigger: (event) => {
+      // `event.source` is already stamped by audioPlayback from the queue
+      // entry's per-segment source — do NOT override it, otherwise
+      // read-aloud triggers fed through this same child would be
+      // mis-stamped as live_stream.
+      emitInlineTrigger(event, correlationId)
     },
   })
 

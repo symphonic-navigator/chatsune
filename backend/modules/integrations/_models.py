@@ -32,3 +32,7 @@ class IntegrationDefinition:
     # integrations (e.g. voice providers) remain active whenever
     # user-enabled, regardless of the persona allowlist.
     assignable: bool = False
+    # When True, the integration is treated as enabled for any user that
+    # has not explicitly stored a config document for it. Explicit user
+    # toggles always win over this default.
+    default_enabled: bool = False

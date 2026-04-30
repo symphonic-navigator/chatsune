@@ -1,4 +1,5 @@
 import type { SpeechSegment } from '../types'
+import type { IntegrationInlineTrigger } from '../../integrations/types'
 import { ensureSoundTouchReady, createModulationNode } from './soundTouchLoader'
 
 const SAMPLE_RATE = 24_000
@@ -8,12 +9,23 @@ const SAMPLE_RATE = 24_000
 // drain. Only applied when modulation is active to avoid gaps at speed = 1.
 const MODULATION_TAIL_SAMPLES = Math.round((SAMPLE_RATE * 150) / 1000) // 150 ms
 
-interface QueueEntry { audio: Float32Array; segment: SpeechSegment }
+interface QueueEntry {
+  audio: Float32Array
+  segment: SpeechSegment
+  /** Origin of the synth chunk — propagated into any inline-trigger event
+   *  emitted at segment-start. `'live_stream'` for active LLM streaming TTS,
+   *  `'read_aloud'` for the on-demand re-trigger of an existing message. */
+  source: 'live_stream' | 'read_aloud'
+}
 
 export interface AudioPlaybackCallbacks {
   gapMs?: number
   onSegmentStart: (segment: SpeechSegment) => void
   onFinished: () => void
+  /** Called once per inline-trigger event bound to a segment, just before
+   *  the segment starts playing. Wired by playbackChild to the frontend
+   *  event bus; absent for non-Group call sites (preview, ReadAloud Phase 4). */
+  onInlineTrigger?: (event: IntegrationInlineTrigger) => void
 }
 
 class AudioPlaybackImpl {
@@ -139,7 +151,12 @@ class AudioPlaybackImpl {
     this.emit()
   }
 
-  enqueue(audio: Float32Array, segment: SpeechSegment, token?: string): void {
+  enqueue(
+    audio: Float32Array,
+    segment: SpeechSegment,
+    token?: string,
+    source: 'live_stream' | 'read_aloud' = 'live_stream',
+  ): void {
     // When a token is supplied and a current scope token is set, drop the chunk
     // if they do not match. Callers that pass no token are always accepted
     // (non-Group call sites such as ReadAloud and PersonaVoiceConfig preview).
@@ -147,7 +164,7 @@ class AudioPlaybackImpl {
       console.debug(`[audioPlayback] drop chunk (token mismatch: got=${token}, current=${this.currentToken})`)
       return
     }
-    this.queue.push({ audio, segment })
+    this.queue.push({ audio, segment, source })
     if (!this.playing && this.pendingGapTimer === null && !this.paused) this.playNext()
     this.emit()
   }
@@ -198,6 +215,16 @@ class AudioPlaybackImpl {
     }
 
     this.playing = true
+    // Fire any inline-trigger events bound to this segment by audioParser.
+    // The trigger fires in lockstep with TTS playback start; callers wire
+    // `onInlineTrigger` to the event bus (see playbackChild). Stamp `source`
+    // from the queue entry so the consumer always sees the actual origin
+    // even if the segment-bound event was created with a different default.
+    if (entry.segment.effects && entry.segment.effects.length > 0) {
+      for (const effect of entry.segment.effects) {
+        this.callbacks?.onInlineTrigger?.({ ...effect, source: entry.source })
+      }
+    }
     this.callbacks?.onSegmentStart(entry.segment)
     this.emit()
 
