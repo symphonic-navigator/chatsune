@@ -4,6 +4,7 @@ import type { Highlighter } from "shiki"
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeVoiceTags from './rehypeVoiceTags'
+import rehypeIntegrationPills from './rehypeIntegrationPills'
 import rehypeKatex from 'rehype-katex'
 import katex from 'katex'
 import 'katex/dist/katex.min.css'
@@ -11,10 +12,30 @@ import 'katex/dist/katex.min.css'
 import type { PluggableList } from 'unified'
 
 export const remarkPlugins: PluggableList = [remarkGfm, remarkMath]
-export const rehypePlugins: PluggableList = [
-  rehypeVoiceTags,
-  [rehypeKatex, { throwOnError: false }],
-]
+
+/**
+ * Build the rehype plugin list for a single render. Per-render input
+ * (currently just `pillContents`) gets baked into the plugin options here,
+ * so callers that want pill resolution must invoke this factory rather than
+ * importing a static plugin array. Tests / non-pill renderers can omit
+ * `pillContents` and the plugin becomes a no-op.
+ *
+ * Voice-tag pilling and KaTeX behave the same regardless of pill state, so
+ * they are added unconditionally.
+ */
+export function buildRehypePlugins(
+  opts: { pillContents?: Map<string, string> } = {},
+): PluggableList {
+  return [
+    rehypeVoiceTags,
+    [rehypeIntegrationPills, { pillContents: opts.pillContents ?? new Map<string, string>() }],
+    [rehypeKatex, { throwOnError: false }],
+  ]
+}
+
+/** Static plugin list retained for callers that don't render integration
+ *  pills — equivalent to `buildRehypePlugins()` with no options. */
+export const rehypePlugins: PluggableList = buildRehypePlugins()
 
 /**
  * Preprocess markdown to normalise math delimiters that remark-math does not
