@@ -81,7 +81,8 @@ export interface UserIntegrationConfig {
  * fires-and-forgets — the pill and the optional sentence-synced trigger
  * event are decided from the synchronous fields alone. */
 export interface TagExecutionResult {
-  /** Text shown in the inline pill. Plain text — rendered via IntegrationPill. */
+  /** Text shown in the inline pill. Plain text — rendered as a
+   *  `<span class="integration-pill">` by `rehypeIntegrationPills`. */
   pillContent: string
   /** When true, the trigger event fires in lockstep with TTS sentence-start.
    *  When false, fires immediately on detection. Ignored in text-only streams

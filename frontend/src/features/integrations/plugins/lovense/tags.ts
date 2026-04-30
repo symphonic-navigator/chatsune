@@ -124,7 +124,7 @@ export function executeTag(
     }
 
     // Build pill text by joining parts with spaces (no leading/trailing
-    // underscores — pill rendering is handled by IntegrationPill now).
+    // underscores — pill rendering is handled by the rehype plugin now).
     const parts: string[] = [`${action} ${toyName} at ${strength}`]
     if (seconds > 0) parts.push(`for ${seconds}s`)
     if (loopRun && loopPause) parts.push(`(${loopRun}s on, ${loopPause}s pause)`)
