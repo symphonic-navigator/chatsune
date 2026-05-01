@@ -1,18 +1,24 @@
 /**
  * respondToUser — render a CommandResponse to the user.
  *
- * v1 implementation: log to console, push a toast through the existing
- * notification store. Part 2 will replace the body with system-voice
- * playback (cached) and fall back to this toast path when no system voice
- * is configured. The function signature is the stable contract that
- * handlers depend on across both versions — do NOT change it.
+ * Two parallel signals:
+ *  - if response.cue is set, the corresponding tone cue plays through the
+ *    dedicated cue audio channel (separate AudioContext, overlays the
+ *    persona without ducking);
+ *  - the toast always fires.
+ *
+ * Cue is the hands-free signal, toast is the visual confirmation when the
+ * user happens to look. They complement each other; neither is a fallback
+ * for the other.
  */
 
 import { useNotificationStore } from '../../core/store/notificationStore'
+import { playCue } from './cuePlayer'
 import type { CommandResponse } from './types'
 
 export function respondToUser(response: CommandResponse): void {
   console.debug('[VoiceCommand] response:', response)
+  if (response.cue) playCue(response.cue)
   useNotificationStore.getState().addNotification({
     level: response.level,
     title: 'Voice command',
