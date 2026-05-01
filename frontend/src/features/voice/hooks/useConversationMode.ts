@@ -12,7 +12,7 @@ import { float32ToWavBlob } from '../infrastructure/wavEncoder'
 import { createBargeController, type BargeController } from '../bargeController'
 import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
-import { tryDispatchCommand } from '../../voice-commands'
+import { tryDispatchCommand, vosk, useCompanionLifecycleStore } from '../../voice-commands'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -491,6 +491,8 @@ export function useConversationMode({
     // may arrive empty and we don't want a stale bundle to be dispatched.
     abortRecorder()
     try { audioCapture.stopContinuous() } catch { /* not active */ }
+    vosk.dispose()
+    useCompanionLifecycleStore.getState().reset()
     clearPendingBarge()
     if (releaseFallbackRef.current) {
       clearTimeout(releaseFallbackRef.current)
@@ -564,6 +566,7 @@ export function useConversationMode({
         })
         exitStore()
       })
+      void vosk.init()
     }
 
     if (!active && wasActive) {
