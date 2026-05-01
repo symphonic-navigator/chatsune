@@ -64,10 +64,12 @@ export default defineConfig({
         globIgnores: ["**/sandbox.worker-*.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
-        // Main bundle currently sits just above Workbox's 2 MiB default, which
-        // refuses to precache it. Give comfortable headroom; future work can
-        // code-split if the bundle keeps growing.
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // Main bundle sits well above Workbox's 2 MiB default — voice-commands
+        // pulls in vosk-browser (~2.5 MiB) for the OFF-state local recogniser,
+        // putting the bundle around 7.5 MiB. Give comfortable headroom; a
+        // follow-up could split vosk-browser behind a dynamic import so it
+        // only loads when continuous voice starts.
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         cleanupOutdatedCaches: true,
       },
       includeAssets: [
