@@ -126,6 +126,20 @@ In a second terminal:
 Runs `pnpm install` and `pnpm run dev`. The Vite dev server prints
 its URL (typically `http://localhost:5173`).
 
+#### Vosk model (one-time setup)
+
+The voice-command OFF-state uses a local Vosk speech recogniser. The
+~40 MB model is downloaded by a setup script:
+
+```bash
+cd frontend
+pnpm run vosk:download
+```
+
+The script is idempotent — re-running is a no-op once the model is in
+`frontend/vendor/vosk-model/` (gitignored). The Docker build runs this
+script automatically.
+
 ### 5. Create the master admin (one-time)
 
 ```bash
