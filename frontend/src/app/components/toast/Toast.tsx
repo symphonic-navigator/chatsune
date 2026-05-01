@@ -67,7 +67,11 @@ export function Toast({ notification }: ToastProps) {
   }, [startTimer])
 
   useEffect(() => {
-    if (duration !== null) {
+    // duration === null is the existing "no auto-dismiss" sentinel from
+    // DEFAULT_DURATIONS lookups. duration <= 0 is the new sticky-toast
+    // sentinel for callers that explicitly want a non-dismissing toast
+    // (e.g. "new version available" with an action button).
+    if (duration !== null && duration > 0) {
       startTimer(duration)
     }
     return () => {
