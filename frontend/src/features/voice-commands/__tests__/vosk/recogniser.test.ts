@@ -19,11 +19,7 @@ const hoisted = vi.hoisted(() => {
     retrieveFinalResult: mockRetrieveFinalResult,
     remove: mockRemove,
   }
-  const recogniserCtor = vi.fn(function MockKaldiRecognizer(
-    this: unknown,
-    _sampleRate: number,
-    _grammar?: string,
-  ) {
+  const recogniserCtor = vi.fn(function MockKaldiRecognizer(this: unknown) {
     return recogniserInstance
   })
 
