@@ -3,6 +3,7 @@ import { defineConfig, type Plugin } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from "vite-plugin-pwa"
+import { viteStaticCopy } from "vite-plugin-static-copy"
 
 const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000"
 const backendWs = backendUrl.replace(/^http/, "ws")
@@ -30,6 +31,15 @@ const crossOriginIsolationHeaders: Plugin = {
 export default defineConfig({
   plugins: [
     crossOriginIsolationHeaders,
+    viteStaticCopy({
+      targets: [
+        // Vosk model — populated by `pnpm run vosk:download` (see frontend/scripts/).
+        // Mirrored to /vosk-model/ in the served output; modelLoader.ts
+        // expects this exact path. ~40 MB binary, gitignored under
+        // frontend/vendor/vosk-model/.
+        { src: "vendor/vosk-model/**/*", dest: "vosk-model" },
+      ],
+    }),
     react(),
     tailwindcss(),
     VitePWA({
