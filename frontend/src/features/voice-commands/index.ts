@@ -9,7 +9,7 @@
 
 import { registerCommand, unregisterCommand } from './registry'
 import { debugCommand } from './handlers/debug'
-import { companionCommand } from './handlers/companion'
+import { voiceCommand } from './handlers/voice'
 
 export { tryDispatchCommand } from './dispatcher'
 export { registerCommand, unregisterCommand } from './registry'
@@ -26,7 +26,7 @@ export { vosk } from './vosk/recogniser'
  */
 export function registerCoreBuiltins(): void {
   registerCommand(debugCommand)
-  registerCommand(companionCommand)
+  registerCommand(voiceCommand)
 }
 
 /**
@@ -36,5 +36,5 @@ export function registerCoreBuiltins(): void {
  */
 export function unregisterCoreBuiltins(): void {
   unregisterCommand(debugCommand.trigger)
-  unregisterCommand(companionCommand.trigger)
+  unregisterCommand(voiceCommand.trigger)
 }
