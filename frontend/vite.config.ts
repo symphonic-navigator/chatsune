@@ -33,11 +33,12 @@ export default defineConfig({
     crossOriginIsolationHeaders,
     viteStaticCopy({
       targets: [
-        // Vosk model — populated by `pnpm run vosk:download` (see frontend/scripts/).
-        // Mirrored to /vosk-model/ in the served output; modelLoader.ts
-        // expects this exact path. ~40 MB binary, gitignored under
-        // frontend/vendor/vosk-model/.
-        { src: "vendor/vosk-model/**/*", dest: "vosk-model" },
+        // Vosk model archive — populated by `pnpm run vosk:download`.
+        // vosk-browser fetches the .tar.gz directly via createModel(url)
+        // and unpacks it inside its WASM worker; do NOT pre-extract on
+        // disk. Mirrored to /vosk-model.tar.gz in the served output;
+        // modelLoader.ts uses that exact path.
+        { src: "vendor/vosk-model.tar.gz", dest: "" },
       ],
     }),
     react(),

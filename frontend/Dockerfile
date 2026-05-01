@@ -3,9 +3,6 @@ FROM node:22-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# unzip is required by scripts/download-vosk-model.mjs
-RUN apk add --no-cache unzip
-
 WORKDIR /app
 
 # Install deps first for better layer caching

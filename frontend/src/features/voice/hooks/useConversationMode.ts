@@ -284,9 +284,20 @@ export function useConversationMode({
     // Automated coverage deferred — see manual verification step #1 of the
     // voice-commands companion-lifecycle spec.
     if (useCompanionLifecycleStore.getState().state === 'off') {
+      console.info(
+        '[ConversationMode] OFF state → routing %d samples (%s s) to vosk.feed (vosk.state=%s)',
+        audio.pcm.length,
+        (audio.pcm.length / 16_000).toFixed(2),
+        vosk.getState(),
+      )
       vosk.feed(audio.pcm)
       return
     }
+    console.info(
+      '[ConversationMode] ON state → routing to upstream STT (%d samples, %s s)',
+      audio.pcm.length,
+      (audio.pcm.length / 16_000).toFixed(2),
+    )
 
     // Speech-end can arrive without a VAD speech-start having crossed the
     // 150 ms pending-barge window — e.g. an ultra-short utterance. Create a
@@ -311,6 +322,7 @@ export function useConversationMode({
 
     const stt = resolveSTTEngine()
     if (!stt) {
+      console.error('[ConversationMode] STT route: no engine resolved — aborting')
       useNotificationStore.getState().addNotification({
         level: 'error',
         title: 'Conversational mode stopped',
@@ -321,6 +333,12 @@ export function useConversationMode({
       exitStore()
       return
     }
+    console.info(
+      '[ConversationMode] STT route: engine=%s (%s) ready=%s',
+      stt.id,
+      stt.name,
+      stt.isReady(),
+    )
 
     // Mark STT in flight so usePhase can show 'transcribing'.
     setSttInFlight(true)

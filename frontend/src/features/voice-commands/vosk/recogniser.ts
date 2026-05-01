@@ -50,50 +50,65 @@ interface VoskResult {
 }
 
 function handleResult(msg: { event: 'result'; result?: VoskResult } | { event: string }): void {
+  console.info('[Vosk] event:', msg.event, msg)
   if (msg.event !== 'result' || !('result' in msg) || !msg.result) return
   const { text, result } = msg.result
 
   if (!ACCEPT_TEXTS.has(text)) {
-    console.debug('[Vosk] rejected (text):', text)
+    console.info('[Vosk] rejected (text):', JSON.stringify(text), '— not in accept set')
     return
   }
 
-  if (!result.every((w) => w.conf >= WAKE_CONF_THRESHOLD)) {
-    console.debug('[Vosk] rejected (conf):', msg.result)
+  const failingWord = result.find((w) => w.conf < WAKE_CONF_THRESHOLD)
+  if (failingWord) {
+    console.info('[Vosk] rejected (conf): word=%s conf=%s threshold=%s — full result:', failingWord.word, failingWord.conf, WAKE_CONF_THRESHOLD, msg.result)
     return
   }
 
-  console.debug('[Vosk] accepted:', text)
+  console.info('[Vosk] ACCEPTED:', text, '— dispatching')
   void tryDispatchCommand(text)
 }
 
 async function init(): Promise<void> {
-  if (state === 'loading' || state === 'ready') return
+  if (state === 'loading' || state === 'ready') {
+    console.info('[Vosk] init: already', state, '— skipping')
+    return
+  }
+  console.info('[Vosk] init starting (state was %s)', state)
   state = 'loading'
   try {
     const model = (await getModel()) as Model
     // Aborted while we were waiting for the model — dispose() ran and
     // moved state back to 'idle'. Don't construct a recogniser the
     // caller no longer wants.
-    if (state !== 'loading') return
+    if (state !== 'loading') {
+      console.info('[Vosk] init: aborted during model load (state=%s)', state)
+      return
+    }
     recogniser = new model.KaldiRecognizer(SAMPLE_RATE, JSON.stringify(VOSK_GRAMMAR))
     recogniser.setWords(true)
     recogniser.on('result', handleResult)
     state = 'ready'
+    console.info('[Vosk] init: READY — recogniser constructed with grammar (%d entries)', VOSK_GRAMMAR.length)
   } catch (err) {
-    console.error('[Vosk] init failed:', err)
+    console.error('[Vosk] init FAILED:', err)
     state = 'error'
   }
 }
 
 function feed(pcm: Float32Array): void {
-  if (state !== 'ready' || !recogniser) return
-
-  if (pcm.length / SAMPLE_RATE > MAX_SEGMENT_SECONDS) {
-    console.debug('[Vosk] dropping segment > 4 s')
+  if (state !== 'ready' || !recogniser) {
+    console.info('[Vosk] feed: SKIPPED (state=%s, samples=%d)', state, pcm.length)
     return
   }
 
+  const seconds = pcm.length / SAMPLE_RATE
+  if (seconds > MAX_SEGMENT_SECONDS) {
+    console.info('[Vosk] feed: dropping segment > 4 s (%s s, %d samples)', seconds.toFixed(2), pcm.length)
+    return
+  }
+
+  console.info('[Vosk] feed: %d samples (%s s) → acceptWaveformFloat + retrieveFinalResult', pcm.length, seconds.toFixed(2))
   recogniser.acceptWaveformFloat(pcm, SAMPLE_RATE)
   // VAD has already end-pointed the segment — force the final result so
   // the result listener fires now instead of waiting for the recogniser's
@@ -102,6 +117,7 @@ function feed(pcm: Float32Array): void {
 }
 
 function dispose(): void {
+  console.info('[Vosk] dispose (state was %s)', state)
   if (recogniser) {
     try {
       recogniser.remove()
