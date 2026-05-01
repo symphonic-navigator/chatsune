@@ -5,6 +5,7 @@ import { useAuthStore } from "./core/store/authStore"
 import { useEventStore } from "./core/store/eventStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
 import BackendUnavailablePage from "./app/pages/BackendUnavailablePage"
+import { startHealthMonitor, stopHealthMonitor } from "./core/health/healthMonitor"
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import { registerSecretsEventHandler } from "./features/integrations/secretsEventHandler"
 import { registerIntegrationsEventHandler } from "./features/integrations/integrationsEventHandler"
@@ -156,6 +157,11 @@ function AppRoutes() {
 }
 
 export default function App() {
+  useEffect(() => {
+    startHealthMonitor()
+    return () => stopHealthMonitor()
+  }, [])
+
   return (
     <BrowserRouter>
       <AppRoutes />

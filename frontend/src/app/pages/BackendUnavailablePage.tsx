@@ -1,44 +1,6 @@
-import { useEffect, useRef, useState } from "react"
-import { useEventStore } from "../../core/store/eventStore"
-
-function baseUrl(): string {
-  return import.meta.env.VITE_API_URL ?? ""
-}
+import { probeNow } from "../../core/health/healthMonitor"
 
 export default function BackendUnavailablePage() {
-  const [retryCount, setRetryCount] = useState(0)
-  const [checking, setChecking] = useState(false)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    async function checkHealth() {
-      setChecking(true)
-      try {
-        const res = await fetch(`${baseUrl()}/api/health`, {
-          method: "GET",
-          cache: "no-store",
-        })
-        if (res.ok) {
-          useEventStore.getState().setBackendAvailable(true)
-          return
-        }
-      } catch {
-        // Still unreachable
-      }
-      setChecking(false)
-      setRetryCount((c) => c + 1)
-    }
-
-    // Check immediately on mount
-    checkHealth()
-
-    // Then every 5 seconds
-    timerRef.current = setInterval(checkHealth, 5000)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [])
-
   return (
     <div
       style={{
@@ -110,7 +72,7 @@ export default function BackendUnavailablePage() {
             height: "14px",
             borderRadius: "50%",
             border: "2px solid rgba(255,255,255,0.08)",
-            borderTopColor: checking ? "rgba(245,194,131,0.7)" : "rgba(255,255,255,0.25)",
+            borderTopColor: "rgba(245,194,131,0.7)",
             animation: "spin 0.8s linear infinite",
           }}
         />
@@ -122,9 +84,27 @@ export default function BackendUnavailablePage() {
             letterSpacing: "0.04em",
           }}
         >
-          {checking ? "checking..." : `retry ${retryCount}`}
+          checking...
         </span>
       </div>
+
+      {/* Retry button */}
+      <button
+        onClick={() => void probeNow()}
+        style={{
+          marginBottom: "16px",
+          padding: "6px 16px",
+          fontSize: "12px",
+          color: "rgba(255,255,255,0.5)",
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        Retry now
+      </button>
 
       {/* Hint */}
       <p
