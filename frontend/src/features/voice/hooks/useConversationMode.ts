@@ -277,6 +277,17 @@ export function useConversationMode({
   // to the barge controller. Called when the user's utterance ends (release
   // or normal VAD speech-end while not holding).
   const transcribeAndSend = useCallback(async (audio: CapturedAudio): Promise<void> => {
+    // OFF-state branch — route audio to local Vosk recogniser instead of
+    // upstream STT. Vosk handles match detection and dispatch internally.
+    // No controller call: in OFF there is no Group to commit/resume/abandon.
+    // Privacy guarantee: in OFF, no microphone audio leaves the browser.
+    // Automated coverage deferred — see manual verification step #1 of the
+    // voice-commands companion-lifecycle spec.
+    if (useCompanionLifecycleStore.getState().state === 'off') {
+      vosk.feed(audio.pcm)
+      return
+    }
+
     // Speech-end can arrive without a VAD speech-start having crossed the
     // 150 ms pending-barge window — e.g. an ultra-short utterance. Create a
     // Barge now so the controller sees a consistent lifecycle and picks up

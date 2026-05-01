@@ -92,6 +92,7 @@ import { useChatStore } from '../../../../core/store/chatStore'
 import { useNotificationStore } from '../../../../core/store/notificationStore'
 import { registerCommand, unregisterCommand } from '../../../voice-commands'
 import type { CommandSpec } from '../../../voice-commands'
+import { useCompanionLifecycleStore, vosk } from '../../../voice-commands'
 
 function resetConvModeStore() {
   useConversationModeStore.setState({
@@ -433,5 +434,80 @@ describe('useConversationMode — voice-command dispatch', () => {
     // handler's displayText.
     expect(useNotificationStore.getState().notifications).toHaveLength(1)
     expect(useNotificationStore.getState().notifications[0].message).toBe(`foo body: 'ping'`)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 13 — OFF-state STT routing branch
+// ---------------------------------------------------------------------------
+// When the companion lifecycle is OFF, transcribeAndSend must short-circuit:
+// route the captured PCM to the local Vosk recogniser (vosk.feed) and skip
+// the upstream STT call entirely. This guarantees that no microphone audio
+// leaves the browser while the companion is paused.
+
+describe('useConversationMode — OFF-state routes audio to Vosk', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    captured = null
+    resetConvModeStore()
+    resetChatStore()
+    resetNotifications()
+    transcribeMock.mockReset()
+    transcribeMock.mockResolvedValue({ text: 'should not be called' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.clearAllMocks()
+    // Restore companion state so other tests start with the default 'on'.
+    useCompanionLifecycleStore.getState().reset()
+  })
+
+  it('routes PCM to vosk.feed and skips upstream STT when companion state is OFF', async () => {
+    const sendChatMessage = vi.fn()
+    const feedSpy = vi.spyOn(vosk, 'feed').mockImplementation(() => {})
+
+    renderHook(() => useConversationMode({
+      sessionId: 's1',
+      available: true,
+      buildAndRegisterGroup: vi.fn(() => 'new-group'),
+      sendChatMessage,
+    }))
+
+    await act(async () => {
+      useConversationModeStore.getState().enter()
+      await flushMicrotasks()
+    })
+    expect(captured).not.toBeNull()
+
+    // Flip companion lifecycle to OFF — this is what the wake/sleep handler
+    // does in production. The next speech-end must take the OFF branch.
+    act(() => { useCompanionLifecycleStore.getState().setOff() })
+
+    // Drive a normal speech-start → speech-end cycle.
+    act(() => { captured!.onSpeechStart() })
+    await act(async () => { vi.advanceTimersByTime(200) })
+    const pcm = new Float32Array(16_000) // 1 s @ 16 kHz
+    pcm.fill(0.1)
+    act(() => { captured!.onSpeechEnd(captureFromPcm(pcm)) })
+    await act(async () => { await flushMicrotasks() })
+
+    // vosk.feed must have been called once. The hook's audio pipeline may
+    // wrap/merge the PCM before passing it on (flushHeldAudio + bundle), so
+    // we assert on length and a sample value rather than strict reference
+    // equality — what matters is that the PCM reached Vosk.
+    expect(feedSpy).toHaveBeenCalledTimes(1)
+    const fedPcm = feedSpy.mock.calls[0][0]
+    expect(fedPcm).toBeInstanceOf(Float32Array)
+    expect(fedPcm.length).toBe(pcm.length)
+    expect(fedPcm[0]).toBeCloseTo(0.1, 5)
+
+    // Upstream STT must NOT have been called.
+    expect(transcribeMock).not.toHaveBeenCalled()
+
+    // No outbound chat message either.
+    expect(sendChatMessage).not.toHaveBeenCalled()
+
+    feedSpy.mockRestore()
   })
 })
