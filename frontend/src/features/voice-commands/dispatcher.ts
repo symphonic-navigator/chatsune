@@ -23,6 +23,10 @@ import type { CommandResponse, DispatchResult } from './types'
  */
 export async function tryDispatchCommand(text: string): Promise<DispatchResult> {
   const tokens = normalise(text)
+  // Diagnostic — covers both STT-upstream (active mode) and Vosk (paused mode)
+  // entry points. Lets a misheard 'voice off' (turning into e.g. 'force off')
+  // be diagnosed against the raw text without re-running the session.
+  console.info('[VoiceCommand] dispatch entry: text=%o tokens=%o', text, tokens)
 
   // Voice-specific pre-check: first token "voice" with a missing or unknown sub.
   // 2-token form is almost certainly a misheard command — suppress LLM dispatch.

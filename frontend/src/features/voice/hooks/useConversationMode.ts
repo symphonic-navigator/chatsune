@@ -433,6 +433,13 @@ export function useConversationMode({
       return
     }
     utteranceStartedWhileMutedRef.current = false
+    // In paused mode, audio routes to Vosk only — no upstream STT, no barge,
+    // no controller. Without this short-circuit, executeBarge() would create
+    // a 'pending-stt' Barge that never resolves (vosk.feed bypasses the
+    // controller path), leaving derivePhase stuck on 'user-speaking' and the
+    // Hold-to-keep-talking button visible after the next 'voice on' until a
+    // fresh active-mode utterance cleans up the dangling Barge.
+    if (useVoiceLifecycleStore.getState().state === 'paused') return
     clearPendingBarge()
     pendingBargeRef.current = setTimeout(executeBarge, BARGE_DELAY_MS)
     // Start the utterance recorder on the first speech-start of a cycle.
