@@ -51,6 +51,7 @@ import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
 import { usePhase } from '../voice/usePhase'
 import { createResponseTaskGroup, registerActiveGroup, getActiveGroup, cancelCurrentActiveGroup } from './responseTaskGroup'
+import { stopActiveReadAloud } from '../voice/components/ReadAloudButton'
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
@@ -393,12 +394,15 @@ export function ChatView({ persona }: ChatViewProps) {
     return () => { cancelled = true }
   }, [sessionId, scrollToBottom, isIncognito, persona?.id, persona?.model_unique_id, applyModelCapabilities])
 
-  // Stop in-flight TTS / response when the user switches sessions: the
-  // active Group owns the playback child whose onCancel calls
-  // audioPlayback.clearScope, so cancelling the Group is the architectural
-  // path to halting playback.
+  // Stop in-flight TTS / response when the user switches sessions. Two
+  // separate paths feed audioPlayback: the live-stream Group (whose
+  // playbackChild.onCancel clears its scope) and read-aloud (which calls
+  // audioPlayback.enqueue directly, bypassing the Group). Cancel both.
   useEffect(() => {
-    return () => { cancelCurrentActiveGroup('teardown') }
+    return () => {
+      cancelCurrentActiveGroup('teardown')
+      stopActiveReadAloud()
+    }
   }, [effectiveSessionId])
 
   // When navigated here from the global Artefacts tab with a pendingArtefactId,
