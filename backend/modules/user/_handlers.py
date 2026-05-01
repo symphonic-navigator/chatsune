@@ -1207,7 +1207,14 @@ async def reset_password(
         AuditLoggedEvent(actor_id=user["sub"], action="user.password_reset", resource_type="user", resource_id=user_id),
     )
 
-    return {"status": "reset"}
+    updated = await repo.find_by_id(user_id)
+    if not updated:
+        # Should not happen — the user was found at the start of this
+        # handler and we only mutated their fields. Treat as a server
+        # error if the row vanished mid-flight.
+        raise HTTPException(status_code=500, detail="User disappeared during reset")
+
+    return {"status": "reset", "user": UserRepository.to_dto(updated)}
 
 
 # --- Audit Log ---
