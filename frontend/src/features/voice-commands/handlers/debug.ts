@@ -27,7 +27,6 @@ export const debugCommand: CommandSpec = {
     })
     return {
       level: 'info',
-      spokenText: 'Debug command received.',
       displayText: `Debug: '${body || '(empty)'}'`,
     }
   },

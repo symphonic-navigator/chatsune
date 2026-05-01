@@ -29,7 +29,6 @@ export async function tryDispatchCommand(text: string): Promise<DispatchResult> 
     console.error(`[VoiceCommand] handler '${hit.trigger}' threw:`, err)
     response = {
       level: 'error',
-      spokenText: 'Command failed.',
       displayText: `Command '${hit.trigger}' failed — see console for details.`,
     }
     respondToUser(response)

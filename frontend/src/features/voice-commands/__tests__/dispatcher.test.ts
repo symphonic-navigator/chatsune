@@ -17,7 +17,6 @@ function makeSpec(overrides: Partial<CommandSpec> = {}): CommandSpec {
     source: 'core',
     execute: vi.fn(async (): Promise<CommandResponse> => ({
       level: 'success',
-      spokenText: 'ok',
       displayText: 'ok',
     })),
     ...overrides,
@@ -55,7 +54,6 @@ describe('tryDispatchCommand', () => {
     expect(spec.execute).toHaveBeenCalledWith('hello world')
     expect(respondMock).toHaveBeenCalledWith({
       level: 'success',
-      spokenText: 'ok',
       displayText: 'ok',
     })
     expect(result).toEqual({ dispatched: true, onTriggerWhilePlaying: 'resume' })

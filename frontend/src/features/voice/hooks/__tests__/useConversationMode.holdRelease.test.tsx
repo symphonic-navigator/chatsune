@@ -366,7 +366,6 @@ describe('useConversationMode — voice-command dispatch', () => {
   const TEST_TRIGGER = 'testfoo'
   const fooHandler = vi.fn(async (body: string) => ({
     level: 'info' as const,
-    spokenText: 'ok',
     displayText: `foo body: '${body}'`,
   }))
   const fooCommand: CommandSpec = {

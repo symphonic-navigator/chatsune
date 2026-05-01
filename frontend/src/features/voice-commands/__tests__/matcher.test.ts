@@ -8,7 +8,7 @@ function makeSpec(trigger: string): CommandSpec {
     trigger,
     onTriggerWhilePlaying: 'resume',
     source: 'core',
-    execute: async () => ({ level: 'info', spokenText: '', displayText: '' }),
+    execute: async () => ({ level: 'info', displayText: '' }),
   }
 }
 

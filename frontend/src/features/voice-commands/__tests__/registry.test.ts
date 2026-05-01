@@ -15,7 +15,6 @@ function makeSpec(overrides: Partial<CommandSpec> = {}): CommandSpec {
     source: 'core',
     execute: async () => ({
       level: 'info',
-      spokenText: '',
       displayText: '',
     }),
     ...overrides,
