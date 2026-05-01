@@ -1,5 +1,6 @@
 import { useEffect } from "react"
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom"
+import { setNavigate } from "./core/auth/logoutCoordinator"
 import { useAuthStore } from "./core/store/authStore"
 import { useEventStore } from "./core/store/eventStore"
 import { useBootstrap } from "./core/hooks/useBootstrap"
@@ -80,6 +81,10 @@ function AppRoutes() {
   useBootstrap()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const backendAvailable = useEventStore((s) => s.backendAvailable)
+  const navigate = useNavigate()
+  useEffect(() => {
+    setNavigate(navigate)
+  }, [navigate])
 
   useEffect(() => {
     if (!isAuthenticated) return
