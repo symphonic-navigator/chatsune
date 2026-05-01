@@ -160,8 +160,7 @@ export function MessageList({
   const correlationId = useChatStore((s) => s.correlationId)
   const streamingSlow = useChatStore((s) => s.streamingSlow)
 
-  const textColumnRef = useRef<HTMLDivElement>(null)
-  useReportBounds(textColumnRef, 'textColumn')
+  const textColumnRef = useReportBounds<HTMLDivElement>('textColumn')
 
   const [slowElapsed, setSlowElapsed] = useState<number>(0)
   const slowSinceRef = useRef<number | null>(null)

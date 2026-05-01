@@ -100,9 +100,11 @@ export function ChatView({ persona }: ChatViewProps) {
   const [resolveAttempt, setResolveAttempt] = useState(0)
   const [showKnowledge, setShowKnowledge] = useState(false)
 
-  // Report chat-view bounds for visualiser layout
-  const chatviewRef = useRef<HTMLDivElement>(null)
-  useReportBounds(chatviewRef, 'chatview')
+  // Report chat-view bounds for visualiser layout. Callback ref: fires
+  // when React attaches/detaches the wrapper, so it works even when the
+  // wrapper is conditionally rendered (e.g. while the session resolver
+  // navigates from /chat/:personaId to /chat/:personaId/:sessionId).
+  const chatviewRef = useReportBounds<HTMLDivElement>('chatview')
 
   // Voice integration state — "enabled" is determined by whether an STT engine is registered and ready
   const autoSendTranscription = useVoiceSettingsStore((s) => s.autoSendTranscription)
