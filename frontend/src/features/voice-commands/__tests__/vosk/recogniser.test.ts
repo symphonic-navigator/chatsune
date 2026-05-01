@@ -82,12 +82,10 @@ describe('vosk recogniser', () => {
   it('init transitions to ready, constructs recogniser with grammar, enables words, registers result listener', async () => {
     await vosk.init()
     expect(vosk.getState()).toBe('ready')
-    expect(hoisted.recogniserCtor).toHaveBeenCalled()
-    // Grammar JSON is the second constructor arg
-    const ctorArgs = hoisted.recogniserCtor.mock.calls[0]
-    expect(ctorArgs[0]).toBe(16000)
-    expect(typeof ctorArgs[1]).toBe('string')
-    expect(JSON.parse(ctorArgs[1] as string)).toContain('companion on')
+    expect(hoisted.recogniserCtor).toHaveBeenCalledWith(
+      16000,
+      expect.stringContaining('companion on'),
+    )
 
     expect(hoisted.mockSetWords).toHaveBeenCalledWith(true)
     const onCalls = hoisted.mockOn.mock.calls

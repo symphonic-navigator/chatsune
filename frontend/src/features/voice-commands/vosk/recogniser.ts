@@ -72,6 +72,10 @@ async function init(): Promise<void> {
   state = 'loading'
   try {
     const model = (await getModel()) as Model
+    // Aborted while we were waiting for the model — dispose() ran and
+    // moved state back to 'idle'. Don't construct a recogniser the
+    // caller no longer wants.
+    if (state !== 'loading') return
     recogniser = new model.KaldiRecognizer(SAMPLE_RATE, JSON.stringify(VOSK_GRAMMAR))
     recogniser.setWords(true)
     recogniser.on('result', handleResult)
