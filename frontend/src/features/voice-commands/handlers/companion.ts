@@ -1,4 +1,4 @@
-import { useCompanionLifecycleStore } from '../companionLifecycleStore'
+import { useVoiceLifecycleStore } from '../voiceLifecycleStore'
 import type { CommandSpec, CommandResponse } from '../types'
 
 /**
@@ -21,12 +21,12 @@ export const companionCommand: CommandSpec = {
   onTriggerWhilePlaying: 'abandon',
   source: 'core',
   execute: async (body: string): Promise<CommandResponse> => {
-    const lifecycle = useCompanionLifecycleStore.getState()
+    const lifecycle = useVoiceLifecycleStore.getState()
     const sub = body.trim()
 
     switch (sub) {
       case 'off':
-        if (lifecycle.state === 'off') {
+        if (lifecycle.state === 'paused') {
           // Idempotent path — defensive; under normal flow this is
           // unreachable because the OFF-state Vosk grammar omits "companion
           // off" entirely. No override needed.
@@ -36,7 +36,7 @@ export const companionCommand: CommandSpec = {
             displayText: 'Companion already off.',
           }
         }
-        lifecycle.setOff()
+        lifecycle.setPause()
         return {
           level: 'success',
           cue: 'off',
@@ -44,7 +44,7 @@ export const companionCommand: CommandSpec = {
         }
 
       case 'on':
-        if (lifecycle.state === 'on') {
+        if (lifecycle.state === 'active') {
           // Idempotent — the user gets audible confirmation that the
           // command was heard, but the persona must not be interrupted.
           return {
@@ -54,7 +54,7 @@ export const companionCommand: CommandSpec = {
             onTriggerWhilePlaying: 'resume',
           }
         }
-        lifecycle.setOn()
+        lifecycle.setActive()
         // Successful OFF→ON: in OFF the persona was already abandoned,
         // so the static 'abandon' default is a no-op — no override.
         return {
@@ -67,8 +67,8 @@ export const companionCommand: CommandSpec = {
         // Status must never interrupt the persona — always override.
         return {
           level: 'info',
-          cue: lifecycle.state === 'off' ? 'off' : 'on',
-          displayText: `Companion is ${lifecycle.state}.`,
+          cue: lifecycle.state === 'paused' ? 'off' : 'on',
+          displayText: `Companion is ${lifecycle.state === 'paused' ? 'off' : 'on'}.`,
           onTriggerWhilePlaying: 'resume',
         }
 

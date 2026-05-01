@@ -14,7 +14,8 @@ import { companionCommand } from './handlers/companion'
 export { tryDispatchCommand } from './dispatcher'
 export { registerCommand, unregisterCommand } from './registry'
 export type { CommandSpec, CommandResponse, DispatchResult, CueKind } from './types'
-export { useCompanionLifecycleStore } from './companionLifecycleStore'
+export { useVoiceLifecycleStore } from './voiceLifecycleStore'
+export type { VoiceLifecycle } from './voiceLifecycleStore'
 export { vosk } from './vosk/recogniser'
 
 /**

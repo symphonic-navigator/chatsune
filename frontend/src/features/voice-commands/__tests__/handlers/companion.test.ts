@@ -1,10 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import { companionCommand } from '../../handlers/companion'
-import { useCompanionLifecycleStore } from '../../companionLifecycleStore'
+import { useVoiceLifecycleStore } from '../../voiceLifecycleStore'
 
 describe('companionCommand', () => {
   beforeEach(() => {
-    useCompanionLifecycleStore.setState({ state: 'on' })
+    useVoiceLifecycleStore.setState({ state: 'active' })
   })
 
   it('has the static "abandon" default and trigger "companion"', () => {
@@ -15,31 +15,31 @@ describe('companionCommand', () => {
 
   it('off while ON transitions to OFF and returns success cue:off', async () => {
     const response = await companionCommand.execute('off')
-    expect(useCompanionLifecycleStore.getState().state).toBe('off')
+    expect(useVoiceLifecycleStore.getState().state).toBe('paused')
     expect(response.level).toBe('success')
     expect(response.cue).toBe('off')
     expect(response.onTriggerWhilePlaying).toBeUndefined()  // uses static 'abandon'
   })
 
   it('off while already OFF is idempotent — info, no state change', async () => {
-    useCompanionLifecycleStore.setState({ state: 'off' })
+    useVoiceLifecycleStore.setState({ state: 'paused' })
     const response = await companionCommand.execute('off')
-    expect(useCompanionLifecycleStore.getState().state).toBe('off')
+    expect(useVoiceLifecycleStore.getState().state).toBe('paused')
     expect(response.level).toBe('info')
     expect(response.cue).toBe('off')
   })
 
   it('on while OFF transitions to ON and returns success cue:on', async () => {
-    useCompanionLifecycleStore.setState({ state: 'off' })
+    useVoiceLifecycleStore.setState({ state: 'paused' })
     const response = await companionCommand.execute('on')
-    expect(useCompanionLifecycleStore.getState().state).toBe('on')
+    expect(useVoiceLifecycleStore.getState().state).toBe('active')
     expect(response.level).toBe('success')
     expect(response.cue).toBe('on')
   })
 
   it('on while already ON is idempotent — info, override resume', async () => {
     const response = await companionCommand.execute('on')
-    expect(useCompanionLifecycleStore.getState().state).toBe('on')
+    expect(useVoiceLifecycleStore.getState().state).toBe('active')
     expect(response.level).toBe('info')
     expect(response.cue).toBe('on')
     expect(response.onTriggerWhilePlaying).toBe('resume')
@@ -47,16 +47,16 @@ describe('companionCommand', () => {
 
   it('status while ON returns cue:on with override resume', async () => {
     const response = await companionCommand.execute('status')
-    expect(useCompanionLifecycleStore.getState().state).toBe('on')  // unchanged
+    expect(useVoiceLifecycleStore.getState().state).toBe('active')  // unchanged
     expect(response.level).toBe('info')
     expect(response.cue).toBe('on')
     expect(response.onTriggerWhilePlaying).toBe('resume')
   })
 
   it('status while OFF returns cue:off with override resume', async () => {
-    useCompanionLifecycleStore.setState({ state: 'off' })
+    useVoiceLifecycleStore.setState({ state: 'paused' })
     const response = await companionCommand.execute('status')
-    expect(useCompanionLifecycleStore.getState().state).toBe('off')  // unchanged
+    expect(useVoiceLifecycleStore.getState().state).toBe('paused')  // unchanged
     expect(response.level).toBe('info')
     expect(response.cue).toBe('off')
     expect(response.onTriggerWhilePlaying).toBe('resume')

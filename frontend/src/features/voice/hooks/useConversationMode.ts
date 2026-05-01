@@ -12,7 +12,7 @@ import { float32ToWavBlob } from '../infrastructure/wavEncoder'
 import { createBargeController, type BargeController } from '../bargeController'
 import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
-import { tryDispatchCommand, vosk, useCompanionLifecycleStore } from '../../voice-commands'
+import { tryDispatchCommand, vosk, useVoiceLifecycleStore } from '../../voice-commands'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -283,7 +283,7 @@ export function useConversationMode({
     // Privacy guarantee: in OFF, no microphone audio leaves the browser.
     // Automated coverage deferred — see manual verification step #1 of the
     // voice-commands companion-lifecycle spec.
-    if (useCompanionLifecycleStore.getState().state === 'off') {
+    if (useVoiceLifecycleStore.getState().state === 'paused') {
       console.info(
         '[ConversationMode] OFF state → routing %d samples (%s s) to vosk.feed (vosk.state=%s)',
         audio.pcm.length,
@@ -521,7 +521,7 @@ export function useConversationMode({
     abortRecorder()
     try { audioCapture.stopContinuous() } catch { /* not active */ }
     vosk.dispose()
-    useCompanionLifecycleStore.getState().reset()
+    useVoiceLifecycleStore.getState().reset()
     clearPendingBarge()
     if (releaseFallbackRef.current) {
       clearTimeout(releaseFallbackRef.current)

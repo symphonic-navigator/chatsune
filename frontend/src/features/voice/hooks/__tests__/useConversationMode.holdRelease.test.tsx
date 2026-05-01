@@ -92,7 +92,7 @@ import { useChatStore } from '../../../../core/store/chatStore'
 import { useNotificationStore } from '../../../../core/store/notificationStore'
 import { registerCommand, unregisterCommand } from '../../../voice-commands'
 import type { CommandSpec } from '../../../voice-commands'
-import { useCompanionLifecycleStore, vosk } from '../../../voice-commands'
+import { useVoiceLifecycleStore, vosk } from '../../../voice-commands'
 
 function resetConvModeStore() {
   useConversationModeStore.setState({
@@ -460,7 +460,7 @@ describe('useConversationMode — OFF-state routes audio to Vosk', () => {
     vi.useRealTimers()
     vi.clearAllMocks()
     // Restore companion state so other tests start with the default 'on'.
-    useCompanionLifecycleStore.getState().reset()
+    useVoiceLifecycleStore.getState().reset()
   })
 
   it('routes PCM to vosk.feed and skips upstream STT when companion state is OFF', async () => {
@@ -482,7 +482,7 @@ describe('useConversationMode — OFF-state routes audio to Vosk', () => {
 
     // Flip companion lifecycle to OFF — this is what the wake/sleep handler
     // does in production. The next speech-end must take the OFF branch.
-    act(() => { useCompanionLifecycleStore.getState().setOff() })
+    act(() => { useVoiceLifecycleStore.getState().setPause() })
 
     // Drive a normal speech-start → speech-end cycle.
     act(() => { captured!.onSpeechStart() })
