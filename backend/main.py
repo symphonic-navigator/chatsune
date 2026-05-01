@@ -77,6 +77,7 @@ from backend.jobs import consumer_loop, jobs_http_router
 from backend.modules.llm._migration_connections_refactor import (
     run_if_needed as run_connections_refactor_cleanup,
 )
+from backend._middleware import BackendMarkerMiddleware
 from backend.modules.providers._migration_v1 import (
     run_if_needed as run_providers_migration,
 )
@@ -595,6 +596,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Chatsune", version="0.1.0", lifespan=lifespan)
+app.add_middleware(BackendMarkerMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
