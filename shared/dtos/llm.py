@@ -39,6 +39,12 @@ class ModelMetaDto(BaseModel):
     # (yes / no / unknown) sensibly. Default ``None`` keeps pre-existing
     # cached documents readable — see CLAUDE.md §Data-Model Migrations.
     is_moderated: bool | None = None
+    # Free-form per-model note shown to the user in the model browser as
+    # a dimmed third line under each row. Adapter-set, read-only at the
+    # consumer (no user-config override). Default ``None`` keeps
+    # pre-existing cached documents readable — see CLAUDE.md
+    # §Data-Model Migrations.
+    remarks: str | None = None
 
     @computed_field
     @property
