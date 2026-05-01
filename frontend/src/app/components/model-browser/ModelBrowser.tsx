@@ -391,6 +391,11 @@ function ModelRow({ model, isCurrent, onSelect, onEdit, onToggleFavourite }: Mod
             </>
           )}
         </div>
+        {model.remarks && (
+          <div className="mt-0.5 text-[11px] text-white/40 italic">
+            {model.remarks}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-1">
         {model.supports_reasoning && <CapBadge label="R" title="Reasoning" />}
