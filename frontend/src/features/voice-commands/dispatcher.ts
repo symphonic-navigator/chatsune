@@ -2,6 +2,7 @@ import { normalise } from './normaliser'
 import { match } from './matcher'
 import { lookupCommand } from './registry'
 import { respondToUser } from './responseChannel'
+import { isKnownVoiceSub } from './handlers/voice'
 import type { CommandResponse, DispatchResult } from './types'
 
 /**
@@ -22,6 +23,20 @@ import type { CommandResponse, DispatchResult } from './types'
  */
 export async function tryDispatchCommand(text: string): Promise<DispatchResult> {
   const tokens = normalise(text)
+
+  // Voice-specific pre-check: first token "voice" with a missing or unknown sub.
+  // 2-token form is almost certainly a misheard command — suppress LLM dispatch.
+  // 1 or 3+ tokens is much more likely a normal sentence — fall through to LLM.
+  // Known sub at any length proceeds to the matcher and handler.
+  if (tokens[0] === 'voice' && (tokens.length < 2 || !isKnownVoiceSub(tokens[1]))) {
+    if (tokens.length === 2) {
+      console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>":', tokens)
+      // TODO: add error toast and audible feedback with error sound
+      return { dispatched: true, onTriggerWhilePlaying: 'resume' }
+    }
+    return { dispatched: false }
+  }
+
   const hit = match(tokens)
   if (!hit) return { dispatched: false }
 

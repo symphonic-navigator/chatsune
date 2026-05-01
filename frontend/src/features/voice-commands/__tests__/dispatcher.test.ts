@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { tryDispatchCommand } from '../dispatcher'
 import { registerCommand, _resetRegistry } from '../registry'
+import { voiceCommand } from '../handlers/voice'
 import type { CommandSpec, CommandResponse } from '../types'
 
 vi.mock('../responseChannel', () => ({
@@ -132,5 +133,72 @@ describe('tryDispatchCommand', () => {
     const result = await tryDispatchCommand('nooverride')
 
     expect(result).toEqual({ dispatched: true, onTriggerWhilePlaying: 'abandon' })
+  })
+})
+
+describe('voice-trigger gate', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    _resetRegistry()
+    respondMock.mockReset()
+    registerCommand(voiceCommand)
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  describe('strict-reject (2-token unknown sub)', () => {
+    it('rejects "voice nope" without dispatching to LLM', async () => {
+      const r = await tryDispatchCommand('voice nope')
+      expect(r.dispatched).toBe(true)
+      if (r.dispatched) expect(r.onTriggerWhilePlaying).toBe('resume')
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Rejected 2-token'),
+        expect.anything(),
+      )
+    })
+
+    it('strips trailing punctuation before reject check ("voice nope.")', async () => {
+      const r = await tryDispatchCommand('voice nope.')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).toHaveBeenCalled()
+    })
+  })
+
+  describe('fall-through (1 token or 3+ tokens, unknown sub)', () => {
+    it('falls through for single-token "voice"', async () => {
+      const r = await tryDispatchCommand('voice')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('falls through for 3-token "voice that is great"', async () => {
+      const r = await tryDispatchCommand('voice that is great')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('falls through for 4-token "voice mode is great"', async () => {
+      const r = await tryDispatchCommand('voice mode is great')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('known sub at any token count proceeds normally', () => {
+    it('"voice off" (2 tokens, known) → dispatches', async () => {
+      const r = await tryDispatchCommand('voice off')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('"voice off please now" (4 tokens, known sub) → dispatches', async () => {
+      const r = await tryDispatchCommand('voice off please now')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
   })
 })
