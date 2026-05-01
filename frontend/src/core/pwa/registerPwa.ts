@@ -4,6 +4,7 @@ import { useConversationModeStore } from "../../features/voice/stores/conversati
 import { initInstallPrompt } from "./installPrompt"
 
 const SETTLE_MS = 500
+const BOOT_GRACE_MS = 5_000
 
 /**
  * Reload the page as soon as both the chat stream and Conversational Mode
@@ -57,20 +58,51 @@ export function reloadWhenIdle(doReload: () => void): void {
  * service worker so Vite HMR keeps working and stale caches don't confuse
  * local development.
  *
- * On update: reload automatically. If the user is in Conversational Mode
- * or an LLM response is streaming, the reload is deferred until both are
- * idle for 500ms (no timeout — the reload waits as long as needed).
+ * On update we split by how long the app has been running:
+ *
+ * - Within the boot grace window (≤ 5 s since registerPwa was called):
+ *   the user just opened the app. Activate the waiting SW and reload
+ *   silently — no toast.
+ * - After the boot grace window: show a sticky "new version available"
+ *   toast with a "Jetzt neu laden" action button. Also kick the
+ *   reloadWhenIdle path as a background fallback so users who ignore
+ *   the toast still pick up the update on their next idle moment.
  */
 export function registerPwa(): void {
   initInstallPrompt()
 
   if (!import.meta.env.PROD) return
 
+  const bootedAt = performance.now()
+
   void import("virtual:pwa-register").then(({ registerSW }) => {
     const updateSW = registerSW({
+      immediate: true,
       onNeedRefresh() {
-        // Activate the waiting service worker, then reload when idle.
-        void updateSW(true)
+        const sinceBoot = performance.now() - bootedAt
+        if (sinceBoot <= BOOT_GRACE_MS) {
+          // Fresh start. Activate the waiting SW; vite-plugin-pwa's
+          // updateSW(true) handles skipWaiting + reload internally.
+          void updateSW(true)
+          return
+        }
+
+        // Mid-session: notify the user with a sticky toast. The action
+        // button is the explicit user reload path. The background
+        // reloadWhenIdle path is the safety net for users who ignore
+        // or miss the toast.
+        useNotificationStore.getState().addNotification({
+          level: "info",
+          title: "Neue Version verfügbar",
+          message: "Klicke auf 'Jetzt neu laden', um zu aktualisieren.",
+          duration: 0,
+          action: {
+            label: "Jetzt neu laden",
+            onClick: () => {
+              void updateSW(true)
+            },
+          },
+        })
         reloadWhenIdle(() => window.location.reload())
       },
       onOfflineReady() {
