@@ -54,6 +54,7 @@ import { createResponseTaskGroup, registerActiveGroup, getActiveGroup, cancelCur
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
 import { HoldToKeepTalking } from '../voice/components/HoldToKeepTalking'
+import { useVoiceLifecycleStore } from '../voice-commands'
 import { useWakeLock } from '../../core/hooks/useWakeLock'
 import { useImagesStore } from '../images/store'
 import { useReportBounds } from '../voice/infrastructure/useReportBounds'
@@ -499,6 +500,12 @@ export function ChatView({ persona }: ChatViewProps) {
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
   const enterConversationMode = useConversationModeStore((s) => s.enter)
   const exitConversationMode = useConversationModeStore((s) => s.exit)
+
+  // Voice lifecycle — gates HoldToKeepTalking (only visible while the
+  // companion is actively listening) and feeds the top-bar pill so a click
+  // while paused resumes instead of exiting live mode.
+  const voiceLifecycle = useVoiceLifecycleStore((s) => s.state)
+  const setVoiceActive = useVoiceLifecycleStore((s) => s.setActive)
 
   // Build and register a ResponseTaskGroup for a new response. Must be called
   // BEFORE the WS message is sent so the Group is ready to receive events.
@@ -1157,6 +1164,8 @@ export function ChatView({ persona }: ChatViewProps) {
               },
             } : null}
             onConfigure={() => persona?.id && openPersonaOverlay(persona.id, 'voice')}
+            lifecycle={voiceLifecycle}
+            onResume={setVoiceActive}
           />
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
@@ -1344,6 +1353,7 @@ export function ChatView({ persona }: ChatViewProps) {
           {transcription && <TranscriptionOverlay text={transcription} autoSend={autoSendTranscription} />}
           {conversationActive
             && !conversationMicMuted
+            && voiceLifecycle === 'active'
             && (conversationPhase === 'user-speaking' || conversationPhase === 'held') && (
             <HoldToKeepTalking
               isHolding={conversationIsHolding}
