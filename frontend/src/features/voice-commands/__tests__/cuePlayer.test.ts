@@ -69,4 +69,14 @@ describe('cuePlayer', () => {
 
     expect(mockCtx.resume).toHaveBeenCalled()
   })
+
+  it('playCue("error") schedules G3 twice (flat repeated low note)', async () => {
+    const { playCue } = await import('../cuePlayer')
+    playCue('error')
+
+    expect(oscStartCalls).toHaveLength(2)
+    expect(oscStartCalls[0].freq).toBeCloseTo(196.00, 1)
+    expect(oscStartCalls[1].freq).toBeCloseTo(196.00, 1)
+    expect(oscStartCalls[1].startAt).toBeGreaterThan(oscStartCalls[0].startAt)
+  })
 })

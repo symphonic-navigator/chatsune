@@ -7,7 +7,7 @@
  * renders as a toast plus, optionally, a tone cue.
  */
 
-export type CueKind = 'on' | 'off'
+export type CueKind = 'on' | 'off' | 'error'
 
 export interface CommandSpec {
   /** Single token: lowercase, no whitespace, no punctuation. e.g. 'debug', 'companion', 'hue'. */

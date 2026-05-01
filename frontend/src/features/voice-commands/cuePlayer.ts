@@ -13,7 +13,7 @@
  * user-initiated continuous-voice start.
  */
 
-const NOTES = { C4: 261.63, G4: 392.00 } as const
+const NOTES = { C4: 261.63, G3: 196.00, G4: 392.00 } as const
 
 const CUE_OPTS = {
   waveform: 'square' as const,
@@ -88,5 +88,9 @@ export function playCue(kind: CueKind): void {
     case 'off':
       // Descending perfect fifth — mirror of 'on', "disconnect" pattern.
       return playSequence([[NOTES.G4, 130], [NOTES.C4, 80]])
+    case 'error':
+      // Flat repeated low G — no interval movement signals "input not recognised",
+      // distinct from both ascending/descending fifth cues.
+      return playSequence([[NOTES.G3, 130], [NOTES.G3, 80]])
   }
 }
