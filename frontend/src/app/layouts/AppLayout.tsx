@@ -346,11 +346,11 @@ export default function AppLayout() {
               sessions={filteredSessions}
             />
           )}
+          <VoiceVisualiserHitStrip />
         </main>
       </div>
       <VoiceVisualiser personaColourHex={activePersonaHex} />
       <VoiceCountdownPie personaColourHex={activePersonaHex} />
-      <VoiceVisualiserHitStrip />
       <ToastContainer />
       <MobileToastContainer />
       <InstallHint />

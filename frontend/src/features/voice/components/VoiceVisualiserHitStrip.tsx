@@ -43,7 +43,7 @@ export function VoiceVisualiserHitStrip() {
         aria-label={paused ? 'TTS fortsetzen' : 'TTS pausieren'}
         onClick={togglePause}
         style={{
-          position: 'fixed',
+          position: 'absolute',
           left: 0,
           width: '100%',
           top: '35%',
