@@ -393,6 +393,14 @@ export function ChatView({ persona }: ChatViewProps) {
     return () => { cancelled = true }
   }, [sessionId, scrollToBottom, isIncognito, persona?.id, persona?.model_unique_id, applyModelCapabilities])
 
+  // Stop in-flight TTS / response when the user switches sessions: the
+  // active Group owns the playback child whose onCancel calls
+  // audioPlayback.clearScope, so cancelling the Group is the architectural
+  // path to halting playback.
+  useEffect(() => {
+    return () => { cancelCurrentActiveGroup('teardown') }
+  }, [effectiveSessionId])
+
   // When navigated here from the global Artefacts tab with a pendingArtefactId,
   // fetch the artefact detail and open the overlay once the session is ready.
   useEffect(() => {
