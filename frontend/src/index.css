@@ -178,6 +178,29 @@ body {
   animation: toastExit 0.2s ease-out forwards;
 }
 
+@keyframes promptActive {
+  0%, 100% {
+    border-color: rgba(201, 168, 76, 0.25);
+    box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.10);
+  }
+  50% {
+    border-color: rgba(201, 168, 76, 0.55);
+    box-shadow: 0 0 12px rgba(201, 168, 76, 0.20);
+  }
+}
+
+.prompt-active-border {
+  animation: promptActive 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-active-border {
+    animation: none;
+    border-color: rgba(201, 168, 76, 0.45);
+    box-shadow: 0 0 0 1px rgba(201, 168, 76, 0.15);
+  }
+}
+
 /* Markdown prose inside chat */
 .chat-prose {
   word-break: break-word;

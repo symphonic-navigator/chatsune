@@ -3,6 +3,7 @@ import { useViewport } from '../../core/hooks/useViewport'
 import { hapticTap } from '../../core/utils/haptics'
 import { VoiceButton } from '../voice/components/VoiceButton'
 import type { PipelinePhase } from '../voice/types'
+import { usePhase } from '../voice/usePhase'
 import { useEmojiPickerStore } from './emojiPickerStore'
 import { EmojiPickerPopover } from './EmojiPickerPopover'
 import { insertEmojiAtCursor } from './insertEmojiAtCursor'
@@ -49,6 +50,12 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
   const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
   const closePicker = useEmojiPickerStore((s) => s.close)
   const isProgrammaticFocus = useRef(false)
+
+  const conversationPhase = usePhase()
+  const isResponseActive =
+    isStreaming &&
+    (voicePhase ?? 'idle') !== 'speaking' &&
+    conversationPhase !== 'speaking'
 
   const handleEmojiSelect = useCallback((emoji: string) => {
     const ta = textareaRef.current
@@ -216,7 +223,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
             placeholder="Type a message..."
             disabled={isStreaming || disabled}
             rows={1}
-            className="chat-text block max-h-[40vh] w-full resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 pr-10 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden"
+            className={`chat-text block max-h-[40vh] w-full resize-none overflow-y-auto rounded-lg border border-white/8 bg-white/4 px-3 py-2 pr-10 text-white/90 placeholder-white/55 outline-none transition-colors focus:border-white/15 focus:bg-white/6 disabled:opacity-40 lg:max-h-none lg:overflow-hidden${isResponseActive ? ' prompt-active-border' : ''}`}
           />
           {!isMobile && (
             <button
