@@ -12,11 +12,13 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
-COPY . .
-
-# Fetch the Vosk speech-recognition model (~40 MB) into vendor/vosk-model/
-# so the static-copy plugin can include it in the build output.
+# Copy only the download script (not full source) so the 40 MB Vosk model
+# layer stays cached across source-file changes — re-downloading on every
+# build wastes ~30 seconds and bandwidth in CI.
+COPY scripts/download-vosk-model.mjs ./scripts/
 RUN pnpm run vosk:download
+
+COPY . .
 
 # The VITE_* values are BAKED into the JS bundle at build time. To get a
 # single image that still works across dev/staging/prod, we build with literal
