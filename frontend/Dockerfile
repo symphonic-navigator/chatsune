@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+# unzip is required by scripts/download-vosk-model.mjs
+RUN apk add --no-cache unzip
+
 WORKDIR /app
 
 # Install deps first for better layer caching
@@ -10,6 +13,10 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+# Fetch the Vosk speech-recognition model (~40 MB) into vendor/vosk-model/
+# so the static-copy plugin can include it in the build output.
+RUN pnpm run vosk:download
 
 # The VITE_* values are BAKED into the JS bundle at build time. To get a
 # single image that still works across dev/staging/prod, we build with literal

@@ -54,3 +54,6 @@ backend/backend/logs
 # tidesson-net deployment
 tidesson-net/
 scratch/
+
+# Vosk model — fetched at build time, 40 MB binary
+frontend/vendor/vosk-model/

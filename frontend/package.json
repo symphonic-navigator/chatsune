@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "vosk:download": "node scripts/download-vosk-model.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "build:icons": "bash scripts/build-icons.sh"
