@@ -1,62 +1,61 @@
 /**
- * Vosk constrained grammar for the OFF-state wake-phrase detector.
+ * Vosk constrained grammar for the paused-state recogniser.
  *
- * Vocabulary discipline (lifted from VOSK-STT.md spike):
- *  - Only the accept phrases ("companion on", "companion status") are
- *    actionable. Any other final-result text is rejected at recogniser
- *    level via ACCEPT_TEXTS.
- *  - Phonetic distractors must appear both standalone AND as <word> on /
- *    <word> status — without the second-word forms, the second word
- *    collapses onto the accept set when the first word is misheard
+ * Discipline (lifted from VOSK-STT.md spike):
+ *  - Only the accept phrases are actionable. Any other final-result text is
+ *    rejected at recogniser level via ACCEPT_TEXTS.
+ *  - Every standalone phonetic distractor of 'voice' appears both standalone
+ *    AND with each subcommand — without the second-word forms, the second
+ *    word collapses onto the accept set when the first word is misheard
  *    (VOSK-STT.md pitfall #7).
- *  - "[unk]" is mandatory: gives Viterbi a "this isn't a wake phrase" path
+ *  - 'voice' itself appears as a standalone distractor: a user who says
+ *    'voice' and trails off must drop, not collapse onto an accept entry.
+ *  - '[unk]' is mandatory: gives Viterbi a "this isn't a wake phrase" path
  *    and prevents near-misses from collapsing onto the accept set with
  *    full confidence (VOSK-STT.md pitfall #6).
- *  - "companion off" is deliberately omitted: in the OFF state, hearing
- *    it again would be a no-op, and adding the path only increases
- *    competition for the decoder.
+ *  - 'voice off' / 'voice pause' / 'voice of' are deliberately omitted: in
+ *    the paused state, hearing them again is a no-op, and adding the path
+ *    only increases competition for the decoder.
  *
- * If false positives appear in production from new word neighbours,
+ * If false positives surface in production from new word neighbours,
  * extend BOTH the standalone list AND the second-word phrases. Skipping
  * the second-word entries reproduces pitfall #7.
  */
 
 export const VOSK_GRAMMAR: readonly string[] = [
   // Accept set
-  'companion on',
-  'companion status',
+  'voice on',
+  'voice continue',
+  'voice resume',
+  'voice status',
+  'voice state',
 
-  // Phonetic distractors — standalone (VOSK-STT.md pitfall #6)
-  'campaign',
-  'champion',
-  'company',
-  'compass',
-  'common',
-  'complete',
-  'complain',
+  // Phonetic distractors of 'voice' — standalone (VOSK-STT.md pitfall #6)
+  'noise',
+  'choice',
+  'boys',
+  'voice',
+  'poise',
+  'vice',
+  'rice',
 
-  // Phonetic distractors — with second word (VOSK-STT.md pitfall #7)
-  'campaign on',
-  'champion on',
-  'company on',
-  'compass on',
-  'common on',
-  'complete on',
-  'complain on',
-  'campaign status',
-  'champion status',
-  'company status',
-  'compass status',
-  'common status',
-  'complete status',
-  'complain status',
+  // Phonetic distractors of 'voice' — with each subcommand (pitfall #7)
+  'noise on',  'noise continue',  'noise resume',  'noise status',  'noise state',
+  'choice on', 'choice continue', 'choice resume', 'choice status', 'choice state',
+  'boys on',   'boys continue',   'boys resume',   'boys status',   'boys state',
+  'poise on',  'poise continue',  'poise resume',  'poise status',  'poise state',
+  'vice on',   'vice continue',   'vice resume',   'vice status',   'vice state',
+  'rice on',   'rice continue',   'rice resume',   'rice status',   'rice state',
 
   // Garbage model
   '[unk]',
 ]
 
-/** Set of texts that are valid wake/status phrases. Recogniser drops anything else. */
+/** Set of texts that are valid resume / status phrases. Recogniser drops anything else. */
 export const ACCEPT_TEXTS: ReadonlySet<string> = new Set([
-  'companion on',
-  'companion status',
+  'voice on',
+  'voice continue',
+  'voice resume',
+  'voice status',
+  'voice state',
 ])

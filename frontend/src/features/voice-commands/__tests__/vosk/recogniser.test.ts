@@ -84,7 +84,7 @@ describe('vosk recogniser', () => {
     expect(vosk.getState()).toBe('ready')
     expect(hoisted.recogniserCtor).toHaveBeenCalledWith(
       16000,
-      expect.stringContaining('companion on'),
+      expect.stringContaining('voice on'),
     )
 
     expect(hoisted.mockSetWords).toHaveBeenCalledWith(true)
@@ -124,14 +124,14 @@ describe('vosk recogniser', () => {
     fireResultEvent({
       event: 'result',
       result: {
-        text: 'companion on',
+        text: 'voice on',
         result: [
-          { word: 'companion', conf: 0.97 },
+          { word: 'voice', conf: 0.97 },
           { word: 'on', conf: 0.96 },
         ],
       },
     })
-    expect(hoisted.mockDispatch).toHaveBeenCalledWith('companion on')
+    expect(hoisted.mockDispatch).toHaveBeenCalledWith('voice on')
   })
 
   it('rejects when text is not in ACCEPT_TEXTS', async () => {
@@ -156,9 +156,9 @@ describe('vosk recogniser', () => {
     fireResultEvent({
       event: 'result',
       result: {
-        text: 'companion on',
+        text: 'voice on',
         result: [
-          { word: 'companion', conf: 0.97 },
+          { word: 'voice', conf: 0.97 },
           { word: 'on', conf: 0.94 },
         ],
       },
