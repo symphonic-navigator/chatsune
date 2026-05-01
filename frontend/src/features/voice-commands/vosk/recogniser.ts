@@ -1,5 +1,5 @@
 /**
- * Vosk recogniser — local STT for the OFF-state wake phrases.
+ * Vosk recogniser — local STT for the paused-state resume / status phrases.
  *
  * Lifecycle:
  *  - `vosk.init()` — idempotent. First call resolves the model singleton,

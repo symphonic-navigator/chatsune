@@ -140,9 +140,9 @@ describe('vosk recogniser', () => {
     fireResultEvent({
       event: 'result',
       result: {
-        text: 'campaign on',
+        text: 'noise on',
         result: [
-          { word: 'campaign', conf: 0.99 },
+          { word: 'noise', conf: 0.99 },
           { word: 'on', conf: 0.99 },
         ],
       },
@@ -168,7 +168,7 @@ describe('vosk recogniser', () => {
 
   it('ignores non-result events', async () => {
     await vosk.init()
-    fireResultEvent({ event: 'partialresult', result: { partial: 'compan' } })
+    fireResultEvent({ event: 'partialresult', result: { partial: 'partial text' } })
     expect(hoisted.mockDispatch).not.toHaveBeenCalled()
   })
 

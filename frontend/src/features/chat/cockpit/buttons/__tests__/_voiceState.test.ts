@@ -79,4 +79,8 @@ describe('live-paused state', () => {
     const r = deriveVoiceUIState({ ...baseInput, lifecycle: 'active' })
     expect(r.kind).not.toBe('live-paused')
   })
+
+  it('live-playing wins over live-paused (TTS interrupt is the most urgent action)', () => {
+    expect(deriveVoiceUIState({ ...baseInput, ttsPlaying: true }).kind).toBe('live-playing')
+  })
 })
