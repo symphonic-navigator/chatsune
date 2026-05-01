@@ -1,5 +1,14 @@
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 
+const BACKEND_MARKER_HEADER = "X-Chatsune-Backend"
+
+export class BackendUnavailableError extends Error {
+  constructor(reason: string) {
+    super(`Backend unavailable: ${reason}`)
+    this.name = "BackendUnavailableError"
+  }
+}
+
 let getAccessToken: () => string | null = () => null
 let setAccessToken: (token: string) => void = () => {}
 let onAuthFailure: () => void = () => {}
@@ -35,10 +44,13 @@ function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError && (err.message === "Failed to fetch" || err.message === "Load failed")
 }
 
-let currentRefresh: Promise<boolean | "network_error"> | null = null
+export type RefreshOutcome = "ok" | "auth_failed" | "backend_unavailable"
 
-async function refreshToken(): Promise<boolean | "network_error"> {
-  // Share the in-flight refresh promise so parallel 401s coalesce into a single refresh call
+let currentRefresh: Promise<RefreshOutcome> | null = null
+
+export async function refreshToken(): Promise<RefreshOutcome> {
+  // Share the in-flight refresh promise so parallel 401s coalesce into a
+  // single refresh call.
   if (currentRefresh) return currentRefresh
   currentRefresh = (async () => {
     try {
@@ -46,12 +58,19 @@ async function refreshToken(): Promise<boolean | "network_error"> {
         method: "POST",
         credentials: "include",
       })
-      if (!res.ok) return false
+      // No marker header → response did not come from our backend
+      // (proxy fall-through). This is NOT an auth failure; do not log
+      // the user out. The health monitor will pick up the backend-down
+      // state.
+      if (!res.headers.has(BACKEND_MARKER_HEADER)) {
+        return "backend_unavailable"
+      }
+      if (!res.ok) return "auth_failed"
       const data = await res.json()
       setAccessToken(data.access_token)
-      return true
+      return "ok"
     } catch (err) {
-      return isNetworkError(err) ? "network_error" : false
+      return isNetworkError(err) ? "backend_unavailable" : "auth_failed"
     } finally {
       currentRefresh = null
     }
@@ -89,14 +108,22 @@ export async function apiRequest<T>(
   } catch (err) {
     if (isNetworkError(err)) {
       onBackendUnavailable()
-      throw new ApiError(0, "Backend unreachable")
+      throw new BackendUnavailableError("network error")
     }
     throw err
   }
 
+  // If the response did not come from our backend (proxy fall-through,
+  // frontend nginx, browser cache, etc.), the marker header is absent.
+  // Treat this as "backend unreachable", not as an authoritative result.
+  if (!res.headers.has(BACKEND_MARKER_HEADER)) {
+    onBackendUnavailable()
+    throw new BackendUnavailableError(`no marker header (status ${res.status})`)
+  }
+
   if (res.status === 401 && !skipAuth) {
     const refreshed = await refreshToken()
-    if (refreshed === true) {
+    if (refreshed === "ok") {
       const token = getAccessToken()
       if (token) {
         headers["Authorization"] = `Bearer ${token}`
@@ -107,10 +134,16 @@ export async function apiRequest<T>(
         body: body !== undefined ? JSON.stringify(body) : undefined,
         credentials: "include",
       })
-    } else if (refreshed === "network_error") {
+      if (!res.headers.has(BACKEND_MARKER_HEADER)) {
+        onBackendUnavailable()
+        throw new BackendUnavailableError("retry response missing marker")
+      }
+    } else if (refreshed === "backend_unavailable") {
       onBackendUnavailable()
-      throw new ApiError(0, "Backend unreachable")
+      throw new BackendUnavailableError("refresh failed: backend unavailable")
     } else {
+      // refreshed === "auth_failed": the backend authoritatively rejected
+      // the refresh. The user's session is over.
       onAuthFailure()
       throw new ApiError(401, "Authentication failed")
     }

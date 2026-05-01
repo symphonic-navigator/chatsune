@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { UserDto } from "../types/auth"
 import { configureClient } from "../api/client"
+import { forceLogout } from "../auth/logoutCoordinator"
 import { useUploadStore } from "./uploadStore"
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -79,6 +80,11 @@ import { useEventStore } from "./eventStore"
 configureClient({
   getAccessToken: () => useAuthStore.getState().accessToken,
   setAccessToken: (token: string) => useAuthStore.getState().setToken(token),
-  onAuthFailure: () => useAuthStore.getState().clear(),
+  onAuthFailure: () => {
+    void forceLogout(
+      "session_expired",
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+    )
+  },
   onBackendUnavailable: () => useEventStore.getState().setBackendAvailable(false),
 })
