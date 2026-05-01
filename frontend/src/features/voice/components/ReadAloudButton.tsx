@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useCockpitStore } from '../../chat/cockpit/cockpitStore'
 import { useOutletContext } from 'react-router-dom'
 import { resolveTTSEngine, resolveTTSIntegrationId } from '../engines/resolver'
@@ -94,6 +94,15 @@ interface CachedAudio {
 const CACHE_MAX = 8
 const cache = new Map<string, CachedAudio>()
 
+// Listeners called whenever the cache mutates (insert or evict). Used by
+// ReadAloudButton instances so the green "cached" pill reacts to cache
+// changes without turning the cache itself into a Zustand store.
+const cacheListeners = new Set<() => void>()
+
+function notifyCacheListeners(): void {
+  for (const listener of cacheListeners) listener()
+}
+
 function cacheGet(key: string): CachedAudio | undefined {
   const entry = cache.get(key)
   if (entry) { cache.delete(key); cache.set(key, entry) }
@@ -107,6 +116,22 @@ function cachePut(key: string, entry: CachedAudio): void {
     const oldest = cache.keys().next().value
     if (oldest !== undefined) cache.delete(oldest)
   }
+  notifyCacheListeners()
+}
+
+// React hook: returns a number that increments on every cache mutation.
+// Components depend on this in useMemo deps to re-evaluate cache-hit
+// derivations when the cache changes.
+function useCacheTick(): number {
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const listener = () => setTick((t) => t + 1)
+    cacheListeners.add(listener)
+    return () => {
+      cacheListeners.delete(listener)
+    }
+  }, [])
+  return tick
 }
 
 // ── Shared synthesis runner ──
@@ -261,6 +286,15 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
   const integrationUserConfig = activeTTS ? configs?.[activeTTS.id]?.config : undefined
   const gapMs = resolveGapMs(activeTTS?.id, integrationUserConfig)
 
+  const cacheTick = useCacheTick()
+  const isCached = useMemo(() => {
+    if (!voiceId) return false
+    const key = readAloudCacheKey(messageId, voiceId, narratorVoiceId, resolvedMode)
+    return cacheGet(key) !== undefined
+    // cacheTick triggers re-evaluation when the cache mutates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId, voiceId, narratorVoiceId, resolvedMode, cacheTick])
+
   const outlet = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: string) => void
   }>()
@@ -347,7 +381,7 @@ export function ReadAloudButton({ messageId, content, persona, dialogueVoice, na
 
   return (
     <button type="button" onClick={handleClick}
-      className={`flex items-center gap-1 text-[11px] transition-colors ${active ? 'text-gold' : 'text-white/25 hover:text-white/50'}`}
+      className={`flex items-center gap-1 text-[11px] transition-colors ${active ? 'text-gold' : isCached ? 'text-emerald-400/45 hover:text-emerald-400/65' : 'text-white/25 hover:text-white/50'}`}
       title={label}>
       {displayState === 'synthesising' ? (
         <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-gold/30 border-t-gold" />
