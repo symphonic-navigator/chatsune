@@ -38,7 +38,7 @@ export function AddPersonaMenu({ onCreateNew, onImport, onClose }: AddPersonaMen
       ref={menuRef}
       role="menu"
       aria-label="Add persona options"
-      className="absolute left-1/2 top-full z-20 mt-2 flex -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
+      className="absolute left-1/2 bottom-full z-20 mb-2 flex -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-white/10 bg-elevated shadow-2xl"
       style={{ minWidth: 180 }}
     >
       <button
