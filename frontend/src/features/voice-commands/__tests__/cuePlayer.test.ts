@@ -15,7 +15,7 @@ describe('cuePlayer', () => {
         const osc = {
           type: '',
           frequency: { setValueAtTime: vi.fn((freq: number, startAt: number) => oscStartCalls.push({ freq, startAt })) },
-          connect: vi.fn(() => osc),
+          connect: vi.fn((dest: unknown) => dest),
           start: vi.fn(),
           stop: vi.fn(),
         }
@@ -25,14 +25,14 @@ describe('cuePlayer', () => {
         type: '',
         Q: { setValueAtTime: vi.fn() },
         frequency: { setValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() },
-        connect: vi.fn(function (this: unknown) { return this }),
+        connect: vi.fn((dest: unknown) => dest),
       }),
       createGain: () => ({
         gain: {
           setValueAtTime: vi.fn(),
           linearRampToValueAtTime: vi.fn(),
         },
-        connect: vi.fn(function (this: unknown) { return this }),
+        connect: vi.fn((dest: unknown) => dest),
       }),
     }
     vi.stubGlobal('AudioContext', vi.fn(function () { return mockCtx }))

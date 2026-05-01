@@ -77,7 +77,8 @@ function playSequence(notes: ReadonlyArray<readonly [number, number]>): void {
   }
 }
 
-export type CueKind = 'on' | 'off'
+import type { CueKind } from './types'
+export type { CueKind }
 
 export function playCue(kind: CueKind): void {
   switch (kind) {
