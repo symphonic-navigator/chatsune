@@ -310,17 +310,23 @@ _XAI_MODELS: tuple[_XaiModelEntry, ...] = (
 
 _XAI_MODELS_BY_ID: dict[str, _XaiModelEntry] = {m.model_id: m for m in _XAI_MODELS}
 
-# Temporary aliases — Phase 3 (plan task 4) removes the consumers and
-# these names go with them. Kept here only so this commit is
-# self-contained.
-_XAI_MODEL_REASONING = _XAI_MODELS_BY_ID["grok-4.1-fast"].reasoning_slug
-_XAI_MODEL_NON_REASONING = _XAI_MODELS_BY_ID["grok-4.1-fast"].non_reasoning_slug
-
-
 def _build_chat_payload(request: CompletionRequest) -> dict:
+    entry = _XAI_MODELS_BY_ID.get(request.model)
+    if entry is None:
+        # Stale persona reference (e.g. legacy `xai:grok-4`) — fall back
+        # to Grok 4.1 Fast so the request stays routable. Logged as a
+        # warning so it shows up in Claude-oriented logs without
+        # raising. The fallback path is exercised by Task 5's tests.
+        _log.warning(
+            "xAI: unknown model_id=%r in CompletionRequest; "
+            "falling back to grok-4.1-fast",
+            request.model,
+        )
+        entry = _XAI_MODELS_BY_ID["grok-4.1-fast"]
+
     model_slug = (
-        _XAI_MODEL_REASONING if request.reasoning_enabled
-        else _XAI_MODEL_NON_REASONING
+        entry.reasoning_slug if request.reasoning_enabled
+        else entry.non_reasoning_slug
     )
     payload: dict = {
         "model": model_slug,

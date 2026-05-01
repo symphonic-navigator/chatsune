@@ -184,6 +184,34 @@ def test_build_payload_picks_reasoning_model_when_toggle_on():
     assert payload["model"] == "grok-4-1-fast-reasoning"
 
 
+def test_build_payload_grok_4_20_reasoning_uses_reasoning_slug():
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.20", reasoning_enabled=True)
+    )
+    assert payload["model"] == "grok-4.20-0309-reasoning"
+
+
+def test_build_payload_grok_4_20_non_reasoning_uses_non_reasoning_slug():
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.20", reasoning_enabled=False)
+    )
+    assert payload["model"] == "grok-4.20-0309-non-reasoning"
+
+
+def test_build_payload_grok_4_3_reasoning_uses_4_3_slug():
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", reasoning_enabled=True)
+    )
+    assert payload["model"] == "grok-4.3"
+
+
+def test_build_payload_grok_4_3_non_reasoning_falls_back_to_4_20():
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", reasoning_enabled=False)
+    )
+    assert payload["model"] == "grok-4.20-0309-non-reasoning"
+
+
 def test_build_payload_omits_temperature_when_none():
     payload = _build_chat_payload(_simple_request(temperature=None))
     assert "temperature" not in payload
