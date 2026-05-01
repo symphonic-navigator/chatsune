@@ -2,36 +2,35 @@
  * Vosk recogniser — local STT for the OFF-state wake phrases.
  *
  * Lifecycle:
- *  - `vosk.init()` — idempotent. First call loads the model + builds a
- *    KaldiRecognizer with the constrained grammar. State 'idle' → 'loading'
- *    → 'ready'. Subsequent calls when state ∈ {'loading', 'ready'} are
- *    no-ops; a fresh recogniser is built when state is 'idle' (post-dispose)
- *    or 'error' (recoverable retry).
- *  - `vosk.feed(pcm)` — synchronous from the caller's perspective. Drops
- *    silently when state ≠ 'ready' (Decision #8: no buffering during load),
- *    drops segments > 4 s (CPU guard), runs the recogniser otherwise.
- *  - `vosk.dispose()` — frees the recogniser; model singleton survives so
- *    re-init within one page-load is fast. Use at continuous-voice stop.
+ *  - `vosk.init()` — idempotent. First call resolves the model singleton,
+ *    constructs `model.KaldiRecognizer(...)` with the constrained grammar,
+ *    enables per-word confidence, and wires the result event listener
+ *    that runs the match path. State 'idle' → 'loading' → 'ready'.
+ *    Subsequent calls when state ∈ {'loading', 'ready'} are no-ops.
+ *    A fresh recogniser is built when state is 'idle' (post-dispose) or
+ *    'error' (recoverable retry).
+ *  - `vosk.feed(pcm)` — pushes audio into the recogniser. Drops silently
+ *    when state ≠ 'ready' (Decision #8: no buffering during load), drops
+ *    segments > 4 s (CPU guard from VOSK-STT.md). On feed, also calls
+ *    retrieveFinalResult() so the recogniser emits a final-result event
+ *    instead of waiting for endpointing — our segments are already
+ *    end-pointed by the VAD upstream.
+ *  - `vosk.dispose()` — calls remove() on the recogniser; the model
+ *    singleton in modelLoader survives so re-init within one page-load
+ *    is fast.
  *
- * Match flow (inside feed):
- *   acceptWaveform → finalResult { text, result: [{word, conf}, ...] }
+ * Match flow (inside the result event handler):
+ *   { text, result: [{ word, conf, ... }] }
  *     ├─ text not in ACCEPT_TEXTS → drop
  *     ├─ any conf < 0.95 → drop
  *     └─ otherwise → tryDispatchCommand(text)
  *
- * Recogniser is reused across calls — fresh KaldiRecognizer per feed
- * would recompile the grammar graph every time (~2-3 s wasted per call,
- * see VOSK-STT.md performance notes).
- *
- * vosk-browser 0.0.8 type note: `KaldiRecognizer` is a type alias plus a
- * nested constructor exposed via `Model.KaldiRecognizer`. The test suite
- * mocks the package with a top-level `KaldiRecognizer` named export, so
- * we read the constructor via namespace import + index access — that
- * works against both the test mock and (when narrowed to the actual
- * shape) the real package, without violating `verbatimModuleSyntax`.
+ * The recogniser is reused across feed calls — re-constructing it would
+ * recompile the grammar graph (~2-3 s per call, see VOSK-STT.md
+ * performance notes).
  */
 
-import * as voskBrowser from 'vosk-browser'
+import type { KaldiRecognizer, Model } from 'vosk-browser'
 import { tryDispatchCommand } from '../dispatcher'
 import { ACCEPT_TEXTS, VOSK_GRAMMAR } from './grammar'
 import { getModel } from './modelLoader'
@@ -42,38 +41,40 @@ const SAMPLE_RATE = 16_000
 const MAX_SEGMENT_SECONDS = 4
 const WAKE_CONF_THRESHOLD = 0.95
 
-interface FinalResult {
-  text: string
-  result: Array<{ word: string; conf: number }>
-}
-
-interface RecogniserHandle {
-  acceptWaveform: (pcm: Float32Array) => unknown
-  finalResult: () => FinalResult
-  remove: () => void
-}
-
-type KaldiRecognizerCtor = new (
-  model: unknown,
-  sampleRate: number,
-  grammar: string,
-) => RecogniserHandle
-
 let state: VoskState = 'idle'
-let recogniser: RecogniserHandle | null = null
+let recogniser: KaldiRecognizer | null = null
+
+interface VoskResult {
+  text: string
+  result: Array<{ conf: number; word: string; start?: number; end?: number }>
+}
+
+function handleResult(msg: { event: 'result'; result?: VoskResult } | { event: string }): void {
+  if (msg.event !== 'result' || !('result' in msg) || !msg.result) return
+  const { text, result } = msg.result
+
+  if (!ACCEPT_TEXTS.has(text)) {
+    console.debug('[Vosk] rejected (text):', text)
+    return
+  }
+
+  if (!result.every((w) => w.conf >= WAKE_CONF_THRESHOLD)) {
+    console.debug('[Vosk] rejected (conf):', msg.result)
+    return
+  }
+
+  console.debug('[Vosk] accepted:', text)
+  void tryDispatchCommand(text)
+}
 
 async function init(): Promise<void> {
   if (state === 'loading' || state === 'ready') return
   state = 'loading'
   try {
-    const model = await getModel()
-    // Read the constructor off the package namespace; cast at this single
-    // boundary — vosk-browser 0.0.8's TS types model the recogniser as a
-    // nested anonymous class, but the test mock and our usage only need
-    // the three methods captured by RecogniserHandle.
-    const Ctor = (voskBrowser as unknown as { KaldiRecognizer: KaldiRecognizerCtor })
-      .KaldiRecognizer
-    recogniser = new Ctor(model, SAMPLE_RATE, JSON.stringify(VOSK_GRAMMAR))
+    const model = (await getModel()) as Model
+    recogniser = new model.KaldiRecognizer(SAMPLE_RATE, JSON.stringify(VOSK_GRAMMAR))
+    recogniser.setWords(true)
+    recogniser.on('result', handleResult)
     state = 'ready'
   } catch (err) {
     console.error('[Vosk] init failed:', err)
@@ -89,21 +90,11 @@ function feed(pcm: Float32Array): void {
     return
   }
 
-  recogniser.acceptWaveform(pcm)
-  const result = recogniser.finalResult()
-
-  if (!ACCEPT_TEXTS.has(result.text)) {
-    console.debug('[Vosk] rejected (text):', result.text)
-    return
-  }
-
-  if (!result.result.every((w) => w.conf >= WAKE_CONF_THRESHOLD)) {
-    console.debug('[Vosk] rejected (conf):', result)
-    return
-  }
-
-  console.debug('[Vosk] accepted:', result.text)
-  void tryDispatchCommand(result.text)
+  recogniser.acceptWaveformFloat(pcm, SAMPLE_RATE)
+  // VAD has already end-pointed the segment — force the final result so
+  // the result listener fires now instead of waiting for the recogniser's
+  // own endpointing.
+  recogniser.retrieveFinalResult()
 }
 
 function dispose(): void {

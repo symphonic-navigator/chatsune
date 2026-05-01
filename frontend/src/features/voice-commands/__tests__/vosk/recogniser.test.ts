@@ -1,56 +1,78 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
-// Mock vosk-browser with controllable behaviour per test.
-// vi.mock is hoisted to the top of the file, so the factory cannot close
-// over local variables — use vi.hoisted to share the mocks with the tests.
-const {
-  mockAcceptWaveform,
-  mockFinalResult,
-  mockRemove,
-  mockKaldiRecognizer,
-  mockModel,
-  mockDispatch,
-} = vi.hoisted(() => {
-  const mockAcceptWaveform = vi.fn()
-  const mockFinalResult = vi.fn()
+// Mock setup: model.KaldiRecognizer is a getter on the Model instance,
+// returning an anonymous-class constructor. We simulate the same shape.
+const hoisted = vi.hoisted(() => {
+  const mockSetWords = vi.fn()
+  const mockOn = vi.fn()
+  const mockAcceptWaveformFloat = vi.fn()
+  const mockRetrieveFinalResult = vi.fn()
   const mockRemove = vi.fn()
-  // Use a plain function (not an arrow) so vitest's spy can invoke it
-  // via Reflect.construct when the recogniser does `new KaldiRecognizer(...)`.
-  const mockKaldiRecognizer = vi.fn(function MockKaldiRecognizer(this: unknown) {
-    return {
-      acceptWaveform: mockAcceptWaveform,
-      finalResult: mockFinalResult,
-      remove: mockRemove,
-    }
-  })
-  const mockModel = vi.fn().mockResolvedValue({ /* opaque model handle */ })
   const mockDispatch = vi.fn()
+
+  // The KaldiRecognizer constructor mock — captures the grammar argument
+  // and exposes the recogniser instance back to tests.
+  const recogniserInstance = {
+    setWords: mockSetWords,
+    on: mockOn,
+    acceptWaveformFloat: mockAcceptWaveformFloat,
+    retrieveFinalResult: mockRetrieveFinalResult,
+    remove: mockRemove,
+  }
+  const recogniserCtor = vi.fn(function MockKaldiRecognizer(
+    this: unknown,
+    _sampleRate: number,
+    _grammar?: string,
+  ) {
+    return recogniserInstance
+  })
+
+  // The Model instance — has a `KaldiRecognizer` getter returning the ctor.
+  const modelInstance = {
+    KaldiRecognizer: recogniserCtor,
+  }
+
+  const mockCreateModel = vi.fn().mockResolvedValue(modelInstance)
+
   return {
-    mockAcceptWaveform,
-    mockFinalResult,
+    mockSetWords,
+    mockOn,
+    mockAcceptWaveformFloat,
+    mockRetrieveFinalResult,
     mockRemove,
-    mockKaldiRecognizer,
-    mockModel,
+    recogniserCtor,
+    mockCreateModel,
     mockDispatch,
   }
 })
 
 vi.mock('vosk-browser', () => ({
-  createModel: mockModel,
-  KaldiRecognizer: mockKaldiRecognizer,
+  createModel: hoisted.mockCreateModel,
 }))
 
-// Mock tryDispatchCommand — recogniser routes successful matches through it.
 vi.mock('../../dispatcher', () => ({
-  tryDispatchCommand: mockDispatch,
+  tryDispatchCommand: hoisted.mockDispatch,
 }))
 
 import { vosk } from '../../vosk/recogniser'
 
+/**
+ * Helper: simulate the recogniser firing a 'result' event — extracts the
+ * listener registered via recogniser.on('result', listener) and invokes
+ * it directly.
+ */
+function fireResultEvent(payload: unknown): void {
+  const onCalls = hoisted.mockOn.mock.calls
+  const resultCall = onCalls.find(([event]) => event === 'result')
+  if (!resultCall) throw new Error('no result listener registered')
+  const listener = resultCall[1] as (msg: unknown) => void
+  listener(payload)
+}
+
 describe('vosk recogniser', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vosk.dispose()  // reset state between tests
+    vosk.dispose()
   })
 
   afterEach(() => {
@@ -61,75 +83,113 @@ describe('vosk recogniser', () => {
     expect(vosk.getState()).toBe('idle')
   })
 
-  it('init transitions to ready and constructs recogniser with grammar', async () => {
+  it('init transitions to ready, constructs recogniser with grammar, enables words, registers result listener', async () => {
     await vosk.init()
     expect(vosk.getState()).toBe('ready')
-    expect(mockKaldiRecognizer).toHaveBeenCalled()
+    expect(hoisted.recogniserCtor).toHaveBeenCalled()
+    // Grammar JSON is the second constructor arg
+    const ctorArgs = hoisted.recogniserCtor.mock.calls[0]
+    expect(ctorArgs[0]).toBe(16000)
+    expect(typeof ctorArgs[1]).toBe('string')
+    expect(JSON.parse(ctorArgs[1] as string)).toContain('companion on')
+
+    expect(hoisted.mockSetWords).toHaveBeenCalledWith(true)
+    const onCalls = hoisted.mockOn.mock.calls
+    expect(onCalls.some(([event]) => event === 'result')).toBe(true)
   })
 
   it('init is idempotent — second call is a no-op when ready', async () => {
     await vosk.init()
-    const callsAfterFirst = mockKaldiRecognizer.mock.calls.length
+    const callsAfterFirst = hoisted.recogniserCtor.mock.calls.length
     await vosk.init()
-    expect(mockKaldiRecognizer.mock.calls.length).toBe(callsAfterFirst)
+    expect(hoisted.recogniserCtor.mock.calls.length).toBe(callsAfterFirst)
   })
 
   it('feed drops silently when state is not ready', () => {
-    // not initialised; state === 'idle'
     vosk.feed(new Float32Array(1000))
-    expect(mockAcceptWaveform).not.toHaveBeenCalled()
+    expect(hoisted.mockAcceptWaveformFloat).not.toHaveBeenCalled()
   })
 
   it('feed drops segments longer than 4 seconds', async () => {
     await vosk.init()
     const fiveSecondsAt16kHz = 5 * 16_000
     vosk.feed(new Float32Array(fiveSecondsAt16kHz))
-    expect(mockAcceptWaveform).not.toHaveBeenCalled()
+    expect(hoisted.mockAcceptWaveformFloat).not.toHaveBeenCalled()
   })
 
-  it('feed accepts segments under 4 seconds and dispatches on accept', async () => {
+  it('feed accepts segments under 4 seconds and forces a final result', async () => {
     await vosk.init()
-    mockFinalResult.mockReturnValue({
-      text: 'companion on',
-      result: [{ word: 'companion', conf: 0.97 }, { word: 'on', conf: 0.96 }],
-    })
-    vosk.feed(new Float32Array(1 * 16_000))  // 1 second
-    expect(mockAcceptWaveform).toHaveBeenCalled()
-    expect(mockDispatch).toHaveBeenCalledWith('companion on')
-  })
-
-  it('feed rejects when text is not in ACCEPT_TEXTS', async () => {
-    await vosk.init()
-    mockFinalResult.mockReturnValue({
-      text: 'campaign on',
-      result: [{ word: 'campaign', conf: 0.99 }, { word: 'on', conf: 0.99 }],
-    })
     vosk.feed(new Float32Array(1 * 16_000))
-    expect(mockDispatch).not.toHaveBeenCalled()
+    expect(hoisted.mockAcceptWaveformFloat).toHaveBeenCalled()
+    expect(hoisted.mockRetrieveFinalResult).toHaveBeenCalled()
   })
 
-  it('feed rejects when any per-word confidence is below 0.95', async () => {
+  it('dispatches when result event has accepted text and all confs >= 0.95', async () => {
     await vosk.init()
-    mockFinalResult.mockReturnValue({
-      text: 'companion on',
-      result: [{ word: 'companion', conf: 0.97 }, { word: 'on', conf: 0.94 }],
-    })
     vosk.feed(new Float32Array(1 * 16_000))
-    expect(mockDispatch).not.toHaveBeenCalled()
+    fireResultEvent({
+      event: 'result',
+      result: {
+        text: 'companion on',
+        result: [
+          { word: 'companion', conf: 0.97 },
+          { word: 'on', conf: 0.96 },
+        ],
+      },
+    })
+    expect(hoisted.mockDispatch).toHaveBeenCalledWith('companion on')
   })
 
-  it('dispose returns to idle state and removes the recogniser', async () => {
+  it('rejects when text is not in ACCEPT_TEXTS', async () => {
+    await vosk.init()
+    vosk.feed(new Float32Array(1 * 16_000))
+    fireResultEvent({
+      event: 'result',
+      result: {
+        text: 'campaign on',
+        result: [
+          { word: 'campaign', conf: 0.99 },
+          { word: 'on', conf: 0.99 },
+        ],
+      },
+    })
+    expect(hoisted.mockDispatch).not.toHaveBeenCalled()
+  })
+
+  it('rejects when any per-word conf < 0.95', async () => {
+    await vosk.init()
+    vosk.feed(new Float32Array(1 * 16_000))
+    fireResultEvent({
+      event: 'result',
+      result: {
+        text: 'companion on',
+        result: [
+          { word: 'companion', conf: 0.97 },
+          { word: 'on', conf: 0.94 },
+        ],
+      },
+    })
+    expect(hoisted.mockDispatch).not.toHaveBeenCalled()
+  })
+
+  it('ignores non-result events', async () => {
+    await vosk.init()
+    fireResultEvent({ event: 'partialresult', result: { partial: 'compan' } })
+    expect(hoisted.mockDispatch).not.toHaveBeenCalled()
+  })
+
+  it('dispose returns to idle and calls remove()', async () => {
     await vosk.init()
     vosk.dispose()
     expect(vosk.getState()).toBe('idle')
-    expect(mockRemove).toHaveBeenCalled()
+    expect(hoisted.mockRemove).toHaveBeenCalled()
   })
 
   it('init after dispose rebuilds the recogniser', async () => {
     await vosk.init()
     vosk.dispose()
-    const callsBeforeSecondInit = mockKaldiRecognizer.mock.calls.length
+    const callsBeforeSecondInit = hoisted.recogniserCtor.mock.calls.length
     await vosk.init()
-    expect(mockKaldiRecognizer.mock.calls.length).toBe(callsBeforeSecondInit + 1)
+    expect(hoisted.recogniserCtor.mock.calls.length).toBe(callsBeforeSecondInit + 1)
   })
 })
