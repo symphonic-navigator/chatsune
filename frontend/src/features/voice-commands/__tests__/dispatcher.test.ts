@@ -100,4 +100,37 @@ describe('tryDispatchCommand', () => {
     await tryDispatchCommand('Demo, off.')
     expect(spec.execute).toHaveBeenCalledWith('off')
   })
+
+  it('uses response.onTriggerWhilePlaying override when handler returns one', async () => {
+    registerCommand({
+      trigger: 'override',
+      onTriggerWhilePlaying: 'abandon',  // static default
+      source: 'core',
+      execute: async () => ({
+        level: 'info',
+        displayText: 'overridden',
+        onTriggerWhilePlaying: 'resume',  // per-response override
+      }),
+    })
+
+    const result = await tryDispatchCommand('override')
+
+    expect(result).toEqual({ dispatched: true, onTriggerWhilePlaying: 'resume' })
+  })
+
+  it('falls back to spec default when response has no onTriggerWhilePlaying', async () => {
+    registerCommand({
+      trigger: 'nooverride',
+      onTriggerWhilePlaying: 'abandon',
+      source: 'core',
+      execute: async () => ({
+        level: 'info',
+        displayText: 'static',
+      }),
+    })
+
+    const result = await tryDispatchCommand('nooverride')
+
+    expect(result).toEqual({ dispatched: true, onTriggerWhilePlaying: 'abandon' })
+  })
 })

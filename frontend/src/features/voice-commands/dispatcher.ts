@@ -36,5 +36,8 @@ export async function tryDispatchCommand(text: string): Promise<DispatchResult> 
   }
 
   respondToUser(response)
-  return { dispatched: true, onTriggerWhilePlaying: handler.onTriggerWhilePlaying }
+  return {
+    dispatched: true,
+    onTriggerWhilePlaying: response.onTriggerWhilePlaying ?? handler.onTriggerWhilePlaying,
+  }
 }
