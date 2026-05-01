@@ -94,6 +94,13 @@ export interface ModelMetaDto {
    * cached payloads — treat missing/null as "unknown".
    */
   billing_category?: 'free' | 'subscription' | 'pay_per_token' | null
+  /**
+   * Free-form per-model note rendered as a dimmed third line under the
+   * row in the model browser. Adapter-set on the backend (`shared/dtos/
+   * llm.py::ModelMetaDto.remarks`); the frontend treats it as read-only.
+   * Optional/null for every model that has nothing to disclose.
+   */
+  remarks?: string | null
   unique_id: string
 }
 
