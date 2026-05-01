@@ -49,7 +49,7 @@ html {
  * `100vw`/`w-screen`, otherwise they overflow body's compensated width. */
 body {
   width: calc(100vw / var(--ui-scale, 1));
-  height: calc(100vh / var(--ui-scale, 1));
+  height: calc(100dvh / var(--ui-scale, 1));
   transform: scale(var(--ui-scale, 1));
   transform-origin: top left;
   overflow: hidden;

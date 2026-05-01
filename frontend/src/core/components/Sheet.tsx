@@ -121,7 +121,7 @@ export function Sheet({
             // Mobile: cover the whole viewport, no rounding.
             'h-full rounded-none',
             // Desktop: bounded width, rounded corners, soft height cap.
-            'lg:h-auto lg:max-h-[calc(100vh-2rem)] lg:rounded-xl',
+            'lg:h-auto lg:max-h-[calc(100dvh-2rem)] lg:rounded-xl',
             maxWidth,
             className,
           ].join(' ')}

@@ -63,7 +63,7 @@ export default function DeletionCompletePage() {
   }
 
   return (
-    <div className="min-h-screen bg-base text-white/85 px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-dvh bg-base text-white/85 px-4 py-10 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
       <div className="mx-auto w-full max-w-2xl">
         {state.kind === 'loading' && (
           <p className="text-center text-[13px] text-white/45 font-mono mt-20">

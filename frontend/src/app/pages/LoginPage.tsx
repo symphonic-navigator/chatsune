@@ -129,7 +129,7 @@ function LoginForm() {
   // Recovery required — user must supply their recovery key to set a new password
   if (phase.kind === 'recovery_required') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
           <RecoveryKeyPrompt
             username={phase.username}
@@ -152,7 +152,7 @@ function LoginForm() {
   // Account declined / deactivated after recovery refusal
   if (phase.kind === 'declined') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8 text-center space-y-3">
           <p className="text-[14px] text-white/70">
             Your account has been deactivated. Please contact an administrator if you need access restored.
@@ -188,7 +188,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
           <span className="text-3xl">🦊</span>
@@ -349,7 +349,7 @@ function SetupForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+    <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
           <span className="text-3xl">🦊</span>
