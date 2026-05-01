@@ -474,17 +474,27 @@ always returns 'resume' override; idempotent already-active path likewise."
 
 ---
 
-### Task 3: Strict-reject for 2-token `voice <unknown>` in dispatcher
+### Task 3: Voice-trigger gate in dispatcher (strict-reject + fall-through)
 
 **Files:**
 - Modify: `frontend/src/features/voice-commands/dispatcher.ts`
 - Modify: `frontend/src/features/voice-commands/__tests__/dispatcher.test.ts`
 
+The gate handles three cases for utterances starting with `voice`:
+
+| Tokens | Sub known? | Outcome |
+|---|---|---|
+| `length === 2` | no | strict-reject (`dispatched: true`, `'resume'`, `console.warn`) |
+| `length === 1` or `length >= 3` | no | fall-through (`dispatched: false`) — normal LLM prompt |
+| any | yes | proceeds to matcher → handler dispatches normally |
+
+This implements spec §5.3 and is the design refinement that resolves §9.3's expectation that `Voice mode is great` reaches the LLM.
+
 - [ ] **Step 1: Read the current dispatcher test**
 
 Open `frontend/src/features/voice-commands/__tests__/dispatcher.test.ts` to understand the existing structure (registry mocking, etc.). New tests follow the same pattern.
 
-- [ ] **Step 2: Add strict-reject tests**
+- [ ] **Step 2: Add voice-trigger gate tests**
 
 Append the following describe block to `frontend/src/features/voice-commands/__tests__/dispatcher.test.ts`. (The exact registry-setup pattern is whatever the existing tests use — copy that for consistency.)
 
@@ -494,7 +504,7 @@ import { registerCommand, unregisterCommand } from '../registry'
 import { voiceCommand } from '../handlers/voice'
 // (other imports are whatever the existing test file uses)
 
-describe('strict-reject for 2-token "voice <unknown>"', () => {
+describe('voice-trigger gate', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -507,38 +517,56 @@ describe('strict-reject for 2-token "voice <unknown>"', () => {
     warnSpy.mockRestore()
   })
 
-  it('rejects "voice nope" without dispatching to LLM', async () => {
-    const r = await tryDispatchCommand('voice nope')
-    expect(r.dispatched).toBe(true)
-    if (r.dispatched) expect(r.onTriggerWhilePlaying).toBe('resume')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Rejected 2-token'),
-      expect.anything(),
-    )
+  describe('strict-reject (2-token unknown sub)', () => {
+    it('rejects "voice nope" without dispatching to LLM', async () => {
+      const r = await tryDispatchCommand('voice nope')
+      expect(r.dispatched).toBe(true)
+      if (r.dispatched) expect(r.onTriggerWhilePlaying).toBe('resume')
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Rejected 2-token'),
+        expect.anything(),
+      )
+    })
+
+    it('strips trailing punctuation before reject check ("voice nope.")', async () => {
+      const r = await tryDispatchCommand('voice nope.')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).toHaveBeenCalled()
+    })
   })
 
-  it('does NOT reject "voice off" (known sub) — dispatches normally', async () => {
-    const r = await tryDispatchCommand('voice off')
-    expect(r.dispatched).toBe(true)
-    expect(warnSpy).not.toHaveBeenCalled()
+  describe('fall-through (1 token or 3+ tokens, unknown sub)', () => {
+    it('falls through for single-token "voice"', async () => {
+      const r = await tryDispatchCommand('voice')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('falls through for 3-token "voice that is great"', async () => {
+      const r = await tryDispatchCommand('voice that is great')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('falls through for 4-token "voice mode is great"', async () => {
+      const r = await tryDispatchCommand('voice mode is great')
+      expect(r.dispatched).toBe(false)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
   })
 
-  it('does NOT reject 3-token "voice that is great" — falls through to LLM', async () => {
-    const r = await tryDispatchCommand('voice that is great')
-    expect(r.dispatched).toBe(false)
-    expect(warnSpy).not.toHaveBeenCalled()
-  })
+  describe('known sub at any token count proceeds normally', () => {
+    it('"voice off" (2 tokens, known) → dispatches', async () => {
+      const r = await tryDispatchCommand('voice off')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
 
-  it('does NOT reject single-token "voice"', async () => {
-    const r = await tryDispatchCommand('voice')
-    expect(r.dispatched).toBe(false)
-    expect(warnSpy).not.toHaveBeenCalled()
-  })
-
-  it('strips trailing punctuation before reject check ("voice nope.")', async () => {
-    const r = await tryDispatchCommand('voice nope.')
-    expect(r.dispatched).toBe(true)
-    expect(warnSpy).toHaveBeenCalled()
+    it('"voice off please now" (4 tokens, known sub) → dispatches', async () => {
+      const r = await tryDispatchCommand('voice off please now')
+      expect(r.dispatched).toBe(true)
+      expect(warnSpy).not.toHaveBeenCalled()
+    })
   })
 })
 ```
@@ -546,9 +574,9 @@ describe('strict-reject for 2-token "voice <unknown>"', () => {
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `cd frontend && pnpm vitest run src/features/voice-commands/__tests__/dispatcher.test.ts`
-Expected: the strict-reject tests fail (existing tests still pass).
+Expected: the new gate tests fail (existing tests still pass).
 
-- [ ] **Step 4: Implement strict-reject in `dispatcher.ts`**
+- [ ] **Step 4: Implement the voice-trigger gate in `dispatcher.ts`**
 
 Modify `frontend/src/features/voice-commands/dispatcher.ts`. Add the import:
 
@@ -556,17 +584,20 @@ Modify `frontend/src/features/voice-commands/dispatcher.ts`. Add the import:
 import { isKnownVoiceSub } from './handlers/voice'
 ```
 
-Insert the reject block immediately after `const tokens = normalise(text)` and before `const hit = match(tokens)`:
+Insert the gate immediately after `const tokens = normalise(text)` and before `const hit = match(tokens)`:
 
 ```ts
-// Strict-reject for 2-token "voice <unknown>": the user almost certainly
-// intended a command but mis-spoke or was misheard. Suppress LLM dispatch
-// rather than letting "voice pose" become a chat message.
-//
-// TODO: add error toast and audible feedback with error sound
-if (tokens.length === 2 && tokens[0] === 'voice' && !isKnownVoiceSub(tokens[1])) {
-  console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>":', tokens)
-  return { dispatched: true, onTriggerWhilePlaying: 'resume' }
+// Voice-specific pre-check: first token "voice" with a missing or unknown sub.
+// 2-token form is almost certainly a misheard command — suppress LLM dispatch.
+// 1 or 3+ tokens is much more likely a normal sentence — fall through to LLM.
+// Known sub at any length proceeds to the matcher and handler.
+if (tokens[0] === 'voice' && (tokens.length < 2 || !isKnownVoiceSub(tokens[1]))) {
+  if (tokens.length === 2) {
+    console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>":', tokens)
+    // TODO: add error toast and audible feedback with error sound
+    return { dispatched: true, onTriggerWhilePlaying: 'resume' }
+  }
+  return { dispatched: false }
 }
 ```
 
@@ -585,11 +616,13 @@ Expected: build succeeds.
 ```bash
 git add frontend/src/features/voice-commands/dispatcher.ts \
         frontend/src/features/voice-commands/__tests__/dispatcher.test.ts
-git commit -m "Strict-reject 2-token 'voice <unknown>' in dispatcher
+git commit -m "Add voice-trigger gate to dispatcher (strict-reject + fall-through)
 
-Suppresses LLM dispatch for the most common misheard-command shape
-without affecting longer sentences that legitimately start with 'voice'.
-TODO comment marks the follow-up: error toast + audible feedback."
+Two-token 'voice <unknown>' is a misheard command — suppress LLM dispatch
+with a console.warn and a TODO marker for the follow-up (error toast +
+audible feedback). One-token or 3+-token utterances with unknown sub
+fall through to the LLM as normal prompts. Known subs at any length
+proceed to the handler unchanged."
 ```
 
 ---

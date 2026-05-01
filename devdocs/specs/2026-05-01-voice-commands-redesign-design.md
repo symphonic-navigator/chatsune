@@ -93,20 +93,30 @@ Dispatch table:
 In `dispatcher.tryDispatchCommand`, before the normal trigger lookup:
 
 ```ts
-if (tokens.length === 2 && tokens[0] === 'voice' && !isKnownVoiceSub(tokens[1])) {
-  console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>": tokens=%o', tokens)
-  // TODO: add error toast and audible feedback with error sound
-  return { dispatched: true, onTriggerWhilePlaying: 'resume' }
+// Voice-specific pre-check: first token "voice" with a missing or unknown sub.
+if (tokens[0] === 'voice' && (tokens.length < 2 || !isKnownVoiceSub(tokens[1]))) {
+  if (tokens.length === 2) {
+    // 2-token form: almost certainly a misheard command — suppress LLM dispatch.
+    console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>":', tokens)
+    // TODO: add error toast and audible feedback with error sound
+    return { dispatched: true, onTriggerWhilePlaying: 'resume' }
+  }
+  // 1 token or 3+ tokens: a normal sentence that happens to start with 'voice'.
+  // Fall through to the LLM as a regular prompt.
+  return { dispatched: false }
 }
 ```
 
 `isKnownVoiceSub(token)` returns `true` if the token is in `PAUSE_SYNONYMS ∪ ACTIVE_SYNONYMS ∪ STATUS_SYNONYMS`. The helper lives in `voice-commands` next to the synonym sets so all related state stays together.
 
-Why this matters:
+Why this shape:
 
-- `dispatched: true` ensures the rejected utterance does **not** fall through to the LLM. A user who tried to give a command and was misheard should not see their command go out as a chat message.
-- `'resume'` protects an in-flight persona reply: the user clearly intended a command, not a barge-in.
-- The 2-token guard limits the rejection to short utterances — the most common form of a misheard command. Sentences of 3+ tokens that happen to start with *voice* (`voice that's a great idea`, `voice over of the speaker`) fall through to the LLM as before.
+- **2-token unknown** is the dangerous case: the user tried a command, and silently routing the misheard form to the LLM would leak the attempted command into the chat history. `dispatched: true` + `'resume'` suppresses the LLM and protects any in-flight persona reply.
+- **1 token alone** (`Voice`) is too short to be a recognised command; treat as a normal prompt — the user's sentence may simply have been clipped by the VAD.
+- **3+ tokens with unknown sub** (`Voice mode is great`, `Voice over of the speaker`) is much more likely a content sentence than a misheard command — fall through to the LLM.
+- Known sub at any token count: proceeds normally to the matcher and the handler. `voice off please` dispatches as `pause`; the body after the sub is ignored.
+
+The handler's own unknown-sub branch (`level: 'error'`, `'resume'`) is reachable only via Vosk-sourced dispatch in paused mode, where the constrained grammar already filters most malformed inputs. It stays as defence in depth.
 
 ### 5.4 Ignored variants
 
