@@ -6,6 +6,7 @@ import { useConversationModeStore } from '@/features/voice/stores/conversationMo
 import { useIsReadingAloud, stopActiveReadAloud } from '@/features/voice/components/ReadAloudButton'
 import { usePhase } from '@/features/voice/usePhase'
 import { getActiveGroup } from '@/features/chat/responseTaskGroup'
+import { useVoiceLifecycleStore } from '@/features/voice-commands'
 import { deriveVoiceUIState } from './_voiceState'
 import type { VoiceUIState } from './_voiceState'
 
@@ -32,6 +33,8 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
   const setMicMuted = useConversationModeStore((s) => s.setMicMuted)
   const isReadingAloud = useIsReadingAloud()
   const livePhase = usePhase()
+  const lifecycle = useVoiceLifecycleStore((s) => s.state)
+  const setLifecycleActive = useVoiceLifecycleStore((s) => s.setActive)
 
   // Two distinct playback paths feed this button: the live ResponseTaskGroup
   // (usePhase === 'speaking' — Group in streaming/tailing) in continuous-voice
@@ -46,13 +49,14 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
     ttsPlaying,
     autoRead,
     micMuted,
+    lifecycle,
   })
 
   // Emoji for every state except the mic pair — there we render an SVG so
   // muted is unambiguously the same mic shape plus a diagonal slash. Keeping
   // the glyph identical across on/off states is what makes the muted state
   // instantly readable; swapping emojis (🎤 vs 🎙) drops that signal.
-  const iconFor: Record<Exclude<VoiceUIState['kind'], 'live-mic-on' | 'live-mic-muted'>, ReactNode> = {
+  const iconFor: Record<Exclude<VoiceUIState['kind'], 'live-mic-on' | 'live-mic-muted' | 'live-paused'>, ReactNode> = {
     'disabled': '🔈',
     'normal-off': '🔈',
     'normal-on': '🔊',
@@ -62,6 +66,7 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
   const iconNode: ReactNode =
     ui.kind === 'live-mic-on'     ? <MicIcon muted={false} /> :
     ui.kind === 'live-mic-muted'  ? <MicIcon muted={true}  /> :
+    ui.kind === 'live-paused'     ? <MicIcon muted={true}  /> :
     iconFor[ui.kind]
 
   const stopAnyPlayback = () => {
@@ -86,6 +91,7 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
       case 'live-mic-on':     return setMicMuted(true)
       case 'live-mic-muted':  return setMicMuted(false)
       case 'live-playing':    return stopAnyPlayback()
+      case 'live-paused':     return setLifecycleActive()
       case 'disabled':        return
     }
   }
@@ -112,9 +118,10 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
     )
   }
 
-  const stateClass: 'playback' | 'idle' | 'active' =
+  const stateClass: 'playback' | 'idle' | 'active' | 'paused' =
     ui.kind === 'normal-playing' || ui.kind === 'live-playing' ? 'playback' :
-    (ui.kind === 'normal-off' || ui.kind === 'live-mic-muted') ? 'idle' : 'active'
+    ui.kind === 'live-paused'                                  ? 'paused'   :
+    (ui.kind === 'normal-off' || ui.kind === 'live-mic-muted') ? 'idle'     : 'active'
 
   return (
     <CockpitButton
@@ -154,6 +161,7 @@ function labelFor(kind: Exclude<VoiceUIState['kind'], 'disabled'>): string {
     case 'live-mic-on':    return 'Mic is listening'
     case 'live-mic-muted': return 'Mic is muted'
     case 'live-playing':   return 'Interrupt'
+    case 'live-paused':    return 'Voice paused'
   }
 }
 
@@ -163,6 +171,7 @@ function statusFor(kind: VoiceUIState['kind'], autoRead: boolean): string {
   if (kind === 'live-mic-on') return 'Mic is listening'
   if (kind === 'live-mic-muted') return 'Mic is muted'
   if (kind === 'live-playing') return 'Interrupt'
+  if (kind === 'live-paused') return 'Voice paused — click to resume'
   return ''
 }
 

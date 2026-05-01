@@ -7,6 +7,7 @@ export type CockpitButtonState =
   | 'idle'          // feature is available and off
   | 'disabled'      // feature is not available in the current context
   | 'playback'      // transient playback / stop state
+  | 'paused'        // feature is paused — pulses amber to invite a resume click
 
 type Props = {
   icon: ReactNode
@@ -62,13 +63,19 @@ export function CockpitButton({
   // caller still provides an onClick — it keeps the muted visual but accepts
   // clicks (e.g. open the persona voice settings).
   const actionable = !disabled || Boolean(onClick)
+  // 'paused' overrides the per-accent palette deliberately: amber is the
+  // canonical "attention, click to resume" colour across the cockpit, and
+  // keeping the blue voice accent here would weaken that signal. The pulse
+  // and subtle glow make the affordance unambiguous on a dim cockpit row.
   const classes = disabled
     ? `${base} border-dashed border-white/15 bg-white/5 text-white/30 ${
         onClick ? 'cursor-pointer hover:text-white/50' : 'cursor-not-allowed'
       }`
-    : state === 'active' || state === 'playback'
-      ? `${base} ${ACCENT_CLASSES[accent]}`
-      : `${base} border-transparent bg-white/5 text-white/70 hover:bg-white/10`
+    : state === 'paused'
+      ? `${base} border-amber-400/55 bg-amber-400/15 text-amber-400 animate-pulse shadow-[0_0_18px_rgba(251,191,36,0.35)]`
+      : state === 'active' || state === 'playback'
+        ? `${base} ${ACCENT_CLASSES[accent]}`
+        : `${base} border-transparent bg-white/5 text-white/70 hover:bg-white/10`
 
   return (
     <div

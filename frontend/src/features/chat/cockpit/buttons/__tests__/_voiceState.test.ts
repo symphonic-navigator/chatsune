@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { deriveVoiceUIState } from '../_voiceState'
+import type { VoiceLifecycle } from '@/features/voice-commands'
 
 describe('deriveVoiceUIState', () => {
   const base = {
@@ -8,6 +9,7 @@ describe('deriveVoiceUIState', () => {
     ttsPlaying: false,
     autoRead: false,
     micMuted: false,
+    lifecycle: 'active' as VoiceLifecycle,
   }
 
   it('disabled when persona has no voice', () => {
@@ -43,5 +45,38 @@ describe('deriveVoiceUIState', () => {
     expect(deriveVoiceUIState({
       ...base, liveMode: true, ttsPlaying: true, micMuted: true,
     })).toEqual({ kind: 'live-playing' })
+  })
+})
+
+describe('live-paused state', () => {
+  const baseInput = {
+    personaHasVoice: true,
+    liveMode: true,
+    ttsPlaying: false,
+    autoRead: false,
+    micMuted: false,
+    lifecycle: 'paused' as VoiceLifecycle,
+  }
+
+  it('returns live-paused when live and paused', () => {
+    expect(deriveVoiceUIState(baseInput).kind).toBe('live-paused')
+  })
+
+  it('takes precedence over mic-on', () => {
+    expect(deriveVoiceUIState({ ...baseInput, micMuted: false }).kind).toBe('live-paused')
+  })
+
+  it('takes precedence over mic-muted', () => {
+    expect(deriveVoiceUIState({ ...baseInput, micMuted: true }).kind).toBe('live-paused')
+  })
+
+  it('does NOT trigger when not in live mode', () => {
+    const r = deriveVoiceUIState({ ...baseInput, liveMode: false })
+    expect(r.kind).not.toBe('live-paused')
+  })
+
+  it('does NOT trigger when lifecycle is active', () => {
+    const r = deriveVoiceUIState({ ...baseInput, lifecycle: 'active' })
+    expect(r.kind).not.toBe('live-paused')
   })
 })
