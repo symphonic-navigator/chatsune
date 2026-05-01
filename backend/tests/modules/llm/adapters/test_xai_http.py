@@ -53,28 +53,42 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_returns_one_grok_4_1_fast():
+async def test_fetch_models_returns_three_grok_entries():
     adapter = XaiHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.model_id == "grok-4.1-fast"
-    assert m.display_name == "Grok 4.1 Fast"
-    assert m.context_window == 200_000
-    assert m.supports_reasoning is True
-    assert m.supports_vision is True
-    assert m.supports_tool_calls is True
-    assert m.connection_id == "conn-xai-1"
-    assert m.connection_slug == "chris-xai"
+    by_id = {m.model_id: m for m in metas}
+    assert set(by_id) == {"grok-4.1-fast", "grok-4.20", "grok-4.3"}
+
+    fast = by_id["grok-4.1-fast"]
+    assert fast.display_name == "Grok 4.1 Fast"
+    assert fast.context_window == 128_000
+    assert fast.remarks is None
+
+    g420 = by_id["grok-4.20"]
+    assert g420.display_name == "Grok 4.20"
+    assert g420.context_window == 200_000
+    assert g420.remarks is None
+
+    g43 = by_id["grok-4.3"]
+    assert g43.display_name == "Grok 4.3"
+    assert g43.context_window == 200_000
+    assert g43.remarks == (
+        "Falls back to Grok 4.20 (non-reasoning) when thinking is off."
+    )
+
+    for m in metas:
+        assert m.supports_reasoning is True
+        assert m.supports_vision is True
+        assert m.supports_tool_calls is True
+        assert m.connection_id == "conn-xai-1"
+        assert m.connection_slug == "chris-xai"
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_labels_billing_category_as_pay_per_token():
+async def test_fetch_models_billing_category_is_pay_per_token_for_all_entries():
     adapter = XaiHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
-    assert metas, "expected at least one model"
-    for m in metas:
-        assert m.billing_category == "pay_per_token"
+    assert {m.billing_category for m in metas} == {"pay_per_token"}
 
 
 from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult

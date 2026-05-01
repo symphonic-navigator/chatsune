@@ -10,6 +10,7 @@ import os
 import time
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import ClassVar
 from uuid import uuid4
 
@@ -264,8 +265,56 @@ def _translate_message(msg: CompletionMessage) -> dict:
     return result
 
 
-_XAI_MODEL_REASONING = "grok-4-1-fast-reasoning"
-_XAI_MODEL_NON_REASONING = "grok-4-1-fast-non-reasoning"
+@dataclass(frozen=True)
+class _XaiModelEntry:
+    model_id: str
+    display_name: str
+    context_window: int
+    reasoning_slug: str
+    non_reasoning_slug: str
+    remarks: str | None = None
+
+
+_XAI_MODELS: tuple[_XaiModelEntry, ...] = (
+    _XaiModelEntry(
+        model_id="grok-4.1-fast",
+        display_name="Grok 4.1 Fast",
+        context_window=128_000,
+        reasoning_slug="grok-4-1-fast-reasoning",
+        non_reasoning_slug="grok-4-1-fast-non-reasoning",
+    ),
+    _XaiModelEntry(
+        model_id="grok-4.20",
+        display_name="Grok 4.20",
+        context_window=200_000,
+        reasoning_slug="grok-4.20-0309-reasoning",
+        non_reasoning_slug="grok-4.20-0309-non-reasoning",
+    ),
+    _XaiModelEntry(
+        model_id="grok-4.3",
+        display_name="Grok 4.3",
+        context_window=200_000,
+        reasoning_slug="grok-4.3",
+        # No native non-reasoning variant exists for 4.3. We fall back
+        # to the previous-generation 4.20 non-reasoning slug so voice /
+        # low-latency paths stay viable; the user-visible remarks line
+        # discloses this. See devdocs/specs/2026-05-01-grok-4.3-with-
+        # 4.20-fallback-design.md.
+        non_reasoning_slug="grok-4.20-0309-non-reasoning",
+        remarks=(
+            "Falls back to Grok 4.20 (non-reasoning) when thinking is off."
+        ),
+    ),
+)
+
+
+_XAI_MODELS_BY_ID: dict[str, _XaiModelEntry] = {m.model_id: m for m in _XAI_MODELS}
+
+# Temporary aliases — Phase 3 (plan task 4) removes the consumers and
+# these names go with them. Kept here only so this commit is
+# self-contained.
+_XAI_MODEL_REASONING = _XAI_MODELS_BY_ID["grok-4.1-fast"].reasoning_slug
+_XAI_MODEL_NON_REASONING = _XAI_MODELS_BY_ID["grok-4.1-fast"].non_reasoning_slug
 
 
 def _build_chat_payload(request: CompletionRequest) -> dict:
@@ -348,14 +397,16 @@ class XaiHttpAdapter(BaseAdapter):
                 connection_id=c.id,
                 connection_display_name=c.display_name,
                 connection_slug=c.slug,
-                model_id="grok-4.1-fast",
-                display_name="Grok 4.1 Fast",
-                context_window=200_000,
+                model_id=entry.model_id,
+                display_name=entry.display_name,
+                context_window=entry.context_window,
                 supports_reasoning=True,
                 supports_vision=True,
                 supports_tool_calls=True,
                 billing_category="pay_per_token",
-            ),
+                remarks=entry.remarks,
+            )
+            for entry in _XAI_MODELS
         ]
 
     async def stream_completion(
