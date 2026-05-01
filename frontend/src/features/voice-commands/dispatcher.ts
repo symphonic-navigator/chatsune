@@ -12,7 +12,11 @@ import type { CommandResponse, DispatchResult } from './types'
  *
  * On a match, runs the handler, renders the response, and returns the
  * `onTriggerWhilePlaying` flag so the caller can decide what to do with the
- * paused response Group. Handler throws are caught and converted to error
+ * paused response Group. The returned `onTriggerWhilePlaying` is the
+ * response's per-call override (`CommandResponse.onTriggerWhilePlaying`)
+ * when set, otherwise the spec's static default
+ * (`CommandSpec.onTriggerWhilePlaying`) — handlers can therefore branch
+ * dynamically per call. Handler throws are caught and converted to error
  * responses, with `onTriggerWhilePlaying` forced to 'resume' so a buggy
  * handler cannot kill the persona's reply.
  */
