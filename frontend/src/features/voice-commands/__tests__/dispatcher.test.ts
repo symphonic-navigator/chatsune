@@ -166,6 +166,17 @@ describe('voice-trigger gate', () => {
       expect(r.dispatched).toBe(true)
       expect(warnSpy).toHaveBeenCalled()
     })
+
+    it('emits an error response with cue:error on "voice <unknown>" 2-token', async () => {
+      await tryDispatchCommand('voice nope')
+      expect(respondMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          level: 'error',
+          cue: 'error',
+          displayText: expect.stringContaining("'nope'"),
+        }),
+      )
+    })
   })
 
   describe('fall-through (1 token or 3+ tokens, unknown sub)', () => {
@@ -185,6 +196,14 @@ describe('voice-trigger gate', () => {
       const r = await tryDispatchCommand('voice mode is great')
       expect(r.dispatched).toBe(false)
       expect(warnSpy).not.toHaveBeenCalled()
+    })
+
+    it('does NOT call respondToUser on 1-token or 3+ token fall-through', async () => {
+      respondMock.mockReset()
+      await tryDispatchCommand('voice')
+      await tryDispatchCommand('voice that is great')
+      await tryDispatchCommand('voice mode is great')
+      expect(respondMock).not.toHaveBeenCalled()
     })
   })
 

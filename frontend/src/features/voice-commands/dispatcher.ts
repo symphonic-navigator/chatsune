@@ -35,7 +35,11 @@ export async function tryDispatchCommand(text: string): Promise<DispatchResult> 
   if (tokens[0] === 'voice' && (tokens.length < 2 || !isKnownVoiceSub(tokens[1]))) {
     if (tokens.length === 2) {
       console.warn('[VoiceCommand] Rejected 2-token "voice <unknown>":', tokens)
-      // TODO: add error toast and audible feedback with error sound
+      respondToUser({
+        level: 'error',
+        cue: 'error',
+        displayText: `Voice command not recognised: '${tokens[1]}'.`,
+      })
       return { dispatched: true, onTriggerWhilePlaying: 'resume' }
     }
     return { dispatched: false }
