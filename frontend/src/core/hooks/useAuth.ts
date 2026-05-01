@@ -4,6 +4,7 @@ import { authApi } from "../api/auth"
 import type { LoginResult, SetupResult } from "../api/auth"
 import { meApi } from "../api/meApi"
 import { disconnect } from "../websocket/connection"
+import { logout as coordinatorLogout } from "../auth/logoutCoordinator"
 import { useIntegrationsStore } from "../../features/integrations/store"
 import type { LoginRequest, SetupRequest } from "../types/auth"
 
@@ -97,15 +98,8 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(async () => {
-    try {
-      await authApi.logout()
-    } catch {
-      // Logout should succeed even if the API call fails
-    } finally {
-      disconnect()
-      clear()
-    }
-  }, [clear])
+    await coordinatorLogout()
+  }, [])
 
   /**
    * Self-delete the currently-signed-in account (right-to-be-forgotten).

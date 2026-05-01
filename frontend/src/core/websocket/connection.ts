@@ -2,16 +2,18 @@ import type { BaseEvent } from "../types/events"
 import { eventBus } from "./eventBus"
 import { useEventStore } from "../store/eventStore"
 import { useAuthStore } from "../store/authStore"
-import { authApi } from "../api/auth"
+import { forceLogout } from "../auth/logoutCoordinator"
+import { refreshToken as refreshAccessToken } from "../api/client"
 
 const MAX_RECONNECT_DELAY = 30_000
 const INITIAL_RECONNECT_DELAY = 1_000
+const PONG_TIMEOUT_MS = 10_000
 
 let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let reconnectDelay = INITIAL_RECONNECT_DELAY
 let intentionalClose = false
-let currentRefresh: Promise<boolean> | null = null
+let pongTimer: ReturnType<typeof setTimeout> | null = null
 
 function wsUrl(): string {
   const env = import.meta.env.VITE_WS_URL
@@ -58,10 +60,16 @@ export function connect() {
     try {
       const data = JSON.parse(msg.data)
 
-      if (data.type === "pong") return
+      if (data.type === "pong") {
+        if (pongTimer) {
+          clearTimeout(pongTimer)
+          pongTimer = null
+        }
+        return
+      }
 
       if (data.type === "token.expiring_soon") {
-        handleTokenRefresh()
+        void handleTokenRefresh()
         return
       }
 
@@ -84,16 +92,31 @@ export function connect() {
 
   socket.onclose = (ev) => {
     if (ws !== socket) return
+
+    if (pongTimer) {
+      clearTimeout(pongTimer)
+      pongTimer = null
+    }
+
     useEventStore.getState().setStatus("disconnected")
     useEventStore.getState().setConnectionId(null)
     ws = null
 
-    if (!intentionalClose && ev.code !== 4001 && ev.code !== 4003) {
-      scheduleReconnect()
+    if (ev.code === 4003) {
+      void forceLogout(
+        "must_change_password",
+        "Bitte ändere dein Passwort, um fortzufahren.",
+      )
+      return
     }
 
     if (ev.code === 4001) {
-      handleTokenRefresh()
+      void handleTokenRefresh()
+      return
+    }
+
+    if (!intentionalClose) {
+      scheduleReconnect()
     }
   }
 
@@ -107,6 +130,10 @@ export function disconnect() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
+  }
+  if (pongTimer) {
+    clearTimeout(pongTimer)
+    pongTimer = null
   }
   ws?.close()
   ws = null
@@ -137,6 +164,15 @@ export function ensureConnected() {
 export function sendPing() {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "ping" }))
+    // Arm a timeout: if no pong arrives within PONG_TIMEOUT_MS the socket is
+    // dead but the browser hasn't noticed. Force-close so the existing
+    // reconnect logic engages.
+    if (pongTimer) clearTimeout(pongTimer)
+    pongTimer = setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, "pong timeout")
+      }
+    }, PONG_TIMEOUT_MS)
   }
 }
 
@@ -158,29 +194,28 @@ function scheduleReconnect() {
   }, delay)
 }
 
-async function handleTokenRefresh(): Promise<boolean> {
-  // Share the in-flight refresh promise so parallel callers wait on the same request
-  if (currentRefresh) return currentRefresh
-  currentRefresh = (async () => {
-    try {
-      const res = await authApi.refresh()
-      useAuthStore.getState().setToken(res.access_token)
-      disconnect()
-      intentionalClose = false
-      connect()
-      return true
-    } catch (err) {
-      // Network error = backend unreachable, don't clear auth state
-      if (err instanceof TypeError && (err.message === "Failed to fetch" || err.message === "Load failed")) {
-        const { useEventStore } = await import("../store/eventStore")
-        useEventStore.getState().setBackendAvailable(false)
-      } else {
-        useAuthStore.getState().clear()
-      }
-      return false
-    } finally {
-      currentRefresh = null
+async function handleTokenRefresh(): Promise<void> {
+  try {
+    const outcome = await refreshAccessToken()
+    if (outcome === "ok") {
+      // Token refreshed; reconnect with the new token.
+      scheduleReconnect()
+      return
     }
-  })()
-  return currentRefresh
+    if (outcome === "backend_unavailable") {
+      // Health monitor will surface the backend-down state. Do NOT log
+      // the user out for a transient backend hiccup.
+      scheduleReconnect()
+      return
+    }
+    // outcome === "auth_failed": the backend authoritatively rejected
+    // the refresh. End the session.
+    void forceLogout(
+      "session_expired",
+      "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
+    )
+  } catch {
+    // Unexpected error — keep trying via the reconnect loop.
+    scheduleReconnect()
+  }
 }
