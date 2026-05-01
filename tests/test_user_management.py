@@ -200,7 +200,7 @@ async def test_reset_password(client: AsyncClient):
     )
     assert response.status_code == 200
     data = response.json()
-    assert len(data["generated_password"]) == 20
+    assert data["status"] == "reset"
     assert data["user"]["must_change_password"] is True
 
 
