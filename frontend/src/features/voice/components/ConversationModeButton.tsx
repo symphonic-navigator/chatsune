@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { ConversationPhase } from '../stores/conversationModeStore'
 import { useProvidersStore } from '../../../core/store/providersStore'
+import type { VoiceLifecycle } from '@/features/voice-commands'
 
 /** Maps a voice integration id onto the Premium Provider Account that owns
  *  its API key. Integrations not in this map are either unlinked (their key
@@ -82,6 +83,10 @@ interface ConversationModeButtonProps {
   /** Invoked when the button is clicked while voice is unavailable — should
    *  navigate the user to the persona voice-config flow. */
   onConfigure?: () => void
+  /** Current voice-lifecycle state. When 'paused', click invokes `onResume`. */
+  lifecycle?: VoiceLifecycle
+  /** Invoked when the button is clicked while `lifecycle === 'paused'`. */
+  onResume?: () => void
 }
 
 const PHASE_LABEL: Record<ConversationPhase, string> = {
@@ -120,6 +125,8 @@ export function ConversationModeButton({
   onToggle,
   persona,
   onConfigure,
+  lifecycle,
+  onResume,
 }: ConversationModeButtonProps) {
   const voiceAvailable = useVoiceAvailable(persona)
 
@@ -160,6 +167,26 @@ export function ConversationModeButton({
   const baseClass =
     'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider transition-all'
 
+  // Paused lifecycle preempts the gold "Live" path: amber pulsing pill with
+  // a strikethrough mic. Clicking the pill resumes voice rather than toggling
+  // conversation mode off, so a user who paused via wake-word ("hatsune
+  // pause") can re-enter the listening loop with one tap.
+  if (active && lifecycle === 'paused') {
+    return (
+      <button
+        type="button"
+        onClick={onResume}
+        className={`${baseClass} border-amber-400/55 bg-amber-400/15 text-amber-400 animate-pulse shadow-[0_0_16px_rgba(251,191,36,0.35)]`}
+        title="Voice paused — click to resume"
+        aria-label="Resume voice"
+        aria-pressed="true"
+      >
+        <ConvIcon muted />
+        <span className="hidden sm:inline">Paused</span>
+      </button>
+    )
+  }
+
   if (active) {
     return (
       <button
@@ -192,7 +219,7 @@ export function ConversationModeButton({
   )
 }
 
-function ConvIcon() {
+function ConvIcon({ muted }: { muted?: boolean } = {}) {
   return (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <rect x="6" y="2" width="4" height="7" rx="2" />
@@ -200,6 +227,7 @@ function ConvIcon() {
       <line x1="8" y1="11.5" x2="8" y2="13.5" />
       <path d="M1.5 5.5C1.5 5.5 1 7 1 8C1 9 1.5 10.5 1.5 10.5" />
       <path d="M14.5 5.5C14.5 5.5 15 7 15 8C15 9 14.5 10.5 14.5 10.5" />
+      {muted && <path d="M2 2 14 14" strokeWidth="1.4" />}
     </svg>
   )
 }

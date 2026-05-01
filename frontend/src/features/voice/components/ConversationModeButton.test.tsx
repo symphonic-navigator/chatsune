@@ -98,4 +98,51 @@ describe('ConversationModeButton', () => {
     expect(btn).not.toBeDisabled()
     expect(btn.getAttribute('aria-label')).toBe('Start conversational mode')
   })
+
+  describe('paused lifecycle', () => {
+    it('renders amber Paused pill when active && lifecycle=paused', () => {
+      render(
+        <ConversationModeButton
+          active={true}
+          available={true}
+          lifecycle="paused"
+          onResume={() => {}}
+          onToggle={() => {}}
+        />,
+      )
+      const btn = screen.getByRole('button')
+      expect(btn).toHaveTextContent(/paused/i)
+      expect(btn).not.toHaveTextContent(/^Live$/i)
+    })
+
+    it('calls onResume (not onToggle) when clicked while paused', () => {
+      const onResume = vi.fn()
+      const onToggle = vi.fn()
+      render(
+        <ConversationModeButton
+          active={true}
+          available={true}
+          lifecycle="paused"
+          onResume={onResume}
+          onToggle={onToggle}
+        />,
+      )
+      screen.getByRole('button').click()
+      expect(onResume).toHaveBeenCalledOnce()
+      expect(onToggle).not.toHaveBeenCalled()
+    })
+
+    it('renders Live pill when active && lifecycle=active (existing path unchanged)', () => {
+      render(
+        <ConversationModeButton
+          active={true}
+          available={true}
+          lifecycle="active"
+          onResume={() => {}}
+          onToggle={() => {}}
+        />,
+      )
+      expect(screen.getByRole('button')).toHaveTextContent(/^Live$/i)
+    })
+  })
 })
