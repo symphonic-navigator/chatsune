@@ -20,6 +20,7 @@ from backend.jobs.handlers._budget_helpers import (
     record_handler_tokens,
 )
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
+from backend.modules.settings import get_admin_system_message
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.memory import (
     MemoryEntriesDiscardedEvent,
@@ -149,9 +150,16 @@ async def handle_memory_extraction(
             job.user_id, job.model_unique_id,
         )
 
+        # Inject the admin master prompt as a leading system-role message
+        # when one is configured. Mirrors the chat prompt assembler so that
+        # admin-set guardrail-loosening directives apply here as well.
+        admin = await get_admin_system_message()
+        prefix_messages = [admin.message] if admin else []
+        admin_text = (admin.raw_text + "\n") if admin else ""
+
         request = CompletionRequest(
             model=model_slug,
-            messages=[
+            messages=prefix_messages + [
                 CompletionMessage(
                     role="user",
                     content=[ContentPart(type="text", text=system_prompt)],
@@ -163,7 +171,9 @@ async def handle_memory_extraction(
         )
 
         # Reserve daily-budget headroom before spending tokens.
-        await check_and_reserve_budget(redis, job.user_id, system_prompt)
+        await check_and_reserve_budget(
+            redis, job.user_id, admin_text + system_prompt,
+        )
 
         # Stream LLM response.
         full_content = ""
@@ -207,7 +217,7 @@ async def handle_memory_extraction(
         await record_handler_tokens(
             redis,
             job.user_id,
-            system_prompt,
+            admin_text + system_prompt,
             full_content,
             input_tokens=stream_input_tokens,
             output_tokens=stream_output_tokens,
