@@ -67,8 +67,13 @@ _TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 # provider can briefly rate-limit (429) or be momentarily unavailable
 # (503) even when the user's account has no global ceiling.
 
-_OPENROUTER_REFERER = "https://chatsune.app"
-_OPENROUTER_X_TITLE = "Chatsune"
+# OpenRouter app-attribution headers. ``HTTP-Referer`` is the primary
+# identifier; the others surface us in the OpenRouter leaderboards and
+# marketplace categorisation. Categories must come from OpenRouter's
+# fixed vocabulary (unrecognised values are silently dropped).
+_OPENROUTER_REFERER = "https://github.com/symphonic-navigator/chatsune"
+_OPENROUTER_TITLE = "Chatsune"
+_OPENROUTER_CATEGORIES = "general-chat,roleplay"
 
 # Minimum context window we accept, in tokens. Mirrors nano-gpt's
 # 80k floor — Chatsune builds long-running journals/memory loops
@@ -381,7 +386,8 @@ class OpenRouterHttpAdapter(BaseAdapter):
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
             "HTTP-Referer": _OPENROUTER_REFERER,
-            "X-Title": _OPENROUTER_X_TITLE,
+            "X-OpenRouter-Title": _OPENROUTER_TITLE,
+            "X-OpenRouter-Categories": _OPENROUTER_CATEGORIES,
         }
 
         if _TRACE_PAYLOADS:

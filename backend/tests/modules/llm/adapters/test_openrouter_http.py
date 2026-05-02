@@ -593,7 +593,7 @@ async def test_stream_completion_emits_content_then_done():
 
 @pytest.mark.asyncio
 async def test_stream_completion_sends_attribution_headers():
-    """OpenRouter requires HTTP-Referer and X-Title headers for app attribution."""
+    """OpenRouter app-attribution headers must be sent on every chat request."""
     lines = [
         'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
         "data: [DONE]",
@@ -616,8 +616,13 @@ async def test_stream_completion_sends_attribution_headers():
             pass
 
     assert fake.captured_headers is not None
-    assert fake.captured_headers["HTTP-Referer"] == "https://chatsune.app"
-    assert fake.captured_headers["X-Title"] == "Chatsune"
+    assert fake.captured_headers["HTTP-Referer"] == (
+        "https://github.com/symphonic-navigator/chatsune"
+    )
+    assert fake.captured_headers["X-OpenRouter-Title"] == "Chatsune"
+    assert fake.captured_headers["X-OpenRouter-Categories"] == (
+        "general-chat,roleplay"
+    )
     assert fake.captured_headers["Authorization"].startswith("Bearer ")
 
 
