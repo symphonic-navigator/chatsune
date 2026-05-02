@@ -271,8 +271,12 @@ def _dedup_models(
          (distinct from the ``id`` field, which may be an alias like
          ``-latest`` or a dated variant).
       3. For each group pick a preferred ``id``: prefer a ``-latest``
-         alias if present, otherwise fall back to the group's canonical
-         ``name`` (which is the dated id).
+         alias whose stem (id minus the ``-latest`` suffix) shares the
+         canonical name's base slug — i.e. ``canonical == stem`` or
+         ``canonical`` starts with ``stem + "-"``. This guards against
+         unrelated ``-latest`` endpoints that Mistral occasionally tags
+         with the same canonical name. Otherwise fall back to the
+         canonical ``name`` itself (the dated id).
       4. Emit one :class:`ModelMetaDto` per group.
     """
     groups: dict[str, list[dict]] = {}
@@ -290,7 +294,13 @@ def _dedup_models(
         preferred_id = canonical_name
         for entry in group:
             entry_id = entry.get("id")
-            if isinstance(entry_id, str) and entry_id.endswith("-latest"):
+            if not isinstance(entry_id, str) or not entry_id.endswith("-latest"):
+                continue
+            # Reject unrelated ``-latest`` endpoints that Mistral tags
+            # with another canonical name (e.g. ``mistral-vibe-cli-latest``
+            # appearing under ``mistral-medium-3-5``).
+            stem = entry_id[: -len("-latest")]
+            if canonical_name == stem or canonical_name.startswith(stem + "-"):
                 preferred_id = entry_id
                 break
 

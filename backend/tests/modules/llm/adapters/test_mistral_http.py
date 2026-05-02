@@ -280,6 +280,123 @@ def test_dedup_full_sample_yields_exactly_three_rows():
     assert by_id["labs-mistral-small-creative"].is_deprecated is True
 
 
+def test_dedup_ignores_unrelated_latest_alias_in_group():
+    # Reproduces the live Mistral quirk for ``mistral-medium-3-5``: six
+    # entries share the same canonical name, but one of them is the
+    # unrelated ``mistral-vibe-cli-latest`` endpoint. The preferred id
+    # must remain the canonical name, not the foreign ``-latest`` alias.
+    caps = _cap(function_calling=True, vision=True, reasoning=True)
+    entries = [
+        {
+            "id": "mistral-medium-3-5",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium-3.5",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium-3",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium-2604",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium-c21211-r0-75",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-vibe-cli-latest",
+            "name": "mistral-medium-3-5",
+            "max_context_length": 262_144,
+            "capabilities": caps,
+            "deprecation": None,
+        },
+    ]
+    metas = _dedup_models(entries, _resolved_conn())
+    assert len(metas) == 1
+    m = metas[0]
+    assert m.model_id == "mistral-medium-3-5"
+    assert m.display_name == "mistral-medium-3-5"
+    assert m.context_window == 262_144
+    assert m.supports_reasoning is True
+    assert m.supports_vision is True
+    assert m.supports_tool_calls is True
+
+
+def test_dedup_ignores_latest_alias_with_different_base_slug():
+    # Narrower regression of the same class of bug: the
+    # ``open-mistral-nemo`` group contains ``mistral-tiny-latest`` as a
+    # member; the canonical name must win.
+    entries = [
+        {
+            "id": "open-mistral-nemo",
+            "name": "open-mistral-nemo",
+            "max_context_length": 131_072,
+            "capabilities": _cap(function_calling=True),
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-tiny-latest",
+            "name": "open-mistral-nemo",
+            "max_context_length": 131_072,
+            "capabilities": _cap(function_calling=True),
+            "deprecation": None,
+        },
+    ]
+    metas = _dedup_models(entries, _resolved_conn())
+    assert len(metas) == 1
+    assert metas[0].model_id == "open-mistral-nemo"
+
+
+def test_dedup_still_picks_matching_latest_alias():
+    # Positive control: when the ``-latest`` alias's stem IS the canonical
+    # name's base slug, it must still be preferred.
+    entries = [
+        {
+            "id": "mistral-medium-2508",
+            "name": "mistral-medium-2508",
+            "max_context_length": 131_072,
+            "capabilities": _cap(function_calling=True, vision=True),
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium-latest",
+            "name": "mistral-medium-2508",
+            "max_context_length": 131_072,
+            "capabilities": _cap(function_calling=True, vision=True),
+            "deprecation": None,
+        },
+        {
+            "id": "mistral-medium",
+            "name": "mistral-medium-2508",
+            "max_context_length": 131_072,
+            "capabilities": _cap(function_calling=True, vision=True),
+            "deprecation": None,
+        },
+    ]
+    metas = _dedup_models(entries, _resolved_conn())
+    assert len(metas) == 1
+    assert metas[0].model_id == "mistral-medium-latest"
+
+
 # ---------------------------------------------------------------------------
 # Message translation
 # ---------------------------------------------------------------------------
