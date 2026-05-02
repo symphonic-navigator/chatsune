@@ -21,7 +21,7 @@ auf ~40 % und ist damit token-ökonomisch immer noch suboptimal. Unser Ansatz:
 
 - **Compact auf 5–10 %** der ursprünglichen Tokens
 - **Tail behalten** (letzte _N_ Runden, ungekürzt, mit Tool-Results)
-- **Tail-Wahl hybrid**: min 6 Runden _oder_ bis 20 % des Modell-Kontexts — was MEHR ist
+- **Tail-Wahl hybrid**: min 6 Runden _oder_ bis 10 % des Modell-Kontexts — was MEHR ist
 - **Knowledge-/Memory-Injektion bleibt** wie gehabt pro Turn (PTI + Memory-XML-Block)
 - **User sieht alles** im Chat-UI; **LLM sieht nur ab Checkpoint**
 - **Visueller Trenner** im Chat zeigt „hier wurde compacted"
