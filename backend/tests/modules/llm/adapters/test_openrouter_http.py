@@ -726,7 +726,7 @@ async def test_stream_completion_429_yields_provider_unavailable(monkeypatch):
     errs = [e for e in events if isinstance(e, StreamError)]
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
-    assert "rate limit" in errs[0].message.lower()
+    assert "429" in errs[0].message
     assert "gave up" in errs[0].message.lower()
 
 
