@@ -105,7 +105,12 @@ export function PersonaVoiceConfig({ persona, chakra, onSave }: Props) {
             dialogue_pitch: mod.dialogue_pitch,
             narrator_speed: mod.narrator_speed,
             narrator_pitch: mod.narrator_pitch,
-            tts_provider_id: prior?.tts_provider_id ?? null,
+            // Persist the implicit default so that the top-bar gate
+            // (useVoiceAvailable) and any backend-side reader sees the
+            // resolved provider id rather than null. activeTTS already
+            // carries the ?? ttsProviders[0] fallback from the closure
+            // above.
+            tts_provider_id: prior?.tts_provider_id ?? activeTTS?.id ?? null,
             ...patch,
           },
         })
