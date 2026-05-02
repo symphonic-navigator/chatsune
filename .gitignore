@@ -13,6 +13,7 @@ build/
 .llm-test-key
 .xai-test-key
 .nano-test-key
+.mistral-test-key
 
 # Docker
 docker-compose.override.yml
