@@ -88,7 +88,20 @@ async def test_small_body_proceeds_normally():
             "Chris prefers dark mode and tea.",
         ),
     ) as mock_stream, patch(
-        "backend.modules.llm.get_model_supports_reasoning", return_value=False,
+        "backend.modules.llm.get_model_supports_reasoning", AsyncMock(return_value=False),
+    ), patch(
+        "backend.modules.llm.get_effective_context_window", AsyncMock(return_value=8192),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.get_admin_system_message",
+        AsyncMock(return_value=None),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.check_and_reserve_budget",
+        AsyncMock(return_value=10),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.record_handler_tokens",
+        AsyncMock(),
+    ), patch(
+        "backend.token_counter.count_tokens", return_value=42,
     ):
         await handle_memory_consolidation(
             job=_make_job(),
@@ -129,7 +142,20 @@ async def test_huge_body_is_truncated_handler_proceeds():
     ), patch(
         "backend.modules.llm.stream_completion", side_effect=_mock_stream,
     ), patch(
-        "backend.modules.llm.get_model_supports_reasoning", return_value=False,
+        "backend.modules.llm.get_model_supports_reasoning", AsyncMock(return_value=False),
+    ), patch(
+        "backend.modules.llm.get_effective_context_window", AsyncMock(return_value=8192),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.get_admin_system_message",
+        AsyncMock(return_value=None),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.check_and_reserve_budget",
+        AsyncMock(return_value=10),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.record_handler_tokens",
+        AsyncMock(),
+    ), patch(
+        "backend.token_counter.count_tokens", return_value=42,
     ):
         await handle_memory_consolidation(
             job=_make_job(),
@@ -167,7 +193,12 @@ async def test_huge_body_and_entries_raises_unrecoverable():
     ), patch(
         "backend.modules.llm.stream_completion", mock_stream,
     ), patch(
-        "backend.modules.llm.get_model_supports_reasoning", return_value=False,
+        "backend.modules.llm.get_model_supports_reasoning", AsyncMock(return_value=False),
+    ), patch(
+        "backend.modules.llm.get_effective_context_window", AsyncMock(return_value=8192),
+    ), patch(
+        "backend.jobs.handlers._memory_consolidation.get_admin_system_message",
+        AsyncMock(return_value=None),
     ):
         with pytest.raises(UnrecoverableJobError, match="too large"):
             await handle_memory_consolidation(
