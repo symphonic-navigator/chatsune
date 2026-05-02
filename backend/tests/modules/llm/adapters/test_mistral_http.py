@@ -680,7 +680,8 @@ async def test_stream_completion_returns_provider_unavailable_on_429(monkeypatch
     assert len(events) == 1
     assert isinstance(events[0], StreamError)
     assert events[0].error_code == "provider_unavailable"
-    assert "rate limit" in events[0].message.lower()
+    assert "429" in events[0].message
+    assert "gave up" in events[0].message.lower()
 
 
 @pytest.mark.asyncio
