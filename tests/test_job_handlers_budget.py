@@ -30,6 +30,20 @@ from backend.jobs._models import JobConfig, JobEntry, JobType
 from backend.modules.llm._adapters._events import ContentDelta, StreamDone
 
 
+@pytest.fixture(autouse=True)
+def _stub_admin_system_message():
+    """Default the admin master prompt to unset for all tests in this file.
+
+    The title-generation handler now calls ``get_admin_system_message()``
+    which would otherwise hit the real database during these unit tests.
+    """
+    with patch(
+        "backend.jobs.handlers._title_generation.get_admin_system_message",
+        AsyncMock(return_value=None),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Fake redis — only the subset our helpers actually touch.
 # ---------------------------------------------------------------------------
