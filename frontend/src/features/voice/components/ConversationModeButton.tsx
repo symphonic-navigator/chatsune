@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import type { ConversationPhase } from '../stores/conversationModeStore'
 import { useProvidersStore } from '../../../core/store/providersStore'
 import type { VoiceLifecycle } from '@/features/voice-commands'
+import { firstEnabledIntegrationId, TTS_CAP } from '../engines/resolver'
+import { useIntegrationsStore } from '../../integrations/store'
 
 /** Maps a voice integration id onto the Premium Provider Account that owns
  *  its API key. Integrations not in this map are either unlinked (their key
@@ -32,10 +34,11 @@ interface PersonaVoiceShape {
 }
 
 /**
- * True when every voice integration the persona is bound to has a
- * configured Premium Provider Account. A missing `tts_provider_id`
- * falls through to `false` because without a TTS provider, voice chat
- * cannot produce output.
+ * True when the persona's effective TTS integration has a configured
+ * Premium Provider Account. The effective integration is the persona's
+ * explicit `voice_config.tts_provider_id` if set, otherwise the first
+ * enabled TTS integration (mirroring the cockpit Live-button gate via
+ * resolveTTSIntegrationId in voice/engines/resolver.ts).
  */
 function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boolean {
   // Select the stable `accounts` array rather than the derived Set — the
@@ -45,6 +48,12 @@ function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boole
   const loading = useProvidersStore((s) => s.loading)
   const error = useProvidersStore((s) => s.error)
   const refresh = useProvidersStore((s) => s.refresh)
+  // Subscribe to the integrations store so a toggle of mistral_voice /
+  // xai_voice immediately re-renders this component. firstEnabledIntegrationId
+  // reads from the same store via getState() but reading via a selector here
+  // is what wires the React subscription.
+  useIntegrationsStore((s) => s.definitions)
+  useIntegrationsStore((s) => s.configs)
 
   // Lazy hydrate: if no consumer has loaded the providers store yet (e.g.
   // the user hasn't opened the User-Modal since the app booted), the button
@@ -55,11 +64,18 @@ function useVoiceAvailable(persona: PersonaVoiceShape | null | undefined): boole
     if (!hydrated && !loading && error === null) void refresh()
   }, [hydrated, loading, error, refresh])
 
-  const ttsProviderId = persona?.voice_config?.tts_provider_id
-  if (!ttsProviderId) return false
-  const ttsPremium = providerIdForIntegration(ttsProviderId)
-  // If the TTS integration is not premium-linked (e.g. a local engine), we
-  // treat it as available — the legacy `available` prop path still gates.
+  // Mirror the cockpit Live-button gate: the persona's explicit
+  // tts_provider_id wins, but if it is null/undefined we fall back to the
+  // first enabled TTS integration, exactly like resolveTTSIntegrationId does
+  // (see voice/engines/resolver.ts). This keeps the two gates from diverging.
+  const explicitTtsId = persona?.voice_config?.tts_provider_id ?? undefined
+  const effectiveTtsId = explicitTtsId ?? firstEnabledIntegrationId(TTS_CAP)
+  if (!effectiveTtsId) return false
+
+  const ttsPremium = providerIdForIntegration(effectiveTtsId)
+  // If the resolved TTS integration is not premium-linked (e.g. a local
+  // engine), we treat it as available — the legacy `available` prop path
+  // still gates further downstream.
   if (!ttsPremium) return true
   const configuredIds = new Set(accounts.map((a) => a.provider_id))
   if (!configuredIds.has(ttsPremium)) return false

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ConversationModeButton } from './ConversationModeButton'
 import { useProvidersStore } from '../../../core/store/providersStore'
+import { useIntegrationsStore } from '../../integrations/store'
 
 describe('ConversationModeButton', () => {
   beforeEach(() => {
@@ -95,6 +96,46 @@ describe('ConversationModeButton', () => {
     expect(btn.style.textDecoration).not.toContain('line-through')
     // And the button must be the "start conversational mode" variant, not
     // the legacy disabled one.
+    expect(btn).not.toBeDisabled()
+    expect(btn.getAttribute('aria-label')).toBe('Start conversational mode')
+  })
+
+  // Regression test for the test2-persona bug (2026-05-02): a persona that
+  // has its voice configured but voice_config.tts_provider_id unset must not
+  // render the strikethrough as long as the resolver's fallback (first enabled
+  // TTS integration) maps to a configured Premium Provider Account. Mirrors
+  // the cockpit Live-button gate.
+  it('is not strikethrough when tts_provider_id is unset but the fallback TTS integration has a configured premium account', () => {
+    useIntegrationsStore.setState({
+      definitions: [
+        {
+          id: 'mistral_voice',
+          capabilities: ['tts_provider'],
+        } as never,
+      ],
+      configs: {
+        mistral_voice: { effective_enabled: true } as never,
+      },
+    })
+    useProvidersStore.setState({
+      accounts: [
+        {
+          provider_id: 'mistral',
+          config: {},
+          last_test_status: 'ok',
+          last_test_error: null,
+          last_test_at: null,
+        },
+      ],
+      catalogue: [],
+    })
+    render(
+      <ConversationModeButton
+        persona={{ id: 'p1', voice_config: { tts_provider_id: null } }}
+      />,
+    )
+    const btn = screen.getByRole('button')
+    expect(btn.style.textDecoration).not.toContain('line-through')
     expect(btn).not.toBeDisabled()
     expect(btn.getAttribute('aria-label')).toBe('Start conversational mode')
   })
