@@ -19,15 +19,15 @@ from backend.modules.llm import (
     StreamError,
     stream_completion as llm_stream_completion,
 )
+from backend.modules.settings import get_admin_system_message
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 
 logger = logging.getLogger(__name__)
 
-_VISION_FALLBACK_SYSTEM_PROMPT = (
-    "You are an image-description assistant. The user has attached an image for a "
-    "downstream assistant that cannot see it. Describe the image in detail: subjects, "
-    "objects, layout, any visible text, colours, and the overall mood. Be specific and "
-    "concrete. Do not add interpretation or advice — only what is in the image."
+_VISION_FALLBACK_USER_INSTRUCTION = (
+    "Please describe this image in detail: subjects, objects, layout, any visible "
+    "text, colours, and the overall mood. Be specific and concrete. Do not add "
+    "interpretation or advice — only what is in the image."
 )
 
 
@@ -64,16 +64,18 @@ async def describe_image(
     _, model_slug = model_unique_id.split(":", 1)
     image_data = base64.b64encode(image_bytes).decode("ascii")
 
+    admin = await get_admin_system_message()
+    prefix_messages = [admin.message] if admin else []
+
     request = CompletionRequest(
         model=model_slug,
-        messages=[
-            CompletionMessage(
-                role="system",
-                content=[ContentPart(type="text", text=_VISION_FALLBACK_SYSTEM_PROMPT)],
-            ),
+        messages=prefix_messages + [
             CompletionMessage(
                 role="user",
-                content=[ContentPart(type="image", data=image_data, media_type=media_type)],
+                content=[
+                    ContentPart(type="text", text=_VISION_FALLBACK_USER_INSTRUCTION),
+                    ContentPart(type="image", data=image_data, media_type=media_type),
+                ],
             ),
         ],
         temperature=0.2,
