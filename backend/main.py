@@ -81,6 +81,9 @@ from backend._middleware import BackendMarkerMiddleware
 from backend.modules.providers._migration_v1 import (
     run_if_needed as run_providers_migration,
 )
+from backend.modules.persona._migration_tts_provider_id import (
+    run_if_needed as run_persona_tts_provider_id_backfill,
+)
 from backend.modules.integrations._voice_adapters._client import (
     init_voice_http_client, close_voice_http_client,
 )
@@ -99,6 +102,10 @@ async def lifespan(app: FastAPI):
     await user_init_indexes(db)
     await llm_init_indexes(db)
     await persona_init_indexes(db)
+    # Backfill voice_config.tts_provider_id for personas created before the
+    # frontend started persisting the implicit default. Marker-gated, runs
+    # once. See backend/modules/persona/_migration_tts_provider_id.py.
+    await run_persona_tts_provider_id_backfill(db)
     await settings_init_indexes(db)
     await chat_init_indexes(db)
     await bookmark_init_indexes(db)
