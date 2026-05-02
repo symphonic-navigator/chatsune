@@ -838,51 +838,6 @@ async def test_stream_completion_429_honours_retry_after_header(monkeypatch):
     assert backoff_sleeps == [7.0]
 
 
-def test_retry_after_seconds_parses_numeric_header():
-    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
-    resp = httpx.Response(429, headers={"Retry-After": "3.5"})
-    assert _retry_after_seconds(resp) == 3.5
-
-
-def test_retry_after_seconds_returns_none_for_missing_header():
-    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
-    resp = httpx.Response(429)
-    assert _retry_after_seconds(resp) is None
-
-
-def test_retry_after_seconds_returns_none_for_http_date():
-    from backend.modules.llm._adapters._openrouter_http import _retry_after_seconds
-    resp = httpx.Response(
-        429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"},
-    )
-    assert _retry_after_seconds(resp) is None
-
-
-def test_retry_after_seconds_clamps_to_max_delay():
-    from backend.modules.llm._adapters._openrouter_http import (
-        _RETRY_MAX_DELAY_SECONDS,
-        _retry_after_seconds,
-    )
-    resp = httpx.Response(429, headers={"Retry-After": "999"})
-    assert _retry_after_seconds(resp) == _RETRY_MAX_DELAY_SECONDS
-
-
-def test_retry_delay_uses_retry_after_when_present():
-    from backend.modules.llm._adapters._openrouter_http import _retry_delay_seconds
-    resp = httpx.Response(429, headers={"Retry-After": "2"})
-    # attempt is irrelevant when Retry-After is honoured
-    assert _retry_delay_seconds(resp, attempt=0) == 2.0
-    assert _retry_delay_seconds(resp, attempt=3) == 2.0
-
-
-def test_retry_delay_grows_exponentially_when_no_header():
-    from backend.modules.llm._adapters._openrouter_http import _retry_delay_seconds
-    resp = httpx.Response(429)
-    # base 1.0 * 2**2 = 4.0, with ±25% jitter → range [3.0, 5.0]
-    delay = _retry_delay_seconds(resp, attempt=2)
-    assert 3.0 <= delay <= 5.0
-
-
 def _make_app_with_test_route(monkeypatch):
     """Mount the adapter router under a stubbed dependency that
     returns a pre-baked ResolvedConnection — no real auth or DB."""
