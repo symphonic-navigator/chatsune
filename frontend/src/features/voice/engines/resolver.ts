@@ -8,10 +8,10 @@ import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 // These are the lowercase `.value` of the IntegrationCapability enum
 // (shared/dtos/integrations.py), which is what ends up in the DTO sent to
 // the frontend.
-const TTS_CAP = 'tts_provider'
+export const TTS_CAP = 'tts_provider'
 const STT_CAP = 'stt_provider'
 
-function firstEnabledIntegrationId(cap: string): string | undefined {
+export function firstEnabledIntegrationId(cap: string): string | undefined {
   const s = useIntegrationsStore.getState()
   const defn = s.definitions.find(
     (d: { id: string; capabilities?: string[] }) =>
