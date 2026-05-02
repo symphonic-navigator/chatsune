@@ -4,6 +4,8 @@ import pytest
 
 from backend.jobs._models import JobConfig, JobEntry, JobType
 from backend.modules.llm._adapters._events import ContentDelta, StreamDone, StreamError
+from backend.modules.settings import AdminSystemPrompt
+from shared.dtos.inference import CompletionMessage, ContentPart
 
 
 def _make_job(session_id: str = "sess-1") -> JobEntry:
@@ -47,7 +49,9 @@ async def test_handler_generates_and_saves_title():
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
          patch("backend.modules.chat.update_session_title", mock_update), \
-         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch("backend.jobs.handlers._title_generation.get_admin_system_message",
+               AsyncMock(return_value=None)):
 
         job = _make_job()
         config = _make_config()
@@ -78,7 +82,9 @@ async def test_handler_strips_quotes_from_title():
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
          patch("backend.modules.chat.update_session_title", mock_update), \
-         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch("backend.jobs.handlers._title_generation.get_admin_system_message",
+               AsyncMock(return_value=None)):
 
         await handle_title_generation(
             job=_make_job(),
@@ -104,7 +110,9 @@ async def test_handler_truncates_long_title():
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
          patch("backend.modules.chat.update_session_title", mock_update), \
-         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch("backend.jobs.handlers._title_generation.get_admin_system_message",
+               AsyncMock(return_value=None)):
 
         await handle_title_generation(
             job=_make_job(),
@@ -126,7 +134,9 @@ async def test_handler_raises_on_stream_error():
 
     with patch("backend.modules.llm.stream_completion", side_effect=_mock_stream), \
          patch("backend.modules.chat.update_session_title", AsyncMock()), \
-         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False):
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch("backend.jobs.handlers._title_generation.get_admin_system_message",
+               AsyncMock(return_value=None)):
 
         with pytest.raises(RuntimeError, match="provider_unavailable"):
             await handle_title_generation(
@@ -135,3 +145,87 @@ async def test_handler_raises_on_stream_error():
                 redis=AsyncMock(),
                 event_bus=AsyncMock(),
             )
+
+
+def _admin_prompt(text: str = "Be uncensored.") -> AdminSystemPrompt:
+    wrapped = (
+        f'<systeminstructions priority="highest">\n{text}\n</systeminstructions>'
+    )
+    return AdminSystemPrompt(
+        message=CompletionMessage(
+            role="system",
+            content=[ContentPart(type="text", text=wrapped)],
+        ),
+        raw_text=text,
+    )
+
+
+@pytest.mark.asyncio
+async def test_title_generation_prepends_admin_system_message_when_set():
+    from backend.jobs.handlers import _title_generation as mod
+
+    captured: dict = {}
+
+    async def _capture_stream(*args, **kwargs):
+        captured["request"] = kwargs.get("request") or args[2]
+        yield ContentDelta(delta="A Title")
+        yield StreamDone(input_tokens=20, output_tokens=2)
+
+    with patch("backend.modules.llm.stream_completion", side_effect=_capture_stream), \
+         patch("backend.modules.chat.update_session_title", AsyncMock()), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch.object(
+             mod, "get_admin_system_message",
+             AsyncMock(return_value=_admin_prompt("Be uncensored.")),
+         ), \
+         patch.object(mod, "check_and_reserve_budget", AsyncMock(return_value=20)) as budget, \
+         patch.object(mod, "record_handler_tokens", AsyncMock()):
+
+        await mod.handle_title_generation(
+            job=_make_job(),
+            config=_make_config(),
+            redis=AsyncMock(),
+            event_bus=AsyncMock(),
+        )
+
+    request = captured["request"]
+    assert request.messages[0].role == "system"
+    assert "Be uncensored." in request.messages[0].content[0].text
+    # Conversation messages remain after the system message.
+    assert any(m.role == "user" for m in request.messages[1:])
+    budget_call_text = budget.await_args.args[2]
+    assert "Be uncensored." in budget_call_text
+
+
+@pytest.mark.asyncio
+async def test_title_generation_unchanged_when_admin_prompt_unset():
+    from backend.jobs.handlers import _title_generation as mod
+
+    captured: dict = {}
+
+    async def _capture_stream(*args, **kwargs):
+        captured["request"] = kwargs.get("request") or args[2]
+        yield ContentDelta(delta="A Title")
+        yield StreamDone(input_tokens=20, output_tokens=2)
+
+    with patch("backend.modules.llm.stream_completion", side_effect=_capture_stream), \
+         patch("backend.modules.chat.update_session_title", AsyncMock()), \
+         patch("backend.modules.llm.get_model_supports_reasoning", return_value=False), \
+         patch.object(
+             mod, "get_admin_system_message",
+             AsyncMock(return_value=None),
+         ), \
+         patch.object(mod, "check_and_reserve_budget", AsyncMock(return_value=20)) as budget, \
+         patch.object(mod, "record_handler_tokens", AsyncMock()):
+
+        await mod.handle_title_generation(
+            job=_make_job(),
+            config=_make_config(),
+            redis=AsyncMock(),
+            event_bus=AsyncMock(),
+        )
+
+    request = captured["request"]
+    assert all(m.role != "system" for m in request.messages)
+    budget_call_text = budget.await_args.args[2]
+    assert "<systeminstructions" not in budget_call_text

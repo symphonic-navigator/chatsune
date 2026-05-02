@@ -6,6 +6,7 @@ from backend.jobs.handlers._budget_helpers import (
     record_handler_tokens,
 )
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
+from backend.modules.settings import get_admin_system_message
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 
 _log = structlog.get_logger(__name__)
@@ -85,6 +86,13 @@ async def handle_title_generation(
         )
     )
 
+    admin = await get_admin_system_message()
+    if admin:
+        messages = [admin.message] + messages
+        admin_text = admin.raw_text + "\n"
+    else:
+        admin_text = ""
+
     supports_reasoning = await get_model_supports_reasoning(
         job.user_id, job.model_unique_id,
     )
@@ -99,7 +107,10 @@ async def handle_title_generation(
 
     # Reserve daily-budget headroom before spending tokens on the user's behalf.
     prompt_text = (
-        "\n".join(msg["content"] for msg in messages_data) + "\n" + _TITLE_INSTRUCTION
+        admin_text
+        + "\n".join(msg["content"] for msg in messages_data)
+        + "\n"
+        + _TITLE_INSTRUCTION
     )
     await check_and_reserve_budget(redis, job.user_id, prompt_text)
 
