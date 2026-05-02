@@ -84,6 +84,7 @@ class AudioCaptureImpl {
 
   // -- VAD (continuous) state --
   private vad: MicVAD | null = null
+  private vadSession = 0 // incremented on each start/stop, checked after await MicVAD.new
   private vadContext: AudioContext | null = null
   private vadStream: MediaStream | null = null
   private vadRecorder: MediaRecorder | null = null
@@ -297,6 +298,17 @@ class AudioCaptureImpl {
     const threshold: VoiceActivationThreshold = options.threshold ?? 'medium'
     this.vadExternalRecorder = options.externalRecorder === true
 
+    // Snapshot the in-flight session BEFORE awaiting MicVAD.new — first-load
+    // ONNX/WASM downloads can take 0.5–2 s, during which stopContinuous may
+    // arrive and bump the counter to invalidate this run.
+    const session = ++this.vadSession
+    console.info(
+      '[audioCapture] startContinuous session=%d threshold=%s externalRecorder=%s',
+      session,
+      threshold,
+      this.vadExternalRecorder,
+    )
+
     let capturedStream: MediaStream | null = null
     const getStream = async (): Promise<MediaStream> => {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -330,7 +342,7 @@ class AudioCaptureImpl {
     this.inSpeechSegment = false
     this.redemptionOpen = false
 
-    this.vad = await MicVAD.new({
+    const vad = await MicVAD.new({
       getStream,
       onnxWASMBasePath: ORT_CDN,
       baseAssetPath: VAD_CDN,
@@ -352,6 +364,25 @@ class AudioCaptureImpl {
       },
     })
 
+    // If stopContinuous (or another startContinuous) ran while MicVAD.new was
+    // resolving, this VAD is orphaned — nothing in the app references it.
+    // Tear it down locally without touching this.* fields (already cleared).
+    if (session !== this.vadSession) {
+      try { vad.pause() } catch { /* ignore */ }
+      try { vad.destroy() } catch { /* ignore */ }
+      if (capturedStream) {
+        ;(capturedStream as MediaStream).getTracks().forEach((t: MediaStreamTrack) => t.stop())
+      }
+      console.warn(
+        '[audioCapture] Discarded orphan VAD (session=%d, current=%d)',
+        session,
+        this.vadSession,
+      )
+      return
+    }
+
+    this.vad = vad
+
     if (capturedStream) {
       this.vadStream = capturedStream
       this.vadContext = new AudioContext()
@@ -363,6 +394,7 @@ class AudioCaptureImpl {
     }
 
     await this.vad.start()
+    console.info('[audioCapture] VAD started session=%d', session)
   }
 
   private handleVadSpeechStart(): void {
@@ -501,6 +533,10 @@ class AudioCaptureImpl {
    * Stop continuous (VAD) recording.
    */
   stopContinuous(): void {
+    console.info('[audioCapture] stopContinuous session=%d', this.vadSession)
+    // Bump first so any in-flight startContinuous awaiting MicVAD.new sees
+    // an invalidated session when it resolves and cleans up its own VAD.
+    this.vadSession++
     this.inSpeechSegment = false
     this.silenceFrames = 0
     if (this.redemptionOpen) {
