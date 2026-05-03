@@ -243,16 +243,24 @@ last_used_at: datetime | None = None
 ```
 
 Backwards-compatible read: missing field → `None`. For sort purposes,
-`None` is treated as the persona's `created_at` (so brand-new personas
-without chat history sort by creation time).
+`None` falls back to the persona's `created_at` and sorts **descending**,
+so a brand-new persona with no chat history appears at the top of the
+unpinned list — the user sees it where they expect it.
 
-The field is updated whenever a chat session is created for or continued
-on the persona. Concretely, hook into:
+The field is updated only when a chat session for the persona is
+**created or resumed**, not on every message. The rationale: history
+already tracks per-message activity through `chat_sessions.updated_at`;
+re-bumping the persona on every message would couple a high-frequency
+write path to the persona document for no UI benefit (the persona's
+position in the sidebar does not need to refresh per message).
+
+Hook points:
 
 - Chat session creation (`backend/modules/chat/_repository.py:create_session`)
-- Chat session continuation / new message in existing session (one
-  decision point in the implementation plan: bump on every message vs.
-  bump only on session resume)
+- Chat session resume — when an existing session is opened in a way
+  that signals user intent (the exact event/handler is identified in
+  the plan; navigating to `/chat/{persona}/{session}` is the likely
+  trigger).
 
 The bump is fire-and-forget — a failure to bump is logged and ignored,
 not propagated to the chat write.
@@ -281,8 +289,11 @@ The following are removed:
 - History session pin-by-drop handler in `Sidebar.tsx`.
 - `__personasTabTestHelper` test seam in `PersonasTab.tsx`.
 
-The `@dnd-kit` packages may stay in `package.json` if any other feature
-uses them; otherwise they can be removed (decision in the plan).
+The `@dnd-kit/core`, `@dnd-kit/sortable`, and `@dnd-kit/utilities`
+packages are removed from `package.json`. If a usage check during
+implementation finds another consumer, that consumer is migrated as
+part of this work; under no circumstances do `@dnd-kit/*` packages
+ship in the post-redesign build.
 
 ---
 
@@ -358,8 +369,7 @@ Click toggles `pinned` for the active chat session, calling the same
 endpoint as the History-list pin action. The icon reflects current
 state (filled = pinned, outline = not pinned).
 
-The exact location (left of title vs. right of title) is a small visual
-decision deferred to the implementation plan.
+**Location:** to the **right** of the chat title.
 
 ---
 
@@ -469,6 +479,11 @@ on a real desktop browser, run by Chris before merge:
 Frontend (rough scope, definitive list deferred to plan):
 
 - `frontend/src/app/components/sidebar/Sidebar.tsx` — major rewrite.
+  Today this file is ~1170 lines and acts as a god-component. The
+  rewrite **must** decompose it into focused sub-components: an
+  action block, a zone (parameterised over entity type), a footer
+  block, and the collapsed-rail variant. The exact split is part of
+  the implementation plan.
 - `frontend/src/app/components/sidebar/` — new `ZoneSection.tsx`
   component (or similar) for zone-allocation logic.
 - `frontend/src/app/components/sidebar/PersonaItem.tsx` — drop drag
@@ -508,19 +523,12 @@ Shared:
 
 ## §10 Open Items for the Plan
 
-These are decisions that belong in the implementation plan, not in
-this design:
+The following remain implementation-detail decisions for the plan, not
+the spec:
 
-- **`+` button placement** within the zone header row — top-right of
-  header (cleaner) or as a "+ New persona" pseudo-row at the bottom of
-  the items list (matches Chris's *"der immer abschließt"* phrasing).
-  Default in the plan: top-right.
-- **Pin button location** in chat top bar — left of title or right of
-  title.
-- **Whether to bump `last_used_at` on every message** or only on
-  session resume / creation.
-- **Whether to remove `@dnd-kit/*` packages** from `package.json`
-  entirely or leave them for any other consumers.
-- **Component decomposition** of `Sidebar.tsx` — today it's ~1170
-  lines, the rewrite is a chance to split into smaller components
-  (action block, zone, footer) without inflating scope.
+- **Exact identification of the "session resume" event/handler** that
+  triggers the persona `last_used_at` bump (§3.2).
+- **Concrete component decomposition of `Sidebar.tsx`** (§9) — the spec
+  mandates the split; the plan picks the boundaries.
+- **Concrete chat-header file path** for the pin-button addition (§5.4)
+  — the plan locates the actual top-bar component.
