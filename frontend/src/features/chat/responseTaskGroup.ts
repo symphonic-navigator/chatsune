@@ -97,6 +97,46 @@ function hash8(id: string): string {
   return id.slice(0, 8)
 }
 
+/**
+ * Determine which (if any) WS frame to send when a Group is cancelled.
+ *
+ * Semantics by reason:
+ * - `barge-retract`: the user barged in *before* any output had been
+ *   rendered, so the original user message should be retracted from the
+ *   transcript. We only send `chat.retract` when we're still in
+ *   `before-first-delta` — once a delta has arrived, the assistant has
+ *   already produced visible output, so we fall back to `chat.cancel`
+ *   (server stops generation, transcript stays intact).
+ * - `teardown`: the React tree is being unmounted (navigation away,
+ *   voice toggle, mic press handing off control, etc.). The backend
+ *   inference must continue and persist its result, so the user can
+ *   come back to a full assistant reply on remount. Sending neither
+ *   `chat.cancel` nor `chat.retract` is intentional.
+ * - `barge-cancel` / `user-stop` / `superseded`: stop the in-flight
+ *   stream but leave whatever has already been persisted alone — that
+ *   is exactly `chat.cancel`.
+ */
+function wsFrameForCancel(
+  reason: CancelReason,
+  wasBeforeDelta: boolean,
+  correlationId: string,
+  sessionId: string,
+): WsOutbound | null {
+  switch (reason) {
+    case 'teardown':
+      return null
+    case 'barge-retract':
+      if (wasBeforeDelta) {
+        return { type: 'chat.retract', correlation_id: correlationId, session_id: sessionId }
+      }
+      return { type: 'chat.cancel', correlation_id: correlationId }
+    case 'barge-cancel':
+    case 'user-stop':
+    case 'superseded':
+      return { type: 'chat.cancel', correlation_id: correlationId }
+  }
+}
+
 export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTaskGroup {
   const { correlationId, sessionId, children, sendWsMessage, logger } = deps
   const pendingEffectsMap = deps.pendingEffectsMap ?? null
@@ -180,11 +220,8 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
         try { child.onCancel(reason, correlationId) }
         catch (err) { logger.error(`${prefix} child ${child.name} onCancel threw`, err) }
       }
-      sendWsMessage({
-        type: wasBeforeDelta ? 'chat.retract' : 'chat.cancel',
-        correlation_id: correlationId,
-        ...(wasBeforeDelta ? { session_id: sessionId } : {}),
-      })
+      const frame = wsFrameForCancel(reason, wasBeforeDelta, correlationId, sessionId)
+      if (frame) sendWsMessage(frame)
       void Promise.allSettled(children.map(async (c) => {
         try { await c.teardown() }
         catch (err) { logger.error(`${prefix} child ${c.name} teardown threw`, err) }
