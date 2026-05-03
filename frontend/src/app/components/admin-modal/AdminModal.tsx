@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useBackButtonClose } from '../../../core/hooks/useBackButtonClose'
 import { UsersTab } from './UsersTab'
 import { SystemTab } from './SystemTab'
 import { DebugTab } from './DebugTab'
@@ -29,6 +30,7 @@ interface AdminModalProps {
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 
 export function AdminModal({ activeTab, onClose, onTabChange }: AdminModalProps) {
+  useBackButtonClose(true, onClose, 'admin-modal')
   const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
