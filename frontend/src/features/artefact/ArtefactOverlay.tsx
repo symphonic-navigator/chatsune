@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useArtefactStore } from '../../core/store/artefactStore'
+import { useBackButtonClose } from '../../core/hooks/useBackButtonClose'
 import { artefactApi } from '../../core/api/artefact'
 import type { ArtefactType } from '../../core/types/artefact'
 import { ArtefactPreview, detectPreviewType } from './ArtefactPreview'
@@ -43,6 +44,11 @@ export function ArtefactOverlay() {
   const loading = useArtefactStore((s) => s.activeArtefactLoading)
   const closeOverlay = useArtefactStore((s) => s.closeOverlay)
   const setActiveArtefact = useArtefactStore((s) => s.setActiveArtefact)
+
+  // Browser back closes the overlay. The store-driven `open` flag is
+  // `artefact !== null`, and `closeOverlay` is the same action used by
+  // the X button and Escape key.
+  useBackButtonClose(artefact !== null, closeOverlay, 'artefact-overlay')
 
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [editContent, setEditContent] = useState('')
