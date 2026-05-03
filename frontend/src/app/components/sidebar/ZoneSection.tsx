@@ -1,34 +1,86 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSidebarStore, type SidebarZone } from '../../../core/store/sidebarStore'
 
 interface ZoneSectionProps {
   zone: SidebarZone
   title: string
   onAdd?: () => void
-  /** Empty CTA configuration. Renders only when `isEmpty` is true. */
+  /** Called by the always-visible `…` button and used as the
+   *  click-fallback when the zone is too small to render any items. */
+  onOpenPage: () => void
+  /** Empty CTA configuration. Renders only when `itemCount === 0`. */
   emptyState?: { label: string; onClick: () => void }
-  /** Whether the zone has zero items. Drives empty-state rendering. */
-  isEmpty: boolean
-  children: ReactNode
+  itemCount: number
+  /** Approximate item row height in px. Used to compute how many
+   *  items fit before the More button. */
+  itemHeight?: number
+  /** Render-prop receiving the maximum number of items that fit. */
+  children: (visibleCount: number) => ReactNode
 }
 
+const MORE_BUTTON_HEIGHT = 28
+const FALLBACK_VISIBLE_COUNT = 10
+
 /**
- * One of the three sidebar entity zones.
+ * One of the sidebar entity zones.
  *
- * Header: title (uppercase, dimmed), optional `+`, collapse caret.
- * Body: scrollable when content overflows the flex-allocated max height.
- * Per-zone open state is persisted via sidebarStore.
+ * Accordion: at most one zone open at a time across the sidebar (the
+ * sidebar store enforces this). Header click toggles open; clicking the
+ * already-open header collapses to the all-closed state.
+ *
+ * Item-count cap: the body is sized via flex-1 to share remaining space
+ * with sibling sections. A ResizeObserver measures the body and computes
+ * how many items fit without scrolling. The caller renders `visibleCount`
+ * items; anything beyond is reachable via the More button (or the always-
+ * visible `…` header button).
+ *
+ * Edge case: if the zone is so small that NOT EVEN ONE item fits, header
+ * click switches from "toggle accordion" to "open page directly" — the
+ * accordion would otherwise expand into nothing.
  */
 export function ZoneSection({
   zone,
   title,
   onAdd,
+  onOpenPage,
   emptyState,
-  isEmpty,
+  itemCount,
+  itemHeight = 32,
   children,
 }: ZoneSectionProps) {
-  const open = useSidebarStore((s) => s.zoneOpen[zone])
-  const toggleZone = useSidebarStore((s) => s.toggleZone)
+  const open = useSidebarStore((s) => s.openZone === zone)
+  const setOpenZone = useSidebarStore((s) => s.setOpenZone)
+
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  const [bodyHeight, setBodyHeight] = useState<number>(0)
+
+  useEffect(() => {
+    const node = bodyRef.current
+    if (!node) return
+    const ro = new ResizeObserver((entries) => {
+      const h = entries[0]?.contentRect.height ?? 0
+      setBodyHeight(h)
+    })
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [open])
+
+  const visibleCount =
+    bodyHeight > 0
+      ? Math.max(0, Math.floor((bodyHeight - MORE_BUTTON_HEIGHT) / itemHeight))
+      : FALLBACK_VISIBLE_COUNT
+
+  const isEmpty = itemCount === 0
+  // Only the "no item fits" fallback — empty data still uses the CTA.
+  const cannotFitAnyItem = open && !isEmpty && visibleCount === 0
+
+  function handleHeaderClick() {
+    if (cannotFitAnyItem) {
+      onOpenPage()
+      return
+    }
+    setOpenZone(open ? null : zone)
+  }
 
   return (
     <section
@@ -38,11 +90,17 @@ export function ZoneSection({
       <header className="flex flex-shrink-0 items-center gap-1 px-3 py-1.5">
         <button
           type="button"
-          onClick={() => toggleZone(zone)}
-          className="flex flex-1 items-center gap-1 text-left"
+          onClick={handleHeaderClick}
+          className="flex flex-1 items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-white/5"
           aria-expanded={open}
         >
-          <span className="text-[11px] font-medium uppercase tracking-wider text-white/55">
+          <span
+            className={
+              open
+                ? 'text-[11px] font-semibold uppercase tracking-wider text-gold'
+                : 'text-[11px] font-medium uppercase tracking-wider text-white/55'
+            }
+          >
             {title}
           </span>
         </button>
@@ -59,17 +117,20 @@ export function ZoneSection({
         )}
         <button
           type="button"
-          onClick={() => toggleZone(zone)}
-          aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
-          title={open ? `Collapse ${title}` : `Expand ${title}`}
-          className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-white/55 transition-colors hover:bg-white/8 hover:text-white/85"
+          onClick={onOpenPage}
+          aria-label={`Open all ${title.toLowerCase()}`}
+          title={`Open all ${title.toLowerCase()}`}
+          className="flex h-5 w-5 items-center justify-center rounded text-[12px] text-white/55 transition-colors hover:bg-white/8 hover:text-white/85"
         >
-          {open ? '∨' : '›'}
+          ⋯
         </button>
       </header>
 
       {open && (
-        <div className="min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+        <div
+          ref={bodyRef}
+          className="min-h-0 flex-1 overflow-hidden"
+        >
           {isEmpty && emptyState ? (
             <button
               type="button"
@@ -78,9 +139,9 @@ export function ZoneSection({
             >
               {emptyState.label}
             </button>
-          ) : (
-            children
-          )}
+          ) : visibleCount > 0 ? (
+            children(visibleCount)
+          ) : null}
         </div>
       )}
     </section>

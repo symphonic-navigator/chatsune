@@ -630,53 +630,68 @@ export function Sidebar({
           zone="personas"
           title="Personas"
           onAdd={() => { closeDrawerIfMobile(); onOpenModal('personas') }}
-          isEmpty={sortedPersonas.length === 0}
+          onOpenPage={() => openModalAndClose('personas')}
+          itemCount={sortedPersonas.length}
+          itemHeight={32}
           emptyState={{
             label: 'No personas yet · Create one →',
             onClick: () => { closeDrawerIfMobile(); onOpenModal('personas') },
           }}
         >
-          {sortedPersonas.map((p) => (
-            <PersonaItem
-              key={p.id}
-              persona={p}
-              isActive={p.id === activePersonaId}
-              onSelect={handlePersonaSelect}
-              onNewChat={handleNewChat}
-              onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
-              onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
-              onPin={p.pinned ? undefined : (persona) => onTogglePin?.(persona.id, true)}
-              onUnpin={p.pinned ? (persona) => onTogglePin?.(persona.id, false) : undefined}
-              onOpenOverlay={() => openOverlayAndClose(p.id)}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={() => openModalAndClose('personas')}
-            className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-          >
-            <span>More… ›</span>
-          </button>
+          {(visibleCount) => {
+            const visible = sortedPersonas.slice(0, visibleCount)
+            const hasMore = sortedPersonas.length > visible.length
+            return (
+              <>
+                {visible.map((p) => (
+                  <PersonaItem
+                    key={p.id}
+                    persona={p}
+                    isActive={p.id === activePersonaId}
+                    onSelect={handlePersonaSelect}
+                    onNewChat={handleNewChat}
+                    onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                    onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
+                    onPin={p.pinned ? undefined : (persona) => onTogglePin?.(persona.id, true)}
+                    onUnpin={p.pinned ? (persona) => onTogglePin?.(persona.id, false) : undefined}
+                    onOpenOverlay={() => openOverlayAndClose(p.id)}
+                  />
+                ))}
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => openModalAndClose('personas')}
+                    className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
+                  >
+                    <span>More… ›</span>
+                  </button>
+                )}
+              </>
+            )
+          }}
         </ZoneSection>
 
         {PROJECTS_ENABLED && (
           <ZoneSection
             zone="projects"
             title="Projects"
-            isEmpty={true}
+            onOpenPage={() => {/* deferred to Projects feature */}}
+            itemCount={0}
             emptyState={{
               label: 'No projects yet · Create one →',
               onClick: () => {/* deferred to Projects feature */},
             }}
           >
-            <>{/* Projects rendering deferred to the Projects feature. */}</>
+            {() => null /* Projects rendering deferred to the Projects feature. */}
           </ZoneSection>
         )}
 
         <ZoneSection
           zone="history"
           title="History"
-          isEmpty={sortedSessions.length === 0}
+          onOpenPage={() => openModalAndClose('history')}
+          itemCount={sortedSessions.length}
+          itemHeight={28}
           emptyState={{
             label: 'No conversations yet · Start a new chat →',
             onClick: () => {
@@ -687,29 +702,39 @@ export function Sidebar({
             },
           }}
         >
-          {sortedSessions.map((s) => {
-            const persona = personas.find((p) => p.id === s.persona_id)
+          {(visibleCount) => {
+            const visible = sortedSessions.slice(0, visibleCount)
+            const hasMore = sortedSessions.length > visible.length
             return (
-              <HistoryItem
-                key={s.id}
-                session={s}
-                isPinned={s.pinned}
-                isActive={s.id === activeSessionId}
-                monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                colourScheme={persona?.colour_scheme}
-                onClick={handleSessionClick}
-                onDelete={handleDeleteSession}
-                onTogglePin={handleToggleSessionPin}
-              />
+              <>
+                {visible.map((s) => {
+                  const persona = personas.find((p) => p.id === s.persona_id)
+                  return (
+                    <HistoryItem
+                      key={s.id}
+                      session={s}
+                      isPinned={s.pinned}
+                      isActive={s.id === activeSessionId}
+                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                      colourScheme={persona?.colour_scheme}
+                      onClick={handleSessionClick}
+                      onDelete={handleDeleteSession}
+                      onTogglePin={handleToggleSessionPin}
+                    />
+                  )
+                })}
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => openModalAndClose('history')}
+                    className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
+                  >
+                    <span>More… ›</span>
+                  </button>
+                )}
+              </>
             )
-          })}
-          <button
-            type="button"
-            onClick={() => openModalAndClose('history')}
-            className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-          >
-            <span>More… ›</span>
-          </button>
+          }}
         </ZoneSection>
       </div>
 
