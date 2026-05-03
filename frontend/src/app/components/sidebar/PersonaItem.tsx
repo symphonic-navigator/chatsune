@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react"
-import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { PersonaDto } from "../../../core/types/persona"
 import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 import { useMemoryStore } from "../../../core/store/memoryStore"
@@ -30,10 +29,6 @@ interface PersonaItemProps {
   onPin?: (persona: PersonaDto) => void
   onUnpin?: (persona: PersonaDto) => void
   onOpenOverlay?: () => void
-  dragRef?: (node: HTMLElement | null) => void
-  dragListeners?: DraggableSyntheticListeners
-  dragAttributes?: DraggableAttributes
-  isDragging?: boolean
 }
 
 export function PersonaItem({
@@ -46,10 +41,6 @@ export function PersonaItem({
   onPin,
   onUnpin,
   onOpenOverlay,
-  dragRef,
-  dragListeners,
-  dragAttributes,
-  isDragging,
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -87,23 +78,11 @@ export function PersonaItem({
 
   return (
     <div
-      ref={dragRef}
       className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg py-1.5 transition-colors
-        ${isActive ? "bg-white/8" : "hover:bg-white/5"}
-        ${isDragging ? "opacity-40" : ""}`}
+        ${isActive ? "bg-white/8" : "hover:bg-white/5"}`}
       style={persona.pinned ? { ...PINNED_STRIPE_STYLE, paddingLeft: '5px', paddingRight: '8px' } : { paddingLeft: '8px', paddingRight: '8px' }}
       onClick={() => onSelect(persona)}
     >
-      <span
-        aria-label="Drag to reorder"
-        title="Drag to reorder"
-        className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/60 group-focus-within:w-auto group-focus-within:text-white/60 transition-all"
-        {...(dragListeners ?? {})}
-        {...(dragAttributes ?? {})}
-      >
-        ⠿
-      </span>
-
       <div
         className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[9px] font-serif"
         style={{
