@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { imagesApi, getImageBlob } from '../api'
 import type { GeneratedImageDetailDto } from '@/core/api/images'
 import { triggerBlobDownload } from '@/core/utils/download'
+import { useBackButtonClose } from '@/core/hooks/useBackButtonClose'
 
 interface GalleryLightboxProps {
   imageId: string
@@ -23,6 +24,10 @@ interface GalleryLightboxProps {
  * Closes on backdrop click or the Escape key.
  */
 export function GalleryLightbox({ imageId, onClose, onDeleted }: GalleryLightboxProps) {
+  // Lightbox is rendered only while the parent decides to show it; treat
+  // mounted-equals-open and let unmount cleanup close any orphan history.
+  useBackButtonClose(true, onClose, 'lightbox-gallery')
+
   const [detail, setDetail] = useState<GeneratedImageDetailDto | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
