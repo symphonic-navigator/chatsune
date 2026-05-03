@@ -5,6 +5,7 @@ import { useChatSessions } from '../../../core/hooks/useChatSessions'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
+import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
 
 const OPTION_STYLE: React.CSSProperties = {
   background: '#0f0d16',
@@ -190,6 +191,14 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
                   monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
                   colourScheme={persona?.colour_scheme}
                   onOpen={() => handleOpen(s)}
+                  isPinned={s.pinned}
+                  onTogglePin={async () => {
+                    try {
+                      await chatApi.updateSessionPinned(s.id, !s.pinned)
+                    } catch {
+                      // pin event arrives via WS; non-critical
+                    }
+                  }}
                 />
               )
             })}
@@ -207,9 +216,11 @@ interface SessionRowProps {
   monogram?: string
   colourScheme?: ChakraColour
   onOpen: () => void
+  isPinned: boolean
+  onTogglePin: () => void
 }
 
-function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: SessionRowProps) {
+function SessionRow({ session, personaName, monogram, colourScheme, onOpen, isPinned, onTogglePin }: SessionRowProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
@@ -303,7 +314,10 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
   }, [])
 
   return (
-    <div className="group rounded-lg transition-colors hover:bg-white/4">
+    <div
+      className="group rounded-lg transition-colors hover:bg-white/4"
+      style={isPinned ? PINNED_STRIPE_STYLE : undefined}
+    >
       <div className="flex items-start gap-3 px-3 py-2.5 [@media(hover:hover)]:items-center">
         {/* Persona monogram */}
         {chakra && monogram && (
@@ -357,6 +371,15 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen }: Se
 
           {/* Actions — second row on touch, hover-faded inline on hover-capable */}
           <div className="flex items-center gap-1 flex-shrink-0 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={onTogglePin}
+              aria-label={isPinned ? 'Unpin session' : 'Pin session'}
+              title={isPinned ? 'Unpin' : 'Pin'}
+              className={`${BTN_NEUTRAL} ${isPinned ? 'text-gold border-gold/30' : ''}`}
+            >
+              📌
+            </button>
             <button
               type="button"
               onClick={startEdit}
