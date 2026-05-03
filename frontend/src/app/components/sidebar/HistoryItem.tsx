@@ -4,6 +4,7 @@ import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/
 import type { ChatSessionDto } from "../../../core/api/chat"
 import type { ChakraColour } from "../../../core/types/chakra"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
+import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 
 function formatSessionDate(isoString: string): string {
   const d = new Date(isoString)
@@ -56,9 +57,10 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
 
   return (
     <div
-      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-[12px] transition-colors
+      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg py-1 text-[12px] transition-colors
         ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}
         ${isDragging ? "opacity-40" : ""}`}
+      style={isPinned ? { ...PINNED_STRIPE_STYLE, paddingLeft: '5px', paddingRight: '8px' } : { paddingLeft: '8px', paddingRight: '8px' }}
       onClick={() => onClick(session)}
     >
       {/* Drag handle — only visible on hover */}
