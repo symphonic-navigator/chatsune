@@ -1,7 +1,5 @@
 import { useState } from "react";
 import type React from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { PersonaDto } from "../../../core/types/persona";
 import type { PersonaOverlayTab } from "../persona-overlay/PersonaOverlay";
 import { CHAKRA_PALETTE } from "../../../core/types/chakra";
@@ -28,15 +26,6 @@ export default function PersonaCard({
   const [isHovered, setIsHovered] = useState(false);
   const { isLandscape } = useViewport();
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: persona.id });
-
   const chakra = CHAKRA_PALETTE[persona.colour_scheme];
 
   const glowStrength = isHovered
@@ -46,9 +35,6 @@ export default function PersonaCard({
   const cardStyle: React.CSSProperties = {
     width: isLandscape ? "clamp(260px, 55vw, 340px)" : "clamp(160px, 42vw, 210px)",
     height: isLandscape ? "clamp(120px, 20vh, 160px)" : "clamp(240px, 63vw, 320px)",
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
     background: `linear-gradient(160deg, #1a1528 0%, #0f0d16 100%)`,
     border: `1px solid ${isHovered ? chakra.hex + "55" : chakra.hex + "28"}`,
     boxShadow: isHovered
@@ -93,40 +79,16 @@ export default function PersonaCard({
 
   return (
     <div
-      ref={setNodeRef}
       style={cardStyle}
       className={`relative flex ${isLandscape ? 'flex-row' : 'flex-col'} rounded-xl overflow-hidden select-none`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      {...attributes}
     >
       {/* Chakra gradient overlay */}
       <div
         className={`absolute inset-x-0 top-0 ${isLandscape ? 'h-1/3' : 'h-1/2'} pointer-events-none`}
         style={{ background: chakra.gradient }}
       />
-
-      {/* Drag handle — only this element triggers drag */}
-      <div
-        role="button"
-        aria-label={`Drag to reorder ${persona.name}`}
-        title="Drag to reorder"
-        className="absolute top-2.5 left-2.5 z-10 flex flex-col gap-[3px] cursor-grab active:cursor-grabbing p-1"
-        {...listeners}
-      >
-        {[0, 1, 2].map((row) => (
-          <div key={row} className="flex gap-[3px]">
-            <div
-              className="w-[3px] h-[3px] rounded-full"
-              style={{ background: "rgba(255,255,255,0.3)" }}
-            />
-            <div
-              className="w-[3px] h-[3px] rounded-full"
-              style={{ background: "rgba(255,255,255,0.3)" }}
-            />
-          </div>
-        ))}
-      </div>
 
       {/* Pin button + NSFW indicator */}
       <div className={`absolute top-2 z-10 flex items-center gap-1.5 ${isLandscape ? 'right-12' : 'right-2'}`}>
