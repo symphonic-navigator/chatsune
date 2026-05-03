@@ -32,6 +32,7 @@ import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
+import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
 
 export default function AppLayout() {
   useWebSocket()
@@ -262,6 +263,7 @@ export default function AppLayout() {
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
   return (
+    <BackButtonProvider>
     <div className="flex h-full overflow-hidden bg-base text-white">
       <a
         href="#main-content"
@@ -355,5 +357,6 @@ export default function AppLayout() {
       <MobileToastContainer />
       <InstallHint />
     </div>
+    </BackButtonProvider>
   )
 }
