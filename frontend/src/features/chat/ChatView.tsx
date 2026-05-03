@@ -332,6 +332,12 @@ export function ChatView({ persona }: ChatViewProps) {
 
     if (!sessionId) return () => { cancelled = true }
 
+    // Bump persona LRU on resume. Fire-and-forget — failures must not
+    // block message load. Idempotent on the backend.
+    chatApi.resumeSession(sessionId).catch((err) => {
+      console.warn('Persona LRU bump on resume failed', err)
+    })
+
     setIsLoading(true)
     chatApi
       .getMessages(sessionId)

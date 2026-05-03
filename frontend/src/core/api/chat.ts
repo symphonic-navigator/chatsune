@@ -204,6 +204,9 @@ export const chatApi = {
   restoreSession: (sessionId: string) =>
     api.post<{ status: string }>(`/api/chat/sessions/${sessionId}/restore`),
 
+  resumeSession: (sessionId: string) =>
+    api.post<void>(`/api/chat/sessions/${sessionId}/resume`),
+
   updateSession: (sessionId: string, body: { title: string }) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}`, body),
 
