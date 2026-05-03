@@ -303,6 +303,34 @@ async def restore_session(session_id: str, user: dict = Depends(require_active_s
     return {"status": "ok"}
 
 
+@router.post("/sessions/{session_id}/resume", status_code=204)
+async def resume_session(
+    session_id: str,
+    user: dict = Depends(require_active_session),
+):
+    """Bump the session's persona last_used_at. No-op if session missing.
+
+    Fire-and-forget from the frontend: opening any /chat/{persona}/{session}
+    route hits this once. Failures are logged and never returned as 5xx
+    so a sidebar-LRU error cannot break chat load.
+    """
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        return
+    try:
+        await bump_persona_last_used(session["persona_id"], user["sub"])
+    except Exception as exc:  # pragma: no cover - logged, never raised
+        import structlog
+        structlog.get_logger().warning(
+            "persona_last_used_bump_failed",
+            persona_id=session["persona_id"],
+            user_id=user["sub"],
+            session_id=session_id,
+            error=str(exc),
+        )
+
+
 class UpdateSessionRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200, strip_whitespace=True)
 
