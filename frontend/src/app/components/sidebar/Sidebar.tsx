@@ -665,13 +665,6 @@ export function Sidebar({
                     />
                   </Fragment>
                 ))}
-                <button
-                  type="button"
-                  onClick={() => openModalAndClose('personas')}
-                  className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-                >
-                  <span>More… ›</span>
-                </button>
               </>
             )
           }}
@@ -732,13 +725,6 @@ export function Sidebar({
                     </Fragment>
                   )
                 })}
-                <button
-                  type="button"
-                  onClick={() => openModalAndClose('history')}
-                  className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-                >
-                  <span>More… ›</span>
-                </button>
               </>
             )
           }}

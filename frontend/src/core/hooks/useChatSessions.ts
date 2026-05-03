@@ -62,8 +62,14 @@ export function useChatSessions() {
     const unsubPinned = eventBus.on(Topics.CHAT_SESSION_PINNED_UPDATED, (event: BaseEvent) => {
       const sessionId = event.payload.session_id as string
       const pinned = event.payload.pinned as boolean
+      // Backend's update_session_pinned bumps updated_at server-side so the
+      // freshly-pinned session surfaces at the top of its group. The pin
+      // event payload doesn't echo the new timestamp, so mirror it locally
+      // using the event's own timestamp — otherwise the sidebar sort by
+      // updated_at would keep the session at its stale position.
+      const ts = (event.timestamp ?? new Date().toISOString()) as string
       setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, pinned } : s)),
+        prev.map((s) => (s.id === sessionId ? { ...s, pinned, updated_at: ts } : s)),
       )
     })
 
