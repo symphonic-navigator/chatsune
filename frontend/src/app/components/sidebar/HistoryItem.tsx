@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from "react"
 import { useLocation } from "react-router-dom"
-import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core"
 import type { ChatSessionDto } from "../../../core/api/chat"
 import type { ChakraColour } from "../../../core/types/chakra"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
@@ -25,12 +24,9 @@ interface HistoryItemProps {
   onClick: (session: ChatSessionDto) => void
   onDelete: (session: ChatSessionDto) => void
   onTogglePin?: (session: ChatSessionDto, pinned: boolean) => void
-  dragListeners?: DraggableSyntheticListeners
-  dragAttributes?: DraggableAttributes
-  isDragging?: boolean
 }
 
-export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete, onTogglePin, dragListeners, dragAttributes, isDragging }: HistoryItemProps) {
+export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete, onTogglePin }: HistoryItemProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -58,23 +54,10 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
   return (
     <div
       className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg py-1 text-[12px] transition-colors
-        ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}
-        ${isDragging ? "opacity-40" : ""}`}
+        ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}`}
       style={isPinned ? { ...PINNED_STRIPE_STYLE, paddingLeft: '5px', paddingRight: '8px' } : { paddingLeft: '8px', paddingRight: '8px' }}
       onClick={() => onClick(session)}
     >
-      {/* Drag handle — only visible on hover */}
-      {dragListeners && (
-        <span
-          className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all"
-          {...(dragListeners ?? {})}
-          {...(dragAttributes ?? {})}
-          onClick={(e) => e.stopPropagation()}
-        >
-          ⠿
-        </span>
-      )}
-
       {chakra && monogram && (
         <div
           className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[8px] font-serif"
