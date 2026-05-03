@@ -75,7 +75,7 @@ export default function AppLayout() {
     return () => unlockBodyScroll()
   }, [isDesktop, drawerOpen])
 
-  const { personas: allPersonas, update: updatePersona, reorder: reorderPersonas } = usePersonas()
+  const { personas: allPersonas, update: updatePersona } = usePersonas()
   const { sessions, updateSession: updateChatSession } = useChatSessions()
   const user = useAuthStore((s) => s.user)
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
@@ -292,7 +292,6 @@ export default function AppLayout() {
         hasApiKeyProblem={hasApiKeyProblem}
         onOpenOverlay={(personaId, tab) => openPersonaOverlay(personaId, (tab as PersonaOverlayTab) ?? "overview")}
         onTogglePin={(personaId, pinned) => updatePersona(personaId, { pinned })}
-        onReorder={reorderPersonas}
         onToggleSessionPin={async (sessionId, pinned) => {
           updateChatSession(sessionId, { pinned })
           try {
