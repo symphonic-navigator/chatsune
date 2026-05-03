@@ -196,4 +196,5 @@ class PersonaRepository:
             voice_config=VoiceConfigDto(**doc["voice_config"]) if doc.get("voice_config") else None,
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            last_used_at=doc.get("last_used_at"),
         )
