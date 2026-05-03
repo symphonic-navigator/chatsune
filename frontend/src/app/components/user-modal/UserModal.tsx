@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { setLastMyDataSubpage, type MyDataSubpage } from './myDataMemory'
 import { GalleryGrid } from '../../../features/images/gallery/GalleryGrid'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
@@ -93,6 +94,15 @@ export function UserModal({
       onTabChange(resolved.top)
     }
   }
+
+  // Persist the last-visited My data sub-page so re-opening the modal
+  // restores the previous position within the My data section.
+  useEffect(() => {
+    const sub = activeSub ?? activeTop
+    if (sub === 'uploads' || sub === 'artefacts' || sub === 'images') {
+      setLastMyDataSubpage(sub as MyDataSubpage)
+    }
+  }, [activeTop, activeSub])
 
   // Focus trap + Escape key
   useEffect(() => {
