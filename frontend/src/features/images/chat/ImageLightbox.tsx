@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getImageBlob } from '../api'
 import { triggerBlobDownload } from '@/core/utils/download'
+import { useBackButtonClose } from '@/core/hooks/useBackButtonClose'
 
 interface ImageLightboxProps {
   imageRef: ImageRefDto
@@ -24,6 +25,10 @@ interface ImageLightboxProps {
  * preview so the user sees something immediately.
  */
 export function ImageLightbox({ imageRef, onClose }: ImageLightboxProps) {
+  // Lightbox is rendered only while the parent decides to show it; treat
+  // mounted-equals-open and let unmount cleanup close any orphan history.
+  useBackButtonClose(true, onClose, 'lightbox-chat')
+
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [blob, setBlob] = useState<Blob | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
