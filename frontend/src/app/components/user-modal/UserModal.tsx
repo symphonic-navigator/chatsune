@@ -18,6 +18,7 @@ import { LlmProvidersTab } from './LlmProvidersTab'
 import { VoiceTab } from './VoiceTab'
 import { CommunityProvisioningPage } from '../../../features/community-provisioning/CommunityProvisioningPage'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
+import { useBackButtonClose } from '../../../core/hooks/useBackButtonClose'
 import { TABS_TREE, resolveLeaf, toMobileNavTree, type TopTabId, type SubTabId } from './userModalTree'
 import { useSubtabStore } from './userModalSubtabStore'
 import { OverlayMobileNav } from '../overlay-mobile-nav/OverlayMobileNav'
@@ -64,6 +65,8 @@ export function UserModal({
   onOpenPersonaOverlay,
   onCreatePersona,
 }: UserModalProps) {
+  useBackButtonClose(true, onClose, 'user-modal')
+
   const modalRef = useRef<HTMLDivElement>(null)
   const setLastSub = useSubtabStore((s) => s.setLastSub)
 
