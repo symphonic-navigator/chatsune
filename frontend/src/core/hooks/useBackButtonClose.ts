@@ -1,6 +1,28 @@
 import { useEffect, useRef } from 'react'
 import { useHistoryStackStore } from '../store/historyStackStore'
 
+let pendingTransitionFrom: string | null = null
+
+/**
+ * Mark that a programmatic overlay close is happening because another overlay
+ * is opening in the same tick. The next overlay to mount within this tick
+ * will use replaceState (consuming the leaving overlay's browser history slot)
+ * instead of pushState — so the browser ends up with one entry for "an
+ * overlay is open" instead of two stacked phantoms whose mismatched popstate
+ * would close the new overlay immediately.
+ *
+ * Auto-clears via setTimeout(0) if no overlay claims the transition (e.g.
+ * the close happens during a route change rather than an overlay swap).
+ */
+export function startOverlayTransition(fromOverlayId: string): void {
+  pendingTransitionFrom = fromOverlayId
+  setTimeout(() => {
+    if (pendingTransitionFrom === fromOverlayId) {
+      pendingTransitionFrom = null
+    }
+  }, 0)
+}
+
 /**
  * Synchronises an overlay's open state with a phantom browser-history
  * entry, so pressing browser back closes the overlay without changing
@@ -50,7 +72,12 @@ export function useBackButtonClose(
 
     queueMicrotask(() => {
       if (cancelled) return
-      window.history.pushState({ __overlayId: overlayIdRef.current }, '')
+      if (pendingTransitionFrom !== null) {
+        pendingTransitionFrom = null
+        window.history.replaceState({ __overlayId: overlayIdRef.current }, '')
+      } else {
+        window.history.pushState({ __overlayId: overlayIdRef.current }, '')
+      }
       useHistoryStackStore
         .getState()
         .push(overlayIdRef.current, () => onCloseRef.current())

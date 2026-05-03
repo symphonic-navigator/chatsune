@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { bookmarksApi } from '../../../core/api/bookmarks'
 import { useBookmarks } from '../../../core/hooks/useBookmarks'
 import { usePersonas } from '../../../core/hooks/usePersonas'
+import { useDrawerStore } from '../../../core/store/drawerStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 import type { BookmarkDto } from '../../../core/types/bookmark'
@@ -102,7 +103,11 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
   const grouped = useMemo(() => groupBookmarks(filtered), [filtered])
 
   function handleOpen(bookmark: BookmarkDto) {
-    navigate(`/chat/${bookmark.persona_id}/${bookmark.session_id}?msg=${bookmark.message_id}`)
+    const drawerOpen = useDrawerStore.getState().sidebarOpen
+    navigate(
+      `/chat/${bookmark.persona_id}/${bookmark.session_id}?msg=${bookmark.message_id}`,
+      drawerOpen ? { replace: true } : undefined,
+    )
     onClose()
   }
 

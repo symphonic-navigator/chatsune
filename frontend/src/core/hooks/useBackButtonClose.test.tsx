@@ -1,11 +1,12 @@
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useBackButtonClose } from './useBackButtonClose'
+import { startOverlayTransition, useBackButtonClose } from './useBackButtonClose'
 import { useHistoryStackStore } from '../store/historyStackStore'
 
 beforeEach(() => {
   useHistoryStackStore.getState().clear()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 describe('useBackButtonClose', () => {
@@ -103,6 +104,59 @@ describe('useBackButtonClose', () => {
     rerender({ open: false })
     expect(backSpy).not.toHaveBeenCalled()
     expect(useHistoryStackStore.getState().stack.map((e) => e.overlayId)).toEqual(['other-on-top'])
+  })
+
+  it('uses replaceState (not pushState) when an overlay transition was marked', async () => {
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    const onClose = vi.fn()
+
+    startOverlayTransition('outgoing-overlay')
+    renderHook(() => useBackButtonClose(true, onClose, 'incoming-overlay'))
+    await Promise.resolve()
+
+    expect(replaceSpy).toHaveBeenCalledTimes(1)
+    expect(replaceSpy.mock.calls[0][0]).toEqual({ __overlayId: 'incoming-overlay' })
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(useHistoryStackStore.getState().peek()?.overlayId).toBe('incoming-overlay')
+  })
+
+  it('uses pushState normally when no overlay transition was marked', async () => {
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+    const onClose = vi.fn()
+
+    renderHook(() => useBackButtonClose(true, onClose, 'a'))
+    await Promise.resolve()
+
+    expect(pushSpy).toHaveBeenCalledTimes(1)
+    expect(replaceSpy).not.toHaveBeenCalled()
+  })
+
+  it('clears the transition marker via setTimeout(0) when no overlay claims it', async () => {
+    vi.useFakeTimers()
+    try {
+      const pushSpy = vi.spyOn(window.history, 'pushState')
+      const replaceSpy = vi.spyOn(window.history, 'replaceState')
+      const onClose = vi.fn()
+
+      // Mark a transition but never mount an overlay to consume it.
+      startOverlayTransition('orphan-transition')
+
+      // Flush the setTimeout(0) so the marker auto-clears.
+      vi.advanceTimersByTime(0)
+
+      // Now mount an overlay — it must use pushState because the previous
+      // transition marker has been cleared.
+      vi.useRealTimers()
+      renderHook(() => useBackButtonClose(true, onClose, 'fresh'))
+      await Promise.resolve()
+
+      expect(pushSpy).toHaveBeenCalledTimes(1)
+      expect(replaceSpy).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not push or call history.back when mount/cleanup/remount happens before microtask flushes (StrictMode-style)', async () => {

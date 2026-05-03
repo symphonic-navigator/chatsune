@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { chatApi, type ChatSessionDto } from '../../../core/api/chat'
 import { useChatSessions } from '../../../core/hooks/useChatSessions'
 import { usePersonas } from '../../../core/hooks/usePersonas'
+import { useDrawerStore } from '../../../core/store/drawerStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
@@ -136,7 +137,11 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
   const grouped = useMemo(() => groupSessions(filtered), [filtered])
 
   function handleOpen(session: ChatSessionDto) {
-    navigate(`/chat/${session.persona_id}/${session.id}`)
+    const drawerOpen = useDrawerStore.getState().sidebarOpen
+    navigate(
+      `/chat/${session.persona_id}/${session.id}`,
+      drawerOpen ? { replace: true } : undefined,
+    )
     onClose()
   }
 

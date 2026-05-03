@@ -5,8 +5,10 @@ import { useNotificationStore } from "../../../core/store/notificationStore"
 import { useSanitisedMode } from "../../../core/store/sanitisedModeStore"
 import { useSidebarStore } from "../../../core/store/sidebarStore"
 import { useDrawerStore } from "../../../core/store/drawerStore"
+import { useHistoryStackStore } from "../../../core/store/historyStackStore"
 import { useViewport } from "../../../core/hooks/useViewport"
 import { useAuth } from "../../../core/hooks/useAuth"
+import { startOverlayTransition } from "../../../core/hooks/useBackButtonClose"
 import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
@@ -161,6 +163,8 @@ export function Sidebar({
   // Desktop keeps the sidebar open — there is enough room for both.
   function closeDrawerIfMobile() {
     if (!isDesktop) {
+      startOverlayTransition('mobile-drawer')
+      useHistoryStackStore.getState().remove('mobile-drawer')
       useDrawerStore.getState().close()
     }
   }
@@ -170,6 +174,8 @@ export function Sidebar({
   function closeOverlayAndDrawer() {
     setMobileView('main')
     if (!isDesktop) {
+      startOverlayTransition('mobile-drawer')
+      useHistoryStackStore.getState().remove('mobile-drawer')
       useDrawerStore.getState().close()
     }
   }
@@ -194,33 +200,39 @@ export function Sidebar({
   function handlePersonaSelect(persona: PersonaDto) {
     onCloseModal()
     closeDrawerIfMobile()
-    navigate(`/chat/${persona.id}`)
+    navigate(`/chat/${persona.id}`, !isDesktop ? { replace: true } : undefined)
   }
 
   function handleNewChat(persona: PersonaDto) {
     onCloseModal()
     closeDrawerIfMobile()
-    navigate(`/chat/${persona.id}?new=1`)
+    navigate(`/chat/${persona.id}?new=1`, !isDesktop ? { replace: true } : undefined)
   }
 
   function handleNewChatFromMobileOverlay(persona: PersonaDto) {
     onCloseModal()
     setMobileView('main')
-    useDrawerStore.getState().close()
-    navigate(`/chat/${persona.id}?new=1`)
+    closeDrawerIfMobile()
+    navigate(`/chat/${persona.id}?new=1`, { replace: true })
   }
 
   function handleSessionClick(session: ChatSessionDto) {
     onCloseModal()
     closeDrawerIfMobile()
-    navigate(`/chat/${session.persona_id}/${session.id}`)
+    navigate(
+      `/chat/${session.persona_id}/${session.id}`,
+      !isDesktop ? { replace: true } : undefined,
+    )
   }
 
   function handleContinue() {
     if (!lastSession) return
     onCloseModal()
     closeDrawerIfMobile()
-    navigate(`/chat/${lastSession.persona_id}/${lastSession.id}`)
+    navigate(
+      `/chat/${lastSession.persona_id}/${lastSession.id}`,
+      !isDesktop ? { replace: true } : undefined,
+    )
   }
 
   const historyTerm = historySearch.trim().toLowerCase()
@@ -498,7 +510,7 @@ export function Sidebar({
   // ── Mobile branch ───────────────────────────────────────────────────
   if (!isDesktop) {
     const handleAdmin     = () => { closeDrawerIfMobile(); onOpenAdmin() }
-    const handlePersonas  = () => { onCloseModal(); closeDrawerIfMobile(); navigate('/personas') }
+    const handlePersonas  = () => { onCloseModal(); closeDrawerIfMobile(); navigate('/personas', { replace: true }) }
     const handleKnowledge = () => openModalAndClose('knowledge')
     const handleMyData    = () => openModalAndClose('my-data')
     const handleUserRow   = () => openModalAndClose(avatarTab)

@@ -28,6 +28,7 @@ export function MobileNewChatView({ personas, onSelect, onClose }: MobileNewChat
         <p className="mb-3 text-[14px] text-white/60">No personas yet</p>
         <Link
           to="/personas"
+          replace
           onClick={onClose}
           className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] text-white/80 transition-colors hover:bg-white/10"
         >
