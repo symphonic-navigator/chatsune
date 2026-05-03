@@ -79,4 +79,21 @@ describe('useBackButtonClose', () => {
     expect(pushSpy).toHaveBeenCalledTimes(1)
     expect(useHistoryStackStore.getState().peek()?.overlayId).toBe('a')
   })
+
+  it('does not call history.back when own entry is not at the top of the stack', () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'our'),
+      { initialProps: { open: true } },
+    )
+    // Hook pushed its 'our' entry. Simulate another overlay sitting on top.
+    useHistoryStackStore.getState().push('other-on-top', () => {})
+
+    rerender({ open: false })
+    // Our entry was removed but it was not at the top, so no history.back.
+    expect(backSpy).not.toHaveBeenCalled()
+    // Stack still has the other one.
+    expect(useHistoryStackStore.getState().stack.map((e) => e.overlayId)).toEqual(['other-on-top'])
+  })
 })

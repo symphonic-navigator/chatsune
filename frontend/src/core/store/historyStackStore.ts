@@ -22,6 +22,7 @@ interface HistoryStackState {
   popTop: () => OverlayEntry | null
   peek: () => OverlayEntry | null
   clear: () => void
+  remove: (overlayId: string) => { removed: boolean; wasTop: boolean }
 }
 
 export const useHistoryStackStore = create<HistoryStackState>((set, get) => ({
@@ -47,4 +48,12 @@ export const useHistoryStackStore = create<HistoryStackState>((set, get) => ({
     return stack.length === 0 ? null : stack[stack.length - 1]
   },
   clear: () => set({ stack: [] }),
+  remove: (overlayId) => {
+    const { stack } = get()
+    const idx = stack.findIndex((e) => e.overlayId === overlayId)
+    if (idx === -1) return { removed: false, wasTop: false }
+    const wasTop = idx === stack.length - 1
+    set({ stack: stack.slice(0, idx).concat(stack.slice(idx + 1)) })
+    return { removed: true, wasTop }
+  },
 }))

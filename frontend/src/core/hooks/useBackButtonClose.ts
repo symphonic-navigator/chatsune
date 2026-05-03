@@ -46,8 +46,8 @@ export function useBackButtonClose(
     }
     if (!open && registeredRef.current) {
       registeredRef.current = false
-      const removed = removeOwnEntry(overlayIdRef.current)
-      if (removed) {
+      const { wasTop } = removeOwnEntry(overlayIdRef.current)
+      if (wasTop) {
         window.history.back()
       }
       return
@@ -58,8 +58,8 @@ export function useBackButtonClose(
     return () => {
       if (registeredRef.current) {
         registeredRef.current = false
-        const removed = removeOwnEntry(overlayIdRef.current)
-        if (removed) {
+        const { wasTop } = removeOwnEntry(overlayIdRef.current)
+        if (wasTop) {
           window.history.back()
         }
       }
@@ -67,11 +67,6 @@ export function useBackButtonClose(
   }, [])
 }
 
-function removeOwnEntry(overlayId: string): boolean {
-  const top = useHistoryStackStore.getState().peek()
-  if (!top || top.overlayId !== overlayId) {
-    return false
-  }
-  useHistoryStackStore.getState().popTop()
-  return true
+function removeOwnEntry(overlayId: string): { removed: boolean; wasTop: boolean } {
+  return useHistoryStackStore.getState().remove(overlayId)
 }

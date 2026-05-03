@@ -57,3 +57,32 @@ describe('historyStackStore', () => {
     expect(useHistoryStackStore.getState().stack).toEqual([])
   })
 })
+
+describe('historyStackStore.remove', () => {
+  it('removes a top entry and reports wasTop=true', () => {
+    const noop = () => {}
+    useHistoryStackStore.getState().push('a', noop)
+    useHistoryStackStore.getState().push('b', noop)
+    const result = useHistoryStackStore.getState().remove('b')
+    expect(result).toEqual({ removed: true, wasTop: true })
+    expect(useHistoryStackStore.getState().stack.map((e) => e.overlayId)).toEqual(['a'])
+  })
+
+  it('removes a non-top entry and reports wasTop=false', () => {
+    const noop = () => {}
+    useHistoryStackStore.getState().push('a', noop)
+    useHistoryStackStore.getState().push('b', noop)
+    useHistoryStackStore.getState().push('c', noop)
+    const result = useHistoryStackStore.getState().remove('b')
+    expect(result).toEqual({ removed: true, wasTop: false })
+    expect(useHistoryStackStore.getState().stack.map((e) => e.overlayId)).toEqual(['a', 'c'])
+  })
+
+  it('returns removed=false when overlayId is not in the stack', () => {
+    const noop = () => {}
+    useHistoryStackStore.getState().push('a', noop)
+    const result = useHistoryStackStore.getState().remove('x')
+    expect(result).toEqual({ removed: false, wasTop: false })
+    expect(useHistoryStackStore.getState().stack.map((e) => e.overlayId)).toEqual(['a'])
+  })
+})
