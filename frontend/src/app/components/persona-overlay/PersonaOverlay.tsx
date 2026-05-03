@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useBackButtonClose } from '../../../core/hooks/useBackButtonClose'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import type { DeletionReportDto } from '../../../core/types/deletion'
@@ -73,6 +74,7 @@ const DEFAULT_PERSONA: PersonaDto = {
 }
 
 export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, onClose, onTabChange, onSave, onNavigate, sessions }: PersonaOverlayProps) {
+  useBackButtonClose(true, onClose, 'persona-overlay')
   const modalRef = useRef<HTMLDivElement>(null)
   const resolved = persona ?? (isCreating
     ? {
