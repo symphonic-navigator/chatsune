@@ -13,6 +13,7 @@ from backend.modules.chat._repository import ChatRepository
 from backend.modules.chat._toggle_defaults import compute_persona_toggle_defaults
 from backend.modules.knowledge import verify_libraries_owned
 from backend.modules.persona import get_persona as get_persona_fn
+from backend.modules.persona import bump_last_used as bump_persona_last_used
 from backend.ws.event_bus import get_event_bus
 from backend.modules.tools import get_all_groups
 from shared.events.chat import (
@@ -60,6 +61,17 @@ async def create_session(
         auto_read=toggle_defaults["auto_read"],
     )
     dto = ChatRepository.session_to_dto(doc)
+
+    try:
+        await bump_persona_last_used(persona["_id"], user["sub"])
+    except Exception as exc:  # pragma: no cover - logged, never raised
+        import structlog
+        structlog.get_logger().warning(
+            "persona_last_used_bump_failed",
+            persona_id=persona["_id"],
+            user_id=user["sub"],
+            error=str(exc),
+        )
 
     correlation_id = str(uuid4())
     now = datetime.now(timezone.utc)
