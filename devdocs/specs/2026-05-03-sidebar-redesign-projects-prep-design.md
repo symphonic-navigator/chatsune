@@ -41,8 +41,13 @@ makes no such promise.
   inline history search input is removed.
 - **No drag-and-drop replacement mechanic.** Drag is removed; the order
   is implicit (LRU). No alternative manual-ordering UI is added.
-- **No Bookmarks-feature changes.** Bookmarks gets a new sidebar position
-  but the feature behaviour is untouched.
+- **No Bookmarks-feature changes** beyond what falls out of the
+  drag-everywhere removal: the Bookmarks tab and the in-chat
+  bookmark-list lose their drag-reorder UI in favour of natural
+  ordering (creation-date descending for the bookmarks tab,
+  chat-message position for the in-chat list). No replacement UI
+  (no up/down arrows). The new sidebar position for Bookmarks is the
+  only routing change.
 - **No accordion-mode toggle.** Free per-zone collapse only. If users
   later request mutually-exclusive collapsing, it can be added in one
   follow-up.
@@ -281,12 +286,25 @@ remain functional but unused; deprecation/removal is a follow-up.
 
 The following are removed:
 
-- `@dnd-kit/core` and `@dnd-kit/sortable` imports from `Sidebar.tsx`
-  and `PersonasTab.tsx`.
+- `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` imports
+  from every consumer in the codebase. Audited consumers (in addition
+  to `Sidebar.tsx` and `PersonasTab.tsx`):
+  - `frontend/src/app/pages/PersonasPage.tsx` — full-page personas grid
+  - `frontend/src/app/components/persona-card/PersonaCard.tsx` — drag handle
+  - `frontend/src/app/components/user-modal/BookmarksTab.tsx` — bookmarks reorder
+  - `frontend/src/features/chat/ChatBookmarkList.tsx` — in-chat bookmark reorder
+  - `frontend/src/core/utils/dndZoomModifier.ts` — utility, deletable
+  - `frontend/src/core/hooks/useDndSensors.ts` — hook, deletable
 - `SortablePersonaItem`, `DraggableHistoryItem`, `DroppableZone`
   helpers in `Sidebar.tsx`.
-- Persona reorder handler in `Sidebar.tsx` and `PersonasTab.tsx`.
+- Persona reorder handler in `Sidebar.tsx`, `PersonasTab.tsx`, and
+  `PersonasPage.tsx`.
 - History session pin-by-drop handler in `Sidebar.tsx`.
+- Bookmark reorder handlers in `BookmarksTab.tsx` and
+  `ChatBookmarkList.tsx`. The tabs are re-rendered with natural
+  ordering: `BookmarksTab` sorts by `created_at` descending;
+  `ChatBookmarkList` sorts by chat-message position (the existing
+  underlying timestamp). No replacement reorder UI is added.
 - `__personasTabTestHelper` test seam in `PersonasTab.tsx`.
 
 The `@dnd-kit/core`, `@dnd-kit/sortable`, and `@dnd-kit/utilities`
