@@ -323,6 +323,7 @@ export default function AppLayout() {
                 closeModal()
                 openPersonaOverlay(id, "overview")
               }}
+              onCreatePersona={() => openPersonaOverlay(null, "edit")}
             />
           )}
           {adminTab !== null && (

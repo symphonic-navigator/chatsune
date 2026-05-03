@@ -48,7 +48,7 @@ describe('PersonasTab', () => {
       makePersona({ id: 'a', name: 'Alpha', display_order: 2, pinned: false }),
       makePersona({ id: 'c', name: 'Gamma', display_order: 5, pinned: true }),
     ]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     const rows = screen.getAllByTestId('persona-row')
     expect(rows.map((r) => r.getAttribute('data-persona-id'))).toEqual(['c', 'b', 'a'])
   })
@@ -59,21 +59,21 @@ describe('PersonasTab', () => {
       makePersona({ id: 'a', name: 'Alpha', nsfw: false }),
       makePersona({ id: 'b', name: 'Beta', nsfw: true }),
     ]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
     expect(screen.getByText('Alpha')).toBeInTheDocument()
   })
 
   it('renders model identifier in monospace', () => {
     mockPersonas = [makePersona({ model_unique_id: 'ollama_cloud:llama3.2' })]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     expect(screen.getByText('llama3.2')).toBeInTheDocument()
   })
 
   it('row click opens overlay with persona id', () => {
     const onOpen = vi.fn()
     mockPersonas = [makePersona({ id: 'p1' })]
-    render(<PersonasTab onOpenPersonaOverlay={onOpen} />)
+    render(<PersonasTab onOpenPersonaOverlay={onOpen} onCreatePersona={vi.fn()} />)
     fireEvent.click(screen.getByTestId('persona-row-body'))
     expect(onOpen).toHaveBeenCalledWith('p1')
   })
@@ -81,7 +81,7 @@ describe('PersonasTab', () => {
   it('pin toggle calls update with inverted pinned and does not trigger row click', () => {
     const onOpen = vi.fn()
     mockPersonas = [makePersona({ id: 'p1', pinned: false })]
-    render(<PersonasTab onOpenPersonaOverlay={onOpen} />)
+    render(<PersonasTab onOpenPersonaOverlay={onOpen} onCreatePersona={vi.fn()} />)
     fireEvent.click(screen.getByTestId('persona-pin-toggle'))
     expect(mockUpdate).toHaveBeenCalledWith('p1', { pinned: true })
     expect(onOpen).not.toHaveBeenCalled()
@@ -89,7 +89,7 @@ describe('PersonasTab', () => {
 
   it('shows nsfw indicator when not sanitised and persona is nsfw', () => {
     mockPersonas = [makePersona({ id: 'p1', nsfw: true })]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     expect(screen.getByTestId('persona-nsfw-indicator')).toBeInTheDocument()
   })
 
@@ -99,7 +99,7 @@ describe('PersonasTab', () => {
       makePersona({ id: 'b', name: 'Beta', display_order: 1 }),
       makePersona({ id: 'c', name: 'Gamma', display_order: 2 }),
     ]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} />)
+    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     const helper = (window as any).__personasTabTestHelper
     expect(helper).toBeDefined()
     helper.simulateReorder('a', 'c')
