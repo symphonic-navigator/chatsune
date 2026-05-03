@@ -5,6 +5,7 @@ import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 import { useMemoryStore } from "../../../core/store/memoryStore"
 import type { JournalEntryDto } from "../../../core/api/memory"
 import { useViewport } from "../../../core/hooks/useViewport"
+import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 
 type MenuEntry =
   | { divider: true }
@@ -87,9 +88,10 @@ export function PersonaItem({
   return (
     <div
       ref={dragRef}
-      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-colors
+      className={`group relative mx-1.5 flex cursor-pointer items-center gap-2 rounded-lg py-1.5 transition-colors
         ${isActive ? "bg-white/8" : "hover:bg-white/5"}
         ${isDragging ? "opacity-40" : ""}`}
+      style={persona.pinned ? { ...PINNED_STRIPE_STYLE, paddingLeft: '5px', paddingRight: '8px' } : { paddingLeft: '8px', paddingRight: '8px' }}
       onClick={() => onSelect(persona)}
     >
       <span
