@@ -58,3 +58,7 @@ scratch/
 
 # Vosk model — fetched at build time, 40 MB binary
 frontend/vendor/vosk-model.tar.gz
+
+# Evidence for bugs
+*.mp4
+
