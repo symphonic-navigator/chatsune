@@ -2,13 +2,12 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PersonasTab } from '../PersonasTab'
 
-const mockReorder = vi.fn()
 const mockUpdate = vi.fn()
 let mockPersonas: any[] = []
 let mockSanitised = false
 
 vi.mock('../../../../core/hooks/usePersonas', () => ({
-  usePersonas: () => ({ personas: mockPersonas, reorder: mockReorder, update: mockUpdate }),
+  usePersonas: () => ({ personas: mockPersonas, update: mockUpdate }),
 }))
 vi.mock('../../../../core/store/sanitisedModeStore', () => ({
   useSanitisedMode: (sel: any) => sel({ isSanitised: mockSanitised }),
@@ -34,19 +33,19 @@ function makePersona(overrides: any = {}) {
 }
 
 beforeEach(() => {
-  mockReorder.mockReset()
   mockUpdate.mockReset()
   mockPersonas = []
   mockSanitised = false
 })
 
 describe('PersonasTab', () => {
-  it('renders pinned personas first, preserving state order otherwise', () => {
-    // State order from API is already sorted by display_order; we only partition by pinned.
+  it('renders pinned personas first, then unpinned by LRU descending', () => {
+    // sortPersonas places pinned items first; within each group it sorts by
+    // last_used_at (or created_at fallback) descending.
     mockPersonas = [
-      makePersona({ id: 'b', name: 'Beta', display_order: 0, pinned: false }),
-      makePersona({ id: 'a', name: 'Alpha', display_order: 2, pinned: false }),
-      makePersona({ id: 'c', name: 'Gamma', display_order: 5, pinned: true }),
+      makePersona({ id: 'b', name: 'Beta', pinned: false, last_used_at: '2025-02-01T00:00:00Z' }),
+      makePersona({ id: 'a', name: 'Alpha', pinned: false, last_used_at: '2025-01-01T00:00:00Z' }),
+      makePersona({ id: 'c', name: 'Gamma', pinned: true, last_used_at: '2024-01-01T00:00:00Z' }),
     ]
     render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
     const rows = screen.getAllByTestId('persona-row')
@@ -93,16 +92,4 @@ describe('PersonasTab', () => {
     expect(screen.getByTestId('persona-nsfw-indicator')).toBeInTheDocument()
   })
 
-  it('reorder via drag-end calls reorder with new order', () => {
-    mockPersonas = [
-      makePersona({ id: 'a', name: 'Alpha', display_order: 0 }),
-      makePersona({ id: 'b', name: 'Beta', display_order: 1 }),
-      makePersona({ id: 'c', name: 'Gamma', display_order: 2 }),
-    ]
-    render(<PersonasTab onOpenPersonaOverlay={vi.fn()} onCreatePersona={vi.fn()} />)
-    const helper = (window as any).__personasTabTestHelper
-    expect(helper).toBeDefined()
-    helper.simulateReorder('a', 'c')
-    expect(mockReorder).toHaveBeenCalledWith(['b', 'c', 'a'])
-  })
 })

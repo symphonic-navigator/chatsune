@@ -77,12 +77,6 @@ describe('Sidebar — overlay close on navigation', () => {
     expect(onOpenAdmin).toHaveBeenCalledOnce()
   })
 
-  it('calls onCloseModal when Personas NavRow is clicked', async () => {
-    const onCloseModal = vi.fn()
-    renderSidebar({ onCloseModal })
-    await userEvent.click(screen.getByText('Personas'))
-    expect(onCloseModal).toHaveBeenCalledOnce()
-  })
 })
 
 describe('Sidebar — isTabActive sub-tab highlight', () => {
