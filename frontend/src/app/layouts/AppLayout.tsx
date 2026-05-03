@@ -33,6 +33,7 @@ import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
+import { useBackButtonClose } from '../../core/hooks/useBackButtonClose'
 
 export default function AppLayout() {
   useWebSocket()
@@ -75,6 +76,11 @@ export default function AppLayout() {
     lockBodyScroll()
     return () => unlockBodyScroll()
   }, [isDesktop, drawerOpen])
+
+  // Browser back closes the off-canvas drawer on mobile only. On desktop
+  // the drawer is the permanent rail, so we never push a history entry
+  // for it there.
+  useBackButtonClose(!isDesktop && drawerOpen, closeDrawer, 'mobile-drawer')
 
   const { personas: allPersonas, update: updatePersona } = usePersonas()
   const { sessions, updateSession: updateChatSession } = useChatSessions()
