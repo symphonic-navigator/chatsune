@@ -85,6 +85,10 @@ class PersonaDto(BaseModel):
     voice_config: VoiceConfigDto | None = None
     created_at: datetime
     updated_at: datetime
+    # Most recent chat-session creation or resume. None for personas
+    # that have never been chatted with — sidebar LRU sort then falls
+    # back to created_at descending. Backwards-compatible.
+    last_used_at: datetime | None = None
 
 
 class CreatePersonaDto(BaseModel):

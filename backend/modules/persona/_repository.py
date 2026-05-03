@@ -124,6 +124,18 @@ class PersonaRepository:
         if operations:
             await self._collection.bulk_write(operations, ordered=False)
 
+    async def bump_last_used(self, persona_id: str, user_id: str) -> None:
+        """Stamp last_used_at = now on this persona. No-op if not found.
+
+        Called when a chat session is created or resumed for the persona.
+        Errors are swallowed by the public API wrapper — sidebar LRU
+        ordering is not load-bearing enough to break the chat write path.
+        """
+        await self._collection.update_one(
+            {"_id": persona_id, "user_id": user_id},
+            {"$set": {"last_used_at": datetime.now(UTC)}},
+        )
+
     async def delete(self, persona_id: str, user_id: str) -> bool:
         result = await self._collection.delete_one(
             {"_id": persona_id, "user_id": user_id}
@@ -184,4 +196,5 @@ class PersonaRepository:
             voice_config=VoiceConfigDto(**doc["voice_config"]) if doc.get("voice_config") else None,
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            last_used_at=doc.get("last_used_at"),
         )

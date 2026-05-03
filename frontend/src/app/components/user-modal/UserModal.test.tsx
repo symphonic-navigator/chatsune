@@ -65,6 +65,7 @@ function renderModal(activeTop: TopTabId = 'about-me', activeSub?: SubTabId) {
         hasApiKeyProblem={false}
         onProvidersChanged={vi.fn()}
         onOpenPersonaOverlay={vi.fn()}
+        onCreatePersona={vi.fn()}
       />
     </MemoryRouter>,
   )

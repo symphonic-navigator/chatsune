@@ -1,20 +1,9 @@
-import {
-  closestCenter,
-  DndContext,
-  DragOverlay,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core"
-import { zoomModifiers } from "../../core/utils/dndZoomModifier"
-import { hapticLongPress } from "../../core/utils/haptics"
-import { rectSortingStrategy, SortableContext } from "@dnd-kit/sortable"
 import { useRef, useState } from "react"
 import { useNavigate, useOutletContext } from "react-router-dom"
 import PersonaCard from "../components/persona-card/PersonaCard"
 import AddPersonaCard from "../components/persona-card/AddPersonaCard"
 import { AddPersonaMenu } from "../components/persona-card/AddPersonaMenu"
 import { usePersonas } from "../../core/hooks/usePersonas"
-import { useDndSensors } from "../../core/hooks/useDndSensors"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
 import { useNotificationStore } from "../../core/store/notificationStore"
@@ -23,36 +12,15 @@ import { ApiError } from "../../core/api/client"
 import type { PersonaOverlayTab } from "../components/persona-overlay/PersonaOverlay"
 
 export default function PersonasPage() {
-  const { personas, reorder, update } = usePersonas()
+  const { personas, update } = usePersonas()
   const { sessions } = useChatSessions()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
   const navigate = useNavigate()
   const { openPersonaOverlay } = useOutletContext<{
     openPersonaOverlay: (personaId: string | null, tab?: PersonaOverlayTab) => void
   }>()
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const dndSensors = useDndSensors()
 
   const filtered = isSanitised ? personas.filter((p) => !p.nsfw) : personas
-  const activePersona = filtered.find((p) => p.id === activeId)
-
-  const handleDragStart = (event: DragStartEvent) => {
-    hapticLongPress()
-    setActiveId(event.active.id as string)
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveId(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = filtered.findIndex((p) => p.id === active.id)
-    const newIndex = filtered.findIndex((p) => p.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = [...filtered]
-    const [moved] = reordered.splice(oldIndex, 1)
-    reordered.splice(newIndex, 0, moved)
-    reorder(reordered.map((p) => p.id))
-  }
 
   const handleContinue = (personaId: string) => {
     const lastSession = sessions.find((s) => s.persona_id === personaId)
@@ -127,54 +95,32 @@ export default function PersonasPage() {
 
   return (
     <div className="h-full overflow-y-auto p-4 sm:p-6 lg:p-10">
-      <DndContext
-        sensors={dndSensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+      <div
+        className="flex flex-wrap justify-center gap-4 sm:gap-6"
+        style={{ maxWidth: "1200px", margin: "0 auto" }}
       >
-        <SortableContext items={filtered.map((p) => p.id)} strategy={rectSortingStrategy}>
-          <div
-            className="flex flex-wrap justify-center gap-4 sm:gap-6"
-            style={{ maxWidth: "1200px", margin: "0 auto" }}
-          >
-            {filtered.map((persona, index) => (
-              <PersonaCard
-                key={persona.id}
-                persona={persona}
-                index={index}
-                onContinue={handleContinue}
-                onNewChat={handleNewChat}
-                onOpenOverlay={handleOpenOverlay}
-                onTogglePin={handleTogglePin}
-              />
-            ))}
-            <div className="relative">
-              <AddPersonaCard onClick={() => setMenuOpen((v) => !v)} index={filtered.length} />
-              {menuOpen && (
-                <AddPersonaMenu
-                  onCreateNew={handleCreateNew}
-                  onImport={handleImportClick}
-                  onClose={() => setMenuOpen(false)}
-                />
-              )}
-            </div>
-          </div>
-        </SortableContext>
-        <DragOverlay modifiers={zoomModifiers}>
-          {activePersona ? (
-            <div style={{ transform: "scale(1.05)", opacity: 0.9, pointerEvents: "none" }}>
-              <PersonaCard
-                persona={activePersona}
-                index={0}
-                onContinue={() => {}}
-                onNewChat={() => {}}
-                onOpenOverlay={() => {}}
-              />
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+        {filtered.map((persona, index) => (
+          <PersonaCard
+            key={persona.id}
+            persona={persona}
+            index={index}
+            onContinue={handleContinue}
+            onNewChat={handleNewChat}
+            onOpenOverlay={handleOpenOverlay}
+            onTogglePin={handleTogglePin}
+          />
+        ))}
+        <div className="relative">
+          <AddPersonaCard onClick={() => setMenuOpen((v) => !v)} index={filtered.length} />
+          {menuOpen && (
+            <AddPersonaMenu
+              onCreateNew={handleCreateNew}
+              onImport={handleImportClick}
+              onClose={() => setMenuOpen(false)}
+            />
+          )}
+        </div>
+      </div>
 
       <input
         ref={fileInputRef}

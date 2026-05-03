@@ -8,9 +8,10 @@ import { sortPersonas } from './personaSort'
 interface NewChatRowProps {
   personas: PersonaDto[]
   onCloseModal: () => void
+  mode?: 'normal' | 'incognito'
 }
 
-export function NewChatRow({ personas, onCloseModal }: NewChatRowProps) {
+export function NewChatRow({ personas, onCloseModal, mode = 'normal' }: NewChatRowProps) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
@@ -20,10 +21,15 @@ export function NewChatRow({ personas, onCloseModal }: NewChatRowProps) {
     return sortPersonas(filtered)
   }, [personas, isSanitised])
 
+  const isIncognito = mode === 'incognito'
+  const icon = isIncognito ? '🕶️' : '🪶'
+  const label = isIncognito ? 'New Incognito Chat' : 'New Chat'
+  const urlSuffix = isIncognito ? '?incognito=1' : '?new=1'
+
   function startNewChat(persona: PersonaDto) {
     onCloseModal()
     setOpen(false)
-    navigate(`/chat/${persona.id}?new=1`)
+    navigate(`/chat/${persona.id}${urlSuffix}`)
   }
 
   return (
@@ -34,9 +40,9 @@ export function NewChatRow({ personas, onCloseModal }: NewChatRowProps) {
         aria-expanded={open}
         className="group mx-2 mt-1 flex w-[calc(100%-16px)] items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/5"
       >
-        <span className="text-[14px]">🪶</span>
+        <span className="text-[14px]">{icon}</span>
         <span className="flex-1 text-[12px] font-medium uppercase tracking-wider text-white/70 group-hover:text-white/90">
-          New Chat
+          {label}
         </span>
         <span className="text-[10px] text-white/40">{open ? '∨' : '›'}</span>
       </button>

@@ -1,21 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  type DraggableAttributes,
-  type DraggableSyntheticListeners,
-  type DragEndEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { zoomModifiers } from "../../../core/utils/dndZoomModifier"
 import { bookmarksApi } from '../../../core/api/bookmarks'
 import { useBookmarks } from '../../../core/hooks/useBookmarks'
 import { usePersonas } from '../../../core/hooks/usePersonas'
-import { useDndSensors } from '../../../core/hooks/useDndSensors'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 import type { BookmarkDto } from '../../../core/types/bookmark'
@@ -72,7 +59,7 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
     [personas],
   )
 
-  // Filter: global only, sanitised mode, persona filter, text search
+  // Filter: global only, sanitised mode, persona filter, text search; sorted by created_at descending
   const filtered = useMemo(() => {
     let result = bookmarks.filter((b) => b.scope === 'global')
 
@@ -95,7 +82,11 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
       })
     }
 
-    return result
+    return result.slice().sort((a, b) => {
+      const aTs = new Date(a.created_at).getTime()
+      const bTs = new Date(b.created_at).getTime()
+      return bTs - aTs
+    })
   }, [bookmarks, search, personas, personaFilter, isSanitised, nsfwPersonaIds])
 
   // Personas available for the filter dropdown (only those with global bookmarks, respecting sanitised mode)
@@ -109,25 +100,6 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
   }, [personas, bookmarks, isSanitised])
 
   const grouped = useMemo(() => groupBookmarks(filtered), [filtered])
-
-  const [dragActiveId, setDragActiveId] = useState<string | null>(null)
-  const dragActive = dragActiveId ? filtered.find((b) => b.id === dragActiveId) : null
-
-  const dndSensors = useDndSensors()
-  function handleDragStart(event: DragStartEvent) { setDragActiveId(event.active.id as string) }
-  function handleDragEnd(event: DragEndEvent) {
-    setDragActiveId(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIdx = filtered.findIndex((b) => b.id === active.id)
-    const newIdx = filtered.findIndex((b) => b.id === over.id)
-    if (oldIdx === -1 || newIdx === -1) return
-    const reordered = arrayMove(filtered, oldIdx, newIdx)
-    // Apply new order to the full bookmarks list
-    const orderMap = new Map(reordered.map((b, i) => [b.id, i]))
-    setBookmarks((prev) => [...prev].sort((a, b) => (orderMap.get(a.id) ?? a.display_order) - (orderMap.get(b.id) ?? b.display_order)))
-    bookmarksApi.reorder(reordered.map((b) => b.id)).catch(() => {})
-  }
 
   function handleOpen(bookmark: BookmarkDto) {
     navigate(`/chat/${bookmark.persona_id}/${bookmark.session_id}?msg=${bookmark.message_id}`)
@@ -173,53 +145,32 @@ export function BookmarksTab({ onClose }: BookmarksTabProps) {
             </p>
           </div>
         )}
-        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <SortableContext items={filtered.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-            {grouped.map(([group, groupBookmarks]) => (
-              <div key={group}>
-                <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/30 font-mono">
-                  {group}
-                </div>
-                {groupBookmarks.map((b) => {
-                  const persona = personas.find((p) => p.id === b.persona_id)
-                  return (
-                    <SortableBookmarkRow
-                      key={b.id}
-                      bookmark={b}
-                      personaName={persona?.name ?? b.persona_id}
-                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                      colourScheme={persona?.colour_scheme}
-                      onOpen={() => handleOpen(b)}
-                      onUpdated={(updated) => setBookmarks((prev) => prev.map((bm) => bm.id === updated.id ? updated : bm))}
-                    />
-                  )
-                })}
-              </div>
-            ))}
-          </SortableContext>
-          <DragOverlay modifiers={zoomModifiers}>
-            {dragActive ? (
-              <div className="rounded-lg border border-white/10 bg-elevated px-3 py-1.5 text-[13px] text-white/70 shadow-xl">
-                {dragActive.title}
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        {grouped.map(([group, groupBookmarks]) => (
+          <div key={group}>
+            <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/30 font-mono">
+              {group}
+            </div>
+            {groupBookmarks.map((b) => {
+              const persona = personas.find((p) => p.id === b.persona_id)
+              return (
+                <BookmarkRow
+                  key={b.id}
+                  bookmark={b}
+                  personaName={persona?.name ?? b.persona_id}
+                  monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                  colourScheme={persona?.colour_scheme}
+                  onOpen={() => handleOpen(b)}
+                  onUpdated={(updated) => setBookmarks((prev) => prev.map((bm) => bm.id === updated.id ? updated : bm))}
+                />
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
-
-function SortableBookmarkRow(props: BookmarkRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.bookmark.id })
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
-  return (
-    <div ref={setNodeRef} style={style}>
-      <BookmarkRow {...props} dragListeners={listeners} dragAttributes={attributes} onUpdated={props.onUpdated} />
-    </div>
-  )
-}
 
 interface BookmarkRowProps {
   bookmark: BookmarkDto
@@ -227,12 +178,10 @@ interface BookmarkRowProps {
   monogram?: string
   colourScheme?: ChakraColour
   onOpen: () => void
-  dragListeners?: DraggableSyntheticListeners
-  dragAttributes?: DraggableAttributes
   onUpdated?: (updated: BookmarkDto) => void
 }
 
-function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dragListeners, dragAttributes, onUpdated }: BookmarkRowProps) {
+function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, onUpdated }: BookmarkRowProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
@@ -302,16 +251,6 @@ function BookmarkRow({ bookmark, personaName, monogram, colourScheme, onOpen, dr
   return (
     <div className="group rounded-lg transition-colors hover:bg-white/4">
       <div className="flex items-start gap-3 px-3 py-2.5 [@media(hover:hover)]:items-center">
-        {/* Drag handle */}
-        {dragListeners && (
-          <span
-            className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all flex-shrink-0"
-            {...(dragListeners ?? {})}
-            {...(dragAttributes ?? {})}
-          >
-            ⠿
-          </span>
-        )}
         {/* Persona monogram */}
         {chakra && monogram && (
           <div

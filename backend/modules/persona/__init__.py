@@ -75,10 +75,23 @@ async def list_persona_ids_for_user(user_id: str) -> list[str]:
     return [p["_id"] for p in personas]
 
 
+async def bump_last_used(persona_id: str, user_id: str) -> None:
+    """Stamp the persona's last_used_at to now. Fire-and-forget.
+
+    Called from the chat module when a session is created or resumed.
+    Failures are logged and swallowed by the caller — sidebar LRU is
+    cosmetic and must never break the chat write path.
+    """
+    db = get_db()
+    repo = PersonaRepository(db)
+    await repo.bump_last_used(persona_id, user_id)
+
+
 __all__ = [
     "router",
     "init_indexes",
     "get_persona",
+    "bump_last_used",
     "sign_avatar_url",
     "unwire_personas_for_connection",
     "remove_library_from_all_personas",

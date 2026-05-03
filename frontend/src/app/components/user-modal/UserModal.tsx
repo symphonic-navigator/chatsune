@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { setLastMyDataSubpage, type MyDataSubpage } from './myDataMemory'
 import { GalleryGrid } from '../../../features/images/gallery/GalleryGrid'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
@@ -49,6 +50,7 @@ interface UserModalProps {
    */
   onProvidersChanged?: () => void
   onOpenPersonaOverlay: (personaId: string) => void
+  onCreatePersona: () => void
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -60,6 +62,7 @@ export function UserModal({
   onTabChange,
   displayName,
   onOpenPersonaOverlay,
+  onCreatePersona,
 }: UserModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
   const setLastSub = useSubtabStore((s) => s.setLastSub)
@@ -91,6 +94,15 @@ export function UserModal({
       onTabChange(resolved.top)
     }
   }
+
+  // Persist the last-visited My data sub-page so re-opening the modal
+  // restores the previous position within the My data section.
+  useEffect(() => {
+    const sub = activeSub ?? activeTop
+    if (sub === 'uploads' || sub === 'artefacts' || sub === 'images') {
+      setLastMyDataSubpage(sub as MyDataSubpage)
+    }
+  }, [activeTop, activeSub])
 
   // Focus trap + Escape key
   useEffect(() => {
@@ -263,7 +275,7 @@ export function UserModal({
           className="flex-1 overflow-hidden flex flex-col"
         >
           {contentKey === 'about-me' && <AboutMeTab />}
-          {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} />}
+          {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} onCreatePersona={onCreatePersona} />}
           {/* Projects tab hidden — feature not yet ready (see FOR_LATER.md). */}
           {contentKey === 'history' && <HistoryTab onClose={onClose} />}
           {contentKey === 'knowledge' && <KnowledgeTab />}

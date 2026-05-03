@@ -1,16 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  DndContext,
-  DragOverlay,
-  closestCenter,
-  type DragEndEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { zoomModifiers } from "../../core/utils/dndZoomModifier"
-import { useDndSensors } from "../../core/hooks/useDndSensors"
 import type { BookmarkDto } from '../../core/types/bookmark'
 import { bookmarksApi } from '../../core/api/bookmarks'
 
@@ -22,10 +11,13 @@ interface ChatBookmarkListProps {
   onBookmarkUpdated: (updated: BookmarkDto) => void
 }
 
-export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksReordered, onBookmarkUpdated }: ChatBookmarkListProps) {
-  const [dragActiveId, setDragActiveId] = useState<string | null>(null)
+export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksReordered: _onBookmarksReordered, onBookmarkUpdated }: ChatBookmarkListProps) {
   const panelRef = useRef<HTMLDivElement>(null)
-  const dndSensors = useDndSensors()
+
+  // Sort chronologically by created_at ascending
+  const sorted = bookmarks.slice().sort((a, b) => {
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  })
 
   // Close on outside click — but not when clicking portal menus
   useEffect(() => {
@@ -39,63 +31,33 @@ export function ChatBookmarkList({ bookmarks, onScrollTo, onClose, onBookmarksRe
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  function handleDragStart(event: DragStartEvent) {
-    setDragActiveId(event.active.id as string)
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    setDragActiveId(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const oldIndex = bookmarks.findIndex((b) => b.id === active.id)
-    const newIndex = bookmarks.findIndex((b) => b.id === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    const reordered = arrayMove(bookmarks, oldIndex, newIndex)
-    onBookmarksReordered(reordered)
-    bookmarksApi.reorder(reordered.map((b) => b.id)).catch(() => {})
-  }
-
-  const dragActive = dragActiveId ? bookmarks.find((b) => b.id === dragActiveId) : null
-
   return (
     <div
       ref={panelRef}
       className="absolute right-0 top-full mt-1 z-50 w-72 rounded-lg border border-white/10 bg-elevated shadow-xl"
     >
-      <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <SortableContext items={bookmarks.map((b) => b.id)} strategy={verticalListSortingStrategy}>
-          <div className="py-1 max-h-[300px] overflow-y-auto">
-            {bookmarks.map((bm) => (
-              <SortableBookmarkItem
-                key={bm.id}
-                bookmark={bm}
-                onScrollTo={onScrollTo}
-                onClose={onClose}
-                onUpdated={onBookmarkUpdated}
-              />
-            ))}
-          </div>
-        </SortableContext>
-        <DragOverlay modifiers={zoomModifiers}>
-          {dragActive ? (
-            <div className="rounded border border-white/10 bg-elevated px-3 py-1.5 text-[12px] text-white/60 shadow-xl">
-              {dragActive.title}
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+      <div className="py-1 max-h-[300px] overflow-y-auto">
+        {sorted.map((bm) => (
+          <BookmarkItem
+            key={bm.id}
+            bookmark={bm}
+            onScrollTo={onScrollTo}
+            onClose={onClose}
+            onUpdated={onBookmarkUpdated}
+          />
+        ))}
+      </div>
     </div>
   )
 }
 
 
-function SortableBookmarkItem({ bookmark, onScrollTo, onClose, onUpdated }: {
+function BookmarkItem({ bookmark, onScrollTo, onClose, onUpdated }: {
   bookmark: BookmarkDto
   onScrollTo: (messageId: string) => void
   onClose: () => void
   onUpdated: (updated: BookmarkDto) => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: bookmark.id })
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const [editing, setEditing] = useState(false)
@@ -135,15 +97,9 @@ function SortableBookmarkItem({ bookmark, onScrollTo, onClose, onUpdated }: {
     setEditing(false)
   }
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
-
   if (editing) {
     return (
-      <div ref={setNodeRef} style={style} className="px-3 py-2 border-b border-white/5">
+      <div className="px-3 py-2 border-b border-white/5">
         <input
           ref={inputRef}
           type="text"
@@ -176,16 +132,7 @@ function SortableBookmarkItem({ bookmark, onScrollTo, onClose, onUpdated }: {
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="group relative flex items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-white/6">
-      {/* Drag handle */}
-      <span
-        className="w-0 overflow-hidden cursor-grab select-none text-[10px] leading-none text-white/15 group-hover:w-auto group-hover:text-white/30 transition-all flex-shrink-0"
-        {...listeners}
-        {...attributes}
-      >
-        ⠿
-      </span>
-
+    <div className="group relative flex items-center gap-1.5 px-2 py-1.5 transition-colors hover:bg-white/6">
       {/* Bookmark icon */}
       <svg width="10" height="10" viewBox="0 0 14 14" className={`flex-shrink-0 ${bookmark.scope === 'global' ? 'text-gold' : 'text-white/30'}`} fill="currentColor">
         <path d="M3 1.5H11V12.5L7 9.5L3 12.5V1.5Z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />

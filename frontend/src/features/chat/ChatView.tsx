@@ -59,6 +59,9 @@ import { useVoiceLifecycleStore } from '../voice-commands'
 import { useWakeLock } from '../../core/hooks/useWakeLock'
 import { useImagesStore } from '../images/store'
 import { useReportBounds } from '../voice/infrastructure/useReportBounds'
+import { eventBus } from '../../core/websocket/eventBus'
+import { Topics } from '../../core/types/events'
+import type { BaseEvent } from '../../core/types/events'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -217,6 +220,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
+  const [sessionPinned, setSessionPinned] = useState<boolean>(false)
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll()
@@ -332,6 +336,12 @@ export function ChatView({ persona }: ChatViewProps) {
 
     if (!sessionId) return () => { cancelled = true }
 
+    // Bump persona LRU on resume. Fire-and-forget — failures must not
+    // block message load. Idempotent on the backend.
+    chatApi.resumeSession(sessionId).catch((err) => {
+      console.warn('Persona LRU bump on resume failed', err)
+    })
+
     setIsLoading(true)
     chatApi
       .getMessages(sessionId)
@@ -375,6 +385,7 @@ export function ChatView({ persona }: ChatViewProps) {
       .then((session) => {
         if (cancelled) return
         useChatStore.getState().setSessionTitle(session.title)
+        setSessionPinned(session.pinned ?? false)
         useChatStore.getState().setToolsEnabled(session.tools_enabled ?? false)
         useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
@@ -403,6 +414,16 @@ export function ChatView({ persona }: ChatViewProps) {
       cancelCurrentActiveGroup('teardown')
       stopActiveReadAloud()
     }
+  }, [effectiveSessionId])
+
+  // Keep the in-chat pin button in sync with WS events from other tabs/devices.
+  useEffect(() => {
+    if (!effectiveSessionId) return
+    const off = eventBus.on(Topics.CHAT_SESSION_PINNED_UPDATED, (event: BaseEvent) => {
+      if (event.payload.session_id !== effectiveSessionId) return
+      setSessionPinned(Boolean(event.payload.pinned))
+    })
+    return off
   }, [effectiveSessionId])
 
   // When navigated here from the global Artefacts tab with a pendingArtefactId,
@@ -1182,6 +1203,26 @@ export function ChatView({ persona }: ChatViewProps) {
           <span className="max-w-[40vw] md:max-w-[400px] truncate text-[13px] text-white/40">
             {isIncognito ? (persona?.name ?? 'Incognito') : (sessionTitle ?? 'New chat')}
           </span>
+          {!isIncognito && effectiveSessionId && (
+            <button
+              type="button"
+              onClick={async () => {
+                const next = !sessionPinned
+                setSessionPinned(next)
+                try {
+                  await chatApi.updateSessionPinned(effectiveSessionId, next)
+                } catch {
+                  setSessionPinned(!next)
+                }
+              }}
+              aria-label={sessionPinned ? 'Unpin chat' : 'Pin chat'}
+              aria-pressed={sessionPinned}
+              title={sessionPinned ? 'Unpin chat' : 'Pin chat'}
+              className={`ml-1.5 flex h-5 w-5 items-center justify-center rounded text-[12px] transition-colors ${sessionPinned ? 'text-gold' : 'text-white/35 hover:text-white/65'}`}
+            >
+              {sessionPinned ? '📌' : '📍'}
+            </button>
+          )}
         </div>
         {/* Desktop topbar indicators */}
         <div className="hidden lg:flex items-center gap-2">

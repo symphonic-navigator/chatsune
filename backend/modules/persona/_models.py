@@ -38,5 +38,9 @@ class PersonaDocument(BaseModel):
     integrations_config: dict | None = None
     created_at: datetime
     updated_at: datetime
+    # Most recent chat-session creation or resume. Drives sidebar LRU
+    # ordering. None when the persona has never been chatted with — in
+    # that case sort falls back to created_at descending.
+    last_used_at: datetime | None = None
 
     model_config = {"populate_by_name": True}
