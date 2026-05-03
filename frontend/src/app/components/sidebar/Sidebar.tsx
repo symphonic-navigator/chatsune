@@ -361,28 +361,12 @@ export function Sidebar({
           isActive={isTabActive('bookmarks')}
         />
 
-        {/* Uploads */}
+        {/* My data — combined entry point */}
         <IconBtn
           icon="📂"
-          onClick={() => onOpenModal('uploads')}
-          title="Uploads"
-          isActive={isTabActive('uploads')}
-        />
-
-        {/* Artefacts */}
-        <IconBtn
-          icon="🧪"
-          onClick={() => onOpenModal('artefacts')}
-          title="Artefacts"
-          isActive={isTabActive('artefacts')}
-        />
-
-        {/* Images */}
-        <IconBtn
-          icon="🖼️"
-          onClick={() => onOpenModal('images')}
-          title="Images"
-          isActive={isTabActive('images')}
+          onClick={() => onOpenModal(getLastMyDataSubpage())}
+          title="My data"
+          isActive={isTabActive('uploads') || isTabActive('artefacts') || isTabActive('images')}
         />
 
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
