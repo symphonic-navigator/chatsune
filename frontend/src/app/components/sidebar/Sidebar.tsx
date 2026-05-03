@@ -621,13 +621,6 @@ export function Sidebar({
         personas={personas}
         showContinue={!!lastSession && !isInChat}
         onCloseModal={onCloseModal}
-        onNewIncognitoChat={() => {
-          // Pick the most-recently-used persona; if none, fall through to /personas.
-          const pick = sortedPersonas[0]
-          if (!pick) { navigate('/personas'); return }
-          onCloseModal(); closeDrawerIfMobile()
-          navigate(`/chat/${pick.id}?incognito=1`)
-        }}
         onContinue={handleContinue}
       />
 
