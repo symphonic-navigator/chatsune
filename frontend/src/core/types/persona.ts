@@ -55,6 +55,9 @@ export interface PersonaDto {
   integration_configs?: Record<string, Record<string, unknown>>;
   created_at: string;
   updated_at: string;
+  // Most recent chat-session creation or resume. Optional for backwards
+  // compatibility — sidebar LRU sort falls back to created_at when missing.
+  last_used_at?: string | null;
 }
 
 export interface CreatePersonaRequest {
