@@ -4,9 +4,9 @@ import { useSidebarStore, type SidebarZone } from '../../../core/store/sidebarSt
 interface ZoneSectionProps {
   zone: SidebarZone
   title: string
-  onAdd?: () => void
-  /** Called by the always-visible `…` button and used as the
-   *  click-fallback when the zone is too small to render any items. */
+  /** Called when the user clicks the header of an already-open zone, or
+   *  on a closed zone too small to expand into. The zone never collapses
+   *  via header click — switching to a different zone closes this one. */
   onOpenPage: () => void
   /** Empty CTA configuration. Renders only when `itemCount === 0`. */
   emptyState?: { label: string; onClick: () => void }
@@ -41,7 +41,6 @@ const FALLBACK_VISIBLE_COUNT = 10
 export function ZoneSection({
   zone,
   title,
-  onAdd,
   onOpenPage,
   emptyState,
   itemCount,
@@ -75,11 +74,14 @@ export function ZoneSection({
   const cannotFitAnyItem = open && !isEmpty && visibleCount === 0
 
   function handleHeaderClick() {
-    if (cannotFitAnyItem) {
+    if (open || cannotFitAnyItem) {
+      // Already-open zone (or one too small to expand into) → go to the
+      // full management page. The accordion never collapses to "all closed"
+      // via header click; switching to a different zone closes this one.
       onOpenPage()
       return
     }
-    setOpenZone(open ? null : zone)
+    setOpenZone(zone)
   }
 
   return (
@@ -87,44 +89,24 @@ export function ZoneSection({
       className={`flex min-h-0 flex-col ${open ? 'flex-1' : 'flex-none'}`}
       aria-label={title}
     >
-      <header className="flex flex-shrink-0 items-center gap-1 px-3 py-1.5">
-        <button
-          type="button"
-          onClick={handleHeaderClick}
-          className="flex flex-1 items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-white/5"
-          aria-expanded={open}
+      <button
+        type="button"
+        onClick={handleHeaderClick}
+        className="flex flex-shrink-0 items-center gap-1 rounded px-3 py-1.5 text-left transition-colors hover:bg-white/5"
+        aria-expanded={open}
+        aria-label={open ? `Open all ${title.toLowerCase()}` : `Expand ${title}`}
+        title={open ? `Open all ${title.toLowerCase()}` : `Expand ${title}`}
+      >
+        <span
+          className={
+            open
+              ? 'text-[11px] font-semibold uppercase tracking-wider text-gold'
+              : 'text-[11px] font-medium uppercase tracking-wider text-white/55'
+          }
         >
-          <span
-            className={
-              open
-                ? 'text-[11px] font-semibold uppercase tracking-wider text-gold'
-                : 'text-[11px] font-medium uppercase tracking-wider text-white/55'
-            }
-          >
-            {title}
-          </span>
-        </button>
-        {onAdd && (
-          <button
-            type="button"
-            onClick={onAdd}
-            aria-label={`Create ${title.toLowerCase()}`}
-            title={`Create ${title.toLowerCase()}`}
-            className="flex h-5 w-5 items-center justify-center rounded text-[12px] text-white/55 transition-colors hover:bg-white/8 hover:text-white/85"
-          >
-            +
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onOpenPage}
-          aria-label={`Open all ${title.toLowerCase()}`}
-          title={`Open all ${title.toLowerCase()}`}
-          className="flex h-5 w-5 items-center justify-center rounded text-[12px] text-white/55 transition-colors hover:bg-white/8 hover:text-white/85"
-        >
-          ⋯
-        </button>
-      </header>
+          {title}
+        </span>
+      </button>
 
       {open && (
         <div

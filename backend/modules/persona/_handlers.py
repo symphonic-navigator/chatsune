@@ -367,6 +367,12 @@ async def update_persona(
     if not updated:
         raise HTTPException(status_code=404, detail="Persona not found")
 
+    # Pinning is a deliberate "promote this" gesture — bump the LRU stamp
+    # so the freshly-pinned persona surfaces at the top of the pinned group.
+    if body.pinned is True:
+        await repo.bump_last_used(persona_id, user["sub"])
+        updated = await repo.find_by_id(persona_id, user["sub"]) or updated
+
     if body.name is not None:
         existing_monograms = await repo.list_monograms_for_user(
             user["sub"], exclude_persona_id=persona_id,

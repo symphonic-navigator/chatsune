@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore } from "../../../core/store/authStore"
 import { useNotificationStore } from "../../../core/store/notificationStore"
@@ -69,6 +69,12 @@ function IconBtn({
     >
       {icon}
     </button>
+  )
+}
+
+function PinnedDivider() {
+  return (
+    <div className="mx-auto my-1 h-px w-12 bg-white/10" aria-hidden="true" />
   )
 }
 
@@ -629,7 +635,6 @@ export function Sidebar({
         <ZoneSection
           zone="personas"
           title="Personas"
-          onAdd={() => { closeDrawerIfMobile(); onOpenModal('personas') }}
           onOpenPage={() => openModalAndClose('personas')}
           itemCount={sortedPersonas.length}
           itemHeight={32}
@@ -640,32 +645,33 @@ export function Sidebar({
         >
           {(visibleCount) => {
             const visible = sortedPersonas.slice(0, visibleCount)
-            const hasMore = sortedPersonas.length > visible.length
+            const firstUnpinnedIdx = visible.findIndex((p) => !p.pinned)
+            const hasPinnedAndUnpinned = firstUnpinnedIdx > 0
             return (
               <>
-                {visible.map((p) => (
-                  <PersonaItem
-                    key={p.id}
-                    persona={p}
-                    isActive={p.id === activePersonaId}
-                    onSelect={handlePersonaSelect}
-                    onNewChat={handleNewChat}
-                    onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
-                    onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
-                    onPin={p.pinned ? undefined : (persona) => onTogglePin?.(persona.id, true)}
-                    onUnpin={p.pinned ? (persona) => onTogglePin?.(persona.id, false) : undefined}
-                    onOpenOverlay={() => openOverlayAndClose(p.id)}
-                  />
+                {visible.map((p, idx) => (
+                  <Fragment key={p.id}>
+                    {hasPinnedAndUnpinned && idx === firstUnpinnedIdx && <PinnedDivider />}
+                    <PersonaItem
+                      persona={p}
+                      isActive={p.id === activePersonaId}
+                      onSelect={handlePersonaSelect}
+                      onNewChat={handleNewChat}
+                      onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}
+                      onEdit={(persona) => openOverlayAndClose(persona.id, 'edit')}
+                      onPin={p.pinned ? undefined : (persona) => onTogglePin?.(persona.id, true)}
+                      onUnpin={p.pinned ? (persona) => onTogglePin?.(persona.id, false) : undefined}
+                      onOpenOverlay={() => openOverlayAndClose(p.id)}
+                    />
+                  </Fragment>
                 ))}
-                {hasMore && (
-                  <button
-                    type="button"
-                    onClick={() => openModalAndClose('personas')}
-                    className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-                  >
-                    <span>More… ›</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => openModalAndClose('personas')}
+                  className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
+                >
+                  <span>More… ›</span>
+                </button>
               </>
             )
           }}
@@ -704,34 +710,35 @@ export function Sidebar({
         >
           {(visibleCount) => {
             const visible = sortedSessions.slice(0, visibleCount)
-            const hasMore = sortedSessions.length > visible.length
+            const firstUnpinnedIdx = visible.findIndex((s) => !s.pinned)
+            const hasPinnedAndUnpinned = firstUnpinnedIdx > 0
             return (
               <>
-                {visible.map((s) => {
+                {visible.map((s, idx) => {
                   const persona = personas.find((p) => p.id === s.persona_id)
                   return (
-                    <HistoryItem
-                      key={s.id}
-                      session={s}
-                      isPinned={s.pinned}
-                      isActive={s.id === activeSessionId}
-                      monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
-                      colourScheme={persona?.colour_scheme}
-                      onClick={handleSessionClick}
-                      onDelete={handleDeleteSession}
-                      onTogglePin={handleToggleSessionPin}
-                    />
+                    <Fragment key={s.id}>
+                      {hasPinnedAndUnpinned && idx === firstUnpinnedIdx && <PinnedDivider />}
+                      <HistoryItem
+                        session={s}
+                        isPinned={s.pinned}
+                        isActive={s.id === activeSessionId}
+                        monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
+                        colourScheme={persona?.colour_scheme}
+                        onClick={handleSessionClick}
+                        onDelete={handleDeleteSession}
+                        onTogglePin={handleToggleSessionPin}
+                      />
+                    </Fragment>
                   )
                 })}
-                {hasMore && (
-                  <button
-                    type="button"
-                    onClick={() => openModalAndClose('history')}
-                    className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
-                  >
-                    <span>More… ›</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => openModalAndClose('history')}
+                  className="mx-3 mt-1 flex w-[calc(100%-24px)] items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-white/40 transition-colors hover:bg-white/5 hover:text-white/60"
+                >
+                  <span>More… ›</span>
+                </button>
               </>
             )
           }}
