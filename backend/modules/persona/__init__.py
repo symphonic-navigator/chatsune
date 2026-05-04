@@ -37,6 +37,22 @@ async def remove_library_from_all_personas(
     return await repo.remove_library_from_all_personas(user_id, library_id)
 
 
+async def clear_default_project_for_all(
+    user_id: str, project_id: str,
+) -> list[str]:
+    """Clear ``default_project_id`` on every persona pointing at ``project_id``.
+
+    Returns the list of affected persona ids. Called by the project
+    cascade-delete (both safe-delete and full-purge) so that a deleted
+    project never leaves dangling default-project references on personas.
+    Phase 3 will extend the call site so the caller emits a
+    ``PERSONA_UPDATED`` event per affected persona.
+    """
+    db = get_db()
+    repo = PersonaRepository(db)
+    return await repo.clear_default_project_for_all(user_id, project_id)
+
+
 async def unwire_personas_for_connection(user_id: str, connection_id: str) -> list[str]:
     """Null ``model_unique_id`` on every persona of this user that references
     the given Connection. Returns the list of affected persona IDs.
@@ -98,4 +114,5 @@ __all__ = [
     "cascade_delete_persona",
     "clone_persona",
     "list_persona_ids_for_user",
+    "clear_default_project_for_all",
 ]

@@ -165,6 +165,30 @@ class PersonaRepository:
         )
         return result.modified_count
 
+    async def clear_default_project_for_all(
+        self, user_id: str, project_id: str,
+    ) -> list[str]:
+        """Clear ``default_project_id`` on every persona pointing at ``project_id``.
+
+        Returns the list of affected persona ids so the caller can emit a
+        ``PERSONA_UPDATED`` event per persona that lost its default.
+        Used by the project cascade-delete (both safe-delete and
+        full-purge variants).
+        """
+        cursor = self._collection.find(
+            {"user_id": user_id, "default_project_id": project_id},
+            projection={"_id": 1},
+        )
+        ids = [doc["_id"] async for doc in cursor]
+        if not ids:
+            return []
+        now = datetime.now(UTC)
+        await self._collection.update_many(
+            {"_id": {"$in": ids}},
+            {"$set": {"default_project_id": None, "updated_at": now}},
+        )
+        return ids
+
     async def list_monograms_for_user(
         self, user_id: str, exclude_persona_id: str | None = None,
     ) -> set[str]:

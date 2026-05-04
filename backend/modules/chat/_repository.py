@@ -538,6 +538,43 @@ class ChatRepository:
         await self._messages.delete_many({"session_id": {"$in": ids}})
         return [(doc["_id"], doc["user_id"]) for doc in docs]
 
+    async def list_session_ids_for_project(
+        self, project_id: str, user_id: str,
+    ) -> list[str]:
+        """Return every session ``_id`` belonging to ``project_id``.
+
+        Excludes soft-deleted sessions — the cascade only acts on
+        active sessions; soft-deleted ones are already on their way out
+        via the cleanup job. Used by the project cascade-delete and the
+        per-project HistoryTab/UploadsTab/ArtefactsTab/ImagesTab list
+        endpoints (Phase 3).
+        """
+        cursor = self._sessions.find(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "deleted_at": None,
+            },
+            projection={"_id": 1},
+        )
+        return [doc["_id"] async for doc in cursor]
+
+    async def set_session_project(
+        self, session_id: str, user_id: str, project_id: str | None,
+    ) -> bool:
+        """Assign or detach a session's project. Returns ``True`` iff modified.
+
+        Used by the project cascade safe-delete (which detaches every
+        session by setting ``project_id=None``) and by the in-chat project
+        switcher endpoint (Phase 3).
+        """
+        now = datetime.now(UTC)
+        result = await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id},
+            {"$set": {"project_id": project_id, "updated_at": now}},
+        )
+        return result.modified_count > 0
+
     async def delete_by_persona(self, user_id: str, persona_id: str) -> int:
         """Hard-delete all sessions and their messages for a persona."""
         cursor = self._sessions.find(

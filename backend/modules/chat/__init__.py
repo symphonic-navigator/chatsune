@@ -191,6 +191,50 @@ async def count_messages_for_persona(user_id: str, persona_id: str) -> int:
     return await repo.count_messages_for_persona(user_id, persona_id)
 
 
+async def list_session_ids_for_project(
+    project_id: str, user_id: str,
+) -> list[str]:
+    """Return active session ids belonging to ``project_id``.
+
+    Public-API helper used by the project cascade-delete (Phase 2) and
+    the per-project tab endpoints (Phase 3) so other modules don't have
+    to know about the chat schema.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.list_session_ids_for_project(project_id, user_id)
+
+
+async def set_session_project(
+    session_id: str, user_id: str, project_id: str | None,
+) -> bool:
+    """Assign or clear a session's project. Returns ``True`` iff modified.
+
+    Used by the project cascade safe-delete (Phase 2) and the in-chat
+    project switcher endpoint (Phase 3). Phase 3 will add the HTTP
+    handler that wraps this call and emits ``CHAT_SESSION_PROJECT_UPDATED``.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.set_session_project(session_id, user_id, project_id)
+
+
+async def delete_session(session_id: str, user_id: str) -> bool:
+    """Soft-delete a session, returning ``True`` iff it was removed.
+
+    Mirrors the existing ``DELETE /api/chat/sessions/{id}`` HTTP handler
+    on the data side: the session is flagged as deleted; the existing
+    cleanup job (``cleanup_soft_deleted_sessions``) hard-deletes it plus
+    its messages, attachments, artefacts, and images an hour later.
+
+    The project cascade full-purge calls this for every session in the
+    project. Event emission stays with the orchestrating caller (the
+    project cascade publishes ``PROJECT_DELETED`` once at the end; per-
+    session events are not required because the project disappears
+    anyway).
+    """
+    repo = ChatRepository(get_db())
+    return await repo.soft_delete_session(session_id, user_id)
+
+
 async def remove_library_from_all_sessions(
     user_id: str, library_id: str,
 ) -> int:
@@ -307,4 +351,5 @@ __all__ = [
     "delete_all_for_persona", "list_session_ids_for_persona",
     "count_messages_for_persona", "remove_library_from_all_sessions",
     "bulk_export_for_persona", "bulk_import_for_persona",
+    "list_session_ids_for_project", "set_session_project", "delete_session",
 ]
