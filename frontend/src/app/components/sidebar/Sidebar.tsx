@@ -209,11 +209,12 @@ export function Sidebar({
     navigate(`/chat/${persona.id}?new=1`, !isDesktop ? { replace: true } : undefined)
   }
 
-  function handleNewChatFromMobileOverlay(persona: PersonaDto) {
+  function handleNewChatFromMobileOverlay(persona: PersonaDto, opts: { incognito: boolean }) {
     onCloseModal()
     setMobileView('main')
     closeDrawerIfMobile()
-    navigate(`/chat/${persona.id}?new=1`, { replace: true })
+    const query = opts.incognito ? 'incognito=1' : 'new=1'
+    navigate(`/chat/${persona.id}?${query}`, { replace: true })
   }
 
   function handleSessionClick(session: ChatSessionDto) {
