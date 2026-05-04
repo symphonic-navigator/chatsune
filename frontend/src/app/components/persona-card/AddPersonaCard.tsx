@@ -1,4 +1,4 @@
-import React from "react"
+import type { CSSProperties } from "react"
 
 interface AddPersonaCardProps {
   onCreateNew: () => void
@@ -6,14 +6,13 @@ interface AddPersonaCardProps {
   index: number
 }
 
-const HALF_BASE = "relative flex flex-1 flex-col items-center justify-center gap-2 cursor-pointer transition-colors group"
-const ICON_BG = "rgba(201,168,76,0.04)"
+const HALF_BASE = "relative flex flex-1 flex-col items-center justify-center gap-2 cursor-pointer transition-colors group hover:bg-[rgba(201,168,76,0.04)]"
+const GOLD_TINT_BG = "rgba(201,168,76,0.04)"
 const BORDER_COLOUR = "rgba(201,168,76,0.3)"
 const LABEL_COLOUR = "rgba(201,168,76,0.45)"
-const HOVER_BG = "rgba(201,168,76,0.04)"
 
 export default function AddPersonaCard({ onCreateNew, onImport, index }: AddPersonaCardProps) {
-  const cardStyle: React.CSSProperties = {
+  const cardStyle: CSSProperties = {
     width: "clamp(160px, 42vw, 210px)",
     height: "clamp(240px, 63vw, 320px)",
     border: "1px dashed rgba(201,168,76,0.15)",
@@ -31,13 +30,10 @@ export default function AddPersonaCard({ onCreateNew, onImport, index }: AddPers
         aria-label="Create new persona"
         onClick={onCreateNew}
         className={HALF_BASE}
-        style={{ background: 'transparent' }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = HOVER_BG)}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div
           className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ border: `1px dashed ${BORDER_COLOUR}`, color: LABEL_COLOUR, background: ICON_BG }}
+          style={{ border: `1px dashed ${BORDER_COLOUR}`, color: LABEL_COLOUR, background: GOLD_TINT_BG }}
         >
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <line x1="9" y1="3" x2="9" y2="15" />
@@ -61,13 +57,10 @@ export default function AddPersonaCard({ onCreateNew, onImport, index }: AddPers
         aria-label="Import persona from file"
         onClick={onImport}
         className={HALF_BASE}
-        style={{ background: 'transparent' }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = HOVER_BG)}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div
           className="w-9 h-9 rounded-full flex items-center justify-center"
-          style={{ border: `1px dashed ${BORDER_COLOUR}`, color: LABEL_COLOUR, background: ICON_BG }}
+          style={{ border: `1px dashed ${BORDER_COLOUR}`, color: LABEL_COLOUR, background: GOLD_TINT_BG }}
         >
           {/* Down-arrow into a tray icon */}
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
