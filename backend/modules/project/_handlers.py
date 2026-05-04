@@ -6,9 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.project._repository import ProjectRepository
+from backend.modules.project._service import cascade_delete_project
 from backend.ws.event_bus import EventBus, get_event_bus
-from shared.dtos.project import ProjectCreateDto, ProjectUpdateDto, _Unset
-from shared.events.project import ProjectCreatedEvent, ProjectDeletedEvent, ProjectUpdatedEvent
+from shared.dtos.project import (
+    ProjectCreateDto,
+    ProjectPinnedDto,
+    ProjectUpdateDto,
+    _Unset,
+)
+from shared.events.project import (
+    ProjectCreatedEvent,
+    ProjectPinnedUpdatedEvent,
+    ProjectUpdatedEvent,
+)
 from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
@@ -118,22 +128,57 @@ async def update_project(
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
     project_id: str,
+    purge_data: bool = False,
+    user: dict = Depends(require_active_session),
+):
+    """Cascade-delete a project. Default mode is safe-delete.
+
+    Mindspace spec section 9: ``purge_data=false`` detaches sessions back
+    into the global history; ``purge_data=true`` soft-deletes them so the
+    existing chat-cleanup job hard-deletes the rest of the per-session
+    graph an hour later. PROJECT_DELETED is published by the cascade
+    service itself.
+    """
+    deleted = await cascade_delete_project(
+        project_id, user["sub"], purge_data=purge_data,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return None
+
+
+@router.patch("/{project_id}/pinned")
+async def set_project_pinned(
+    project_id: str,
+    body: ProjectPinnedDto,
     user: dict = Depends(require_active_session),
     event_bus: EventBus = Depends(get_event_bus),
 ):
+    """Toggle pinned on a project. Dedicated endpoint per spec section 5.4.
+
+    Fires ``PROJECT_PINNED_UPDATED`` carrying the new boolean so the
+    sidebar can re-sort immediately without a full project refresh.
+    """
     repo = _repo()
-    deleted = await repo.delete(project_id, user["sub"])
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Project not found")
+    ok = await repo.set_pinned(project_id, user["sub"], body.pinned)
+    if not ok:
+        # Either the project does not exist for this user, or its pinned
+        # state already matches the requested value (Mongo's
+        # ``modified_count`` is 0 in both cases). Disambiguate so the
+        # frontend treats a no-op idempotent retry the same as success.
+        existing = await repo.find_by_id(project_id, user["sub"])
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Project not found")
 
     await event_bus.publish(
-        Topics.PROJECT_DELETED,
-        ProjectDeletedEvent(
+        Topics.PROJECT_PINNED_UPDATED,
+        ProjectPinnedUpdatedEvent(
             project_id=project_id,
             user_id=user["sub"],
+            pinned=body.pinned,
             timestamp=datetime.now(timezone.utc),
         ),
         scope=f"user:{user['sub']}",
         target_user_ids=[user["sub"]],
     )
-    return None
+    return {"ok": True}

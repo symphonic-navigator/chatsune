@@ -146,3 +146,9 @@ class ProjectUsageDto(BaseModel):
     upload_count: int = 0
     artefact_count: int = 0
     image_count: int = 0
+
+
+class ProjectPinnedDto(BaseModel):
+    """Body for ``PATCH /api/projects/{id}/pinned``."""
+
+    pinned: bool
