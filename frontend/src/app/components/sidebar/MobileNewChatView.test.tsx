@@ -39,7 +39,7 @@ beforeEach(() => {
   mockIsSanitised = false
 })
 
-function renderView(personas: PersonaDto[], onSelect: (p: PersonaDto) => void = () => {}) {
+function renderView(personas: PersonaDto[], onSelect: (p: PersonaDto, opts?: { incognito?: boolean }) => void = () => {}) {
   return render(
     <MemoryRouter>
       <MobileNewChatView personas={personas} onSelect={onSelect} />
@@ -102,6 +102,48 @@ describe('MobileNewChatView — selection', () => {
     const onSelect = vi.fn()
     renderView([aria, marcus], onSelect)
     await userEvent.click(screen.getByText('Marcus the Stoic'))
-    expect(onSelect).toHaveBeenCalledWith(marcus)
+    expect(onSelect).toHaveBeenCalledWith(marcus, { incognito: false })
+  })
+})
+
+describe('MobileNewChatView — Incognito toggle', () => {
+  it('renders the Incognito toggle, defaults to off', () => {
+    renderView([aria, marcus])
+    const toggle = screen.getByRole('button', { name: /incognito/i })
+    expect(toggle).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('flips aria-pressed to true after tapping the toggle', async () => {
+    renderView([aria, marcus])
+    const toggle = screen.getByRole('button', { name: /incognito/i })
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('calls onSelect with { incognito: true } when toggle is on', async () => {
+    const onSelect = vi.fn()
+    renderView([aria, marcus], onSelect)
+    await userEvent.click(screen.getByRole('button', { name: /incognito/i }))
+    await userEvent.click(screen.getByText('Marcus the Stoic'))
+    expect(onSelect).toHaveBeenCalledWith(marcus, { incognito: true })
+  })
+
+  it('calls onSelect with { incognito: false } when toggle is off', async () => {
+    const onSelect = vi.fn()
+    renderView([aria, marcus], onSelect)
+    await userEvent.click(screen.getByText('Marcus the Stoic'))
+    expect(onSelect).toHaveBeenCalledWith(marcus, { incognito: false })
+  })
+
+  it('resets the toggle to off when the component is remounted', async () => {
+    const { unmount } = renderView([aria, marcus])
+    const toggle = screen.getByRole('button', { name: /incognito/i })
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    unmount()
+    renderView([aria, marcus])
+    const fresh = screen.getByRole('button', { name: /incognito/i })
+    expect(fresh).toHaveAttribute('aria-pressed', 'false')
   })
 })

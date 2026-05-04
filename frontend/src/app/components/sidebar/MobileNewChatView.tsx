@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
@@ -6,7 +6,10 @@ import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 
 interface MobileNewChatViewProps {
   personas: PersonaDto[]
-  onSelect: (persona: PersonaDto) => void
+  /** Wider signature than the original: opts carries the transient Incognito
+   *  toggle state from this picker. Always called with opts so the caller can
+   *  rely on the flag being present. */
+  onSelect: (persona: PersonaDto, opts: { incognito: boolean }) => void
   /** Called when the empty-state "Create persona" link is tapped. Gives the
    *  sidebar a chance to close the drawer before route navigation. */
   onClose?: () => void
@@ -14,6 +17,9 @@ interface MobileNewChatViewProps {
 
 export function MobileNewChatView({ personas, onSelect, onClose }: MobileNewChatViewProps) {
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  // Transient by design: parent unmounts+remounts the picker on each open,
+  // so this state resets to `false` every time. Do NOT lift this into a store.
+  const [incognito, setIncognito] = useState(false)
 
   const visible = useMemo(() => {
     return isSanitised ? personas.filter((p) => !p.nsfw) : personas
@@ -38,29 +44,61 @@ export function MobileNewChatView({ personas, onSelect, onClose }: MobileNewChat
     )
   }
 
-  return (
-    <div className="h-full overflow-y-auto py-1 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
-      {pinned.length > 0 && (
-        <>
-          <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/45">
-            Pinned
-          </div>
-          {pinned.map((p) => (
-            <PersonaRow key={p.id} persona={p} onSelect={onSelect} />
-          ))}
-        </>
-      )}
+  function handlePick(persona: PersonaDto) {
+    onSelect(persona, { incognito })
+  }
 
-      {other.length > 0 && (
-        <>
-          <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/45">
-            Other
-          </div>
-          {other.map((p) => (
-            <PersonaRow key={p.id} persona={p} onSelect={onSelect} />
-          ))}
-        </>
-      )}
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex-shrink-0 px-3 pt-2 pb-1">
+        <button
+          type="button"
+          onClick={() => setIncognito((v) => !v)}
+          aria-pressed={incognito}
+          aria-label={incognito ? 'Turn Incognito mode off' : 'Turn Incognito mode on'}
+          className={[
+            'flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors',
+            incognito
+              ? 'border-gold/35 bg-gold/12 text-gold'
+              : 'border-white/8 bg-white/4 text-white/65 hover:bg-white/6',
+          ].join(' ')}
+        >
+          <span className="text-[14px]">🕶</span>
+          <span className="flex-1 text-[12px] font-medium">Incognito</span>
+          <span
+            className={[
+              'rounded-full px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-wider',
+              incognito ? 'bg-gold/20 text-gold' : 'bg-white/8 text-white/55',
+            ].join(' ')}
+          >
+            {incognito ? 'On' : 'Off'}
+          </span>
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto py-1 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
+        {pinned.length > 0 && (
+          <>
+            <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/45">
+              Pinned
+            </div>
+            {pinned.map((p) => (
+              <PersonaRow key={p.id} persona={p} onSelect={handlePick} />
+            ))}
+          </>
+        )}
+
+        {other.length > 0 && (
+          <>
+            <div className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-white/45">
+              Other
+            </div>
+            {other.map((p) => (
+              <PersonaRow key={p.id} persona={p} onSelect={handlePick} />
+            ))}
+          </>
+        )}
+      </div>
     </div>
   )
 }
