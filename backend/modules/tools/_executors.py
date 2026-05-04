@@ -67,6 +67,10 @@ class KnowledgeSearchExecutor:
 
             persona_library_ids = arguments.get("_persona_library_ids", [])
             session_library_ids = arguments.get("_session_library_ids", [])
+            # Mindspace: project libraries ride alongside persona +
+            # session libraries; default ``[]`` so any caller that
+            # hasn't migrated to passing it keeps working.
+            project_library_ids = arguments.get("_project_library_ids", [])
             sanitised = arguments.get("_sanitised", False)
 
             session_id = arguments.get("_session_id", "")
@@ -81,6 +85,7 @@ class KnowledgeSearchExecutor:
                 query=query,
                 persona_library_ids=persona_library_ids,
                 session_library_ids=session_library_ids,
+                project_library_ids=project_library_ids,
                 sanitised=sanitised,
             )
 

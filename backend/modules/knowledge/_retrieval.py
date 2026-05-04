@@ -19,13 +19,26 @@ async def search(
     session_library_ids: list[str],
     sanitised: bool = False,
     top_k: int = 5,
+    project_library_ids: list[str] | tuple[str, ...] = (),
 ) -> list[RetrievedChunkDto]:
+    """Vector-search the user's libraries for chunks relevant to ``query``.
+
+    Mindspace: ``project_library_ids`` is the third source merged into
+    the effective set, so a chat in a project automatically pulls
+    project-attached libraries on top of persona + session ones. The
+    parameter defaults to ``()`` so existing callers that don't yet
+    pass it keep working unchanged.
+    """
     from backend.modules.embedding import query_embed
 
-    effective_ids = list(set(persona_library_ids + session_library_ids))
+    effective_ids = list(set(persona_library_ids)
+                         | set(session_library_ids)
+                         | set(project_library_ids))
     _log.info(
-        "knowledge search: query=%r, persona_libs=%s, session_libs=%s, effective=%s, sanitised=%s",
-        query[:80], persona_library_ids, session_library_ids, effective_ids, sanitised,
+        "knowledge search: query=%r, persona_libs=%s, session_libs=%s, "
+        "project_libs=%s, effective=%s, sanitised=%s",
+        query[:80], persona_library_ids, session_library_ids,
+        list(project_library_ids), effective_ids, sanitised,
     )
     if not effective_ids:
         _log.warning("knowledge search: no effective library IDs — returning empty")
