@@ -303,8 +303,10 @@ export default function AppLayout() {
   }, [])
 
   // When sanitised mode flips OFF -> ON while the user is currently viewing a
-  // chat with an NSFW persona, push them out to that persona's overview so
-  // they are no longer staring at NSFW content. ON -> OFF never navigates.
+  // chat with an NSFW persona, leave the chat entirely and route to the
+  // personas overview list (which filters out NSFW personas in sanitised mode).
+  // ON -> OFF never navigates. If no chat is open, only the existing filtered
+  // views update — no navigation.
   const prevSanitisedRef = useRef(isSanitised)
   useEffect(() => {
     const prev = prevSanitisedRef.current
@@ -313,9 +315,9 @@ export default function AppLayout() {
     if (!activePersonaId) return
     const persona = allPersonas.find((p) => p.id === activePersonaId)
     if (persona?.nsfw) {
-      openPersonaOverlay(activePersonaId, 'overview')
+      navigate('/personas')
     }
-  }, [isSanitised, activePersonaId, allPersonas, openPersonaOverlay])
+  }, [isSanitised, activePersonaId, allPersonas, navigate])
 
   const displayName = user?.display_name || user?.username || 'Unnamed User'
 
