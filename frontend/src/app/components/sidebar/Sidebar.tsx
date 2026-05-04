@@ -28,6 +28,7 @@ import { ActionBlock } from './ActionBlock'
 import { ZoneSection } from './ZoneSection'
 import { FooterBlock } from './FooterBlock'
 import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
+import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
 import { sortPersonas } from './personaSort'
 import { getLastMyDataSubpage } from '../user-modal/myDataMemory'
 import { BookmarkIcon, CollegeIcon, FoxIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
@@ -128,6 +129,8 @@ export function Sidebar({
 
   type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks' | 'projects'
   const [mobileView, setMobileView] = useState<MobileView>('main')
+
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
 
   // Reset to main when the drawer is closed (so next open lands on main view).
   useEffect(() => {
@@ -335,9 +338,7 @@ export function Sidebar({
 
   function handleOpenProjectCreateModal() {
     closeDrawerIfMobile()
-    // TODO Phase 7: open Project-Create-Modal; until then, fall through to
-    // the UserModal Projects tab so users still have a discoverable surface.
-    onOpenModal('projects')
+    setCreateProjectOpen(true)
   }
 
   async function handleToggleProjectPin(projectId: string, pinned: boolean) {
@@ -371,9 +372,23 @@ export function Sidebar({
   const displayName = user?.display_name || user?.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
 
+  // The Project-Create-Modal lives in the React tree alongside the
+  // sidebar so the empty-state "+ Create project" tap can summon it
+  // from any of the three sidebar render paths (collapsed / mobile /
+  // desktop). Sheet uses a portal under the hood, so the JSX
+  // location only matters for state ownership, not visual layering.
+  const projectCreateModal = (
+    <ProjectCreateModal
+      isOpen={createProjectOpen}
+      onClose={() => setCreateProjectOpen(false)}
+      onCreated={() => setCreateProjectOpen(false)}
+    />
+  )
+
   // ── Collapsed view ──────────────────────────────────────────────
   if (renderCollapsed) {
     return (
+      <>
       <aside className="flex h-full w-[50px] flex-shrink-0 flex-col items-center border-r border-white/6 bg-base py-2 gap-0.5">
         {/* Logo — expand */}
         <button
@@ -571,6 +586,8 @@ export function Sidebar({
 
         {/* Projects flyout hidden — feature not yet ready (see FOR_LATER.md) */}
       </aside>
+      {projectCreateModal}
+      </>
     )
   }
 
@@ -599,6 +616,7 @@ export function Sidebar({
     }
 
     return (
+      <>
       <aside
         className={[
           'fixed inset-y-0 left-0 z-40 flex h-full w-full flex-col overflow-hidden border-r border-white/6 bg-base transition-transform duration-200 ease-out',
@@ -654,11 +672,14 @@ export function Sidebar({
           </div>
         </div>
       </aside>
+      {projectCreateModal}
+      </>
     )
   }
 
   // ── Desktop expanded view ──────────────────────────────────────────────
   return (
+    <>
     <aside
       className={[
         // Mobile / tablet: off-canvas drawer. Transform slides it in from
@@ -860,5 +881,7 @@ export function Sidebar({
       />
 
     </aside>
+    {projectCreateModal}
+    </>
   )
 }
