@@ -5,6 +5,11 @@ import { useChatSessions } from '../../../core/hooks/useChatSessions'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { useDrawerStore } from '../../../core/store/drawerStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { useProjectsStore } from '../../../features/projects/useProjectsStore'
+import { eventBus } from '../../../core/websocket/eventBus'
+import { Topics } from '../../../core/types/events'
+import type { BaseEvent } from '../../../core/types/events'
+import { safeLocalStorage } from '../../../core/utils/safeStorage'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../../core/types/chakra'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
 
@@ -13,8 +18,20 @@ const OPTION_STYLE: React.CSSProperties = {
   color: 'rgba(255,255,255,0.85)',
 }
 
+const INCLUDE_PROJECT_CHATS_KEY = 'chatsune.history.includeProjectChats'
+
+function readIncludeProjectChats(): boolean {
+  return safeLocalStorage.getItem(INCLUDE_PROJECT_CHATS_KEY) === 'true'
+}
+
 interface HistoryTabProps {
   onClose: () => void
+  /**
+   * Mindspace: when set, the tab scopes to a single project's chat
+   * sessions. Hides the "Include project chats" toggle (it is
+   * meaningless in single-project mode). Phase 9 / spec §6.5 Tab 3.
+   */
+  projectFilter?: string
 }
 
 function getDateGroup(isoString: string): string {
@@ -55,10 +72,11 @@ const BTN = 'px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide
 const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
 const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
 
-export function HistoryTab({ onClose }: HistoryTabProps) {
-  const { sessions, isLoading } = useChatSessions()
+export function HistoryTab({ onClose, projectFilter }: HistoryTabProps) {
+  const { sessions: defaultSessions, isLoading: defaultLoading } = useChatSessions()
   const { personas } = usePersonas()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  const projects = useProjectsStore((s) => s.projects)
   const [search, setSearch] = useState('')
   const [personaFilter, setPersonaFilter] = useState<string>('all')
   const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
@@ -70,6 +88,86 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
   const nsfwPersonaIds = useMemo(
     () => new Set(personas.filter((p) => p.nsfw).map((p) => p.id)),
     [personas],
+  )
+
+  // Mindspace: Phase 9. The "Include project chats" toggle lives on
+  // the global UserModal context only (`projectFilter === undefined`).
+  // The single-project context already implies "yes, project chats".
+  const [includeProjectChats, setIncludeProjectChats] = useState<boolean>(() =>
+    readIncludeProjectChats(),
+  )
+  useEffect(() => {
+    safeLocalStorage.setItem(
+      INCLUDE_PROJECT_CHATS_KEY,
+      includeProjectChats ? 'true' : 'false',
+    )
+  }, [includeProjectChats])
+
+  // When ``projectFilter`` is set we fetch a project-scoped list. When
+  // ``includeProjectChats`` is set without a filter, we fetch the
+  // full list (default ``useChatSessions`` excludes project-bound
+  // sessions). Otherwise we reuse ``useChatSessions`` so the tab keeps
+  // the live event-bus subscriptions a hand-rolled fetch would miss.
+  const useFallback = !projectFilter && !includeProjectChats
+  const [extraSessions, setExtraSessions] = useState<ChatSessionDto[]>([])
+  const [extraLoading, setExtraLoading] = useState(false)
+
+  const refetchExtra = useCallback(async () => {
+    if (useFallback) return
+    setExtraLoading(true)
+    try {
+      const res = await chatApi.listSessions({
+        project_id: projectFilter,
+        include_project_chats: !projectFilter && includeProjectChats,
+      })
+      setExtraSessions(
+        res.sort((a, b) => b.updated_at.localeCompare(a.updated_at)),
+      )
+    } catch {
+      setExtraSessions([])
+    } finally {
+      setExtraLoading(false)
+    }
+  }, [useFallback, projectFilter, includeProjectChats])
+
+  useEffect(() => {
+    void refetchExtra()
+  }, [refetchExtra])
+
+  // Live updates: when a session is created / deleted / pinned /
+  // project-assigned the project-scoped or include-projects list
+  // needs a refresh. Subscribing here keeps the live behaviour close
+  // to what ``useChatSessions`` provides for the default list.
+  useEffect(() => {
+    if (useFallback) return
+    const refresh = (_event: BaseEvent) => {
+      void refetchExtra()
+    }
+    const unsubs = [
+      eventBus.on(Topics.CHAT_SESSION_CREATED, refresh),
+      eventBus.on(Topics.CHAT_SESSION_DELETED, refresh),
+      eventBus.on(Topics.CHAT_SESSION_PINNED_UPDATED, refresh),
+      eventBus.on(Topics.CHAT_SESSION_PROJECT_UPDATED, refresh),
+      eventBus.on(Topics.CHAT_SESSION_TITLE_UPDATED, refresh),
+    ]
+    return () => unsubs.forEach((u) => u())
+  }, [useFallback, refetchExtra])
+
+  const sessions = useFallback ? defaultSessions : extraSessions
+  const isLoading = useFallback ? defaultLoading : extraLoading
+
+  // Sanitised mode: hide chats whose project is NSFW. Project info
+  // only flows into the list when project chats are visible (toggle
+  // on or single-project mode); when off the list contains no
+  // project-bound sessions at all.
+  const nsfwProjectIds = useMemo(
+    () =>
+      new Set(
+        Object.values(projects)
+          .filter((p) => p.nsfw)
+          .map((p) => p.id),
+      ),
+    [projects],
   )
 
   useEffect(() => {
@@ -106,16 +204,25 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
     }
   }, [search, personaFilter, isSanitised, personas])
 
-  // Filter sessions by sanitised mode and persona filter; use backend results when searching
+  // Filter sessions by sanitised mode, persona filter and (in
+  // single-project mode) the project filter; use backend results when
+  // searching. Note: when ``projectFilter`` is set the backend already
+  // restricts to that project; the filter is reapplied client-side
+  // here for consistency with the search-results path which calls a
+  // different endpoint that doesn't know about ``projectFilter``.
   const filtered = useMemo(() => {
-    if (searchResults !== null) {
-      return searchResults
-    }
+    let result = searchResults !== null ? searchResults : sessions
 
-    let result = sessions
+    if (projectFilter) {
+      result = result.filter((s) => s.project_id === projectFilter)
+    }
 
     if (isSanitised) {
       result = result.filter((s) => !nsfwPersonaIds.has(s.persona_id))
+      // Hide chats whose project is NSFW too.
+      result = result.filter(
+        (s) => !s.project_id || !nsfwProjectIds.has(s.project_id),
+      )
     }
 
     if (personaFilter !== 'all') {
@@ -123,7 +230,15 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
     }
 
     return result
-  }, [sessions, searchResults, personaFilter, isSanitised, nsfwPersonaIds])
+  }, [
+    sessions,
+    searchResults,
+    personaFilter,
+    isSanitised,
+    nsfwPersonaIds,
+    nsfwProjectIds,
+    projectFilter,
+  ])
 
   // Personas available for the filter dropdown (only those with sessions, respecting sanitised mode)
   const filterPersonas = useMemo(() => {
@@ -171,6 +286,24 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
         </select>
       </div>
 
+      {/* Mindspace: include-project-chats toggle. Lives on the global
+          UserModal context only — the single-project context already
+          implies "yes, project chats". */}
+      {!projectFilter && (
+        <div className="px-4 pb-2 flex-shrink-0">
+          <label className="flex items-center gap-2 text-[11px] font-mono text-white/55 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeProjectChats}
+              onChange={(e) => setIncludeProjectChats(e.target.checked)}
+              data-testid="history-include-project-chats"
+              className="h-3.5 w-3.5 cursor-pointer"
+            />
+            Include project chats
+          </label>
+        </div>
+      )}
+
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 pb-4 [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
         {(isLoading || isSearching) && (
@@ -188,6 +321,15 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
             </div>
             {groupSessions.map((s) => {
               const persona = personas.find((p) => p.id === s.persona_id)
+              // Show the project pill only when project chats are
+              // mixed into the list (toggle on, no projectFilter); in
+              // single-project mode every row would show the same
+              // pill which would be visual noise.
+              const showProjectPill =
+                !projectFilter && includeProjectChats && !!s.project_id
+              const project = showProjectPill && s.project_id
+                ? projects[s.project_id] ?? null
+                : null
               return (
                 <SessionRow
                   key={s.id}
@@ -195,6 +337,7 @@ export function HistoryTab({ onClose }: HistoryTabProps) {
                   personaName={persona?.name ?? s.persona_id}
                   monogram={persona?.monogram || persona?.name.charAt(0).toUpperCase()}
                   colourScheme={persona?.colour_scheme}
+                  projectPill={project ? { emoji: project.emoji, title: project.title } : null}
                   onOpen={() => handleOpen(s)}
                   isPinned={s.pinned}
                   onTogglePin={async () => {
@@ -220,12 +363,18 @@ interface SessionRowProps {
   personaName: string
   monogram?: string
   colourScheme?: ChakraColour
+  /**
+   * Mindspace: when set, the row renders a small ``[emoji] title``
+   * pill next to the session title so users can see at a glance
+   * which project a session belongs to. Phase 9 / spec §6.5 Tab 3.
+   */
+  projectPill?: { emoji: string | null; title: string } | null
   onOpen: () => void
   isPinned: boolean
   onTogglePin: () => void
 }
 
-function SessionRow({ session, personaName, monogram, colourScheme, onOpen, isPinned, onTogglePin }: SessionRowProps) {
+function SessionRow({ session, personaName, monogram, colourScheme, projectPill, onOpen, isPinned, onTogglePin }: SessionRowProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
@@ -358,9 +507,20 @@ function SessionRow({ session, personaName, monogram, colourScheme, onOpen, isPi
                   className="flex-1 bg-white/[0.04] border border-gold/30 rounded px-2 py-0.5 text-[13px] text-white/80 outline-none font-mono"
                 />
               ) : (
-                <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-                  {session.title ?? formatDate(session.updated_at)}
-                </p>
+                <>
+                  <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
+                    {session.title ?? formatDate(session.updated_at)}
+                  </p>
+                  {projectPill && (
+                    <span
+                      data-testid="history-project-pill"
+                      className="ml-1 flex-shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] text-white/65"
+                      style={{ background: 'rgba(255,255,255,0.05)' }}
+                    >
+                      {projectPill.emoji ?? '—'} {projectPill.title}
+                    </span>
+                  )}
+                </>
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">

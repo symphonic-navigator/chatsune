@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { setLastMyDataSubpage, type MyDataSubpage } from './myDataMemory'
-import { GalleryGrid } from '../../../features/images/gallery/GalleryGrid'
+import { ImagesTab } from './ImagesTab'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
-// Projects UI hidden — feature not yet ready (see FOR_LATER.md).
+import { ProjectsTab } from './ProjectsTab'
 import { KnowledgeTab } from './KnowledgeTab'
 import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
@@ -284,7 +284,7 @@ export function UserModal({
         >
           {contentKey === 'about-me' && <AboutMeTab />}
           {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} onCreatePersona={onCreatePersona} onImportPersona={onImportPersona} />}
-          {/* Projects tab hidden — feature not yet ready (see FOR_LATER.md). */}
+          {contentKey === 'projects' && <ProjectsTab />}
           {contentKey === 'history' && <HistoryTab onClose={onClose} />}
           {contentKey === 'knowledge' && <KnowledgeTab />}
           {contentKey === 'bookmarks' && <BookmarksTab onClose={onClose} />}
@@ -292,11 +292,7 @@ export function UserModal({
           {contentKey === 'community-provisioning' && <CommunityProvisioningPage />}
           {contentKey === 'uploads' && <UploadsTab />}
           {contentKey === 'artefacts' && <ArtefactsTab onClose={onClose} />}
-          {contentKey === 'images' && (
-            <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-[3px] [&::-webkit-scrollbar-thumb]:rounded-sm [&::-webkit-scrollbar-thumb]:bg-white/10">
-              <GalleryGrid />
-            </div>
-          )}
+          {contentKey === 'images' && <ImagesTab />}
           {contentKey === 'models' && <ModelsTab />}
           {contentKey === 'job-log' && <JobLogTab />}
           {contentKey === 'display' && <SettingsTab />}

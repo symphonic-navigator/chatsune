@@ -15,10 +15,15 @@ export type ImageConfigDiscovery = {
 
 export const imagesApi = {
   /** List gallery images, newest-first. Pass `before` (ISO 8601) for cursor-based pagination. */
-  listImages: (opts?: { limit?: number; before?: string }): Promise<GeneratedImageSummaryDto[]> => {
+  listImages: (opts?: {
+    limit?: number
+    before?: string
+    project_id?: string
+  }): Promise<GeneratedImageSummaryDto[]> => {
     const params = new URLSearchParams()
     if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
     if (opts?.before !== undefined) params.set('before', opts.before)
+    if (opts?.project_id !== undefined) params.set('project_id', opts.project_id)
     const qs = params.toString()
     return api.get<GeneratedImageSummaryDto[]>(`/api/images${qs ? `?${qs}` : ''}`)
   },

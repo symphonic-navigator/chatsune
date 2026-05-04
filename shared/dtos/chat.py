@@ -17,6 +17,18 @@ class ChatSendMessageDto(BaseModel):
     client_message_id: str | None = None
 
 
+class SessionProjectUpdateDto(BaseModel):
+    """Body for ``PATCH /api/chat/sessions/{id}/project``.
+
+    Mindspace: assigns ``project_id`` (or detaches when ``None``) on a
+    chat session. The single-field shape lets us distinguish "set
+    explicitly null" from "field omitted" — only the former is valid;
+    omitting the field would surface as a 422 validation error.
+    """
+
+    project_id: str | None
+
+
 class ChatSessionDto(BaseModel):
     id: str
     user_id: str
@@ -27,6 +39,9 @@ class ChatSessionDto(BaseModel):
     auto_read: bool = False
     reasoning_override: bool | None = None
     pinned: bool = False
+    # Mindspace: optional owning project. ``None`` means the session
+    # belongs to no project (the legacy / global-history bucket).
+    project_id: str | None = None
     # Last-known context window utilisation, persisted at stream-end so
     # the UI can show a non-zero indicator when revisiting an existing
     # chat without having to wait for the next inference to complete.

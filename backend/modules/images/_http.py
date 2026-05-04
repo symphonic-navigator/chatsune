@@ -68,8 +68,27 @@ async def list_images(
     user: Annotated[dict, Depends(require_active_session)],
     limit: int = Query(50, ge=1, le=200),
     before: datetime | None = None,
+    project_id: str | None = Query(default=None),
     svc: ImageService = Depends(_service),
 ):
+    """List the user's generated images.
+
+    Mindspace: when ``project_id`` is supplied the response is scoped
+    to images referenced by chat sessions inside that project. The
+    chat module walks message timelines to recover the image ids,
+    then we resolve those ids to gallery summaries. ``before``
+    pagination is ignored in the project-filtered branch (the project
+    set is bounded by chat history, not by gallery scroll).
+    """
+    if project_id is not None:
+        from backend.modules import chat as chat_service
+
+        session_ids = await chat_service.list_session_ids_for_project(
+            project_id, user["sub"],
+        )
+        return await svc.list_user_images_for_sessions(
+            user_id=user["sub"], session_ids=session_ids, limit=limit,
+        )
     return await svc.list_user_images(user_id=user["sub"], limit=limit, before=before)
 
 

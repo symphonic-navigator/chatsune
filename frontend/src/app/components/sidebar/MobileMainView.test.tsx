@@ -17,6 +17,7 @@ const baseProps = {
   onContinue: vi.fn(),
   onNewChat: vi.fn(),
   onPersonas: vi.fn(),
+  onProjects: vi.fn(),
   onHistory: vi.fn(),
   onBookmarks: vi.fn(),
   onKnowledge: vi.fn(),
@@ -69,11 +70,23 @@ describe('MobileMainView — conditional rows', () => {
 })
 
 describe('MobileMainView — fixed rows render unconditionally', () => {
-  it('renders New Chat, Personas, History', () => {
+  it('renders New Chat, Personas, Projects, History', () => {
     renderView()
     expect(screen.getByText('New Chat')).toBeInTheDocument()
     expect(screen.getByText('Personas')).toBeInTheDocument()
+    expect(screen.getByText('Projects')).toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
+  })
+
+  it('places Projects between Personas and History', () => {
+    renderView()
+    const all = screen.getAllByRole('button').map((b) => b.textContent ?? '')
+    const idxPersonas = all.findIndex((t) => t.includes('Personas'))
+    const idxProjects = all.findIndex((t) => t.includes('Projects'))
+    const idxHistory = all.findIndex((t) => t.includes('History'))
+    expect(idxPersonas).toBeGreaterThan(-1)
+    expect(idxProjects).toBeGreaterThan(idxPersonas)
+    expect(idxHistory).toBeGreaterThan(idxProjects)
   })
 
   it('renders Knowledge, Bookmarks, My Data, Sanitised, Log out', () => {
@@ -119,6 +132,13 @@ describe('MobileMainView — handler wiring', () => {
     renderView({ onHistory })
     await userEvent.click(screen.getByText('History'))
     expect(onHistory).toHaveBeenCalledOnce()
+  })
+
+  it('calls onProjects when Projects row is tapped', async () => {
+    const onProjects = vi.fn()
+    renderView({ onProjects })
+    await userEvent.click(screen.getByText('Projects'))
+    expect(onProjects).toHaveBeenCalledOnce()
   })
 
   it('calls onBookmarks when Bookmarks row is tapped', async () => {

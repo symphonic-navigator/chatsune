@@ -28,3 +28,18 @@ class ProjectDeletedEvent(BaseModel):
     project_id: str
     user_id: str
     timestamp: datetime
+
+
+class ProjectPinnedUpdatedEvent(BaseModel):
+    """Emitted by ``PATCH /api/projects/{id}/pinned``.
+
+    Carries the boolean instead of the whole project so subscribers can
+    flip the pin state in their store without a round-trip — sidebar
+    sort order changes immediately.
+    """
+
+    type: str = "project.pinned.updated"
+    project_id: str
+    user_id: str
+    pinned: bool
+    timestamp: datetime

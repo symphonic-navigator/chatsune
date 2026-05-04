@@ -24,6 +24,11 @@ class UserDocument(BaseModel):
     is_active: bool = True
     must_change_password: bool = False
     recent_emojis: list[str] = Field(default_factory=lambda: list(DEFAULT_RECENT_EMOJIS))
+    # Mindspace: separate LRU for the project emoji-picker. Distinct
+    # from ``recent_emojis`` (which seeds with chat-message defaults)
+    # so the two pickers never bleed into each other. Defaults to
+    # empty — pre-Mindspace users have no project history yet.
+    recent_project_emojis: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 

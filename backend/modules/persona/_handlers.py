@@ -354,6 +354,12 @@ async def update_persona(
     # to null, exclude_none would drop it, so we re-include it here.
     if "vision_fallback_model" in body.model_fields_set:
         fields["vision_fallback_model"] = body.vision_fallback_model
+    # Mindspace: ``default_project_id`` is explicitly clearable. The DTO
+    # comment in ``shared/dtos/persona.py`` already promises we use
+    # ``model_fields_set`` to distinguish 'omitted' from 'explicit null'
+    # — same idiom as ``vision_fallback_model`` above.
+    if "default_project_id" in body.model_fields_set:
+        fields["default_project_id"] = body.default_project_id
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 

@@ -37,6 +37,64 @@ async def remove_library_from_all_personas(
     return await repo.remove_library_from_all_personas(user_id, library_id)
 
 
+async def clear_default_project_for_all(
+    user_id: str, project_id: str,
+) -> list[str]:
+    """Clear ``default_project_id`` on every persona pointing at ``project_id``.
+
+    Returns the list of affected persona ids. Called by the project
+    cascade-delete (both safe-delete and full-purge) so that a deleted
+    project never leaves dangling default-project references on personas.
+    Mindspace Phase 3: in addition to the bulk update, this publishes one
+    ``PERSONA_UPDATED`` event per affected persona so every personas
+    surface (sidebar, persona overview default-project selector,
+    project-detail-overlay personas tab) updates live without a follow-up
+    GET. Event publishing is best-effort — a failure here must not roll
+    back the data write the cascade depends on.
+    """
+    from datetime import datetime, timezone
+
+    from backend.ws.event_bus import get_event_bus
+    from shared.events.persona import PersonaUpdatedEvent
+    from shared.topics import Topics
+
+    db = get_db()
+    repo = PersonaRepository(db)
+    affected_ids = await repo.clear_default_project_for_all(user_id, project_id)
+    if not affected_ids:
+        return []
+
+    event_bus = get_event_bus()
+    now = datetime.now(timezone.utc)
+    for persona_id in affected_ids:
+        doc = await repo.find_by_id(persona_id, user_id)
+        if doc is None:
+            # Persona vanished between bulk update and event emission;
+            # nothing meaningful to publish.
+            continue
+        try:
+            dto = PersonaRepository.to_dto(doc)
+            await event_bus.publish(
+                Topics.PERSONA_UPDATED,
+                PersonaUpdatedEvent(
+                    persona_id=persona_id,
+                    user_id=user_id,
+                    persona=dto,
+                    timestamp=now,
+                ),
+                scope=f"persona:{persona_id}",
+                target_user_ids=[user_id],
+            )
+        except Exception:  # pragma: no cover — emit-side failures logged
+            import structlog
+            structlog.get_logger().warning(
+                "persona_default_project_event_failed",
+                persona_id=persona_id,
+                user_id=user_id,
+            )
+    return affected_ids
+
+
 async def unwire_personas_for_connection(user_id: str, connection_id: str) -> list[str]:
     """Null ``model_unique_id`` on every persona of this user that references
     the given Connection. Returns the list of affected persona IDs.
@@ -98,4 +156,5 @@ __all__ = [
     "cascade_delete_persona",
     "clone_persona",
     "list_persona_ids_for_user",
+    "clear_default_project_for_all",
 ]

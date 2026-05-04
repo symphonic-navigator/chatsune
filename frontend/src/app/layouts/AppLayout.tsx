@@ -34,6 +34,10 @@ import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
+import { useRecentProjectEmojisStore } from "../../features/projects/recentProjectEmojisStore"
+import { useProjectOverlayStore } from "../../features/projects/useProjectOverlayStore"
+import { useProjectsStore } from "../../features/projects/useProjectsStore"
+import { ProjectDetailOverlay } from "../../features/projects/ProjectDetailOverlay"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
 import { useBackButtonClose, startOverlayTransition } from '../../core/hooks/useBackButtonClose'
 
@@ -99,10 +103,31 @@ export default function AppLayout() {
     [allPersonas],
   )
 
-  const filteredSessions = useMemo(
-    () => isSanitised ? sessions.filter((s) => !nsfwPersonaIds.has(s.persona_id)) : sessions,
-    [sessions, isSanitised, nsfwPersonaIds],
+  // Mindspace §6.7: NSFW project IDs feed the HistoryTab "include
+  // project chats" filter — chats whose owning project is NSFW must
+  // disappear when sanitised mode is on. Surfaces that *list* projects
+  // consume ``useFilteredProjects`` directly instead of taking
+  // ``filteredProjects`` via a prop; the hook composes more cleanly
+  // with the dozen sites involved than prop-drilling would.
+  const allProjectsRecord = useProjectsStore((s) => s.projects)
+  const nsfwProjectIds = useMemo(
+    () =>
+      new Set(
+        Object.values(allProjectsRecord)
+          .filter((p) => p.nsfw)
+          .map((p) => p.id),
+      ),
+    [allProjectsRecord],
   )
+
+  const filteredSessions = useMemo(() => {
+    if (!isSanitised) return sessions
+    return sessions.filter(
+      (s) =>
+        !nsfwPersonaIds.has(s.persona_id) &&
+        (!s.project_id || !nsfwProjectIds.has(s.project_id)),
+    )
+  }, [sessions, isSanitised, nsfwPersonaIds, nsfwProjectIds])
   const setUser = useAuthStore((s) => s.setUser)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
@@ -123,8 +148,10 @@ export default function AppLayout() {
     const sub = resolved ?? remembered ?? firstSubOf(top)
     if (adminTab !== null) startOverlayTransition('admin-modal')
     else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
+    else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
     setAdminTab(null)
     setPersonaOverlay(null)
+    closeProjectOverlay()
     setActiveTop(top)
     setActiveSub(sub)
     setModalOpen(true)
@@ -151,14 +178,23 @@ export default function AppLayout() {
   function openAdmin() {
     if (modalOpen) startOverlayTransition('user-modal')
     else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
+    else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
     setModalOpen(false)
     setPersonaOverlay(null)
+    closeProjectOverlay()
     setAdminTab('users')
   }
 
   function closeAdmin() {
     setAdminTab(null)
   }
+
+  // Project-Detail-Overlay state — owned by `useProjectOverlayStore`
+  // so any surface (sidebar, switcher, modal Projects-tab) can open
+  // the same overlay without prop-drilling.
+  const projectOverlayId = useProjectOverlayStore((s) => s.projectId)
+  const projectOverlayTab = useProjectOverlayStore((s) => s.tab)
+  const closeProjectOverlay = useProjectOverlayStore((s) => s.close)
 
   // Persona overlay state
   const [personaOverlay, setPersonaOverlay] = useState<{
@@ -170,11 +206,13 @@ export default function AppLayout() {
     (personaId: string | null, tab: PersonaOverlayTab = "overview") => {
       if (modalOpen) startOverlayTransition('user-modal')
       else if (adminTab !== null) startOverlayTransition('admin-modal')
+      else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
       setModalOpen(false)
       setAdminTab(null)
+      closeProjectOverlay()
       setPersonaOverlay({ personaId, tab })
     },
-    [modalOpen, adminTab],
+    [modalOpen, adminTab, projectOverlayId, closeProjectOverlay],
   )
 
   const closePersonaOverlay = useCallback(() => {
@@ -281,6 +319,28 @@ export default function AppLayout() {
     }
   }, [recentEmojisUpdate])
 
+  // Mindspace: same pattern for the project-emoji LRU. Seeded from the
+  // authenticated user payload, then kept in sync via
+  // USER_RECENT_PROJECT_EMOJIS_UPDATED. The backend does not currently
+  // emit that topic — Phase 5 wires the frontend store only; persistence
+  // and event emission land in a later Mindspace phase. Until then the
+  // subscription is harmlessly idle.
+  useEffect(() => {
+    if (!user) return
+    useRecentProjectEmojisStore.getState().set(user.recent_project_emojis ?? [])
+  }, [user])
+
+  const { latest: recentProjectEmojisUpdate } = useEventBus(
+    Topics.USER_RECENT_PROJECT_EMOJIS_UPDATED,
+  )
+  useEffect(() => {
+    if (!recentProjectEmojisUpdate?.payload) return
+    const emojis = (recentProjectEmojisUpdate.payload as { emojis?: string[] }).emojis
+    if (Array.isArray(emojis)) {
+      useRecentProjectEmojisStore.getState().set(emojis)
+    }
+  }, [recentProjectEmojisUpdate])
+
   // Global Alt+S hotkey: toggles sanitised mode irrespective of which modal
   // or overlay is currently open. We only bow out if the user is actively
   // editing text (input/textarea/contenteditable) so we never hijack typing.
@@ -366,6 +426,7 @@ export default function AppLayout() {
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar
           personas={personas}
+          sessions={sessions}
           onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")}
           hasApiKeyProblem={hasApiKeyProblem}
         />
@@ -390,6 +451,13 @@ export default function AppLayout() {
               activeTab={adminTab}
               onClose={closeAdmin}
               onTabChange={setAdminTab}
+            />
+          )}
+          {projectOverlayId && (
+            <ProjectDetailOverlay
+              projectId={projectOverlayId}
+              initialTab={projectOverlayTab}
+              onClose={closeProjectOverlay}
             />
           )}
           {personaOverlay && (

@@ -42,5 +42,11 @@ class PersonaDocument(BaseModel):
     # ordering. None when the persona has never been chatted with — in
     # that case sort falls back to created_at descending.
     last_used_at: datetime | None = None
+    # Mindspace: optional default project for new chats started from a
+    # neutral trigger point (sidebar pin click, persona overview, etc.).
+    # ``None`` means "no default" — chats land in the global / no-project
+    # bucket. Pre-Mindspace personas lack the field entirely and read
+    # back as ``None``.
+    default_project_id: str | None = None
 
     model_config = {"populate_by_name": True}

@@ -15,6 +15,15 @@ class PersonaRepository:
     async def create_indexes(self) -> None:
         await self._collection.create_index("user_id")
         await self._collection.create_index([("user_id", 1), ("display_order", 1)])
+        # Mindspace: covers "personas with default in project P".
+        # Sparse so personas without a default project don't bloat the
+        # index — most personas will fall in that bucket.
+        await self._collection.create_index(
+            [("user_id", 1), ("default_project_id", 1)],
+            name="user_default_project",
+            sparse=True,
+            background=True,
+        )
 
     async def create(
         self,
@@ -156,6 +165,30 @@ class PersonaRepository:
         )
         return result.modified_count
 
+    async def clear_default_project_for_all(
+        self, user_id: str, project_id: str,
+    ) -> list[str]:
+        """Clear ``default_project_id`` on every persona pointing at ``project_id``.
+
+        Returns the list of affected persona ids so the caller can emit a
+        ``PERSONA_UPDATED`` event per persona that lost its default.
+        Used by the project cascade-delete (both safe-delete and
+        full-purge variants).
+        """
+        cursor = self._collection.find(
+            {"user_id": user_id, "default_project_id": project_id},
+            projection={"_id": 1},
+        )
+        ids = [doc["_id"] async for doc in cursor]
+        if not ids:
+            return []
+        now = datetime.now(UTC)
+        await self._collection.update_many(
+            {"_id": {"$in": ids}},
+            {"$set": {"default_project_id": None, "updated_at": now}},
+        )
+        return ids
+
     async def list_monograms_for_user(
         self, user_id: str, exclude_persona_id: str | None = None,
     ) -> set[str]:
@@ -197,4 +230,7 @@ class PersonaRepository:
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
             last_used_at=doc.get("last_used_at"),
+            # Mindspace: legacy personas lack ``default_project_id``;
+            # ``doc.get`` defaults to ``None`` matching the DTO.
+            default_project_id=doc.get("default_project_id"),
         )

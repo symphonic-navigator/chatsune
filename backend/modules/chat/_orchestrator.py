@@ -192,11 +192,21 @@ def _make_tool_executor(
     correlation_id: str = "",
     connection_id: str | None = None,
     model_slug: str = "",
+    project_lib_ids: list[str] | None = None,
 ):
     """Wrap execute_tool to inject session context and forward the
-    originating WebSocket connection id for client-side tools."""
+    originating WebSocket connection id for client-side tools.
+
+    Mindspace: ``project_lib_ids`` is the third source merged into
+    the knowledge_search effective set, alongside persona + session
+    libraries. The orchestrator reads it once per inference (cheap
+    per-turn lookup against the project module) so library changes
+    on the project become effective on the next turn without any
+    in-process cache invalidation.
+    """
     persona_lib_ids = (persona or {}).get("knowledge_library_ids", [])
     session_lib_ids = session.get("knowledge_library_ids", [])
+    project_lib_ids = list(project_lib_ids or [])
     sanitised = session.get("sanitised", False)
 
     async def _executor(
@@ -210,6 +220,7 @@ def _make_tool_executor(
             args = json.loads(arguments_json)
             args["_persona_library_ids"] = persona_lib_ids
             args["_session_library_ids"] = session_lib_ids
+            args["_project_library_ids"] = project_lib_ids
             args["_sanitised"] = sanitised
             args["_session_id"] = session.get("_id", "")
             # Stitch the chat-stream's correlation id onto the published
@@ -509,6 +520,27 @@ async def run_inference(
     # never from the session.
     persona = await get_persona(persona_id, user_id) if persona_id else None
     model_unique_id = persona.get("model_unique_id", "") if persona else ""
+
+    # Mindspace: when the session belongs to a project, the project's
+    # ``knowledge_library_ids`` are merged with the persona+session
+    # libraries on every knowledge_search call. Read once per inference
+    # — cheap projection-only fetch — so library changes on the project
+    # become effective on the next turn with no in-process cache to
+    # invalidate.
+    project_lib_ids: list[str] = []
+    if session.get("project_id"):
+        from backend.modules import project as project_service
+        try:
+            project_lib_ids = await project_service.get_library_ids(
+                session["project_id"], user_id,
+            )
+        except Exception:
+            # A failure here must not break inference; fall back to the
+            # pre-Mindspace behaviour (no project libraries).
+            _log.exception(
+                "project library lookup failed for session=%s project=%s",
+                session_id, session.get("project_id"),
+            )
 
     if ":" not in model_unique_id:
         _log.error("Invalid model_unique_id format: %s", model_unique_id)
@@ -850,7 +882,10 @@ async def run_inference(
             context_fill_percentage=fill_ratio,
             context_used_tokens=total_tokens_used,
             context_max_tokens=max_context,
-            tool_executor_fn=_make_tool_executor(session, persona, correlation_id, connection_id, model_slug) if active_tools else None,
+            tool_executor_fn=_make_tool_executor(
+                session, persona, correlation_id, connection_id, model_slug,
+                project_lib_ids=project_lib_ids,
+            ) if active_tools else None,
             connection_display_name=connection_display_name,
             model_name=model_slug,
             adapter_type=adapter_type,

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.database import get_db
@@ -282,10 +282,30 @@ global_router = APIRouter(prefix="/api/artefacts", tags=["artefacts"])
 @global_router.get("/")
 async def list_user_artefacts(
     user: dict = Depends(require_active_session),
+    project_id: str | None = Query(default=None),
 ) -> list[ArtefactListItemDto]:
-    """Return every artefact owned by the authenticated user across all sessions."""
+    """Return every artefact owned by the authenticated user across all sessions.
+
+    Mindspace: when ``project_id`` is supplied, the response is scoped
+    to artefacts that live in chat sessions inside that project. The
+    handler resolves project → session ids via the chat module, then
+    filters artefacts to those sessions before doing the existing
+    session/persona enrichment pass.
+    """
     repo = _repo()
-    artefacts = await repo.list_by_user(user["sub"])
+    if project_id is not None:
+        from backend.modules import chat as chat_service
+        session_ids_in_project = await chat_service.list_session_ids_for_project(
+            project_id, user["sub"],
+        )
+        if not session_ids_in_project:
+            return []
+        from backend.modules import artefact as artefact_service
+        artefacts = await artefact_service.list_for_sessions_for_user(
+            session_ids_in_project, user["sub"],
+        )
+    else:
+        artefacts = await repo.list_by_user(user["sub"])
     if not artefacts:
         return []
 

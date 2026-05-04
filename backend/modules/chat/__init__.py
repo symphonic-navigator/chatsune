@@ -128,7 +128,10 @@ async def get_latest_user_messages_for_persona(
     into chat internals.
     """
     repo = ChatRepository(get_db())
-    sessions = await repo.list_sessions(user_id)
+    # Memory extraction is persona-scoped, not project-scoped — project
+    # chats are still part of the persona's memory horizon, so pass
+    # ``exclude_in_projects=False`` here.
+    sessions = await repo.list_sessions(user_id, exclude_in_projects=False)
     persona_sessions = [s for s in sessions if s.get("persona_id") == persona_id]
     if not persona_sessions:
         return None
@@ -189,6 +192,139 @@ async def count_messages_for_persona(user_id: str, persona_id: str) -> int:
     """
     repo = ChatRepository(get_db())
     return await repo.count_messages_for_persona(user_id, persona_id)
+
+
+async def list_session_ids_for_project(
+    project_id: str, user_id: str,
+) -> list[str]:
+    """Return active session ids belonging to ``project_id``.
+
+    Public-API helper used by the project cascade-delete (Phase 2) and
+    the per-project tab endpoints (Phase 3) so other modules don't have
+    to know about the chat schema.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.list_session_ids_for_project(project_id, user_id)
+
+
+async def list_sessions_for_project(
+    project_id: str, user_id: str,
+):
+    """Return ChatSessionDtos for sessions belonging to ``project_id``.
+
+    Public-API helper used by the project-detail-overlay HistoryTab so
+    it can list its sessions without enumerating IDs and re-fetching.
+    Sorted by ``pinned desc, updated_at desc``; soft-deleted sessions
+    are excluded.
+    """
+    repo = ChatRepository(get_db())
+    docs = await repo.list_sessions_for_project(user_id, project_id)
+    return [ChatRepository.session_to_dto(d) for d in docs]
+
+
+async def list_attachment_ids_for_sessions(
+    session_ids: list[str], user_id: str,
+) -> list[str]:
+    """Return every storage-file id referenced by messages in ``session_ids``.
+
+    Walks ``chat_messages.attachment_refs`` and ``attachment_ids`` so
+    the storage module can answer "which files belong to this project?"
+    without reaching into the chat collection directly. The returned
+    list is de-duplicated; ordering is unspecified.
+    """
+    if not session_ids:
+        return []
+    db = get_db()
+    cursor = db["chat_messages"].find(
+        {"session_id": {"$in": session_ids}},
+        projection={"attachment_ids": 1, "attachment_refs": 1, "user_id": 1},
+    )
+    seen: set[str] = set()
+    async for msg in cursor:
+        # Defensive owner check — message rows that lack ``user_id``
+        # belong to the session owner (legacy docs); rows with a
+        # different ``user_id`` are excluded.
+        msg_user = msg.get("user_id")
+        if msg_user is not None and msg_user != user_id:
+            continue
+        for fid in msg.get("attachment_ids") or []:
+            if isinstance(fid, str) and fid:
+                seen.add(fid)
+        for ref in msg.get("attachment_refs") or []:
+            fid = ref.get("file_id") if isinstance(ref, dict) else None
+            if isinstance(fid, str) and fid:
+                seen.add(fid)
+    return list(seen)
+
+
+async def list_image_ids_for_sessions(
+    session_ids: list[str], user_id: str,
+) -> list[str]:
+    """Return every generated-image id referenced by messages in ``session_ids``.
+
+    Walks ``chat_messages.image_refs`` for legacy documents and the
+    ``events`` timeline for new documents (where image refs ride on
+    ``TimelineEntryImage``). The returned list is de-duplicated.
+    """
+    if not session_ids:
+        return []
+    db = get_db()
+    cursor = db["chat_messages"].find(
+        {"session_id": {"$in": session_ids}},
+        projection={"image_refs": 1, "events": 1, "user_id": 1},
+    )
+    seen: set[str] = set()
+    async for msg in cursor:
+        msg_user = msg.get("user_id")
+        if msg_user is not None and msg_user != user_id:
+            continue
+        # Legacy parallel field.
+        for ref in msg.get("image_refs") or []:
+            iid = ref.get("id") if isinstance(ref, dict) else None
+            if isinstance(iid, str) and iid:
+                seen.add(iid)
+        # New-shape timeline.
+        for entry in msg.get("events") or []:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("kind") != "image":
+                continue
+            for ref in entry.get("refs") or []:
+                iid = ref.get("id") if isinstance(ref, dict) else None
+                if isinstance(iid, str) and iid:
+                    seen.add(iid)
+    return list(seen)
+
+
+async def set_session_project(
+    session_id: str, user_id: str, project_id: str | None,
+) -> bool:
+    """Assign or clear a session's project. Returns ``True`` iff modified.
+
+    Used by the project cascade safe-delete (Phase 2) and the in-chat
+    project switcher endpoint (Phase 3). Phase 3 will add the HTTP
+    handler that wraps this call and emits ``CHAT_SESSION_PROJECT_UPDATED``.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.set_session_project(session_id, user_id, project_id)
+
+
+async def delete_session(session_id: str, user_id: str) -> bool:
+    """Soft-delete a session, returning ``True`` iff it was removed.
+
+    Mirrors the existing ``DELETE /api/chat/sessions/{id}`` HTTP handler
+    on the data side: the session is flagged as deleted; the existing
+    cleanup job (``cleanup_soft_deleted_sessions``) hard-deletes it plus
+    its messages, attachments, artefacts, and images an hour later.
+
+    The project cascade full-purge calls this for every session in the
+    project. Event emission stays with the orchestrating caller (the
+    project cascade publishes ``PROJECT_DELETED`` once at the end; per-
+    session events are not required because the project disappears
+    anyway).
+    """
+    repo = ChatRepository(get_db())
+    return await repo.soft_delete_session(session_id, user_id)
 
 
 async def remove_library_from_all_sessions(
@@ -307,4 +443,7 @@ __all__ = [
     "delete_all_for_persona", "list_session_ids_for_persona",
     "count_messages_for_persona", "remove_library_from_all_sessions",
     "bulk_export_for_persona", "bulk_import_for_persona",
+    "list_session_ids_for_project", "list_sessions_for_project",
+    "list_attachment_ids_for_sessions", "list_image_ids_for_sessions",
+    "set_session_project", "delete_session",
 ]

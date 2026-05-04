@@ -58,6 +58,12 @@ export interface PersonaDto {
   // Most recent chat-session creation or resume. Optional for backwards
   // compatibility — sidebar LRU sort falls back to created_at when missing.
   last_used_at?: string | null;
+  // Mindspace: persona's default project for neutral-trigger new
+  // chats (e.g. clicking "Start chat here" from a project's Personas
+  // tab). Backwards-compatible — pre-Mindspace persona documents lack
+  // the field. Mirrors `PersonaDto.default_project_id` in
+  // shared/dtos/persona.py.
+  default_project_id?: string | null;
 }
 
 export interface CreatePersonaRequest {
@@ -94,4 +100,8 @@ export interface UpdatePersonaRequest {
   profile_image?: string | null;
   integration_configs?: Record<string, Record<string, unknown>>;
   voice_config?: PersonaDto['voice_config'];
+  // Mindspace: see PersonaDto.default_project_id for semantics.
+  // Sending `null` clears the default; omitting the field leaves the
+  // persisted value alone (backend distinguishes via model_fields_set).
+  default_project_id?: string | null;
 }

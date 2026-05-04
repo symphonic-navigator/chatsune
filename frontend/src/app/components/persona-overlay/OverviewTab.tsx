@@ -10,6 +10,7 @@ import { triggerBlobDownload } from '../../../core/utils/download'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
 import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { ProfileCrop } from '../../../core/types/persona'
+import { DefaultProjectPicker } from './DefaultProjectPicker'
 import { PersonaCloneDialog } from './PersonaCloneDialog'
 import { ExportPersonaModal } from './ExportPersonaModal'
 
@@ -321,6 +322,12 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
         created {createdDate}
       </p>
 
+      {/* Mindspace: default project for neutral-trigger new chats. The
+          row mirrors the chip-style fields elsewhere in the modal —
+          inline label, button-as-trigger, dropdown picker reusing the
+          same content shape as the chat-top-bar ProjectPicker. */}
+      <DefaultProjectPicker persona={persona} chakra={chakra} />
+
       {/* Persona actions */}
       <div className="w-full max-w-sm flex gap-2">
         <button
@@ -381,3 +388,4 @@ export function OverviewTab({ persona, chakra, onContinue, onNewChat, onNewIncog
     </div>
   )
 }
+

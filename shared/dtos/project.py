@@ -56,10 +56,16 @@ class ProjectDto(BaseModel):
     user_id: str
     title: str
     emoji: str | None
-    description: str
+    # Mindspace: description is optional / nullable. Pre-Mindspace
+    # documents either carry a string or were written with ``""``. Both
+    # round-trip; absent means ``None``.
+    description: str | None = None
     nsfw: bool
     pinned: bool
     sort_order: int
+    # Mindspace: knowledge libraries attached to this project. Defaults
+    # to empty for legacy documents that lack the field entirely.
+    knowledge_library_ids: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -67,8 +73,9 @@ class ProjectDto(BaseModel):
 class ProjectCreateDto(BaseModel):
     title: str
     emoji: str | None = None
-    description: str = ""
+    description: str | None = None
     nsfw: bool = False
+    knowledge_library_ids: list[str] = Field(default_factory=list)
 
     @field_validator("title")
     @classmethod
@@ -82,23 +89,28 @@ class ProjectCreateDto(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def _check_description(cls, v: str) -> str:
+    def _check_description(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         return _validate_description(v)
 
 
 class ProjectUpdateDto(BaseModel):
     """Partial update payload.
 
-    `emoji` uses the `UNSET` sentinel as its default so that callers can
-    distinguish 'field omitted' from 'explicit null clears the emoji'.
+    Several fields use the ``UNSET`` sentinel as their default so callers
+    can distinguish 'field omitted' from 'explicit null clears the field'.
+    Mindspace adds ``knowledge_library_ids`` and aligns ``description`` to
+    the same pattern.
     """
 
     model_config = {"arbitrary_types_allowed": True}
 
     title: str | None = None
     emoji: str | None | _Unset = Field(default=UNSET)
-    description: str | None = None
+    description: str | None | _Unset = Field(default=UNSET)
     nsfw: bool | None = None
+    knowledge_library_ids: list[str] | _Unset = Field(default=UNSET)
 
     @field_validator("title")
     @classmethod
@@ -116,7 +128,27 @@ class ProjectUpdateDto(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def _check_description(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
+    def _check_description(cls, v: Any) -> Any:
+        if isinstance(v, _Unset) or v is None:
+            return v
         return _validate_description(v)
+
+
+class ProjectUsageDto(BaseModel):
+    """Per-project usage counts surfaced by ``GET /api/projects/{id}?include_usage=true``.
+
+    Used by the delete-modal to show what a full-purge would remove.
+    Counts default to zero so callers can rely on the shape regardless
+    of how empty a project is.
+    """
+
+    chat_count: int = 0
+    upload_count: int = 0
+    artefact_count: int = 0
+    image_count: int = 0
+
+
+class ProjectPinnedDto(BaseModel):
+    """Body for ``PATCH /api/projects/{id}/pinned``."""
+
+    pinned: bool

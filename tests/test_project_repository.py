@@ -44,6 +44,10 @@ async def test_find_other_user_returns_none(repo: ProjectRepository):
 
 
 async def test_list_for_user_orders_newest_first(repo: ProjectRepository):
+    # Mindspace: sort is now ``[(pinned, -1), (updated_at, -1)]``. With no
+    # pinned projects the relative order falls back to most-recently-
+    # updated first — for newly created projects that's the same as
+    # "newest first".
     a = await repo.create(user_id="u1", title="A", emoji=None, description="", nsfw=False)
     await asyncio.sleep(0.005)
     b = await repo.create(user_id="u1", title="B", emoji=None, description="", nsfw=False)
@@ -54,6 +58,131 @@ async def test_list_for_user_orders_newest_first(repo: ProjectRepository):
     docs = await repo.list_for_user("u1")
     ids = [d["_id"] for d in docs]
     assert ids == [c["_id"], b["_id"], a["_id"]]
+
+
+async def test_list_for_user_pinned_first_then_updated(repo: ProjectRepository):
+    """Pinned projects always come before unpinned ones, regardless of age."""
+    a = await repo.create(user_id="u1", title="A", emoji=None, description="", nsfw=False)
+    await asyncio.sleep(0.005)
+    b = await repo.create(user_id="u1", title="B", emoji=None, description="", nsfw=False)
+    await asyncio.sleep(0.005)
+    c = await repo.create(user_id="u1", title="C", emoji=None, description="", nsfw=False)
+
+    # Pin the *oldest* — it should still surface first.
+    assert await repo.set_pinned(a["_id"], "u1", True) is True
+
+    docs = await repo.list_for_user("u1")
+    ids = [d["_id"] for d in docs]
+    # ``a`` is pinned and was just touched (set_pinned bumps updated_at),
+    # so it sits first. The remaining two follow in newest-first order.
+    assert ids[0] == a["_id"]
+    assert set(ids[1:]) == {b["_id"], c["_id"]}
+    assert ids[1] == c["_id"]
+    assert ids[2] == b["_id"]
+
+
+async def test_list_for_user_two_pinned_orders_by_updated_at(
+    repo: ProjectRepository,
+):
+    a = await repo.create(user_id="u1", title="A", emoji=None, description="", nsfw=False)
+    await asyncio.sleep(0.005)
+    b = await repo.create(user_id="u1", title="B", emoji=None, description="", nsfw=False)
+    await asyncio.sleep(0.005)
+    await repo.set_pinned(a["_id"], "u1", True)
+    await asyncio.sleep(0.005)
+    await repo.set_pinned(b["_id"], "u1", True)
+    docs = await repo.list_for_user("u1")
+    ids = [d["_id"] for d in docs]
+    # Both pinned, b's updated_at is newer → first.
+    assert ids == [b["_id"], a["_id"]]
+
+
+async def test_get_library_ids_returns_field(repo: ProjectRepository):
+    doc = await repo.create(
+        user_id="u1", title="x", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-a", "lib-b"],
+    )
+    assert await repo.get_library_ids(doc["_id"], "u1") == ["lib-a", "lib-b"]
+
+
+async def test_get_library_ids_missing_project_returns_empty(
+    repo: ProjectRepository,
+):
+    assert await repo.get_library_ids("nonexistent", "u1") == []
+
+
+async def test_get_library_ids_wrong_user_returns_empty(repo: ProjectRepository):
+    doc = await repo.create(
+        user_id="u1", title="x", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-a"],
+    )
+    assert await repo.get_library_ids(doc["_id"], "u2") == []
+
+
+async def test_remove_library_from_all_projects(repo: ProjectRepository):
+    a = await repo.create(
+        user_id="u1", title="A", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-a", "lib-b"],
+    )
+    b = await repo.create(
+        user_id="u1", title="B", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-a"],
+    )
+    c = await repo.create(
+        user_id="u1", title="C", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-b"],
+    )
+
+    modified = await repo.remove_library_from_all_projects("lib-a")
+    assert modified == 2
+    assert await repo.get_library_ids(a["_id"], "u1") == ["lib-b"]
+    assert await repo.get_library_ids(b["_id"], "u1") == []
+    # Untouched project is unchanged.
+    assert await repo.get_library_ids(c["_id"], "u1") == ["lib-b"]
+
+
+async def test_remove_library_from_all_projects_no_match_is_noop(
+    repo: ProjectRepository,
+):
+    a = await repo.create(
+        user_id="u1", title="A", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-a"],
+    )
+    modified = await repo.remove_library_from_all_projects("lib-not-attached")
+    assert modified == 0
+    assert await repo.get_library_ids(a["_id"], "u1") == ["lib-a"]
+
+
+async def test_set_pinned_toggles(repo: ProjectRepository):
+    doc = await repo.create(
+        user_id="u1", title="x", emoji=None, description="", nsfw=False,
+    )
+    assert doc["pinned"] is False
+
+    assert await repo.set_pinned(doc["_id"], "u1", True) is True
+    refreshed = await repo.find_by_id(doc["_id"], "u1")
+    assert refreshed is not None
+    assert refreshed["pinned"] is True
+    assert refreshed["updated_at"] >= doc["updated_at"]
+
+    assert await repo.set_pinned(doc["_id"], "u1", False) is True
+    refreshed = await repo.find_by_id(doc["_id"], "u1")
+    assert refreshed is not None
+    assert refreshed["pinned"] is False
+
+
+async def test_set_pinned_unknown_project_returns_false(repo: ProjectRepository):
+    assert await repo.set_pinned("nonexistent", "u1", True) is False
+
+
+async def test_set_pinned_other_user_returns_false(repo: ProjectRepository):
+    doc = await repo.create(
+        user_id="u1", title="x", emoji=None, description="", nsfw=False,
+    )
+    assert await repo.set_pinned(doc["_id"], "u2", True) is False
+    refreshed = await repo.find_by_id(doc["_id"], "u1")
+    assert refreshed is not None
+    assert refreshed["pinned"] is False
 
 
 async def test_update_partial_preserves_other_fields(repo: ProjectRepository):

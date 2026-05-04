@@ -89,6 +89,10 @@ class PersonaDto(BaseModel):
     # that have never been chatted with — sidebar LRU sort then falls
     # back to created_at descending. Backwards-compatible.
     last_used_at: datetime | None = None
+    # Mindspace: optional default project for new chats from neutral
+    # trigger points. ``None`` means no default. Backwards-compatible —
+    # pre-Mindspace persona documents lack the field.
+    default_project_id: str | None = None
 
 
 class CreatePersonaDto(BaseModel):
@@ -136,3 +140,9 @@ class UpdatePersonaDto(BaseModel):
     # opted into. See ``PersonaDto.integrations_config`` for semantics.
     integrations_config: PersonaIntegrationConfigDto | None = None
     voice_config: VoiceConfigDto | None = None
+    # Mindspace: persona's default project for neutral-trigger new
+    # chats. ``None`` clears the default; field omitted leaves the
+    # persisted value alone. The handler distinguishes both via
+    # ``model_fields_set``, mirroring the ``vision_fallback_model``
+    # idiom — see backend/modules/persona/_handlers.py:355.
+    default_project_id: str | None = None

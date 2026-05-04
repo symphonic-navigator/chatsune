@@ -217,6 +217,21 @@ class ChatSessionPinnedUpdatedEvent(BaseModel):
     timestamp: datetime
 
 
+class ChatSessionProjectUpdatedEvent(BaseModel):
+    """Mindspace: a session was assigned to (or detached from) a project.
+
+    Carries the new ``project_id`` (``None`` = detached, returned to
+    global history) so subscribers can re-classify the session in the
+    sidebar / HistoryTab without a follow-up REST call.
+    """
+
+    type: str = "chat.session.project.updated"
+    session_id: str
+    project_id: str | None
+    user_id: str
+    timestamp: datetime
+
+
 class ChatVisionDescriptionEvent(BaseModel):
     type: str = "chat.vision.description"
     correlation_id: str

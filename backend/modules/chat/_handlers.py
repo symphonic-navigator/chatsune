@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
-from shared.dtos.chat import ChatMessagesBundleDto
+from shared.dtos.chat import ChatMessagesBundleDto, SessionProjectUpdateDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
@@ -20,6 +20,7 @@ from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
     ChatSessionPinnedUpdatedEvent,
+    ChatSessionProjectUpdatedEvent,
     ChatSessionRestoredEvent,
     ChatSessionTitleUpdatedEvent,
     ChatSessionTogglesUpdatedEvent,
@@ -35,6 +36,14 @@ def _chat_repo() -> ChatRepository:
 
 class CreateSessionRequest(BaseModel):
     persona_id: str
+    # Mindspace: when the persona has a default project AND the trigger
+    # is neutral (sidebar pin, persona overlay "New chat", PersonasTab
+    # "Start chat"), the frontend forwards the persona's
+    # ``default_project_id`` so the new session lands inside that
+    # project from the very first turn. Optional and nullable —
+    # context-bound triggers (project-detail-overlay) keep using the
+    # subsequent ``PATCH /sessions/{id}/project`` flow.
+    project_id: str | None = None
 
 
 @router.post("/sessions", status_code=201)
@@ -59,6 +68,7 @@ async def create_session(
         persona_id=persona["_id"],
         tools_enabled=toggle_defaults["tools_enabled"],
         auto_read=toggle_defaults["auto_read"],
+        project_id=body.project_id,
     )
     dto = ChatRepository.session_to_dto(doc)
 
@@ -114,9 +124,31 @@ async def create_session(
 
 
 @router.get("/sessions")
-async def list_sessions(user: dict = Depends(require_active_session)):
+async def list_sessions(
+    project_id: str | None = Query(default=None),
+    include_project_chats: bool = Query(default=False),
+    user: dict = Depends(require_active_session),
+):
+    """List the user's chat sessions.
+
+    Mindspace:
+      - Default behaviour (no params) excludes project-bound sessions
+        — the Sidebar / global HistoryTab show only out-of-project
+        chats, matching the pre-Mindspace experience.
+      - ``include_project_chats=true`` returns every session including
+        project-bound ones. Used by the UserModal HistoryTab "Include
+        project chats" toggle.
+      - ``project_id=<id>`` returns only sessions belonging to that
+        project (and ignores ``include_project_chats``). Used by the
+        Project-Detail-Overlay Chats tab.
+    """
     repo = _chat_repo()
-    docs = await repo.list_sessions(user["sub"])
+    if project_id is not None:
+        docs = await repo.list_sessions_for_project(user["sub"], project_id)
+    else:
+        docs = await repo.list_sessions(
+            user["sub"], exclude_in_projects=not include_project_chats,
+        )
     return [ChatRepository.session_to_dto(d) for d in docs]
 
 
@@ -399,6 +431,48 @@ async def update_session_pinned(
         scope=f"session:{session_id}",
         target_user_ids=[user["sub"]],
         correlation_id=correlation_id,
+    )
+
+    doc = await repo.get_session(session_id, user["sub"])
+    return ChatRepository.session_to_dto(doc)
+
+
+@router.patch("/sessions/{session_id}/project")
+async def update_session_project(
+    session_id: str,
+    body: SessionProjectUpdateDto,
+    user: dict = Depends(require_active_session),
+):
+    """Mindspace: assign or clear a session's owning project.
+
+    Body: ``{"project_id": "<id>"}`` to assign, ``{"project_id": null}``
+    to detach (returns the session to the global history bucket). The
+    HTTP method is PATCH because only the project field changes; other
+    session attributes are untouched.
+
+    Emits ``CHAT_SESSION_PROJECT_UPDATED`` carrying the new
+    ``project_id`` so the sidebar / HistoryTab can re-classify the
+    session live without a follow-up GET.
+    """
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await repo.set_session_project(session_id, user["sub"], body.project_id)
+
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_PROJECT_UPDATED,
+        ChatSessionProjectUpdatedEvent(
+            session_id=session_id,
+            project_id=body.project_id,
+            user_id=user["sub"],
+            timestamp=now,
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
     )
 
     doc = await repo.get_session(session_id, user["sub"])

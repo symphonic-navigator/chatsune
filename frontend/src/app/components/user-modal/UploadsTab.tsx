@@ -84,7 +84,15 @@ async function downloadFile(fileId: string, filename: string) {
 
 type PersonaFilter = 'all' | 'none' | string
 
-export function UploadsTab() {
+interface UploadsTabProps {
+  /**
+   * Mindspace: when set, the tab scopes to a single project's
+   * uploads. Phase 9 / spec §6.5 Tab 4.
+   */
+  projectFilter?: string
+}
+
+export function UploadsTab({ projectFilter }: UploadsTabProps = {}) {
   const [files, setFiles] = useState<StorageFileDto[]>([])
   const [quota, setQuota] = useState<StorageQuotaDto | null>(null)
   const [loading, setLoading] = useState(true)
@@ -130,7 +138,11 @@ export function UploadsTab() {
   const fetchData = useCallback(async (sort?: SortBy, order?: SortOrder) => {
     try {
       const [fileList, quotaData] = await Promise.all([
-        storageApi.listFiles({ sort_by: sort ?? sortBy, order: order ?? sortOrder }),
+        storageApi.listFiles({
+          sort_by: sort ?? sortBy,
+          order: order ?? sortOrder,
+          project_id: projectFilter,
+        }),
         storageApi.getQuota(),
       ])
       setFiles(fileList)
@@ -141,7 +153,7 @@ export function UploadsTab() {
     } finally {
       setLoading(false)
     }
-  }, [sortBy, sortOrder])
+  }, [sortBy, sortOrder, projectFilter])
 
   useEffect(() => {
     fetchData()

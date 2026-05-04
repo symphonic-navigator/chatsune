@@ -28,6 +28,13 @@ interface ChatSessionDto {
   auto_read: boolean
   reasoning_override: boolean | null
   pinned: boolean
+  /**
+   * Mindspace: optional owning project. ``null`` means the session
+   * belongs to no project (the legacy / global-history bucket). Mirrors
+   * the backend ``ChatSessionDto.project_id`` field — see
+   * ``shared/dtos/chat.py``.
+   */
+  project_id: string | null
   created_at: string
   updated_at: string
 }
@@ -167,11 +174,30 @@ export type {
 }
 
 export const chatApi = {
-  createSession: (personaId: string) =>
-    api.post<ChatSessionDto>("/api/chat/sessions", { persona_id: personaId }),
+  /**
+   * Create a new chat session for ``personaId``.
+   *
+   * Mindspace: pass ``projectId`` to drop the new session straight into a
+   * project. Used by the neutral-trigger flow (sidebar persona pin, persona
+   * overlay "New chat", PersonasTab "Start chat") when the persona has a
+   * ``default_project_id``. ``null`` / undefined leaves the session in the
+   * global-history bucket.
+   */
+  createSession: (personaId: string, projectId?: string | null) => {
+    const body: { persona_id: string; project_id?: string | null } = {
+      persona_id: personaId,
+    }
+    if (projectId !== undefined) body.project_id = projectId
+    return api.post<ChatSessionDto>("/api/chat/sessions", body)
+  },
 
-  listSessions: () =>
-    api.get<ChatSessionDto[]>("/api/chat/sessions"),
+  listSessions: (params?: { project_id?: string; include_project_chats?: boolean }) => {
+    const query = new URLSearchParams()
+    if (params?.project_id) query.set("project_id", params.project_id)
+    if (params?.include_project_chats) query.set("include_project_chats", "true")
+    const qs = query.toString()
+    return api.get<ChatSessionDto[]>(`/api/chat/sessions${qs ? `?${qs}` : ""}`)
+  },
 
   searchSessions: (params: {
     q: string

@@ -227,6 +227,15 @@ class ChatRepository:
     async def create_indexes(self) -> None:
         await self._sessions.create_index("user_id")
         await self._sessions.create_index([("user_id", 1), ("updated_at", -1)])
+        # Mindspace: covers "sessions in project X", "sessions outside
+        # any project" and "list global history" queries efficiently.
+        # Idempotent — Mongo's create_index is a no-op when the spec
+        # matches an existing index (named or unnamed).
+        await self._sessions.create_index(
+            [("user_id", 1), ("project_id", 1), ("updated_at", -1)],
+            name="user_project_updated",
+            background=True,
+        )
         await self._messages.create_index("session_id")
         await self._messages.create_index([("session_id", 1), ("created_at", 1)])
         await self._messages.create_index(
@@ -249,7 +258,17 @@ class ChatRepository:
         *,
         tools_enabled: bool = False,
         auto_read: bool = False,
+        project_id: str | None = None,
     ) -> dict:
+        """Create a new chat session.
+
+        Mindspace: ``project_id`` lets the caller drop the new session
+        straight into a project. Used by the neutral-trigger flow where
+        the persona has a ``default_project_id``; the value is written
+        as-is so existing read-paths (``list_sessions``,
+        ``list_sessions_for_project``) pick the session up immediately.
+        Pass ``None`` (default) for the global-history bucket.
+        """
         now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
@@ -259,6 +278,7 @@ class ChatRepository:
             "tools_enabled": tools_enabled,
             "auto_read": auto_read,
             "reasoning_override": None,
+            "project_id": project_id,
             "created_at": now,
             "updated_at": now,
         }
@@ -268,10 +288,28 @@ class ChatRepository:
     async def get_session(self, session_id: str, user_id: str) -> dict | None:
         return await self._sessions.find_one({"_id": session_id, "user_id": user_id, "deleted_at": None})
 
-    async def list_sessions(self, user_id: str) -> list[dict]:
-        """Return sessions that have at least one message, sorted by updated_at desc."""
+    async def list_sessions(
+        self, user_id: str, *, exclude_in_projects: bool = True,
+    ) -> list[dict]:
+        """Return sessions that have at least one message, sorted by updated_at desc.
+
+        Mindspace: by default ``exclude_in_projects=True`` hides every
+        session that belongs to a project so the global history list
+        stays focussed on chats the user has not filed away. The
+        UserModal HistoryTab "Include project chats" toggle flips this
+        flag to ``False`` when the user opts in. Pre-Mindspace sessions
+        carry no ``project_id`` field at all and always pass through —
+        the ``$or`` clause covers both the explicit-null and
+        field-missing cases.
+        """
+        match: dict = {"user_id": user_id, "deleted_at": None}
+        if exclude_in_projects:
+            match["$or"] = [
+                {"project_id": None},
+                {"project_id": {"$exists": False}},
+            ]
         pipeline = [
-            {"$match": {"user_id": user_id, "deleted_at": None}},
+            {"$match": match},
             {"$lookup": {
                 "from": "chat_messages",
                 "localField": "_id",
@@ -285,6 +323,25 @@ class ChatRepository:
             {"$limit": 200},
         ]
         return await self._sessions.aggregate(pipeline).to_list(length=200)
+
+    async def list_sessions_for_project(
+        self, user_id: str, project_id: str,
+    ) -> list[dict]:
+        """Return active sessions belonging to ``project_id``, sorted by recency.
+
+        Used by the project-detail-overlay HistoryTab and any other
+        per-project listing surface. Only non-deleted sessions are
+        returned; soft-deleted sessions are excluded for symmetry with
+        :meth:`list_sessions`.
+        """
+        cursor = self._sessions.find(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "deleted_at": None,
+            },
+        ).sort([("pinned", -1), ("updated_at", -1)])
+        return await cursor.to_list(length=500)
 
     async def find_sessions_by_ids(self, session_ids: list[str], user_id: str) -> list[dict]:
         """Return raw session docs for the given ids that belong to the user. Soft-deleted included."""
@@ -528,6 +585,43 @@ class ChatRepository:
         await self._sessions.delete_many({"_id": {"$in": ids}})
         await self._messages.delete_many({"session_id": {"$in": ids}})
         return [(doc["_id"], doc["user_id"]) for doc in docs]
+
+    async def list_session_ids_for_project(
+        self, project_id: str, user_id: str,
+    ) -> list[str]:
+        """Return every session ``_id`` belonging to ``project_id``.
+
+        Excludes soft-deleted sessions — the cascade only acts on
+        active sessions; soft-deleted ones are already on their way out
+        via the cleanup job. Used by the project cascade-delete and the
+        per-project HistoryTab/UploadsTab/ArtefactsTab/ImagesTab list
+        endpoints (Phase 3).
+        """
+        cursor = self._sessions.find(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "deleted_at": None,
+            },
+            projection={"_id": 1},
+        )
+        return [doc["_id"] async for doc in cursor]
+
+    async def set_session_project(
+        self, session_id: str, user_id: str, project_id: str | None,
+    ) -> bool:
+        """Assign or detach a session's project. Returns ``True`` iff modified.
+
+        Used by the project cascade safe-delete (which detaches every
+        session by setting ``project_id=None``) and by the in-chat project
+        switcher endpoint (Phase 3).
+        """
+        now = datetime.now(UTC)
+        result = await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id},
+            {"$set": {"project_id": project_id, "updated_at": now}},
+        )
+        return result.modified_count > 0
 
     async def delete_by_persona(self, user_id: str, persona_id: str) -> int:
         """Hard-delete all sessions and their messages for a persona."""
@@ -822,6 +916,10 @@ class ChatRepository:
             auto_read=doc.get("auto_read", False),
             reasoning_override=doc.get("reasoning_override"),
             pinned=doc.get("pinned", False),
+            # Mindspace: legacy session documents lack ``project_id``;
+            # ``doc.get`` defaults to ``None`` which matches the DTO
+            # default.
+            project_id=doc.get("project_id"),
             context_status=doc.get("context_status", "green"),
             context_fill_percentage=float(doc.get("context_fill_percentage", 0.0)),
             context_used_tokens=int(doc.get("context_used_tokens", 0)),

@@ -12,9 +12,14 @@ import { startOverlayTransition } from "../../../core/hooks/useBackButtonClose"
 import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
+import { ProjectSidebarItem } from "./ProjectSidebarItem"
+import { useFilteredPinnedProjects } from "../../../features/projects/useProjectsStore"
+import { projectsApi } from "../../../features/projects/projectsApi"
+import { useProjectOverlayStore } from "../../../features/projects/useProjectOverlayStore"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
 import { MobileMainView } from './MobileMainView'
 import { MobileNewChatView } from './MobileNewChatView'
+import { MobileProjectsView } from './MobileProjectsView'
 import { HistoryTab } from '../user-modal/HistoryTab'
 import { BookmarksTab } from '../user-modal/BookmarksTab'
 import type { PersonaDto } from "../../../core/types/persona"
@@ -24,6 +29,8 @@ import { ActionBlock } from './ActionBlock'
 import { ZoneSection } from './ZoneSection'
 import { FooterBlock } from './FooterBlock'
 import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
+import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
+import { DeleteProjectModal } from '../../../features/projects/DeleteProjectModal'
 import { sortPersonas } from './personaSort'
 import { getLastMyDataSubpage } from '../user-modal/myDataMemory'
 import { BookmarkIcon, CollegeIcon, FoxIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
@@ -122,8 +129,17 @@ export function Sidebar({
   // is a one-line widening rather than reshaping every callsite.
   const [flyoutTab, setFlyoutTab] = useState<'history' | null>(null)
 
-  type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks'
+  type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks' | 'projects'
   const [mobileView, setMobileView] = useState<MobileView>('main')
+
+  const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  // Mindspace Phase 12: delete-project modal state. Owned by the
+  // sidebar so the same modal serves both context-menu deletes (this
+  // file) and the Project-Detail-Overlay danger zone (which mounts its
+  // own copy directly). Kept local rather than in a shared store —
+  // unlike the project-detail overlay, the delete modal needs no
+  // cross-surface coordination.
+  const [deleteProject, setDeleteProject] = useState<{ id: string; title: string } | null>(null)
 
   // Reset to main when the drawer is closed (so next open lands on main view).
   useEffect(() => {
@@ -149,6 +165,10 @@ export function Sidebar({
     () => sortPersonas(personas),
     [personas],
   )
+
+  // Mindspace §6.7: pinned projects in sanitised mode hide NSFW
+  // projects across every sidebar render path.
+  const pinnedProjects = useFilteredPinnedProjects()
 
   const sortedSessions = useMemo(() => {
     const pinned = sessions.filter((s) => s.pinned)
@@ -303,6 +323,48 @@ export function Sidebar({
     }
   }
 
+  // ── Project handlers ─────────────────────────────────────────────────
+  // The detail-overlay (Phase 9) and create-modal (Phase 7) are wired
+  // here. The delete-modal placeholder remains a Phase-12 stub.
+
+  function handleOpenProject(projectId: string) {
+    closeDrawerIfMobile()
+    useProjectOverlayStore.getState().open(projectId)
+  }
+
+  function handleEditProject(projectId: string) {
+    closeDrawerIfMobile()
+    useProjectOverlayStore.getState().open(projectId, 'overview')
+  }
+
+  function handleDeleteProject(projectId: string) {
+    closeDrawerIfMobile()
+    const project = pinnedProjects.find((p) => p.id === projectId)
+    setDeleteProject({
+      id: projectId,
+      title: project?.title ?? 'Untitled project',
+    })
+  }
+
+  function handleOpenProjectCreateModal() {
+    closeDrawerIfMobile()
+    setCreateProjectOpen(true)
+  }
+
+  async function handleToggleProjectPin(projectId: string, pinned: boolean) {
+    try {
+      await projectsApi.setPinned(projectId, pinned)
+      // No optimistic update needed: useProjectsStore subscribes to
+      // PROJECT_PINNED_UPDATED and reconciles when the event arrives.
+    } catch {
+      addNotification({
+        level: 'error',
+        title: pinned ? 'Pin failed' : 'Unpin failed',
+        message: 'Could not update the project pin state.',
+      })
+    }
+  }
+
   const isTabActive = (leaf: string): boolean => {
     if (activeModalTop === null) return false
     if (activeModalSub === leaf) return true           // sub-tab match
@@ -320,9 +382,36 @@ export function Sidebar({
   const displayName = user?.display_name || user?.username || 'Unnamed User'
   const initial = displayName.charAt(0).toUpperCase()
 
+  // The Project-Create-Modal lives in the React tree alongside the
+  // sidebar so the empty-state "+ Create project" tap can summon it
+  // from any of the three sidebar render paths (collapsed / mobile /
+  // desktop). Sheet uses a portal under the hood, so the JSX
+  // location only matters for state ownership, not visual layering.
+  const projectCreateModal = (
+    <ProjectCreateModal
+      isOpen={createProjectOpen}
+      onClose={() => setCreateProjectOpen(false)}
+      onCreated={() => setCreateProjectOpen(false)}
+    />
+  )
+
+  // Same trick for the delete-project modal. Mounted unconditionally
+  // so the Sheet's transition is always available; ``isOpen`` flips
+  // when ``deleteProject`` is non-null. ``onClose`` clears the
+  // local state — the project store reconciles via ``PROJECT_DELETED``.
+  const projectDeleteModal = deleteProject ? (
+    <DeleteProjectModal
+      isOpen={true}
+      projectId={deleteProject.id}
+      projectTitle={deleteProject.title}
+      onClose={() => setDeleteProject(null)}
+    />
+  ) : null
+
   // ── Collapsed view ──────────────────────────────────────────────
   if (renderCollapsed) {
     return (
+      <>
       <aside className="flex h-full w-[50px] flex-shrink-0 flex-col items-center border-r border-white/6 bg-base py-2 gap-0.5">
         {/* Logo — expand */}
         <button
@@ -520,6 +609,9 @@ export function Sidebar({
 
         {/* Projects flyout hidden — feature not yet ready (see FOR_LATER.md) */}
       </aside>
+      {projectCreateModal}
+      {projectDeleteModal}
+      </>
     )
   }
 
@@ -536,9 +628,19 @@ export function Sidebar({
       mobileView === 'new-chat'  ? 'New Chat'  :
       mobileView === 'history'   ? 'History'   :
       mobileView === 'bookmarks' ? 'Bookmarks' :
+      mobileView === 'projects'  ? 'Projects'  :
       undefined
 
+    function handleMobileProjectSelect(projectId: string) {
+      // Close the drawer first, then route into the (still-pending)
+      // Project-Detail-Overlay. The desktop equivalent does the same
+      // via `handleOpenProject`.
+      setMobileView('main')
+      handleOpenProject(projectId)
+    }
+
     return (
+      <>
       <aside
         className={[
           'fixed inset-y-0 left-0 z-40 flex h-full w-full flex-col overflow-hidden border-r border-white/6 bg-base transition-transform duration-200 ease-out',
@@ -573,6 +675,7 @@ export function Sidebar({
                 onContinue={handleContinue}
                 onNewChat={() => setMobileView('new-chat')}
                 onPersonas={handlePersonas}
+                onProjects={() => setMobileView('projects')}
                 onHistory={() => setMobileView('history')}
                 onBookmarks={() => setMobileView('bookmarks')}
                 onKnowledge={handleKnowledge}
@@ -588,15 +691,20 @@ export function Sidebar({
               {mobileView === 'new-chat'  && <MobileNewChatView personas={personas} onSelect={handleNewChatFromMobileOverlay} onClose={closeOverlayAndDrawer} />}
               {mobileView === 'history'   && <HistoryTab   onClose={closeOverlayAndDrawer} />}
               {mobileView === 'bookmarks' && <BookmarksTab onClose={closeOverlayAndDrawer} />}
+              {mobileView === 'projects'  && <MobileProjectsView onSelect={handleMobileProjectSelect} />}
             </div>
           </div>
         </div>
       </aside>
+      {projectCreateModal}
+      {projectDeleteModal}
+      </>
     )
   }
 
   // ── Desktop expanded view ──────────────────────────────────────────────
   return (
+    <>
     <aside
       className={[
         // Mobile / tablet: off-canvas drawer. Transform slides it in from
@@ -704,14 +812,31 @@ export function Sidebar({
           <ZoneSection
             zone="projects"
             title="Projects"
-            onOpenPage={() => {/* deferred to Projects feature */}}
-            itemCount={0}
+            onOpenPage={() => openModalAndClose('projects')}
+            itemCount={pinnedProjects.length}
+            itemHeight={32}
             emptyState={{
-              label: 'No projects yet · Create one →',
-              onClick: () => {/* deferred to Projects feature */},
+              label: 'No pinned projects · Create one →',
+              onClick: handleOpenProjectCreateModal,
             }}
           >
-            {() => null /* Projects rendering deferred to the Projects feature. */}
+            {(visibleCount) => {
+              const visible = pinnedProjects.slice(0, visibleCount)
+              return (
+                <>
+                  {visible.map((p) => (
+                    <ProjectSidebarItem
+                      key={p.id}
+                      project={p}
+                      onOpen={handleOpenProject}
+                      onEdit={handleEditProject}
+                      onDelete={handleDeleteProject}
+                      onTogglePin={handleToggleProjectPin}
+                    />
+                  ))}
+                </>
+              )
+            }}
           </ZoneSection>
         )}
 
@@ -781,5 +906,8 @@ export function Sidebar({
       />
 
     </aside>
+    {projectCreateModal}
+    {projectDeleteModal}
+    </>
   )
 }

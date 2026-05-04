@@ -62,6 +62,7 @@ async def cascade_delete_library(
     # and to ensure we always go through the owning modules' public APIs.
     from backend.modules.chat import remove_library_from_all_sessions
     from backend.modules.persona import remove_library_from_all_personas
+    from backend.modules.project import remove_library_from_all_projects
 
     repo = KnowledgeRepository(get_db())
     library = await repo.get_library(library_id, user_id)
@@ -111,7 +112,22 @@ async def cascade_delete_library(
         warnings=session_warnings,
     ))
 
-    # Step 4: report the library document itself.
+    # Step 4: project n:m link cleanup (Mindspace).
+    # Library ids are global, not user-scoped, so the project public API
+    # takes only ``library_id``. The same library cannot be wired into
+    # another user's projects without ownership leakage at the persona /
+    # session layers, so the global pull is safe.
+    project_links_removed, project_warnings = await _safe_call(
+        "project reference cleanup",
+        remove_library_from_all_projects(library_id),
+    )
+    steps.append(DeletionStepDto(
+        label="project references unlinked",
+        deleted_count=project_links_removed or 0,
+        warnings=project_warnings,
+    ))
+
+    # Step 5: report the library document itself.
     steps.append(DeletionStepDto(
         label="library document",
         deleted_count=1 if library_deleted else 0,
@@ -130,9 +146,9 @@ async def cascade_delete_library(
     _log.info(
         "cascade_delete_library.done user_id=%s library_id=%s "
         "documents=%d chunks=%d persona_refs=%d session_refs=%d "
-        "library_deleted=%s warnings=%d",
+        "project_refs=%d library_deleted=%s warnings=%d",
         user_id, library_id, documents_deleted, chunks_deleted,
         persona_links_removed or 0, session_links_removed or 0,
-        library_deleted, report.total_warnings,
+        project_links_removed or 0, library_deleted, report.total_warnings,
     )
     return library_deleted, report

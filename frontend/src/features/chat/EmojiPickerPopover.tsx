@@ -12,6 +12,13 @@ async function loadEmojiData() {
 interface Props {
   onSelect: (emoji: string) => void
   onClose: () => void
+  /**
+   * Optional override for the LRU strip at the top of the picker.
+   * Defaults to the message-emoji store. The project create / edit
+   * modals use this to surface ``recent_project_emojis`` instead, so
+   * the message and project pickers each maintain their own recency.
+   */
+  recentEmojis?: string[]
 }
 
 function PickerSkeleton() {
@@ -20,9 +27,10 @@ function PickerSkeleton() {
   )
 }
 
-export function EmojiPickerPopover({ onSelect, onClose }: Props) {
+export function EmojiPickerPopover({ onSelect, onClose, recentEmojis }: Props) {
   const { isMobile } = useViewport()
-  const recent = useRecentEmojisStore((s) => s.emojis)
+  const messageRecent = useRecentEmojisStore((s) => s.emojis)
+  const recent = recentEmojis ?? messageRecent
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Outside click closes

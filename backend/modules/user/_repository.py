@@ -203,4 +203,8 @@ class UserRepository:
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
             recent_emojis=doc.get("recent_emojis") or list(DEFAULT_RECENT_EMOJIS),
+            # Mindspace: legacy users lack ``recent_project_emojis``;
+            # ``doc.get`` defaults to ``None`` and ``or []`` produces
+            # the empty-list default.
+            recent_project_emojis=list(doc.get("recent_project_emojis") or []),
         )

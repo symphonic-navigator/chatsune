@@ -6,12 +6,17 @@ import { meApi } from "../api/meApi"
 import { disconnect } from "../websocket/connection"
 import { logout as coordinatorLogout } from "../auth/logoutCoordinator"
 import { useIntegrationsStore } from "../../features/integrations/store"
+import { useProjectsStore } from "../../features/projects/useProjectsStore"
 import type { LoginRequest, SetupRequest } from "../types/auth"
 
 export type { LoginResult, SetupResult }
 
 function loadAuthenticatedIntegrationState(): void {
   void useIntegrationsStore.getState().load()
+  // Mindspace: keep parity with useBootstrap — fresh logins must also
+  // hydrate the projects store so the sidebar and UserModal have data
+  // ready before they mount.
+  void useProjectsStore.getState().load()
 }
 
 export function useAuth() {

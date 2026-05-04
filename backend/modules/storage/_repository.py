@@ -96,6 +96,44 @@ class StorageRepository:
         cursor = self._col.find({"_id": {"$in": file_ids}, "user_id": user_id})
         return await cursor.to_list(length=len(file_ids))
 
+    async def list_by_ids_sorted(
+        self,
+        file_ids: list[str],
+        user_id: str,
+        *,
+        sort_by: str = "date",
+        order: str = "desc",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Return a sorted/paginated slice of files by id, scoped to user.
+
+        Mindspace: used by the project-filtered ``list_files`` endpoint
+        which first asks chat for the project's session ids, then resolves
+        them to the storage-file ids referenced by those sessions, and
+        finally asks for a sorted page of those files. Empty input → empty
+        list (skip the round-trip).
+        """
+        if not file_ids:
+            return []
+        sort_field = "created_at" if sort_by == "date" else "size_bytes"
+        sort_dir = DESCENDING if order == "desc" else ASCENDING
+        cursor = (
+            self._col.find({"_id": {"$in": file_ids}, "user_id": user_id})
+            .sort(sort_field, sort_dir)
+            .skip(offset)
+            .limit(limit)
+        )
+        return await cursor.to_list(length=limit)
+
+    async def count_by_ids(self, file_ids: list[str], user_id: str) -> int:
+        """Count files in the supplied id set that belong to ``user_id``."""
+        if not file_ids:
+            return 0
+        return await self._col.count_documents(
+            {"_id": {"$in": file_ids}, "user_id": user_id},
+        )
+
     async def get_vision_description(
         self, file_id: str, user_id: str, model_id: str,
     ) -> str | None:

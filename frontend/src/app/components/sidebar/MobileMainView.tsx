@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BookmarkIcon, CollegeIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
+import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
 
 interface MobileMainViewProps {
   isAdmin: boolean
@@ -15,6 +16,7 @@ interface MobileMainViewProps {
   onContinue: () => void
   onNewChat: () => void
   onPersonas: () => void
+  onProjects: () => void
   onHistory: () => void
   onBookmarks: () => void
   onKnowledge: () => void
@@ -56,6 +58,9 @@ export function MobileMainView(props: MobileMainViewProps) {
         <Divider />
 
         <NavRow icon="💞" label="Personas" onClick={props.onPersonas} />
+        {PROJECTS_ENABLED && (
+          <NavRow icon="✨" label="Projects" chev onClick={props.onProjects} />
+        )}
         <NavRow icon="📖" label="History" chev onClick={props.onHistory} />
       </div>
 

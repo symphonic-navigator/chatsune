@@ -13,6 +13,11 @@ import { applyArtefactFilters } from './artefactsFilter'
 
 interface ArtefactsTabProps {
   onClose: () => void
+  /**
+   * Mindspace: when set, the tab scopes to a single project's
+   * artefacts. Phase 9 / spec §6.5 Tab 5.
+   */
+  projectFilter?: string
 }
 
 const ARTEFACT_TYPES: ArtefactType[] = ['markdown', 'code', 'html', 'svg', 'jsx', 'mermaid']
@@ -30,7 +35,7 @@ const BTN = 'px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide
 const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
 const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
 
-export function ArtefactsTab({ onClose }: ArtefactsTabProps) {
+export function ArtefactsTab({ onClose, projectFilter }: ArtefactsTabProps) {
   const [items, setItems] = useState<ArtefactListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,14 +50,16 @@ export function ArtefactsTab({ onClose }: ArtefactsTabProps) {
     setIsLoading(true)
     setError(null)
     try {
-      const data = await artefactApi.listAll()
+      const data = await artefactApi.listAll(
+        projectFilter ? { project_id: projectFilter } : undefined,
+      )
       setItems(data)
     } catch {
       setError('Could not load artefacts.')
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [projectFilter])
 
   useEffect(() => {
     fetchAll()
