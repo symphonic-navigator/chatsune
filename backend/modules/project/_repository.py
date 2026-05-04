@@ -81,17 +81,24 @@ class ProjectRepository:
             return []
         return list(doc.get("knowledge_library_ids", []) or [])
 
-    async def remove_library_from_all_projects(self, library_id: str) -> int:
+    async def remove_library_from_all_projects(
+        self, user_id: str, library_id: str,
+    ) -> int:
         """Pull a deleted knowledge-library id from every project that wired it.
 
         Returns the number of project documents that were updated. Called
         by the knowledge-library cascade so that orphan library references
         never survive a delete. Bumps ``updated_at`` so subscribers see a
         change and clients refresh affected projects.
+
+        Scoped to ``user_id`` to mirror the persona-side equivalent
+        (``remove_library_from_all_personas``) — keeps update-many
+        operations bounded to the owning user's documents and prevents
+        accidental cross-user writes if a stale id ever leaked.
         """
         now = datetime.now(UTC).replace(tzinfo=None)
         result = await self._collection.update_many(
-            {"knowledge_library_ids": library_id},
+            {"user_id": user_id, "knowledge_library_ids": library_id},
             {
                 "$pull": {"knowledge_library_ids": library_id},
                 "$set": {"updated_at": now},

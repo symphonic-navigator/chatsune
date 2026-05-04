@@ -113,13 +113,12 @@ async def cascade_delete_library(
     ))
 
     # Step 4: project n:m link cleanup (Mindspace).
-    # Library ids are global, not user-scoped, so the project public API
-    # takes only ``library_id``. The same library cannot be wired into
-    # another user's projects without ownership leakage at the persona /
-    # session layers, so the global pull is safe.
+    # User-scoped to mirror ``remove_library_from_all_personas``: the
+    # cascade only ever has authority over ``user_id``'s documents, so
+    # the update-many is bounded accordingly.
     project_links_removed, project_warnings = await _safe_call(
         "project reference cleanup",
-        remove_library_from_all_projects(library_id),
+        remove_library_from_all_projects(user_id, library_id),
     )
     steps.append(DeletionStepDto(
         label="project references unlinked",

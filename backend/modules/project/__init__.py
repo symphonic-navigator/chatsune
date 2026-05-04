@@ -56,14 +56,17 @@ async def list_project_ids_for_user(user_id: str) -> list[str]:
     return [d["_id"] for d in docs]
 
 
-async def remove_library_from_all_projects(library_id: str) -> int:
-    """Pull a deleted knowledge-library id from every project.
+async def remove_library_from_all_projects(
+    user_id: str, library_id: str,
+) -> int:
+    """Pull a deleted knowledge-library id from every project of this user.
 
     Returns the number of project documents that were updated. Called by
     the knowledge-library cascade so that orphan library references never
-    survive a delete.
+    survive a delete. Scoped to ``user_id`` for parity with the
+    persona-side helper.
     """
-    return await _repo().remove_library_from_all_projects(library_id)
+    return await _repo().remove_library_from_all_projects(user_id, library_id)
 
 
 async def set_pinned(project_id: str, user_id: str, pinned: bool) -> bool:

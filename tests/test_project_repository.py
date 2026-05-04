@@ -133,7 +133,7 @@ async def test_remove_library_from_all_projects(repo: ProjectRepository):
         knowledge_library_ids=["lib-b"],
     )
 
-    modified = await repo.remove_library_from_all_projects("lib-a")
+    modified = await repo.remove_library_from_all_projects("u1", "lib-a")
     assert modified == 2
     assert await repo.get_library_ids(a["_id"], "u1") == ["lib-b"]
     assert await repo.get_library_ids(b["_id"], "u1") == []
@@ -148,9 +148,32 @@ async def test_remove_library_from_all_projects_no_match_is_noop(
         user_id="u1", title="A", emoji=None, description="", nsfw=False,
         knowledge_library_ids=["lib-a"],
     )
-    modified = await repo.remove_library_from_all_projects("lib-not-attached")
+    modified = await repo.remove_library_from_all_projects(
+        "u1", "lib-not-attached",
+    )
     assert modified == 0
     assert await repo.get_library_ids(a["_id"], "u1") == ["lib-a"]
+
+
+async def test_remove_library_from_all_projects_scoped_to_user(
+    repo: ProjectRepository,
+):
+    """Other users' projects must not be touched even if they reference the
+    same library id (parity with the persona-side equivalent)."""
+    mine = await repo.create(
+        user_id="u1", title="Mine", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-shared"],
+    )
+    foreign = await repo.create(
+        user_id="u2", title="Foreign", emoji=None, description="", nsfw=False,
+        knowledge_library_ids=["lib-shared"],
+    )
+
+    modified = await repo.remove_library_from_all_projects("u1", "lib-shared")
+    assert modified == 1
+    assert await repo.get_library_ids(mine["_id"], "u1") == []
+    # u2's project is untouched even though it references the same id.
+    assert await repo.get_library_ids(foreign["_id"], "u2") == ["lib-shared"]
 
 
 async def test_set_pinned_toggles(repo: ProjectRepository):
