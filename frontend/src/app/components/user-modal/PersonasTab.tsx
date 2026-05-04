@@ -10,9 +10,10 @@ import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
 interface PersonasTabProps {
   onOpenPersonaOverlay: (personaId: string) => void
   onCreatePersona: () => void
+  onImportPersona: () => void
 }
 
-export function PersonasTab({ onOpenPersonaOverlay, onCreatePersona }: PersonasTabProps) {
+export function PersonasTab({ onOpenPersonaOverlay, onCreatePersona, onImportPersona }: PersonasTabProps) {
   const { personas, update } = usePersonas()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
 
@@ -23,8 +24,17 @@ export function PersonasTab({ onOpenPersonaOverlay, onCreatePersona }: PersonasT
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar with create button */}
-      <div className="flex flex-shrink-0 items-center justify-end px-4 pt-4 pb-2">
+      {/* Top bar with import and create buttons */}
+      <div className="flex flex-shrink-0 items-center justify-end gap-2 px-4 pt-4 pb-2">
+        <button
+          type="button"
+          onClick={onImportPersona}
+          className="rounded-md border border-white/10 px-2.5 py-1 text-[12px] font-medium text-white/70 transition-colors hover:bg-white/6 hover:text-white/90"
+          aria-label="Import persona from file"
+          title="Import persona from file"
+        >
+          ⤓ Import
+        </button>
         <button
           type="button"
           onClick={onCreatePersona}

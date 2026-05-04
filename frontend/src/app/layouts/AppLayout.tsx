@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useNotificationStore } from "../../core/store/notificationStore"
+import { ApiError } from "../../core/api/client"
 import { lockBodyScroll, unlockBodyScroll } from "../../core/utils/bodyScrollLock"
 import { Outlet, useLocation, useMatch, useNavigate } from "react-router-dom"
 import { useDrawerStore } from "../../core/store/drawerStore"
@@ -202,6 +204,49 @@ export default function AppLayout() {
     ? allPersonas.find((p) => p.id === personaOverlay.personaId) ?? null
     : null
 
+  // Persona import — shared between PersonasPage and the user-modal Personas tab.
+  const addNotification = useNotificationStore((s) => s.addNotification)
+  const personaImportFileRef = useRef<HTMLInputElement>(null)
+  const [personaImporting, setPersonaImporting] = useState(false)
+
+  const handleImportPersona = useCallback(() => {
+    personaImportFileRef.current?.click()
+  }, [])
+
+  const handlePersonaFileSelected = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null
+      event.target.value = ""
+      if (!file) return
+
+      setPersonaImporting(true)
+      try {
+        const created = await personasApi.importPersona(file)
+        addNotification({
+          level: "success",
+          title: "Persona imported",
+          message: `${created.name} has been imported.`,
+        })
+        openPersonaOverlay(created.id, "overview")
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Failed to import persona."
+        addNotification({
+          level: "error",
+          title: "Import failed",
+          message,
+        })
+      } finally {
+        setPersonaImporting(false)
+      }
+    },
+    [addNotification, openPersonaOverlay],
+  )
+
   // TODO Phase 8: reinstate the API-key problem detection against the new
   // connections endpoint. For now we assume no problem so the UI stays clean.
   const hasApiKeyProblem = false
@@ -338,6 +383,7 @@ export default function AppLayout() {
                 openPersonaOverlay(id, "overview")
               }}
               onCreatePersona={() => openPersonaOverlay(null, "edit")}
+              onImportPersona={handleImportPersona}
             />
           )}
           {adminTab !== null && (
@@ -368,6 +414,26 @@ export default function AppLayout() {
       <ToastContainer />
       <MobileToastContainer />
       <InstallHint />
+      <input
+        ref={personaImportFileRef}
+        type="file"
+        accept=".tar.gz,.gz,application/gzip"
+        className="hidden"
+        onChange={handlePersonaFileSelected}
+      />
+      {personaImporting && (
+        <div
+          className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60"
+          role="status"
+          aria-live="polite"
+          aria-label="Importing persona"
+        >
+          <div className="flex items-center gap-3 rounded-lg border border-white/8 bg-elevated px-5 py-4 shadow-2xl">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
+            <span className="text-[13px] text-white/80">Importing persona…</span>
+          </div>
+        </div>
+      )}
     </div>
     </BackButtonProvider>
   )

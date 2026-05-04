@@ -66,6 +66,7 @@ function renderModal(activeTop: TopTabId = 'about-me', activeSub?: SubTabId) {
         onProvidersChanged={vi.fn()}
         onOpenPersonaOverlay={vi.fn()}
         onCreatePersona={vi.fn()}
+        onImportPersona={vi.fn()}
       />
     </MemoryRouter>,
   )

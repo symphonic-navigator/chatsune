@@ -52,6 +52,7 @@ interface UserModalProps {
   onProvidersChanged?: () => void
   onOpenPersonaOverlay: (personaId: string) => void
   onCreatePersona: () => void
+  onImportPersona: () => void
 }
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -64,6 +65,7 @@ export function UserModal({
   displayName,
   onOpenPersonaOverlay,
   onCreatePersona,
+  onImportPersona,
 }: UserModalProps) {
   useBackButtonClose(true, onClose, 'user-modal')
 
@@ -278,7 +280,7 @@ export function UserModal({
           className="flex-1 overflow-hidden flex flex-col"
         >
           {contentKey === 'about-me' && <AboutMeTab />}
-          {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} onCreatePersona={onCreatePersona} />}
+          {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} onCreatePersona={onCreatePersona} onImportPersona={onImportPersona} />}
           {/* Projects tab hidden — feature not yet ready (see FOR_LATER.md). */}
           {contentKey === 'history' && <HistoryTab onClose={onClose} />}
           {contentKey === 'knowledge' && <KnowledgeTab />}
