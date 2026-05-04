@@ -17,6 +17,18 @@ class ChatSendMessageDto(BaseModel):
     client_message_id: str | None = None
 
 
+class SessionProjectUpdateDto(BaseModel):
+    """Body for ``PATCH /api/chat/sessions/{id}/project``.
+
+    Mindspace: assigns ``project_id`` (or detaches when ``None``) on a
+    chat session. The single-field shape lets us distinguish "set
+    explicitly null" from "field omitted" — only the former is valid;
+    omitting the field would surface as a 422 validation error.
+    """
+
+    project_id: str | None
+
+
 class ChatSessionDto(BaseModel):
     id: str
     user_id: str

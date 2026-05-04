@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
-from shared.dtos.chat import ChatMessagesBundleDto
+from shared.dtos.chat import ChatMessagesBundleDto, SessionProjectUpdateDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
@@ -20,6 +20,7 @@ from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
     ChatSessionPinnedUpdatedEvent,
+    ChatSessionProjectUpdatedEvent,
     ChatSessionRestoredEvent,
     ChatSessionTitleUpdatedEvent,
     ChatSessionTogglesUpdatedEvent,
@@ -399,6 +400,48 @@ async def update_session_pinned(
         scope=f"session:{session_id}",
         target_user_ids=[user["sub"]],
         correlation_id=correlation_id,
+    )
+
+    doc = await repo.get_session(session_id, user["sub"])
+    return ChatRepository.session_to_dto(doc)
+
+
+@router.patch("/sessions/{session_id}/project")
+async def update_session_project(
+    session_id: str,
+    body: SessionProjectUpdateDto,
+    user: dict = Depends(require_active_session),
+):
+    """Mindspace: assign or clear a session's owning project.
+
+    Body: ``{"project_id": "<id>"}`` to assign, ``{"project_id": null}``
+    to detach (returns the session to the global history bucket). The
+    HTTP method is PATCH because only the project field changes; other
+    session attributes are untouched.
+
+    Emits ``CHAT_SESSION_PROJECT_UPDATED`` carrying the new
+    ``project_id`` so the sidebar / HistoryTab can re-classify the
+    session live without a follow-up GET.
+    """
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await repo.set_session_project(session_id, user["sub"], body.project_id)
+
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_PROJECT_UPDATED,
+        ChatSessionProjectUpdatedEvent(
+            session_id=session_id,
+            project_id=body.project_id,
+            user_id=user["sub"],
+            timestamp=now,
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
     )
 
     doc = await repo.get_session(session_id, user["sub"])
