@@ -51,6 +51,13 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.PERSONA_UPDATED: ([], True),
     Topics.PERSONA_DELETED: ([], True),
     Topics.PERSONA_REORDERED: ([], True),
+    # Mindspace projects — target user only (per-user private state).
+    Topics.PROJECT_CREATED: ([], True),
+    Topics.PROJECT_UPDATED: ([], True),
+    Topics.PROJECT_DELETED: ([], True),
+    Topics.PROJECT_PINNED_UPDATED: ([], True),
+    Topics.CHAT_SESSION_PROJECT_UPDATED: ([], True),
+    Topics.USER_RECENT_PROJECT_EMOJIS_UPDATED: ([], True),
     # LLM Connections — target user only
     Topics.LLM_CONNECTION_CREATED: ([], True),
     Topics.LLM_CONNECTION_UPDATED: ([], True),
