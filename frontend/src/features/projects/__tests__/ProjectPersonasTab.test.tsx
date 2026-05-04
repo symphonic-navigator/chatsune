@@ -43,23 +43,16 @@ vi.mock('../../../core/store/notificationStore', () => ({
     sel({ addNotification: addNotificationMock }),
 }))
 
-const createSessionMock = vi.fn(async (_personaId: string) => ({
-  id: 'sess-new',
-  persona_id: 'p-worf',
-}))
+const createSessionMock = vi.fn(
+  async (_personaId: string, _projectId?: string | null) => ({
+    id: 'sess-new',
+    persona_id: 'p-worf',
+  }),
+)
 vi.mock('../../../core/api/chat', () => ({
   chatApi: {
-    createSession: (personaId: string) => createSessionMock(personaId),
-  },
-}))
-
-const setSessionProjectMock = vi.fn(
-  async (_sessionId: string, _projectId: string | null) => ({ ok: true }),
-)
-vi.mock('../projectsApi', () => ({
-  projectsApi: {
-    setSessionProject: (sessionId: string, projectId: string | null) =>
-      setSessionProjectMock(sessionId, projectId),
+    createSession: (personaId: string, projectId?: string | null) =>
+      createSessionMock(personaId, projectId),
   },
 }))
 
@@ -115,7 +108,6 @@ beforeEach(() => {
   navigateMock.mockClear()
   updatePersonaMock.mockClear()
   createSessionMock.mockClear()
-  setSessionProjectMock.mockClear()
   personasState.value = []
   projectsState.value = {}
   sanitisedState.value = false
@@ -150,7 +142,7 @@ describe('ProjectPersonasTab — list', () => {
 })
 
 describe('ProjectPersonasTab — start chat', () => {
-  it('creates a session, assigns it to the project, navigates and closes', async () => {
+  it('creates a session pre-attached to the project, navigates and closes', async () => {
     personasState.value = [
       makePersona({ id: 'p-worf', default_project_id: 'proj-trek' }),
     ]
@@ -163,8 +155,11 @@ describe('ProjectPersonasTab — start chat', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(createSessionMock).toHaveBeenCalledWith('p-worf')
-    expect(setSessionProjectMock).toHaveBeenCalledWith('sess-new', 'proj-trek')
+    // Single call — backend ``POST /api/chat/sessions`` accepts
+    // ``project_id`` directly so the redundant ``setSessionProject``
+    // follow-up is gone.
+    expect(createSessionMock).toHaveBeenCalledWith('p-worf', 'proj-trek')
+    expect(createSessionMock).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalled()
     expect(navigateMock).toHaveBeenCalledWith('/chat/p-worf/sess-new')
   })

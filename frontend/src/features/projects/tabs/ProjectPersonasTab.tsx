@@ -22,7 +22,6 @@ import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { chatApi } from '../../../core/api/chat'
-import { projectsApi } from '../projectsApi'
 import { useProjectsStore } from '../useProjectsStore'
 
 interface ProjectPersonasTabProps {
@@ -94,8 +93,10 @@ export function ProjectPersonasTab({ projectId, onClose }: ProjectPersonasTabPro
   async function handleStartChat(persona: PersonaDto) {
     setBusy(true)
     try {
-      const session = await chatApi.createSession(persona.id)
-      await projectsApi.setSessionProject(session.id, projectId)
+      // ``createSession`` already accepts a ``projectId``; passing it
+      // here drops the new session straight into this project, removing
+      // the redundant ``setSessionProject`` follow-up call.
+      const session = await chatApi.createSession(persona.id, projectId)
       onClose()
       navigate(`/chat/${persona.id}/${session.id}`)
     } catch {
