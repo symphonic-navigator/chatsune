@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { useViewport } from '../../core/hooks/useViewport'
 import { hapticTap } from '../../core/utils/haptics'
 import { VoiceButton } from '../voice/components/VoiceButton'
@@ -82,10 +82,33 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(function Ch
     openFilePicker: () => fileInputRef.current?.click(),
   }))
 
-  useEffect(() => {
+  // Textarea autosize. Two important changes from the obvious 'auto'-then-
+  // measure pattern:
+  //
+  //   1. useLayoutEffect, not useEffect — runs synchronously before paint,
+  //      so the textarea never paints at the old height with new content.
+  //
+  //   2. We only do the 'auto' step when text is *shrinking*. Setting
+  //      `height: 'auto'` makes the textarea collapse to its 1-row natural
+  //      height for one synchronous layout pass, which propagates up the
+  //      flex tree and momentarily *grows* the MessageList scroll container.
+  //      During that transient, the browser clamps MessageList's scrollTop
+  //      to the new (smaller) max — and once layout settles back, scrollTop
+  //      is permanently shifted up. The ResizeObserver elides because start
+  //      and end sizes match, so we never get a chance to re-pin. By
+  //      skipping 'auto' on growth, scrollHeight already reflects the new
+  //      required size and we set it directly with no transient state.
+  const prevTextLengthRef = useRef(0)
+  useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el) return
-    el.style.height = 'auto'
+    const isShrinking = text.length < prevTextLengthRef.current
+    prevTextLengthRef.current = text.length
+    if (isShrinking) {
+      // scrollHeight is bounded below by inline height, so to actually
+      // shrink we need to release the height first.
+      el.style.height = 'auto'
+    }
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }, [text])
 

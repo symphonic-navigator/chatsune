@@ -210,11 +210,17 @@ export function MessageList({
     return `${m}m ${s}s`
   }
 
+  // overflow-anchor: none on the scroll container alone is not enough — the
+  // CSS property applies per-element and is non-inherited, so descendants can
+  // still be picked as anchors. Disabling it on every descendant is what
+  // actually stops the browser from rewinding scrollTop during layout passes
+  // triggered by, e.g., textarea autosize hops in the prompt input.
   const scrollbarStyle = `
     .chat-scroll::-webkit-scrollbar { width: 8px; }
     .chat-scroll::-webkit-scrollbar-track { background: transparent; }
     .chat-scroll::-webkit-scrollbar-thumb { background: ${accentColour}33; border-radius: 4px; }
     .chat-scroll::-webkit-scrollbar-thumb:hover { background: ${accentColour}66; }
+    .chat-scroll, .chat-scroll * { overflow-anchor: none; }
   `
 
   // Build the live-streaming events list once, including the PTI merge from
@@ -262,7 +268,16 @@ export function MessageList({
                   visionDescriptionsUsed={msg.vision_descriptions_used}
                   liveVisionDescriptions={liveDescriptionsForMessage(msg.id)}
                   onEdit={(newContent) => onEdit(msg.id, newContent)}
-                  isEditable={!isStreaming && !msg.id.startsWith('optimistic-')}
+                  // Action bar visibility decoupled from streaming state: keeping
+                  // it always rendered (modulo optimistic messages without a
+                  // stable id) means user-bubble heights stay constant across
+                  // stream start/end, so the chat doesn't visually jump when
+                  // every existing user message gains/loses its action row at
+                  // once. The Edit button is disabled (greyed out) while a
+                  // stream is in flight to preserve the prior behaviour of
+                  // forbidding mid-stream edits.
+                  isEditable={!msg.id.startsWith('optimistic-')}
+                  editDisabled={isStreaming}
                   isBookmarked={isBm}
                   onBookmark={() => onBookmark(msg.id)}
                 />

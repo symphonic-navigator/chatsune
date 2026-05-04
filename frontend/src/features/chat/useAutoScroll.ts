@@ -81,18 +81,35 @@ export function useAutoScroll() {
     const el = containerRef.current
     if (!el) return
 
+    const pinToBottom = () => {
+      el.scrollTop = el.scrollHeight - el.clientHeight
+    }
+
     let rafId = 0
-    const scheduleScroll = () => {
+    const scheduleScroll = (source: 'mutation' | 'resize' | 'mount') => {
       if (!followingRef.current) return
+      // Resize is driven by external layout (ChatInput growing/shrinking) —
+      // the browser has already finished its own scrollTop adjustments by the
+      // time the ResizeObserver fires. Pinning synchronously here means our
+      // write lands in the same paint cycle as the resize, so the user never
+      // sees the intermediate frame.
+      //
+      // Mutations, by contrast, are debounced via rAF: a streaming token
+      // burst can fire many MutationRecords per frame and we only want one
+      // pin per frame.
+      if (source === 'resize') {
+        pinToBottom()
+        return
+      }
       if (rafId !== 0) return
       rafId = requestAnimationFrame(() => {
         rafId = 0
         if (!followingRef.current) return
-        bottomRef.current?.scrollIntoView({ block: 'end' })
+        pinToBottom()
       })
     }
 
-    const mutationObserver = new MutationObserver(scheduleScroll)
+    const mutationObserver = new MutationObserver(() => scheduleScroll('mutation'))
     mutationObserver.observe(el, {
       childList: true,
       subtree: true,
@@ -104,11 +121,11 @@ export function useAutoScroll() {
     // growth from things that don't mutate the DOM: Shiki highlighting
     // that replaces inner HTML on a deferred microtask, images finishing
     // to load, web fonts swapping, etc. ResizeObserver closes that gap.
-    const resizeObserver = new ResizeObserver(scheduleScroll)
+    const resizeObserver = new ResizeObserver(() => scheduleScroll('resize'))
     resizeObserver.observe(el)
 
     // Kick off once so the first render after mount lands at the bottom.
-    scheduleScroll()
+    scheduleScroll('mount')
 
     return () => {
       mutationObserver.disconnect()
@@ -125,7 +142,9 @@ export function useAutoScroll() {
     setShowScrollButton(false)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'instant' })
+        const el = containerRef.current
+        if (!el) return
+        el.scrollTop = el.scrollHeight - el.clientHeight
       })
     })
   }, [])

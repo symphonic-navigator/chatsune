@@ -10,7 +10,14 @@ interface UserBubbleProps {
   visionDescriptionsUsed?: VisionDescriptionSnapshot[] | null
   liveVisionDescriptions?: Record<string, LiveVisionDescription>
   onEdit: (newContent: string) => void
+  /** Whether this message is editable at all — false for optimistic messages
+   *  whose backend id has not yet arrived. The action bar (Edit + Bookmark)
+   *  renders whenever this is true so the bubble has a stable height. */
   isEditable: boolean
+  /** True while a stream is currently in flight. Greys out the Edit button
+   *  without removing it, so the bubble's layout does not shift between
+   *  streaming and idle states. */
+  editDisabled?: boolean
   isBookmarked?: boolean
   onBookmark?: () => void
 }
@@ -30,6 +37,7 @@ function areEqual(prev: UserBubbleProps, next: UserBubbleProps): boolean {
   return (
     prev.content === next.content &&
     prev.isEditable === next.isEditable &&
+    prev.editDisabled === next.editDisabled &&
     prev.isBookmarked === next.isBookmarked &&
     prev.attachments === next.attachments &&
     prev.visionDescriptionsUsed === next.visionDescriptionsUsed &&
@@ -37,7 +45,7 @@ function areEqual(prev: UserBubbleProps, next: UserBubbleProps): boolean {
   )
 }
 
-function UserBubbleBase({ content, attachments, visionDescriptionsUsed, liveVisionDescriptions, onEdit, isEditable, isBookmarked, onBookmark }: UserBubbleProps) {
+function UserBubbleBase({ content, attachments, visionDescriptionsUsed, liveVisionDescriptions, onEdit, isEditable, editDisabled, isBookmarked, onBookmark }: UserBubbleProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -131,8 +139,9 @@ function UserBubbleBase({ content, attachments, visionDescriptionsUsed, liveVisi
           {isEditable && (
             <div className="mt-2.5 flex gap-3 border-t border-white/6 pt-2">
               <button type="button" data-testid="edit-button" onClick={startEdit}
-                className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50"
-                title="Edit message">
+                disabled={editDisabled}
+                className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-white/25"
+                title={editDisabled ? 'Cannot edit while a response is in flight' : 'Edit message'}>
                 <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
                   <path d="M10.5 1.5L12.5 3.5L4 12H2V10L10.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
