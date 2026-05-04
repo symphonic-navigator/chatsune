@@ -155,8 +155,8 @@ async def test_legacy_project_doc_reads_with_defaults(
     dto = ProjectRepository.to_dto(fetched)
     # New field defaults.
     assert dto.knowledge_library_ids == []
-    # description is now nullable; legacy doc had no description at all.
-    # The to_dto mapper must not raise on missing description.
-    # Either ``None`` or empty string is acceptable as a default — this
-    # assertion accepts both for forwards-compatibility.
-    assert dto.description in (None, "")
+    # Mindspace contract: ``description`` is now nullable, and a legacy
+    # doc that lacks the field must read as ``None`` (the new model
+    # default), not ``""``. Pin the assertion exactly so a future change
+    # that silently coerces missing → ``""`` would fail loudly.
+    assert dto.description is None
