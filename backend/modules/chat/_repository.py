@@ -277,10 +277,28 @@ class ChatRepository:
     async def get_session(self, session_id: str, user_id: str) -> dict | None:
         return await self._sessions.find_one({"_id": session_id, "user_id": user_id, "deleted_at": None})
 
-    async def list_sessions(self, user_id: str) -> list[dict]:
-        """Return sessions that have at least one message, sorted by updated_at desc."""
+    async def list_sessions(
+        self, user_id: str, *, exclude_in_projects: bool = True,
+    ) -> list[dict]:
+        """Return sessions that have at least one message, sorted by updated_at desc.
+
+        Mindspace: by default ``exclude_in_projects=True`` hides every
+        session that belongs to a project so the global history list
+        stays focussed on chats the user has not filed away. The
+        UserModal HistoryTab "Include project chats" toggle flips this
+        flag to ``False`` when the user opts in. Pre-Mindspace sessions
+        carry no ``project_id`` field at all and always pass through —
+        the ``$or`` clause covers both the explicit-null and
+        field-missing cases.
+        """
+        match: dict = {"user_id": user_id, "deleted_at": None}
+        if exclude_in_projects:
+            match["$or"] = [
+                {"project_id": None},
+                {"project_id": {"$exists": False}},
+            ]
         pipeline = [
-            {"$match": {"user_id": user_id, "deleted_at": None}},
+            {"$match": match},
             {"$lookup": {
                 "from": "chat_messages",
                 "localField": "_id",
@@ -294,6 +312,25 @@ class ChatRepository:
             {"$limit": 200},
         ]
         return await self._sessions.aggregate(pipeline).to_list(length=200)
+
+    async def list_sessions_for_project(
+        self, user_id: str, project_id: str,
+    ) -> list[dict]:
+        """Return active sessions belonging to ``project_id``, sorted by recency.
+
+        Used by the project-detail-overlay HistoryTab and any other
+        per-project listing surface. Only non-deleted sessions are
+        returned; soft-deleted sessions are excluded for symmetry with
+        :meth:`list_sessions`.
+        """
+        cursor = self._sessions.find(
+            {
+                "user_id": user_id,
+                "project_id": project_id,
+                "deleted_at": None,
+            },
+        ).sort([("pinned", -1), ("updated_at", -1)])
+        return await cursor.to_list(length=500)
 
     async def find_sessions_by_ids(self, session_ids: list[str], user_id: str) -> list[dict]:
         """Return raw session docs for the given ids that belong to the user. Soft-deleted included."""
