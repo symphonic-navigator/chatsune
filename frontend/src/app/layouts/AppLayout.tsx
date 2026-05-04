@@ -34,6 +34,7 @@ import { Topics } from "../../core/types/events"
 import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
+import { useRecentProjectEmojisStore } from "../../features/projects/recentProjectEmojisStore"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
 import { useBackButtonClose, startOverlayTransition } from '../../core/hooks/useBackButtonClose'
 
@@ -280,6 +281,28 @@ export default function AppLayout() {
       useRecentEmojisStore.getState().set(emojis)
     }
   }, [recentEmojisUpdate])
+
+  // Mindspace: same pattern for the project-emoji LRU. Seeded from the
+  // authenticated user payload, then kept in sync via
+  // USER_RECENT_PROJECT_EMOJIS_UPDATED. The backend does not currently
+  // emit that topic — Phase 5 wires the frontend store only; persistence
+  // and event emission land in a later Mindspace phase. Until then the
+  // subscription is harmlessly idle.
+  useEffect(() => {
+    if (!user) return
+    useRecentProjectEmojisStore.getState().set(user.recent_project_emojis ?? [])
+  }, [user])
+
+  const { latest: recentProjectEmojisUpdate } = useEventBus(
+    Topics.USER_RECENT_PROJECT_EMOJIS_UPDATED,
+  )
+  useEffect(() => {
+    if (!recentProjectEmojisUpdate?.payload) return
+    const emojis = (recentProjectEmojisUpdate.payload as { emojis?: string[] }).emojis
+    if (Array.isArray(emojis)) {
+      useRecentProjectEmojisStore.getState().set(emojis)
+    }
+  }, [recentProjectEmojisUpdate])
 
   // Global Alt+S hotkey: toggles sanitised mode irrespective of which modal
   // or overlay is currently open. We only bow out if the user is actively

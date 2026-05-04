@@ -9,6 +9,10 @@ export interface UserDto {
   created_at: string
   updated_at: string
   recent_emojis: string[]
+  // Mindspace: dedicated LRU for the project-create / project-edit emoji
+  // picker. Optional because legacy users predating Mindspace lack the
+  // field on their document — defaults to ``[]`` server-side.
+  recent_project_emojis?: string[]
 }
 
 export interface LoginRequest {
