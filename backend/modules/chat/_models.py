@@ -12,6 +12,10 @@ class ChatSessionDocument(BaseModel):
     persona_id: str
     state: Literal["idle", "streaming", "requires_action"] = "idle"
     pinned: bool = False
+    # Mindspace: optional reference to the owning project. ``None`` is
+    # the legacy / unassigned state — sessions created before Mindspace
+    # have no field at all and deserialise as ``None``.
+    project_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

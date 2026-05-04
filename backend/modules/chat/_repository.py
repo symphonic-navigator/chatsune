@@ -822,6 +822,10 @@ class ChatRepository:
             auto_read=doc.get("auto_read", False),
             reasoning_override=doc.get("reasoning_override"),
             pinned=doc.get("pinned", False),
+            # Mindspace: legacy session documents lack ``project_id``;
+            # ``doc.get`` defaults to ``None`` which matches the DTO
+            # default.
+            project_id=doc.get("project_id"),
             context_status=doc.get("context_status", "green"),
             context_fill_percentage=float(doc.get("context_fill_percentage", 0.0)),
             context_used_tokens=int(doc.get("context_used_tokens", 0)),

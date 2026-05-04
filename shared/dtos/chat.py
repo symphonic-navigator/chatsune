@@ -27,6 +27,9 @@ class ChatSessionDto(BaseModel):
     auto_read: bool = False
     reasoning_override: bool | None = None
     pinned: bool = False
+    # Mindspace: optional owning project. ``None`` means the session
+    # belongs to no project (the legacy / global-history bucket).
+    project_id: str | None = None
     # Last-known context window utilisation, persisted at stream-end so
     # the UI can show a non-zero indicator when revisiting an existing
     # chat without having to wait for the next inference to complete.
