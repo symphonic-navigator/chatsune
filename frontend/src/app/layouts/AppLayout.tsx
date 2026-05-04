@@ -119,6 +119,8 @@ export default function AppLayout() {
     const { top, sub: resolved } = resolveLeaf(leaf)
     const remembered = useSubtabStore.getState().lastSub[top]
     const sub = resolved ?? remembered ?? firstSubOf(top)
+    if (adminTab !== null) startOverlayTransition('admin-modal')
+    else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
     setAdminTab(null)
     setPersonaOverlay(null)
     setActiveTop(top)
@@ -145,6 +147,8 @@ export default function AppLayout() {
   const [adminTab, setAdminTab] = useState<AdminModalTab | null>(null)
 
   function openAdmin() {
+    if (modalOpen) startOverlayTransition('user-modal')
+    else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
     setModalOpen(false)
     setPersonaOverlay(null)
     setAdminTab('users')
