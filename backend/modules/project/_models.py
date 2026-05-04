@@ -13,14 +13,20 @@ class ProjectDocument(BaseModel):
     user_id: str
     title: str
     emoji: str | None
-    # Mindspace adds an optional, nullable description. Pre-Mindspace
-    # documents either carry a string or no value at all; legacy docs
-    # written before this change always set ``""`` so existing rows
-    # deserialise unchanged.
+    # Mindspace adds an optional, nullable description. Both ``""`` (the
+    # historical default written by pre-Mindspace creates) and ``None``
+    # (the new default for documents created without an explicit
+    # description) are valid on-disk values; the field defaults to
+    # ``None`` so legacy rows that omit it entirely deserialise without
+    # raising.
     description: str | None = None
     nsfw: bool
     pinned: bool
-    sort_order: int
+    # Defaults to ``0`` so legacy documents that predate the field
+    # deserialise via ``ProjectDocument(**doc)`` without raising. The
+    # repo currently bypasses direct construction, so this is a latent
+    # safety net rather than an active bug fix.
+    sort_order: int = 0
     # Knowledge libraries attached to this project. Merged with persona-
     # level libraries at retrieval time. Defaults to empty so legacy
     # documents read without raising.
