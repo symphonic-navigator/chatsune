@@ -315,6 +315,44 @@ class ImageService:
             ))
         return out
 
+    async def list_user_images_for_sessions(
+        self,
+        *,
+        user_id: str,
+        session_ids: list[str],
+        limit: int = 200,
+    ) -> list[GeneratedImageSummaryDto]:
+        """Mindspace: return gallery summaries for images referenced by chat sessions.
+
+        Used by the project-filtered ``GET /api/images?project_id=…``
+        endpoint. The chat module walks message ``image_refs`` /
+        ``events`` to recover the image-id set; we then resolve those
+        ids to gallery summaries (moderated stubs excluded). Empty
+        input → empty list.
+        """
+        if not session_ids:
+            return []
+        from backend.modules import images as images_service
+
+        rows = await images_service.list_for_sessions(
+            session_ids, user_id, limit=limit,
+        )
+        out: list[GeneratedImageSummaryDto] = []
+        for r in rows:
+            if r.moderated:
+                continue
+            out.append(GeneratedImageSummaryDto(
+                id=r.id,
+                thumb_url=f"/api/images/{r.id}/thumb",
+                width=r.width,
+                height=r.height,
+                prompt=r.prompt,
+                model_id=r.model_id,
+                generated_at=r.generated_at,
+                thumbnail_b64=self._read_thumbnail_b64(user_id, r.thumb_blob_id),
+            ))
+        return out
+
     async def get_image(
         self,
         *,

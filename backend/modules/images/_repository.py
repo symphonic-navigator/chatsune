@@ -63,6 +63,43 @@ class GeneratedImagesRepository:
             out.append(GeneratedImageDocument.model_validate(raw))
         return out
 
+    async def list_for_ids(
+        self, *, user_id: str, image_ids: list[str], limit: int = 200,
+    ) -> list[GeneratedImageDocument]:
+        """Mindspace: return owned images by id, newest first.
+
+        Used by the project-filtered ``GET /api/images?project_id=…``
+        endpoint after the chat module resolves project → session → image
+        ids. Empty input → empty list (skip the round-trip).
+        """
+        if not image_ids:
+            return []
+        cursor = (
+            self._collection.find({
+                "user_id": user_id,
+                "id": {"$in": image_ids},
+            })
+            .sort("generated_at", -1)
+            .limit(limit)
+        )
+        rows = await cursor.to_list(length=limit)
+        out: list[GeneratedImageDocument] = []
+        for r in rows:
+            r.pop("_id", None)
+            out.append(GeneratedImageDocument.model_validate(r))
+        return out
+
+    async def count_by_ids(
+        self, *, user_id: str, image_ids: list[str],
+    ) -> int:
+        """Mindspace: count owned images in the supplied id set."""
+        if not image_ids:
+            return 0
+        return await self._collection.count_documents({
+            "user_id": user_id,
+            "id": {"$in": image_ids},
+        })
+
     async def list_for_user(
         self,
         *,
