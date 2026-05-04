@@ -23,6 +23,7 @@ import { create } from 'zustand'
 import { eventBus } from '../../core/websocket/eventBus'
 import type { BaseEvent } from '../../core/types/events'
 import { Topics } from '../../core/types/events'
+import { useSanitisedMode } from '../../core/store/sanitisedModeStore'
 import { projectsApi } from './projectsApi'
 import type { ProjectDto } from './types'
 
@@ -140,4 +141,35 @@ export function useSortedProjects(): ProjectDto[] {
 export function usePinnedProjects(): ProjectDto[] {
   const sorted = useSortedProjects()
   return useMemo(() => sorted.filter((p) => p.pinned), [sorted])
+}
+
+/**
+ * Mindspace §6.7: shared NSFW filter for every surface that lists
+ * projects. Returns ``useSortedProjects`` filtered through the global
+ * sanitised flag — when sanitised mode is on, NSFW projects are hidden.
+ *
+ * Mirrors the pattern AppLayout uses for personas / sessions but is
+ * exposed as a hook because the consumer list is large (Sidebar,
+ * ProjectPicker, ProjectPickerMobile, ProjectsTab, MobileProjectsView,
+ * HistoryTab) — prop-drilling from AppLayout would be heavy and prone
+ * to drift.
+ *
+ * Surfaces that need to keep showing the **active** chat's project even
+ * when it is filtered out of discovery (the in-chat ProjectSwitcher
+ * chip — spec "what is already open stays open") read the unfiltered
+ * ``useProjectsStore.projects`` directly.
+ */
+export function useFilteredProjects(): ProjectDto[] {
+  const sorted = useSortedProjects()
+  const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  return useMemo(
+    () => (isSanitised ? sorted.filter((p) => !p.nsfw) : sorted),
+    [sorted, isSanitised],
+  )
+}
+
+/** Pinned projects, NSFW-filtered. */
+export function useFilteredPinnedProjects(): ProjectDto[] {
+  const filtered = useFilteredProjects()
+  return useMemo(() => filtered.filter((p) => p.pinned), [filtered])
 }

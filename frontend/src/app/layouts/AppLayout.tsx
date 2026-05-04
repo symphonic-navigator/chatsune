@@ -36,6 +36,7 @@ import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/type
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
 import { useRecentProjectEmojisStore } from "../../features/projects/recentProjectEmojisStore"
 import { useProjectOverlayStore } from "../../features/projects/useProjectOverlayStore"
+import { useProjectsStore } from "../../features/projects/useProjectsStore"
 import { ProjectDetailOverlay } from "../../features/projects/ProjectDetailOverlay"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
 import { useBackButtonClose, startOverlayTransition } from '../../core/hooks/useBackButtonClose'
@@ -102,10 +103,31 @@ export default function AppLayout() {
     [allPersonas],
   )
 
-  const filteredSessions = useMemo(
-    () => isSanitised ? sessions.filter((s) => !nsfwPersonaIds.has(s.persona_id)) : sessions,
-    [sessions, isSanitised, nsfwPersonaIds],
+  // Mindspace §6.7: NSFW project IDs feed the HistoryTab "include
+  // project chats" filter — chats whose owning project is NSFW must
+  // disappear when sanitised mode is on. Surfaces that *list* projects
+  // consume ``useFilteredProjects`` directly instead of taking
+  // ``filteredProjects`` via a prop; the hook composes more cleanly
+  // with the dozen sites involved than prop-drilling would.
+  const allProjectsRecord = useProjectsStore((s) => s.projects)
+  const nsfwProjectIds = useMemo(
+    () =>
+      new Set(
+        Object.values(allProjectsRecord)
+          .filter((p) => p.nsfw)
+          .map((p) => p.id),
+      ),
+    [allProjectsRecord],
   )
+
+  const filteredSessions = useMemo(() => {
+    if (!isSanitised) return sessions
+    return sessions.filter(
+      (s) =>
+        !nsfwPersonaIds.has(s.persona_id) &&
+        (!s.project_id || !nsfwProjectIds.has(s.project_id)),
+    )
+  }, [sessions, isSanitised, nsfwPersonaIds, nsfwProjectIds])
   const setUser = useAuthStore((s) => s.setUser)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
