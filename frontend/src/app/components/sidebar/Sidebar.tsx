@@ -15,6 +15,7 @@ import { HistoryItem } from "./HistoryItem"
 import { ProjectSidebarItem } from "./ProjectSidebarItem"
 import { usePinnedProjects } from "../../../features/projects/useProjectsStore"
 import { projectsApi } from "../../../features/projects/projectsApi"
+import { useProjectOverlayStore } from "../../../features/projects/useProjectOverlayStore"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
 import { MobileMainView } from './MobileMainView'
 import { MobileNewChatView } from './MobileNewChatView'
@@ -313,27 +314,23 @@ export function Sidebar({
   }
 
   // ── Project handlers ─────────────────────────────────────────────────
-  // The detail-overlay (Phase 9), create-modal (Phase 7) and delete-modal
-  // (Phase 12) are not yet built. The placeholders below stub their entry
-  // points so the sidebar Projects-zone is fully wired apart from the
-  // overlays themselves; each placeholder is removed when its phase lands.
+  // The detail-overlay (Phase 9) and create-modal (Phase 7) are wired
+  // here. The delete-modal placeholder remains a Phase-12 stub.
 
   function handleOpenProject(projectId: string) {
     closeDrawerIfMobile()
-    // TODO Phase 9: open Project-Detail-Overlay
-    console.info('TODO: open project-detail-overlay', projectId)
+    useProjectOverlayStore.getState().open(projectId)
   }
 
   function handleEditProject(projectId: string) {
     closeDrawerIfMobile()
-    // TODO Phase 9: open Project-Detail-Overlay overview tab
-    console.info('TODO: open project-detail-overlay overview', projectId)
+    useProjectOverlayStore.getState().open(projectId, 'overview')
   }
 
   function handleDeleteProject(projectId: string) {
     closeDrawerIfMobile()
     // TODO Phase 12: open DeleteProjectModal
-    console.info('TODO: open delete-project-modal', projectId)
+    console.info('TODO Phase 12: open DeleteProjectModal', projectId)
   }
 
   function handleOpenProjectCreateModal() {

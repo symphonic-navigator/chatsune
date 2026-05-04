@@ -35,6 +35,8 @@ import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
 import { useRecentProjectEmojisStore } from "../../features/projects/recentProjectEmojisStore"
+import { useProjectOverlayStore } from "../../features/projects/useProjectOverlayStore"
+import { ProjectDetailOverlay } from "../../features/projects/ProjectDetailOverlay"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
 import { useBackButtonClose, startOverlayTransition } from '../../core/hooks/useBackButtonClose'
 
@@ -124,8 +126,10 @@ export default function AppLayout() {
     const sub = resolved ?? remembered ?? firstSubOf(top)
     if (adminTab !== null) startOverlayTransition('admin-modal')
     else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
+    else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
     setAdminTab(null)
     setPersonaOverlay(null)
+    closeProjectOverlay()
     setActiveTop(top)
     setActiveSub(sub)
     setModalOpen(true)
@@ -152,14 +156,23 @@ export default function AppLayout() {
   function openAdmin() {
     if (modalOpen) startOverlayTransition('user-modal')
     else if (personaOverlay !== null) startOverlayTransition('persona-overlay')
+    else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
     setModalOpen(false)
     setPersonaOverlay(null)
+    closeProjectOverlay()
     setAdminTab('users')
   }
 
   function closeAdmin() {
     setAdminTab(null)
   }
+
+  // Project-Detail-Overlay state — owned by `useProjectOverlayStore`
+  // so any surface (sidebar, switcher, modal Projects-tab) can open
+  // the same overlay without prop-drilling.
+  const projectOverlayId = useProjectOverlayStore((s) => s.projectId)
+  const projectOverlayTab = useProjectOverlayStore((s) => s.tab)
+  const closeProjectOverlay = useProjectOverlayStore((s) => s.close)
 
   // Persona overlay state
   const [personaOverlay, setPersonaOverlay] = useState<{
@@ -171,11 +184,13 @@ export default function AppLayout() {
     (personaId: string | null, tab: PersonaOverlayTab = "overview") => {
       if (modalOpen) startOverlayTransition('user-modal')
       else if (adminTab !== null) startOverlayTransition('admin-modal')
+      else if (projectOverlayId !== null) startOverlayTransition('project-overlay')
       setModalOpen(false)
       setAdminTab(null)
+      closeProjectOverlay()
       setPersonaOverlay({ personaId, tab })
     },
-    [modalOpen, adminTab],
+    [modalOpen, adminTab, projectOverlayId, closeProjectOverlay],
   )
 
   const closePersonaOverlay = useCallback(() => {
@@ -412,6 +427,13 @@ export default function AppLayout() {
               activeTab={adminTab}
               onClose={closeAdmin}
               onTabChange={setAdminTab}
+            />
+          )}
+          {projectOverlayId && (
+            <ProjectDetailOverlay
+              projectId={projectOverlayId}
+              initialTab={projectOverlayTab}
+              onClose={closeProjectOverlay}
             />
           )}
           {personaOverlay && (

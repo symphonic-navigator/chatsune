@@ -7,13 +7,14 @@
 // ``filteredProjects`` helper; until then we replicate the inline
 // filter pattern).
 //
-// Per-row click is a stub for the Phase-9 Project-Detail-Overlay —
-// the row logs a single ``console.info`` line so the wiring point is
-// obvious when Phase 9 lands.
+// Per-row click opens the Project-Detail-Overlay via the shared
+// ``useProjectOverlayStore`` (Phase 9 — same store used by the
+// sidebar Projects-zone and the in-chat ProjectSwitcher).
 
 import { useMemo, useState } from 'react'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { useSortedProjects } from '../../../features/projects/useProjectsStore'
+import { useProjectOverlayStore } from '../../../features/projects/useProjectOverlayStore'
 import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
 import type { ProjectDto } from '../../../features/projects/types'
@@ -51,9 +52,9 @@ export function ProjectsTab() {
   // paint and makes tests deterministic.
   const now = Date.now()
 
+  const openProject = useProjectOverlayStore((s) => s.open)
   function handleOpenProject(id: string) {
-    // TODO Phase 9: open Project-Detail-Overlay
-    console.info('TODO Phase 9: open Project-Detail-Overlay', id)
+    openProject(id)
   }
 
   return (

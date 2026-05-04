@@ -7,11 +7,17 @@ import { render, screen } from '@testing-library/react'
 import type { GeneratedImageSummaryDto } from '@/core/api/images'
 
 const listImagesMock = vi.fn(
-  async (): Promise<GeneratedImageSummaryDto[]> => [],
+  async (
+    _opts?: { limit?: number; before?: string; project_id?: string },
+  ): Promise<GeneratedImageSummaryDto[]> => [],
 )
 vi.mock('../../../../features/images/api', () => ({
   imagesApi: {
-    listImages: (...args: unknown[]) => listImagesMock(...args),
+    listImages: (opts?: {
+      limit?: number
+      before?: string
+      project_id?: string
+    }) => listImagesMock(opts),
   },
 }))
 

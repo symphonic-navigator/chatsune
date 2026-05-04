@@ -8,7 +8,7 @@ import type { StorageFileDto, StorageQuotaDto } from '../../../../core/api/stora
 import type { PersonaDto } from '../../../../core/types/persona'
 
 const listFilesMock = vi.fn(
-  async (): Promise<StorageFileDto[]> => [],
+  async (_params?: Record<string, unknown>): Promise<StorageFileDto[]> => [],
 )
 const getQuotaMock = vi.fn(
   async (): Promise<StorageQuotaDto> => ({
@@ -20,7 +20,7 @@ const getQuotaMock = vi.fn(
 
 vi.mock('../../../../core/api/storage', () => ({
   storageApi: {
-    listFiles: (...args: unknown[]) => listFilesMock(...args),
+    listFiles: (params?: Record<string, unknown>) => listFilesMock(params),
     getQuota: () => getQuotaMock(),
     downloadUrl: (id: string) => `/api/storage/files/${id}/download`,
     renameFile: vi.fn(),

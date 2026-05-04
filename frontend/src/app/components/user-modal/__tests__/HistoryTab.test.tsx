@@ -12,14 +12,32 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
 }))
 
-const listSessionsMock = vi.fn(async (): Promise<ChatSessionDto[]> => [])
-const updateSessionPinnedMock = vi.fn(async () => undefined)
-const searchSessionsMock = vi.fn(async () => [])
+const listSessionsMock = vi.fn(
+  async (_params?: {
+    project_id?: string
+    include_project_chats?: boolean
+  }): Promise<ChatSessionDto[]> => [],
+)
+const updateSessionPinnedMock = vi.fn(
+  async (_sessionId: string, _pinned: boolean) => undefined,
+)
+const searchSessionsMock = vi.fn(
+  async (_params: {
+    q: string
+    persona_id?: string
+    exclude_persona_ids?: string[]
+  }): Promise<ChatSessionDto[]> => [],
+)
 vi.mock('../../../../core/api/chat', () => ({
   chatApi: {
-    listSessions: (...args: unknown[]) => listSessionsMock(...args),
-    searchSessions: (...args: unknown[]) => searchSessionsMock(...args),
-    updateSessionPinned: (...args: unknown[]) => updateSessionPinnedMock(...args),
+    listSessions: (params?: {
+      project_id?: string
+      include_project_chats?: boolean
+    }) => listSessionsMock(params),
+    searchSessions: (params: { q: string; persona_id?: string; exclude_persona_ids?: string[] }) =>
+      searchSessionsMock(params),
+    updateSessionPinned: (sessionId: string, pinned: boolean) =>
+      updateSessionPinnedMock(sessionId, pinned),
   },
 }))
 

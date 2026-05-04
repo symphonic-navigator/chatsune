@@ -11,9 +11,9 @@ interface MobileProjectsViewProps {
 /**
  * Mobile second-panel content for the sidebar Projects entry. Lists
  * `useSortedProjects()` filtered through the global sanitised flag.
- * Tapping a row delegates to `onSelect`, which the sidebar host wires
- * to the Project-Detail-Overlay (Phase 9 — currently a console.info
- * placeholder).
+ * Tapping a row delegates to `onSelect`, which the sidebar host
+ * wires to the Project-Detail-Overlay via `useProjectOverlayStore`
+ * (Phase 9).
  *
  * Layout mirrors `MobileNewChatView`'s row rhythm so the two
  * second-panel screens feel of-a-piece. Unlike personas, projects

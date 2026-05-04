@@ -7,11 +7,11 @@ import type { ArtefactListItem } from '../../../../core/types/artefact'
 import type { PersonaDto } from '../../../../core/types/persona'
 
 const listAllMock = vi.fn(
-  async (): Promise<ArtefactListItem[]> => [],
+  async (_params?: { project_id?: string }): Promise<ArtefactListItem[]> => [],
 )
 vi.mock('../../../../core/api/artefact', () => ({
   artefactApi: {
-    listAll: (...args: unknown[]) => listAllMock(...args),
+    listAll: (params?: { project_id?: string }) => listAllMock(params),
     patch: vi.fn(),
     delete: vi.fn(),
   },

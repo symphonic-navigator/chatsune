@@ -43,17 +43,23 @@ vi.mock('../../../core/store/notificationStore', () => ({
     sel({ addNotification: addNotificationMock }),
 }))
 
-const createSessionMock = vi.fn(async () => ({ id: 'sess-new', persona_id: 'p-worf' }))
+const createSessionMock = vi.fn(async (_personaId: string) => ({
+  id: 'sess-new',
+  persona_id: 'p-worf',
+}))
 vi.mock('../../../core/api/chat', () => ({
   chatApi: {
-    createSession: (...args: unknown[]) => createSessionMock(...args),
+    createSession: (personaId: string) => createSessionMock(personaId),
   },
 }))
 
-const setSessionProjectMock = vi.fn(async () => ({ ok: true }))
+const setSessionProjectMock = vi.fn(
+  async (_sessionId: string, _projectId: string | null) => ({ ok: true }),
+)
 vi.mock('../projectsApi', () => ({
   projectsApi: {
-    setSessionProject: (...args: unknown[]) => setSessionProjectMock(...args),
+    setSessionProject: (sessionId: string, projectId: string | null) =>
+      setSessionProjectMock(sessionId, projectId),
   },
 }))
 

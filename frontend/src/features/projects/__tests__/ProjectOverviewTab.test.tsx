@@ -20,10 +20,12 @@ vi.mock('../../chat/EmojiPickerPopover', () => ({
   ),
 }))
 
-const patchMock = vi.fn(async () => undefined)
+const patchMock = vi.fn(
+  async (_id: string, _body: Record<string, unknown>) => undefined,
+)
 vi.mock('../projectsApi', () => ({
   projectsApi: {
-    patch: (...args: unknown[]) => patchMock(...args),
+    patch: (id: string, body: Record<string, unknown>) => patchMock(id, body),
   },
 }))
 
@@ -101,10 +103,12 @@ function makeLibrary(overrides: Partial<KnowledgeLibraryDto> = {}): KnowledgeLib
   return {
     id: 'lib-trek',
     name: 'Star Trek Lore',
+    description: null,
     document_count: 42,
     nsfw: false,
     created_at: '2026-04-01T00:00:00Z',
     updated_at: '2026-04-15T00:00:00Z',
+    default_refresh: 'standard',
     ...overrides,
   }
 }

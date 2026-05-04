@@ -20,6 +20,7 @@
 import { useState } from 'react'
 import { useViewport } from '../../core/hooks/useViewport'
 import { useProjectsStore } from './useProjectsStore'
+import { useProjectOverlayStore } from './useProjectOverlayStore'
 import { ProjectPicker } from './ProjectPicker'
 import { ProjectPickerMobile } from './ProjectPickerMobile'
 
@@ -27,10 +28,10 @@ interface ProjectSwitcherProps {
   sessionId: string
   currentProjectId: string | null
   /**
-   * Phase 9 hook — invoked when the ``[emoji][title]`` chip is clicked
-   * for an assigned project. Stubbed at the parent until the detail
-   * overlay lands; the chip is rendered as a visually-disabled
-   * non-button when the callback is omitted.
+   * Optional override for the ``[emoji][title]`` chip click. The
+   * default opens the Project-Detail-Overlay via the shared overlay
+   * store; tests pass an explicit handler to assert click-through
+   * without mounting the global overlay.
    */
   onOpenDetail?: (projectId: string) => void
 }
@@ -43,8 +44,11 @@ export function ProjectSwitcher({
   const project = useProjectsStore((s) =>
     currentProjectId ? s.projects[currentProjectId] : null,
   )
+  const openProjectOverlay = useProjectOverlayStore((s) => s.open)
   const [pickerOpen, setPickerOpen] = useState(false)
   const { isDesktop } = useViewport()
+  const effectiveOpenDetail =
+    onOpenDetail ?? ((projectId: string) => openProjectOverlay(projectId))
 
   const emoji = project?.emoji ?? null
   const title = project?.title ?? null
@@ -53,7 +57,10 @@ export function ProjectSwitcher({
   const chipLabel = hasProject ? title ?? 'Untitled project' : 'No project'
   const chipEmoji = hasProject ? emoji ?? '' : '—'
 
-  const detailDisabled = !hasProject || !onOpenDetail
+  // The detail chip is disabled only when no project is assigned;
+  // when a project IS assigned, the default handler always opens the
+  // overlay store, so the chip is always actionable in that case.
+  const detailDisabled = !hasProject
   const detailTitle = hasProject ? `Open ${chipLabel}` : 'No project assigned'
 
   return (
@@ -62,7 +69,7 @@ export function ProjectSwitcher({
         type="button"
         disabled={detailDisabled}
         onClick={() => {
-          if (project && onOpenDetail) onOpenDetail(project.id)
+          if (project) effectiveOpenDetail(project.id)
         }}
         title={detailTitle}
         aria-label={detailTitle}
