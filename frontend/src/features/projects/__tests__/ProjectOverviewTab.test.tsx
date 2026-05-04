@@ -23,9 +23,13 @@ vi.mock('../../chat/EmojiPickerPopover', () => ({
 const patchMock = vi.fn(
   async (_id: string, _body: Record<string, unknown>) => undefined,
 )
+const getMock = vi.fn(async (_id: string, _includeUsage?: boolean) => ({}))
+const deleteMock = vi.fn(async (_id: string, _purgeData: boolean) => ({ ok: true }))
 vi.mock('../projectsApi', () => ({
   projectsApi: {
     patch: (id: string, body: Record<string, unknown>) => patchMock(id, body),
+    get: (id: string, includeUsage?: boolean) => getMock(id, includeUsage),
+    delete: (id: string, purgeData: boolean) => deleteMock(id, purgeData),
   },
 }))
 
@@ -236,19 +240,13 @@ describe('ProjectOverviewTab — libraries', () => {
 })
 
 describe('ProjectOverviewTab — danger zone', () => {
-  it('logs the Phase-12 placeholder when delete is clicked', async () => {
-    const consoleSpy = vi
-      .spyOn(console, 'info')
-      .mockImplementation(() => {})
+  it('opens the DeleteProjectModal when delete is clicked', async () => {
     const { ProjectOverviewTab } = await import('../tabs/ProjectOverviewTab')
     render(<ProjectOverviewTab projectId="p1" />)
 
+    expect(screen.queryByTestId('delete-project-modal')).not.toBeInTheDocument()
     fireEvent.click(screen.getByTestId('project-overview-delete'))
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Phase 12'),
-      'p1',
-    )
-    consoleSpy.mockRestore()
+    expect(screen.getByTestId('delete-project-modal')).toBeInTheDocument()
   })
 })
 

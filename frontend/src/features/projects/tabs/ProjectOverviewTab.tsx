@@ -3,8 +3,7 @@
 // Fields: emoji (with picker), name (inline-edit, save on blur),
 // description (inline-edit, save on blur), NSFW toggle (immediate),
 // knowledge libraries multi-select. The Danger-Zone "Delete Project"
-// button is a Phase-12 placeholder — wiring lands when the
-// DeleteProjectModal exists.
+// button mounts the DeleteProjectModal (Phase 12 / spec §9).
 //
 // All mutations go through `projectsApi.patch`; the
 // `PROJECT_UPDATED` WebSocket event then re-flows into
@@ -21,6 +20,7 @@ import { KissMarkIcon } from '../../../core/components/symbols'
 import { useProjectsStore } from '../useProjectsStore'
 import { useRecentProjectEmojisStore } from '../recentProjectEmojisStore'
 import { projectsApi } from '../projectsApi'
+import { DeleteProjectModal } from '../DeleteProjectModal'
 import { EmojiPickerPopover } from '../../chat/EmojiPickerPopover'
 
 interface ProjectOverviewTabProps {
@@ -49,6 +49,7 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
   const [editingDescription, setEditingDescription] = useState(false)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [libDropdownOpen, setLibDropdownOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const libDropdownRef = useRef<HTMLDivElement>(null)
   const emojiButtonRef = useRef<HTMLDivElement>(null)
 
@@ -174,8 +175,7 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
   }
 
   function handleDelete() {
-    // TODO Phase 12: open DeleteProjectModal
-    console.info('TODO Phase 12: open DeleteProjectModal', projectId)
+    setDeleteOpen(true)
   }
 
   return (
@@ -400,6 +400,15 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
           </div>
         </div>
       </div>
+
+      {deleteOpen && (
+        <DeleteProjectModal
+          isOpen={deleteOpen}
+          projectId={projectId}
+          projectTitle={project.title}
+          onClose={() => setDeleteOpen(false)}
+        />
+      )}
     </div>
   )
 }

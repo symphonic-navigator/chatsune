@@ -30,6 +30,7 @@ import { ZoneSection } from './ZoneSection'
 import { FooterBlock } from './FooterBlock'
 import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
 import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
+import { DeleteProjectModal } from '../../../features/projects/DeleteProjectModal'
 import { sortPersonas } from './personaSort'
 import { getLastMyDataSubpage } from '../user-modal/myDataMemory'
 import { BookmarkIcon, CollegeIcon, FoxIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
@@ -132,6 +133,13 @@ export function Sidebar({
   const [mobileView, setMobileView] = useState<MobileView>('main')
 
   const [createProjectOpen, setCreateProjectOpen] = useState(false)
+  // Mindspace Phase 12: delete-project modal state. Owned by the
+  // sidebar so the same modal serves both context-menu deletes (this
+  // file) and the Project-Detail-Overlay danger zone (which mounts its
+  // own copy directly). Kept local rather than in a shared store —
+  // unlike the project-detail overlay, the delete modal needs no
+  // cross-surface coordination.
+  const [deleteProject, setDeleteProject] = useState<{ id: string; title: string } | null>(null)
 
   // Reset to main when the drawer is closed (so next open lands on main view).
   useEffect(() => {
@@ -331,8 +339,11 @@ export function Sidebar({
 
   function handleDeleteProject(projectId: string) {
     closeDrawerIfMobile()
-    // TODO Phase 12: open DeleteProjectModal
-    console.info('TODO Phase 12: open DeleteProjectModal', projectId)
+    const project = pinnedProjects.find((p) => p.id === projectId)
+    setDeleteProject({
+      id: projectId,
+      title: project?.title ?? 'Untitled project',
+    })
   }
 
   function handleOpenProjectCreateModal() {
@@ -383,6 +394,19 @@ export function Sidebar({
       onCreated={() => setCreateProjectOpen(false)}
     />
   )
+
+  // Same trick for the delete-project modal. Mounted unconditionally
+  // so the Sheet's transition is always available; ``isOpen`` flips
+  // when ``deleteProject`` is non-null. ``onClose`` clears the
+  // local state — the project store reconciles via ``PROJECT_DELETED``.
+  const projectDeleteModal = deleteProject ? (
+    <DeleteProjectModal
+      isOpen={true}
+      projectId={deleteProject.id}
+      projectTitle={deleteProject.title}
+      onClose={() => setDeleteProject(null)}
+    />
+  ) : null
 
   // ── Collapsed view ──────────────────────────────────────────────
   if (renderCollapsed) {
@@ -586,6 +610,7 @@ export function Sidebar({
         {/* Projects flyout hidden — feature not yet ready (see FOR_LATER.md) */}
       </aside>
       {projectCreateModal}
+      {projectDeleteModal}
       </>
     )
   }
@@ -672,6 +697,7 @@ export function Sidebar({
         </div>
       </aside>
       {projectCreateModal}
+      {projectDeleteModal}
       </>
     )
   }
@@ -881,6 +907,7 @@ export function Sidebar({
 
     </aside>
     {projectCreateModal}
+    {projectDeleteModal}
     </>
   )
 }
