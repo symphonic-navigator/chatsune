@@ -63,6 +63,7 @@ export async function uploadFile(
 export const storageApi = {
   listFiles: (params?: {
     persona_id?: string
+    project_id?: string
     sort_by?: "date" | "size"
     order?: "asc" | "desc"
     limit?: number
@@ -70,6 +71,7 @@ export const storageApi = {
   }) => {
     const query = new URLSearchParams()
     if (params?.persona_id) query.set("persona_id", params.persona_id)
+    if (params?.project_id) query.set("project_id", params.project_id)
     if (params?.sort_by) query.set("sort_by", params.sort_by)
     if (params?.order) query.set("order", params.order)
     if (params?.limit !== undefined) query.set("limit", String(params.limit))

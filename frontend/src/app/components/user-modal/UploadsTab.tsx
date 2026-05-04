@@ -92,10 +92,7 @@ interface UploadsTabProps {
   projectFilter?: string
 }
 
-export function UploadsTab({ projectFilter: _projectFilter }: UploadsTabProps = {}) {
-  // Task 37 wires projectFilter into the storageApi call. The shell-only
-  // commit accepts the prop so the overlay can mount; behaviour is the
-  // same as before in this commit.
+export function UploadsTab({ projectFilter }: UploadsTabProps = {}) {
   const [files, setFiles] = useState<StorageFileDto[]>([])
   const [quota, setQuota] = useState<StorageQuotaDto | null>(null)
   const [loading, setLoading] = useState(true)
@@ -141,7 +138,11 @@ export function UploadsTab({ projectFilter: _projectFilter }: UploadsTabProps = 
   const fetchData = useCallback(async (sort?: SortBy, order?: SortOrder) => {
     try {
       const [fileList, quotaData] = await Promise.all([
-        storageApi.listFiles({ sort_by: sort ?? sortBy, order: order ?? sortOrder }),
+        storageApi.listFiles({
+          sort_by: sort ?? sortBy,
+          order: order ?? sortOrder,
+          project_id: projectFilter,
+        }),
         storageApi.getQuota(),
       ])
       setFiles(fileList)
@@ -152,7 +153,7 @@ export function UploadsTab({ projectFilter: _projectFilter }: UploadsTabProps = 
     } finally {
       setLoading(false)
     }
-  }, [sortBy, sortOrder])
+  }, [sortBy, sortOrder, projectFilter])
 
   useEffect(() => {
     fetchData()
