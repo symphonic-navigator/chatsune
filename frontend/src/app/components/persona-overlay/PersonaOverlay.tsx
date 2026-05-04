@@ -196,7 +196,10 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
         {/* Header */}
         <div
           className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-          style={{ borderBottom: `1px solid ${borderColour}` }}
+          style={{
+            borderBottom: `1px solid ${borderColour}`,
+            paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+          }}
         >
           <div className="flex items-center gap-3">
             {/* Monogram badge */}

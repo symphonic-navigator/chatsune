@@ -183,7 +183,10 @@ export function UserModal({
         className="absolute inset-0 lg:inset-4 z-20 flex flex-col bg-surface border-0 lg:border lg:border-white/8 rounded-none lg:rounded-xl shadow-2xl overflow-hidden outline-none"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/6 flex-shrink-0">
+        <div
+          className="flex items-center justify-between px-5 py-3 border-b border-white/6 flex-shrink-0"
+          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+        >
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-semibold text-white/80">{displayName}</span>
             <span className="text-[11px] text-white/30">· User Area</span>

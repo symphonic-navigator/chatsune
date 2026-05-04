@@ -11,7 +11,10 @@ export function MobileSidebarHeader({ title, onBack, onClose }: MobileSidebarHea
   const isOverlay = title !== undefined
 
   return (
-    <div className="flex h-[50px] flex-shrink-0 items-center gap-1 border-b border-white/5 px-3.5">
+    <div
+      className="flex h-[50px] flex-shrink-0 items-center gap-1 border-b border-white/5 px-3.5"
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
+    >
       {isOverlay ? (
         <button
           type="button"
