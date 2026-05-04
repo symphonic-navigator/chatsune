@@ -189,7 +189,7 @@ describe('useProjectsStore — event subscriptions', () => {
     expect(useProjectsStore.getState().projects.d2).toBeDefined()
   })
 
-  it('project.pinned.updated event patches only the pinned flag', async () => {
+  it('project.pinned.updated event patches only the pinned flag (payload uses project_id)', async () => {
     const { useProjectsStore } = await import('../useProjectsStore')
     const { eventBus } = await import('../../../core/websocket/eventBus')
     const { Topics } = await import('../../../core/types/events')
@@ -209,7 +209,9 @@ describe('useProjectsStore — event subscriptions', () => {
       scope: 'global',
       correlation_id: 'c4',
       timestamp: '2026-05-04T00:00:00Z',
-      payload: { id: 'pin1', pinned: true, user_id: 'u1' },
+      // Backend emits ``project_id`` (matching ProjectPinnedUpdatedEvent),
+      // not ``id`` — guards against the review-blocker regression.
+      payload: { project_id: 'pin1', pinned: true, user_id: 'u1' },
     })
 
     const after = useProjectsStore.getState().projects.pin1
@@ -230,9 +232,31 @@ describe('useProjectsStore — event subscriptions', () => {
       scope: 'global',
       correlation_id: 'c5',
       timestamp: '2026-05-04T00:00:00Z',
-      payload: { id: 'ghost', pinned: true, user_id: 'u1' },
+      payload: { project_id: 'ghost', pinned: true, user_id: 'u1' },
     })
 
     expect(useProjectsStore.getState().projects.ghost).toBeUndefined()
+  })
+
+  it('project.pinned.updated ignores legacy ``id`` field', async () => {
+    const { useProjectsStore } = await import('../useProjectsStore')
+    const { eventBus } = await import('../../../core/websocket/eventBus')
+    const { Topics } = await import('../../../core/types/events')
+
+    useProjectsStore.getState().upsert(
+      makeProject({ id: 'pin2', pinned: false }),
+    )
+
+    eventBus.emit({
+      id: 'e6',
+      type: Topics.PROJECT_PINNED_UPDATED,
+      sequence: '1',
+      scope: 'global',
+      correlation_id: 'c6',
+      timestamp: '2026-05-04T00:00:00Z',
+      payload: { id: 'pin2', pinned: true, user_id: 'u1' },
+    })
+
+    expect(useProjectsStore.getState().projects.pin2.pinned).toBe(false)
   })
 })

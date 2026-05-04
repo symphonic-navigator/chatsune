@@ -107,11 +107,14 @@ eventBus.on(Topics.PROJECT_DELETED, (event: BaseEvent) => {
 eventBus.on(Topics.PROJECT_PINNED_UPDATED, (event: BaseEvent) => {
   // Narrow payload — only ``pinned`` changes. Patch in place so the
   // rest of the project document survives.
-  const payload = event.payload as { id?: unknown; pinned?: unknown }
-  if (typeof payload.id !== 'string' || typeof payload.pinned !== 'boolean') {
+  // Backend ``ProjectPinnedUpdatedEvent`` carries ``project_id`` (consistent
+  // with the rest of the project event family); the previous ``id``
+  // lookup silently dropped every pin update.
+  const payload = event.payload as { project_id?: unknown; pinned?: unknown }
+  if (typeof payload.project_id !== 'string' || typeof payload.pinned !== 'boolean') {
     return
   }
-  const existing = useProjectsStore.getState().projects[payload.id]
+  const existing = useProjectsStore.getState().projects[payload.project_id]
   if (!existing) return
   useProjectsStore.getState().upsert({ ...existing, pinned: payload.pinned })
 })
