@@ -197,4 +197,7 @@ class PersonaRepository:
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
             last_used_at=doc.get("last_used_at"),
+            # Mindspace: legacy personas lack ``default_project_id``;
+            # ``doc.get`` defaults to ``None`` matching the DTO.
+            default_project_id=doc.get("default_project_id"),
         )
