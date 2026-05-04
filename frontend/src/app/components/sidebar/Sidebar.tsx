@@ -18,6 +18,7 @@ import { projectsApi } from "../../../features/projects/projectsApi"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
 import { MobileMainView } from './MobileMainView'
 import { MobileNewChatView } from './MobileNewChatView'
+import { MobileProjectsView } from './MobileProjectsView'
 import { HistoryTab } from '../user-modal/HistoryTab'
 import { BookmarksTab } from '../user-modal/BookmarksTab'
 import type { PersonaDto } from "../../../core/types/persona"
@@ -125,7 +126,7 @@ export function Sidebar({
   // is a one-line widening rather than reshaping every callsite.
   const [flyoutTab, setFlyoutTab] = useState<'history' | null>(null)
 
-  type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks'
+  type MobileView = 'main' | 'new-chat' | 'history' | 'bookmarks' | 'projects'
   const [mobileView, setMobileView] = useState<MobileView>('main')
 
   // Reset to main when the drawer is closed (so next open lands on main view).
@@ -586,7 +587,16 @@ export function Sidebar({
       mobileView === 'new-chat'  ? 'New Chat'  :
       mobileView === 'history'   ? 'History'   :
       mobileView === 'bookmarks' ? 'Bookmarks' :
+      mobileView === 'projects'  ? 'Projects'  :
       undefined
+
+    function handleMobileProjectSelect(projectId: string) {
+      // Close the drawer first, then route into the (still-pending)
+      // Project-Detail-Overlay. The desktop equivalent does the same
+      // via `handleOpenProject`.
+      setMobileView('main')
+      handleOpenProject(projectId)
+    }
 
     return (
       <aside
@@ -623,6 +633,7 @@ export function Sidebar({
                 onContinue={handleContinue}
                 onNewChat={() => setMobileView('new-chat')}
                 onPersonas={handlePersonas}
+                onProjects={() => setMobileView('projects')}
                 onHistory={() => setMobileView('history')}
                 onBookmarks={() => setMobileView('bookmarks')}
                 onKnowledge={handleKnowledge}
@@ -638,6 +649,7 @@ export function Sidebar({
               {mobileView === 'new-chat'  && <MobileNewChatView personas={personas} onSelect={handleNewChatFromMobileOverlay} onClose={closeOverlayAndDrawer} />}
               {mobileView === 'history'   && <HistoryTab   onClose={closeOverlayAndDrawer} />}
               {mobileView === 'bookmarks' && <BookmarksTab onClose={closeOverlayAndDrawer} />}
+              {mobileView === 'projects'  && <MobileProjectsView onSelect={handleMobileProjectSelect} />}
             </div>
           </div>
         </div>
