@@ -2,7 +2,6 @@ import { useRef, useState } from "react"
 import { useNavigate, useOutletContext } from "react-router-dom"
 import PersonaCard from "../components/persona-card/PersonaCard"
 import AddPersonaCard from "../components/persona-card/AddPersonaCard"
-import { AddPersonaMenu } from "../components/persona-card/AddPersonaMenu"
 import { usePersonas } from "../../core/hooks/usePersonas"
 import { useChatSessions } from "../../core/hooks/useChatSessions"
 import { useSanitisedMode } from "../../core/store/sanitisedModeStore"
@@ -45,16 +44,13 @@ export default function PersonasPage() {
 
   const addNotification = useNotificationStore((s) => s.addNotification)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [importing, setImporting] = useState(false)
 
   const handleCreateNew = () => {
-    setMenuOpen(false)
     openPersonaOverlay(null, "edit")
   }
 
   const handleImportClick = () => {
-    setMenuOpen(false)
     fileInputRef.current?.click()
   }
 
@@ -110,16 +106,11 @@ export default function PersonasPage() {
             onTogglePin={handleTogglePin}
           />
         ))}
-        <div className="relative">
-          <AddPersonaCard onClick={() => setMenuOpen((v) => !v)} index={filtered.length} />
-          {menuOpen && (
-            <AddPersonaMenu
-              onCreateNew={handleCreateNew}
-              onImport={handleImportClick}
-              onClose={() => setMenuOpen(false)}
-            />
-          )}
-        </div>
+        <AddPersonaCard
+          onCreateNew={handleCreateNew}
+          onImport={handleImportClick}
+          index={filtered.length}
+        />
       </div>
 
       <input
