@@ -3,6 +3,7 @@
  * Provides type definitions, the tree itself, and resolver helpers.
  */
 
+import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
 import type { NavLeaf, NavNode, NavSection } from '../overlay-mobile-nav/types'
 
 export type TopTabId =
@@ -16,9 +17,6 @@ export type TopTabId =
 
 export type SubTabId =
   // chats
-  // 'projects' is intentionally retained in the type union so legacy persisted
-  // sub-tab IDs (e.g. in localStorage) still type-check during resolution.
-  // The Projects entry is hidden from the tree below — see FOR_LATER.md.
   | 'projects'
   | 'history'
   | 'bookmarks'
@@ -48,7 +46,12 @@ export const TABS_TREE: TopTab[] = [
     id: 'chats',
     label: 'Chats',
     children: [
-      // Projects sub-tab hidden — feature not yet ready (see FOR_LATER.md).
+      // Projects sub-tab is gated on the PROJECTS_ENABLED flag — keep
+      // it as the first child so it surfaces directly under the Chats
+      // top-pill once Mindspace ships.
+      ...(PROJECTS_ENABLED
+        ? [{ id: 'projects' as const, label: 'Projects' }]
+        : []),
       { id: 'history',   label: 'History' },
       { id: 'bookmarks', label: 'Bookmarks' },
     ],

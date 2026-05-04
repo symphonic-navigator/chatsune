@@ -4,7 +4,7 @@ import { GalleryGrid } from '../../../features/images/gallery/GalleryGrid'
 import { AboutMeTab } from './AboutMeTab'
 import { SettingsTab } from './SettingsTab'
 import { HistoryTab } from './HistoryTab'
-// Projects UI hidden — feature not yet ready (see FOR_LATER.md).
+import { ProjectsTab } from './ProjectsTab'
 import { KnowledgeTab } from './KnowledgeTab'
 import { UploadsTab } from './UploadsTab'
 import { ArtefactsTab } from './ArtefactsTab'
@@ -284,7 +284,7 @@ export function UserModal({
         >
           {contentKey === 'about-me' && <AboutMeTab />}
           {contentKey === 'personas' && <PersonasTab onOpenPersonaOverlay={onOpenPersonaOverlay} onCreatePersona={onCreatePersona} onImportPersona={onImportPersona} />}
-          {/* Projects tab hidden — feature not yet ready (see FOR_LATER.md). */}
+          {contentKey === 'projects' && <ProjectsTab />}
           {contentKey === 'history' && <HistoryTab onClose={onClose} />}
           {contentKey === 'knowledge' && <KnowledgeTab />}
           {contentKey === 'bookmarks' && <BookmarksTab onClose={onClose} />}
