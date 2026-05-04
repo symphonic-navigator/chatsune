@@ -7,6 +7,7 @@ import type {
   OllamaPsResponse,
   OllamaTagsResponse,
 } from '../../../../core/api/ollamaLocal'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from './_secretInputStyle'
 
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (
@@ -162,7 +163,7 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
         </div>
         <input
           id={keyId}
-          type="password"
+          type="text"
           value={apiKey}
           onChange={(e) => {
             setApiKey(e.target.value)
@@ -173,8 +174,9 @@ export function OllamaHttpView({ connection, requiredConfigFields, onConfigChang
               ? '••••••••  (leave empty to keep)'
               : apiKeyRequired ? 'Required' : 'Optional'
           }
-          autoComplete="new-password"
           required={apiKeyRequired}
+          style={SECRET_INPUT_STYLE}
+          {...SECRET_INPUT_NO_AUTOFILL}
           className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-white outline-none focus:border-purple/60"
         />
         {apiKeyState?.is_set && (

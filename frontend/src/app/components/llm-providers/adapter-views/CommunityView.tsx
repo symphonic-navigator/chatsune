@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { AdapterViewProps } from '../../../../core/adapters/AdapterViewRegistry'
 import type { SecretFieldView } from '../../../../core/types/llm'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from './_secretInputStyle'
 
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (
@@ -115,7 +116,7 @@ export function CommunityView({
         </div>
         <input
           id={apiKeyInputId}
-          type="password"
+          type="text"
           value={apiKey}
           onChange={(e) => {
             setApiKey(e.target.value)
@@ -126,8 +127,8 @@ export function CommunityView({
               ? '••••••••  (leave empty to keep)'
               : 'csapi_…'
           }
-          autoComplete="new-password"
-          spellCheck={false}
+          style={SECRET_INPUT_STYLE}
+          {...SECRET_INPUT_NO_AUTOFILL}
           className="w-full rounded border border-white/10 bg-black/30 px-2 py-1.5 font-mono text-sm text-white outline-none focus:border-purple/60"
         />
         {apiKeyState?.is_set && (
