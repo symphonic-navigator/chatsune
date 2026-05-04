@@ -15,6 +15,13 @@ class ProjectRepository:
         await self._collection.create_index(
             [("user_id", 1), ("pinned", -1), ("sort_order", 1), ("created_at", -1)],
         )
+        # Mindspace: drives the sidebar listing (auto-sort by pinned
+        # then most-recent-update). Idempotent at startup.
+        await self._collection.create_index(
+            [("user_id", 1), ("pinned", -1), ("updated_at", -1)],
+            name="user_pinned_updated",
+            background=True,
+        )
 
     async def create(
         self,

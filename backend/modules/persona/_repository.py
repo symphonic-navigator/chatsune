@@ -15,6 +15,15 @@ class PersonaRepository:
     async def create_indexes(self) -> None:
         await self._collection.create_index("user_id")
         await self._collection.create_index([("user_id", 1), ("display_order", 1)])
+        # Mindspace: covers "personas with default in project P".
+        # Sparse so personas without a default project don't bloat the
+        # index — most personas will fall in that bucket.
+        await self._collection.create_index(
+            [("user_id", 1), ("default_project_id", 1)],
+            name="user_default_project",
+            sparse=True,
+            background=True,
+        )
 
     async def create(
         self,

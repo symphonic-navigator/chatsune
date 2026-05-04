@@ -227,6 +227,15 @@ class ChatRepository:
     async def create_indexes(self) -> None:
         await self._sessions.create_index("user_id")
         await self._sessions.create_index([("user_id", 1), ("updated_at", -1)])
+        # Mindspace: covers "sessions in project X", "sessions outside
+        # any project" and "list global history" queries efficiently.
+        # Idempotent — Mongo's create_index is a no-op when the spec
+        # matches an existing index (named or unnamed).
+        await self._sessions.create_index(
+            [("user_id", 1), ("project_id", 1), ("updated_at", -1)],
+            name="user_project_updated",
+            background=True,
+        )
         await self._messages.create_index("session_id")
         await self._messages.create_index([("session_id", 1), ("created_at", 1)])
         await self._messages.create_index(
