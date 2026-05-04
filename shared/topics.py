@@ -116,6 +116,12 @@ class Topics:
     PROJECT_CREATED = "project.created"
     PROJECT_UPDATED = "project.updated"
     PROJECT_DELETED = "project.deleted"
+    # Mindspace — dedicated pinned-toggle topic so the sidebar can react
+    # without a full project-updated payload, plus per-session project
+    # reassignment and per-user project-emoji LRU updates.
+    PROJECT_PINNED_UPDATED = "project.pinned.updated"
+    CHAT_SESSION_PROJECT_UPDATED = "chat.session.project.updated"
+    USER_RECENT_PROJECT_EMOJIS_UPDATED = "user.recent_project_emojis.updated"
     # Background jobs
     JOB_STARTED = "job.started"
     JOB_COMPLETED = "job.completed"
