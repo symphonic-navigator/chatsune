@@ -149,7 +149,7 @@ describe('useProjectsStore — event subscriptions', () => {
     expect(useProjectsStore.getState().projects.u1.title).toBe('Updated')
   })
 
-  it('project.deleted event removes the project', async () => {
+  it('project.deleted event removes the project (payload uses project_id)', async () => {
     const { useProjectsStore } = await import('../useProjectsStore')
     const { eventBus } = await import('../../../core/websocket/eventBus')
     const { Topics } = await import('../../../core/types/events')
@@ -162,10 +162,31 @@ describe('useProjectsStore — event subscriptions', () => {
       scope: 'global',
       correlation_id: 'c3',
       timestamp: '2026-05-04T00:00:00Z',
-      payload: { id: 'd1' },
+      // Backend emits ``project_id`` (matching ProjectDeletedEvent),
+      // not ``id`` — this guards against the review-blocker regression.
+      payload: { project_id: 'd1', user_id: 'u1' },
     })
 
     expect(useProjectsStore.getState().projects.d1).toBeUndefined()
+  })
+
+  it('project.deleted event ignores legacy ``id`` field', async () => {
+    const { useProjectsStore } = await import('../useProjectsStore')
+    const { eventBus } = await import('../../../core/websocket/eventBus')
+    const { Topics } = await import('../../../core/types/events')
+
+    useProjectsStore.getState().upsert(makeProject({ id: 'd2' }))
+    eventBus.emit({
+      id: 'e3b',
+      type: Topics.PROJECT_DELETED,
+      sequence: '1',
+      scope: 'global',
+      correlation_id: 'c3b',
+      timestamp: '2026-05-04T00:00:00Z',
+      payload: { id: 'd2' },
+    })
+
+    expect(useProjectsStore.getState().projects.d2).toBeDefined()
   })
 
   it('project.pinned.updated event patches only the pinned flag', async () => {

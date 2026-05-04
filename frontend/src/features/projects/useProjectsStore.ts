@@ -95,7 +95,10 @@ eventBus.on(Topics.PROJECT_UPDATED, (event: BaseEvent) => {
 })
 
 eventBus.on(Topics.PROJECT_DELETED, (event: BaseEvent) => {
-  const id = (event.payload as { id?: unknown }).id
+  // Backend ``ProjectDeletedEvent`` carries ``project_id`` (matching the
+  // other project-bus events). The previous ``id`` lookup silently
+  // returned ``undefined`` so the store never removed deleted projects.
+  const id = (event.payload as { project_id?: unknown }).project_id
   if (typeof id === 'string') {
     useProjectsStore.getState().remove(id)
   }
