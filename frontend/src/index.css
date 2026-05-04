@@ -98,6 +98,19 @@ body {
   line-height: var(--chat-line-height);
 }
 
+/* iOS Safari zooms in on inputs whose computed font-size is below
+   16px. Force ≥ 16px on form controls below the lg breakpoint. The
+   chat-text rule still applies inside chat *messages* (rendered as
+   <p>/<div>, not form controls), so the message body stays at the
+   user-configured size. */
+@media (max-width: 1023.98px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* White-script high-contrast mode */
 .white-script .chat-text {
   color: var(--chat-text-colour, inherit);
