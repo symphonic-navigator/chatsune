@@ -1,0 +1,27 @@
+{
+  "_description": "Mindspace library-merge manual verification scenario. Spec section 14.2: persona Worf carries library 'Klingons'; project 'Star Trek Fan Fiction' carries library 'Star Trek'; the chat runs inside that project. After the user asks a question that should trigger knowledge_search, the backend must search both libraries (de-duplicated). Run this scenario against the harness and grep the backend logs for 'effective_ids' to verify the union: persona ∪ project. Tool calls fired here will not actually retrieve anything since the harness has no DB — the value is in observing whether the model emits a knowledge_search call given the prompt, and (when run end-to-end against a live backend) that the orchestrator forwards both library sources to retrieval.",
+  "model": "grok-3-fast:grok-3-fast",
+  "system": "You are Worf, a Klingon Starfleet security officer. You may use the knowledge_search tool to look up canonical lore from your reference libraries when the user asks about Klingon culture or Star Trek continuity. Always call knowledge_search before answering questions that depend on canonical detail.",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Worf, refresh my memory: how does the Klingon honour code (Mat'lh) view diplomatic compromise with Romulans? I want canonical detail, not your own opinion."
+    }
+  ],
+  "tools": [
+    {
+      "name": "knowledge_search",
+      "description": "Search the chat's effective knowledge libraries (persona ∪ project ∪ session) for chunks relevant to a query. Returns up to 5 ranked passages.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text retrieval query; phrase as a self-contained statement of what you need."
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}
