@@ -36,7 +36,8 @@ makes no such promise.
   unchanged. A follow-up session will mirror the relevant decisions to
   mobile after desktop is validated.
 - **No Projects backend, data model, or UI.** Projects remain in
-  `PROJECTS-FEATURE.md`. This spec only reserves the sidebar slot.
+  the Mindspace design (`devdocs/specs/2026-05-04-mindspace-design.md`).
+  This spec only reserves the sidebar slot.
 - **No new search-in-sidebar.** Search is modal-only going forward; the
   inline history search input is removed.
 - **No drag-and-drop replacement mechanic.** Drag is removed; the order
@@ -237,7 +238,7 @@ items, and LRU applied within each group.
 |---|---|
 | Persona | `personas.last_used_at` (new field, see §3.2) |
 | Chat session | `chat_sessions.updated_at` (existing) |
-| Project | Out of scope for this spec; defined in `PROJECTS-FEATURE.md` |
+| Project | Out of scope for this spec; defined in `devdocs/specs/2026-05-04-mindspace-design.md` |
 
 ### 3.2 Backend change: `personas.last_used_at`
 
