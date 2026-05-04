@@ -22,6 +22,9 @@ class UserDto(BaseModel):
     created_at: datetime
     updated_at: datetime
     recent_emojis: list[str] = Field(default_factory=list)
+    # Mindspace: project emoji-picker LRU, separate from
+    # ``recent_emojis``. Defaults to empty for legacy users.
+    recent_project_emojis: list[str] = Field(default_factory=list)
 
 
 class SetupRequestDto(BaseModel):
