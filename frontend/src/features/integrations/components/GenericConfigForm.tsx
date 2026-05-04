@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../../core/utils/secretInputStyle'
 
 // ─── Style constants (opulent prototype palette) ──────────────────────────────
 
@@ -174,7 +175,7 @@ function FieldRow({
       <div>
         {labelEl}
         <input
-          type="password"
+          type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={
@@ -182,6 +183,8 @@ function FieldRow({
               ? '••••••••  (set — leave blank to keep)'
               : field.placeholder
           }
+          style={SECRET_INPUT_STYLE}
+          {...SECRET_INPUT_NO_AUTOFILL}
           className={INPUT}
         />
         {secretSet && !value && (

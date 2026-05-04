@@ -378,10 +378,7 @@ export default function AppLayout() {
               displayName={displayName}
               hasApiKeyProblem={hasApiKeyProblem}
               onProvidersChanged={notifyProvidersChanged}
-              onOpenPersonaOverlay={(id) => {
-                closeModal()
-                openPersonaOverlay(id, "overview")
-              }}
+              onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")}
               onCreatePersona={() => openPersonaOverlay(null, "edit")}
               onImportPersona={handleImportPersona}
             />

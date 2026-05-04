@@ -7,7 +7,7 @@ import type {
   OllamaPsResponse,
   OllamaTagsResponse,
 } from '../../../../core/api/ollamaLocal'
-import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from './_secretInputStyle'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../../../core/utils/secretInputStyle'
 
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (

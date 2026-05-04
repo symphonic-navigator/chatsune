@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../../core/utils/secretInputStyle'
 import { CAPABILITY_META } from '../../../core/types/providers'
 import type {
   PremiumProviderDefinition,
@@ -52,10 +53,12 @@ export function PremiumAccountCard({
       {editing ? (
         <div className="flex items-center gap-2">
           <input
-            type="password"
+            type="text"
             placeholder="API key"
             value={keyDraft}
             onChange={(e) => setKeyDraft(e.target.value)}
+            style={SECRET_INPUT_STYLE}
+            {...SECRET_INPUT_NO_AUTOFILL}
             className="flex-1 rounded bg-black/30 border border-white/10 px-2 py-1 text-[12px] text-white/90"
           />
           <button

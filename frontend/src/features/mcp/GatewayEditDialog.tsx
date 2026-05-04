@@ -1,4 +1,5 @@
 import { useId, useState } from 'react'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../core/utils/secretInputStyle'
 import type { McpGatewayConfig } from './types'
 
 export interface GatewayEditDialogProps {
@@ -140,11 +141,12 @@ export function GatewayEditDialog({
         </label>
         <input
           id={apiKeyId}
-          type="password"
+          type="text"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="No authentication"
-          autoComplete="off"
+          style={SECRET_INPUT_STYLE}
+          {...SECRET_INPUT_NO_AUTOFILL}
           className={INPUT}
         />
       </div>

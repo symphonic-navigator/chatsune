@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { AdapterViewProps } from '../../../../core/adapters/AdapterViewRegistry'
 import type { SecretFieldView } from '../../../../core/types/llm'
-import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from './_secretInputStyle'
+import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../../../core/utils/secretInputStyle'
 
 function isSecretFieldView(value: unknown): value is SecretFieldView {
   return (
