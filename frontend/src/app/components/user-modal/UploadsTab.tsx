@@ -84,7 +84,18 @@ async function downloadFile(fileId: string, filename: string) {
 
 type PersonaFilter = 'all' | 'none' | string
 
-export function UploadsTab() {
+interface UploadsTabProps {
+  /**
+   * Mindspace: when set, the tab scopes to a single project's
+   * uploads. Phase 9 / spec §6.5 Tab 4.
+   */
+  projectFilter?: string
+}
+
+export function UploadsTab({ projectFilter: _projectFilter }: UploadsTabProps = {}) {
+  // Task 37 wires projectFilter into the storageApi call. The shell-only
+  // commit accepts the prop so the overlay can mount; behaviour is the
+  // same as before in this commit.
   const [files, setFiles] = useState<StorageFileDto[]>([])
   const [quota, setQuota] = useState<StorageQuotaDto | null>(null)
   const [loading, setLoading] = useState(true)

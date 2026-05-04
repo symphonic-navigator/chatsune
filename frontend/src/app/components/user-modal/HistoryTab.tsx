@@ -15,6 +15,12 @@ const OPTION_STYLE: React.CSSProperties = {
 
 interface HistoryTabProps {
   onClose: () => void
+  /**
+   * Mindspace: when set, the tab scopes to a single project's chat
+   * sessions. Hides the "Include project chats" toggle (it is
+   * meaningless in single-project mode). Phase 9 / spec §6.5 Tab 3.
+   */
+  projectFilter?: string
 }
 
 function getDateGroup(isoString: string): string {
@@ -55,7 +61,10 @@ const BTN = 'px-1.5 py-0.5 rounded text-[10px] font-mono uppercase tracking-wide
 const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hover:border-white/15`
 const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
 
-export function HistoryTab({ onClose }: HistoryTabProps) {
+export function HistoryTab({ onClose, projectFilter: _projectFilter }: HistoryTabProps) {
+  // Task 36 wires projectFilter into the actual fetch / filter pipeline.
+  // The shell-only commit accepts the prop but ignores it for now so
+  // the overlay can mount without TypeScript errors.
   const { sessions, isLoading } = useChatSessions()
   const { personas } = usePersonas()
   const isSanitised = useSanitisedMode((s) => s.isSanitised)
