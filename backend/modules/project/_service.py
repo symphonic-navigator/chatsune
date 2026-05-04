@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from backend.database import get_db
 from backend.modules.project._repository import ProjectRepository
 from shared.dtos.project import ProjectUsageDto
+from shared.events.chat import ChatSessionProjectUpdatedEvent
 from shared.events.project import ProjectDeletedEvent
 from shared.topics import Topics
 
@@ -84,10 +85,11 @@ async def cascade_delete_project(
     Returns ``True`` iff the project document existed and was removed.
     A missing/foreign project is a no-op so callers can be idempotent.
 
-    Emits ``PROJECT_DELETED`` once at the end. Per-session and per-persona
-    events from the safe-delete branch will be added in Phase 3 alongside
-    the in-chat switcher and persona overview surfaces — they are not
-    required for the project cascade itself to function correctly.
+    Emits ``PROJECT_DELETED`` once at the end. The safe-delete branch
+    additionally emits one ``CHAT_SESSION_PROJECT_UPDATED`` per detached
+    session — ``set_session_project`` is event-free by design (the HTTP
+    PATCH handler emits the event), so the cascade has to mirror that
+    behaviour explicitly to keep the sidebar / HistoryTab live.
     """
     # Deferred imports keep startup-time module graphs simple and prove
     # we go through public APIs only.
@@ -113,8 +115,20 @@ async def cascade_delete_project(
         for sid in session_ids:
             await chat_service.delete_session(sid, user_id)
     else:
+        event_bus = get_event_bus()
         for sid in session_ids:
             await chat_service.set_session_project(sid, user_id, None)
+            await event_bus.publish(
+                Topics.CHAT_SESSION_PROJECT_UPDATED,
+                ChatSessionProjectUpdatedEvent(
+                    session_id=sid,
+                    project_id=None,
+                    user_id=user_id,
+                    timestamp=datetime.now(timezone.utc),
+                ),
+                scope=f"session:{sid}",
+                target_user_ids=[user_id],
+            )
 
     affected_personas = await persona_service.clear_default_project_for_all(
         user_id, project_id,

@@ -249,3 +249,98 @@ async def test_publishes_project_deleted_event(env, monkeypatch):
     assert event.user_id == "u1"
     assert scope == "user:u1"
     assert targets == ["u1"]
+
+
+async def test_safe_delete_emits_session_project_updated_per_session(
+    env, monkeypatch,
+):
+    """Spec parity: ``set_session_project`` is event-free by design — the
+    PATCH handler emits ``CHAT_SESSION_PROJECT_UPDATED``. The cascade has
+    to mirror that behaviour so the sidebar / HistoryTab re-classify the
+    detached sessions live, without a manual reload.
+    """
+    captured: list[tuple] = []
+    original_publish = EventBus.publish
+
+    async def capturing_publish(
+        self, topic, event,
+        scope="global", target_user_ids=None, correlation_id=None,
+    ):
+        captured.append((topic, event, scope, target_user_ids))
+        return await original_publish(
+            self, topic, event,
+            scope=scope, target_user_ids=target_user_ids,
+            correlation_id=correlation_id,
+        )
+
+    monkeypatch.setattr(EventBus, "publish", capturing_publish)
+
+    db = env
+    repo = ProjectRepository(db)
+    proj = await repo.create(
+        user_id="u1", title="P", emoji=None, description="", nsfw=False,
+    )
+    pid = proj["_id"]
+    s1 = await _seed_session(db, user_id="u1", project_id=pid)
+    s2 = await _seed_session(db, user_id="u1", project_id=pid)
+
+    deleted = await project_service.cascade_delete_project(
+        pid, "u1", purge_data=False,
+    )
+    assert deleted is True
+
+    session_events = [
+        c for c in captured if c[0] == Topics.CHAT_SESSION_PROJECT_UPDATED
+    ]
+    assert len(session_events) == 2
+    detached_sids = {ev.session_id for _, ev, _, _ in session_events}
+    assert detached_sids == {s1, s2}
+    for _topic, event, scope, targets in session_events:
+        assert event.project_id is None
+        assert event.user_id == "u1"
+        assert scope == f"session:{event.session_id}"
+        assert targets == ["u1"]
+
+
+async def test_full_purge_does_not_emit_session_project_updated(
+    env, monkeypatch,
+):
+    """Full-purge soft-deletes sessions; they leave the user's view via
+    ``CHAT_SESSION_DELETED``, not a project-detach event. We pin that
+    contract here so the safe-delete fix above does not bleed into the
+    purge branch.
+    """
+    captured: list[tuple] = []
+    original_publish = EventBus.publish
+
+    async def capturing_publish(
+        self, topic, event,
+        scope="global", target_user_ids=None, correlation_id=None,
+    ):
+        captured.append((topic, event, scope, target_user_ids))
+        return await original_publish(
+            self, topic, event,
+            scope=scope, target_user_ids=target_user_ids,
+            correlation_id=correlation_id,
+        )
+
+    monkeypatch.setattr(EventBus, "publish", capturing_publish)
+
+    db = env
+    repo = ProjectRepository(db)
+    proj = await repo.create(
+        user_id="u1", title="P", emoji=None, description="", nsfw=False,
+    )
+    pid = proj["_id"]
+    await _seed_session(db, user_id="u1", project_id=pid)
+    await _seed_session(db, user_id="u1", project_id=pid)
+
+    deleted = await project_service.cascade_delete_project(
+        pid, "u1", purge_data=True,
+    )
+    assert deleted is True
+
+    session_events = [
+        c for c in captured if c[0] == Topics.CHAT_SESSION_PROJECT_UPDATED
+    ]
+    assert len(session_events) == 0
