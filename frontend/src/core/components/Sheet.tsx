@@ -116,6 +116,14 @@ export function Sheet({
           aria-modal="true"
           aria-label={ariaLabel}
           tabIndex={-1}
+          style={{
+            // On mobile the sheet covers the full viewport from top:0, so the
+            // content would sit behind the iOS status bar on notched devices
+            // without this. Desktop already has 1rem padding around the modal,
+            // so restricting this to mobile-only (via the max() baseline of 0)
+            // keeps desktop layout unchanged.
+            paddingTop: 'env(safe-area-inset-top)',
+          }}
           className={[
             'pointer-events-auto flex w-full flex-col overflow-hidden outline-none',
             // Mobile: cover the whole viewport, no rounding.

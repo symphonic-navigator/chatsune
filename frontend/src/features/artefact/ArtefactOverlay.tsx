@@ -153,7 +153,10 @@ export function ArtefactOverlay() {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Toolbar */}
-        <div className="shrink-0 border-b border-white/8 px-3 py-2">
+        <div
+          className="shrink-0 border-b border-white/8 px-3 py-2"
+          style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}
+        >
           {/* Row 1: title + type badge + close button */}
           <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
