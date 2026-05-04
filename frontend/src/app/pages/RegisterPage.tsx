@@ -5,6 +5,7 @@ import { authApi } from "../../core/api/auth"
 import { ApiError } from "../../core/api/client"
 import { RecoveryKeyModal } from "../../features/auth/RecoveryKeyModal"
 import { useAuthStore } from "../../core/store/authStore"
+import { FoxIcon } from "../../core/components/symbols"
 
 type Phase =
   | { kind: "validating" }
@@ -126,7 +127,7 @@ export default function RegisterPage() {
     <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
-          <span className="text-3xl">🦊</span>
+          <FoxIcon className="mx-auto" style={{ fontSize: '30px' }} />
           <h1 className="mt-2 text-xl font-semibold text-white/85">Create Account</h1>
           <p className="mt-1 text-[13px] text-white/30">You have been invited to Chatsune</p>
         </div>

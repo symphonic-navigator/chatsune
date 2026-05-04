@@ -1,4 +1,5 @@
 import { probeNow } from "../../core/health/healthMonitor"
+import { FoxIcon } from "../../core/components/symbols"
 
 export default function BackendUnavailablePage() {
   return (
@@ -25,7 +26,7 @@ export default function BackendUnavailablePage() {
           opacity: 0.9,
         }}
       >
-        🦊
+        <FoxIcon />
       </div>
 
       {/* App name */}

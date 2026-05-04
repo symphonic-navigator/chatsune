@@ -4,6 +4,7 @@ import type { PersonaDto } from '../../../core/types/persona'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import { sortPersonas } from './personaSort'
+import { FeatherIcon, KissMarkIcon, SunglassesIcon } from '../../../core/components/symbols'
 
 interface NewChatRowProps {
   personas: PersonaDto[]
@@ -22,7 +23,7 @@ export function NewChatRow({ personas, onCloseModal, mode = 'normal' }: NewChatR
   }, [personas, isSanitised])
 
   const isIncognito = mode === 'incognito'
-  const icon = isIncognito ? '🕶️' : '🪶'
+  const Icon = isIncognito ? SunglassesIcon : FeatherIcon
   const label = isIncognito ? 'New Incognito Chat' : 'New Chat'
   const urlSuffix = isIncognito ? '?incognito=1' : '?new=1'
 
@@ -40,7 +41,7 @@ export function NewChatRow({ personas, onCloseModal, mode = 'normal' }: NewChatR
         aria-expanded={open}
         className="group mx-2 mt-1 flex w-[calc(100%-16px)] items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-white/5"
       >
-        <span className="text-[14px]">{icon}</span>
+        <Icon style={{ fontSize: '14px' }} />
         <span className="flex-1 text-[12px] font-medium uppercase tracking-wider text-white/70 group-hover:text-white/90">
           {label}
         </span>
@@ -75,8 +76,8 @@ export function NewChatRow({ personas, onCloseModal, mode = 'normal' }: NewChatR
                   </span>
                   <span className="flex-1 truncate">{persona.name}</span>
                   {persona.nsfw && (
-                    <span className="text-[12px]" aria-label="NSFW" title="NSFW">
-                      💋
+                    <span aria-label="NSFW" title="NSFW">
+                      <KissMarkIcon style={{ fontSize: '12px' }} />
                     </span>
                   )}
                 </button>

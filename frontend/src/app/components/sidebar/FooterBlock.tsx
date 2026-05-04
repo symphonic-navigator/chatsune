@@ -1,4 +1,5 @@
 import { NavRow } from './NavRow'
+import { BookmarkIcon, CollegeIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
 
 interface FooterBlockProps {
   avatarTab: string
@@ -39,13 +40,13 @@ export function FooterBlock({
   return (
     <div className="flex-shrink-0 border-t border-white/5">
       <NavRow
-        icon="🎓"
+        icon={<CollegeIcon />}
         label="Knowledge"
         isActive={isTabActive('knowledge')}
         onClick={() => onOpenModal('knowledge')}
       />
       <NavRow
-        icon="🔖"
+        icon={<BookmarkIcon />}
         label="Bookmarks"
         isActive={isTabActive('bookmarks')}
         onClick={() => onOpenModal('bookmarks')}
@@ -67,9 +68,9 @@ export function FooterBlock({
         aria-pressed={isSanitised}
         className="flex w-full items-center gap-2.5 px-3.5 py-1.5 transition-colors hover:bg-white/5"
       >
-        <span className={`text-[15px] ${isSanitised ? "opacity-100" : "opacity-60 grayscale"}`}>
-          🔒
-        </span>
+        {isSanitised
+          ? <LockClosedIcon style={{ fontSize: '15px' }} />
+          : <LockOpenIcon className="opacity-60" style={{ fontSize: '15px' }} />}
         <span className={`text-[13px] transition-colors ${isSanitised ? "text-gold font-medium" : "text-white/60"}`}>
           Sanitised
         </span>

@@ -6,6 +6,7 @@ import { CroppedAvatar } from '../avatar-crop/CroppedAvatar'
 import type { PersonaDto } from '../../../core/types/persona'
 import { sortPersonas } from '../sidebar/personaSort'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
+import { KissMarkIcon } from '../../../core/components/symbols'
 
 interface PersonasTabProps {
   onOpenPersonaOverlay: (personaId: string) => void
@@ -127,11 +128,11 @@ function PersonaRow({ persona, onOpen, onTogglePin }: PersonaRowProps) {
       {persona.nsfw && (
         <span
           data-testid="persona-nsfw-indicator"
-          className="absolute top-1 right-1 text-[10px] leading-none"
+          className="absolute top-1 right-1 leading-none"
           aria-label="NSFW"
           title="NSFW"
         >
-          💋
+          <KissMarkIcon style={{ fontSize: '10px' }} />
         </span>
       )}
 

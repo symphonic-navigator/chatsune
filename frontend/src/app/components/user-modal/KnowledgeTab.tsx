@@ -6,6 +6,7 @@ import { useKnowledgeStore } from '../../../core/store/knowledgeStore'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { triggerBlobDownload } from '../../../core/utils/download'
+import { KissMarkIcon } from '../../../core/components/symbols'
 import type { DeletionReportDto } from '../../../core/types/deletion'
 import type { KnowledgeDocumentDto, KnowledgeLibraryDto, RefreshFrequency } from '../../../core/types/knowledge'
 import { DocumentEditorModal } from './DocumentEditorModal'
@@ -279,7 +280,9 @@ export function KnowledgeTab() {
                     {library.document_count} doc{library.document_count !== 1 ? 's' : ''}
                   </span>
                   {library.nsfw && (
-                    <span className="flex-shrink-0 text-[12px]" title="NSFW">💋</span>
+                    <span className="flex-shrink-0" title="NSFW">
+                      <KissMarkIcon style={{ fontSize: '12px' }} />
+                    </span>
                   )}
                   {hasFailed && (
                     <span className="flex-shrink-0 text-[12px]" title="Some documents have failed embeddings">⚠</span>

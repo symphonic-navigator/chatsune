@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { PersonaDto } from '../../../core/types/persona'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
+import { SunglassesIcon } from '../../../core/components/symbols'
 
 interface MobileNewChatViewProps {
   personas: PersonaDto[]
@@ -63,7 +64,7 @@ export function MobileNewChatView({ personas, onSelect, onClose }: MobileNewChat
               : 'border-white/8 bg-white/4 text-white/65 hover:bg-white/6',
           ].join(' ')}
         >
-          <span className="text-[14px]">🕶</span>
+          <SunglassesIcon style={{ fontSize: '14px' }} />
           <span className="flex-1 text-[12px] font-medium">Incognito</span>
           <span
             className={[

@@ -4,6 +4,7 @@ import type { PersonaDto } from '../../../core/types/persona'
 import { knowledgeApi } from '../../../core/api/knowledge'
 import { useKnowledgeStore } from '../../../core/store/knowledgeStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { KissMarkIcon } from '../../../core/components/symbols'
 
 interface KnowledgeTabProps {
   persona: PersonaDto
@@ -87,7 +88,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
                 <span className="text-white/40 text-[11px] shrink-0">
                   {lib.document_count} doc{lib.document_count !== 1 ? 's' : ''}
                 </span>
-                {lib.nsfw && <span className="shrink-0">💋</span>}
+                {lib.nsfw && <span className="shrink-0"><KissMarkIcon /></span>}
               </div>
               <button
                 onClick={() => handleRemove(lib.id)}
@@ -144,7 +145,7 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
                   <span className="text-white/60 text-[11px] shrink-0 ml-auto">
                     {lib.document_count} doc{lib.document_count !== 1 ? 's' : ''}
                   </span>
-                  {lib.nsfw && <span className="shrink-0">💋</span>}
+                  {lib.nsfw && <span className="shrink-0"><KissMarkIcon /></span>}
                 </button>
               ))
             )}
@@ -154,8 +155,8 @@ export function KnowledgeTab({ persona, chakra }: KnowledgeTabProps) {
 
       {/* Sanitised mode note */}
       {hasNsfwLibraries && !isSanitised && (
-        <p className="font-mono text-[11px] text-white/60">
-          💋 libraries are hidden when sanitised mode is active
+        <p className="font-mono text-[11px] text-white/60 inline-flex items-center gap-1">
+          <KissMarkIcon /> libraries are hidden when sanitised mode is active
         </p>
       )}
     </div>

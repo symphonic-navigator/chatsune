@@ -62,6 +62,7 @@ import { useReportBounds } from '../voice/infrastructure/useReportBounds'
 import { eventBus } from '../../core/websocket/eventBus'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
+import { CollegeIcon } from '../../core/components/symbols'
 
 interface ChatViewProps {
   persona: PersonaDto | null
@@ -1172,7 +1173,7 @@ export function ChatView({ persona }: ChatViewProps) {
               }
               title="Ad-hoc Knowledge"
             >
-              🎓
+              <CollegeIcon style={{ fontSize: '13px' }} />
             </button>
             {persona && effectiveSessionId && (
               <KnowledgeDropdown

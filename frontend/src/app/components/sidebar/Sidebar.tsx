@@ -26,6 +26,7 @@ import { FooterBlock } from './FooterBlock'
 import { PROJECTS_ENABLED } from '../../../core/config/featureGates'
 import { sortPersonas } from './personaSort'
 import { getLastMyDataSubpage } from '../user-modal/myDataMemory'
+import { BookmarkIcon, CollegeIcon, FoxIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
 
 interface SidebarProps {
   personas: PersonaDto[]
@@ -331,7 +332,7 @@ export function Sidebar({
           aria-label="Expand sidebar"
           className="group flex h-[34px] w-[34px] items-center justify-center rounded-lg text-[17px] transition-colors hover:bg-white/8"
         >
-          <span className="group-hover:hidden">🦊</span>
+          <span className="group-hover:hidden inline-flex"><FoxIcon style={{ fontSize: '17px' }} /></span>
           <span className="hidden group-hover:inline">⏩</span>
         </button>
 
@@ -380,7 +381,7 @@ export function Sidebar({
 
         {/* Knowledge */}
         <IconBtn
-          icon="🎓"
+          icon={<CollegeIcon />}
           onClick={() => onOpenModal('knowledge')}
           title="Knowledge"
           isActive={isTabActive('knowledge')}
@@ -388,7 +389,7 @@ export function Sidebar({
 
         {/* Bookmarks */}
         <IconBtn
-          icon="🔖"
+          icon={<BookmarkIcon />}
           onClick={() => onOpenModal('bookmarks')}
           title="Bookmarks"
           isActive={isTabActive('bookmarks')}
@@ -413,7 +414,7 @@ export function Sidebar({
           aria-pressed={isSanitised}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-colors hover:bg-white/8"
         >
-          <span className={isSanitised ? "opacity-100" : "opacity-60 grayscale"}>🔒</span>
+          {isSanitised ? <LockClosedIcon /> : <LockOpenIcon className="opacity-60" />}
         </button>
 
         <div className="mx-auto my-1 h-px w-6 bg-white/4" />
@@ -619,7 +620,7 @@ export function Sidebar({
           aria-label="Open personas"
           className="flex flex-1 items-center gap-2.5 rounded-md -mx-1 px-1 py-0.5 text-left transition-colors hover:bg-white/5"
         >
-          <span className="text-[17px]">🦊</span>
+          <FoxIcon style={{ fontSize: '17px' }} />
           <span className="flex-1 text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
         </button>
         <button

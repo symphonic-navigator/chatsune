@@ -1,0 +1,8 @@
+export { BookmarkIcon } from './BookmarkIcon'
+export { CollegeIcon } from './CollegeIcon'
+export { FeatherIcon } from './FeatherIcon'
+export { FoxIcon } from './FoxIcon'
+export { KissMarkIcon } from './KissMarkIcon'
+export { LockClosedIcon } from './LockClosedIcon'
+export { LockOpenIcon } from './LockOpenIcon'
+export { SunglassesIcon } from './SunglassesIcon'

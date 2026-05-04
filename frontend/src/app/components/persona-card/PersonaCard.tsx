@@ -5,6 +5,7 @@ import type { PersonaOverlayTab } from "../persona-overlay/PersonaOverlay";
 import { CHAKRA_PALETTE } from "../../../core/types/chakra";
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar";
 import { useViewport } from "../../../core/hooks/useViewport";
+import { KissMarkIcon } from "../../../core/components/symbols";
 
 interface PersonaCardProps {
   persona: PersonaDto;
@@ -118,7 +119,7 @@ export default function PersonaCard({
           </button>
         )}
         {persona.nsfw && (
-          <span className="text-xs leading-none">💋</span>
+          <span className="leading-none"><KissMarkIcon style={{ fontSize: '12px' }} /></span>
         )}
       </div>
 

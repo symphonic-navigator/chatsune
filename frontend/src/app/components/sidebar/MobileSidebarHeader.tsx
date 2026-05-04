@@ -1,3 +1,5 @@
+import { FoxIcon } from '../../../core/components/symbols'
+
 interface MobileSidebarHeaderProps {
   /** When set, the header is in overlay mode showing back-arrow + title. */
   title?: string
@@ -32,7 +34,7 @@ export function MobileSidebarHeader({ title, onBack, onClose }: MobileSidebarHea
           aria-label="Close sidebar"
           className="flex flex-1 min-h-[44px] items-center gap-2.5 rounded-md -mx-1 px-1 py-0.5 text-left transition-colors hover:bg-white/5"
         >
-          <span className="text-[17px]">🦊</span>
+          <FoxIcon style={{ fontSize: '17px' }} />
           <span className="flex-1 text-[15px] font-semibold tracking-wide text-white/85">Chatsune</span>
         </button>
       )}

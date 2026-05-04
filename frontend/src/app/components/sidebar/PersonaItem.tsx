@@ -5,6 +5,7 @@ import { useMemoryStore } from "../../../core/store/memoryStore"
 import type { JournalEntryDto } from "../../../core/api/memory"
 import { useViewport } from "../../../core/hooks/useViewport"
 import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
+import { KissMarkIcon } from "../../../core/components/symbols"
 
 type MenuEntry =
   | { divider: true }
@@ -119,9 +120,9 @@ export function PersonaItem({
           <span
             aria-label="NSFW"
             title="NSFW"
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-[12px] opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 [@media(hover:none)]:group-hover:opacity-100"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-100 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0 [@media(hover:none)]:group-hover:opacity-100"
           >
-            💋
+            <KissMarkIcon style={{ fontSize: '12px' }} />
           </span>
         )}
         <button

@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react'
+import { BookmarkIcon, CollegeIcon, LockClosedIcon, LockOpenIcon } from '../../../core/components/symbols'
+
 interface MobileMainViewProps {
   isAdmin: boolean
   isInChat: boolean
@@ -61,8 +64,8 @@ export function MobileMainView(props: MobileMainViewProps) {
 
       {/* Bottom section — footer parity with desktop FooterBlock */}
       <div className="flex-shrink-0 border-t border-white/5">
-        <NavRow icon="🎓" label="Knowledge" onClick={props.onKnowledge} />
-        <NavRow icon="🔖" label="Bookmarks" onClick={props.onBookmarks} />
+        <NavRow icon={<CollegeIcon />} label="Knowledge" onClick={props.onKnowledge} />
+        <NavRow icon={<BookmarkIcon />} label="Bookmarks" onClick={props.onBookmarks} />
         <NavRow icon="📂" label="My Data" onClick={props.onMyData} />
 
         <Divider />
@@ -73,7 +76,9 @@ export function MobileMainView(props: MobileMainViewProps) {
           aria-pressed={props.isSanitised}
           className="flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors hover:bg-white/4"
         >
-          <span className={`text-[15px] ${props.isSanitised ? 'opacity-100' : 'opacity-60 grayscale'}`}>🔒</span>
+          {props.isSanitised
+            ? <LockClosedIcon style={{ fontSize: '15px' }} />
+            : <LockOpenIcon className="opacity-60" style={{ fontSize: '15px' }} />}
           <span
             className={`flex-1 text-[13px] transition-colors ${
               props.isSanitised ? 'font-medium text-gold' : 'text-white/65'
@@ -146,7 +151,7 @@ export function MobileMainView(props: MobileMainViewProps) {
 }
 
 interface NavRowProps {
-  icon: string
+  icon: ReactNode
   label: string
   chev?: boolean
   onClick: () => void

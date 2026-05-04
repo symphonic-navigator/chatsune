@@ -3,6 +3,7 @@ import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useUnsavedChangesGuard } from '../../hooks/useUnsavedChangesGuard'
 import { Sheet } from '../../../core/components/Sheet'
 import { RefreshFrequencySelect, type RefreshFrequency } from '../../../features/knowledge/RefreshFrequencySelect'
+import { KissMarkIcon } from '../../../core/components/symbols'
 
 interface LibraryEditorModalProps {
   initial?: { name: string; description: string; nsfw: boolean; default_refresh?: RefreshFrequency }
@@ -157,8 +158,8 @@ export function LibraryEditorModal({ initial, onSave, onDelete, onClose }: Libra
               onChange={(e) => setNsfw(e.target.checked)}
               className="h-3.5 w-3.5 cursor-pointer accent-gold"
             />
-            <span className="text-[12px] text-white/60">
-              💋 NSFW content
+            <span className="text-[12px] text-white/60 inline-flex items-center gap-1">
+              <KissMarkIcon style={{ fontSize: '12px' }} /> NSFW content
             </span>
           </label>
 

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../core/hooks/useAuth"
 import { useAuthStore } from "../../core/store/authStore"
 import { safeLocalStorage } from "../../core/utils/safeStorage"
+import { FoxIcon } from "../../core/components/symbols"
 
 const inputClass =
   "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[14px] text-white/85 placeholder-white/20 outline-none transition-colors focus:border-white/25 focus:bg-white/8"
@@ -124,7 +125,7 @@ export default function ChangePasswordPage() {
     <div className="flex min-h-dvh items-center justify-center bg-base px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-sm rounded-xl border border-white/8 bg-surface p-6 shadow-2xl sm:p-8">
         <div className="mb-6 text-center">
-          <span className="text-3xl">🦊</span>
+          <FoxIcon className="mx-auto" style={{ fontSize: '30px' }} />
           <h1 className="mt-2 text-xl font-semibold text-white/85">
             Renew your Incantation
           </h1>
