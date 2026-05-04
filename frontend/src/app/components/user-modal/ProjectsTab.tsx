@@ -1,19 +1,15 @@
 // UserModal → Chats → Projects sub-tab. Spec §6.4: a flat list of the
 // user's projects with client-side search, an optional pinned-only
 // filter, and a "+ New Project" entry that mounts the existing
-// ProjectCreateModal. Sanitised mode hides NSFW projects, mirroring the
-// pattern already used by Sidebar.tsx, MobileProjectsView.tsx and
-// ProjectPicker.tsx (Phase 11 will extract a shared
-// ``filteredProjects`` helper; until then we replicate the inline
-// filter pattern).
+// ProjectCreateModal. Sanitised mode hides NSFW projects via the
+// shared ``useFilteredProjects`` selector (§6.7).
 //
 // Per-row click opens the Project-Detail-Overlay via the shared
 // ``useProjectOverlayStore`` (Phase 9 — same store used by the
 // sidebar Projects-zone and the in-chat ProjectSwitcher).
 
 import { useMemo, useState } from 'react'
-import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
-import { useSortedProjects } from '../../../features/projects/useProjectsStore'
+import { useFilteredProjects } from '../../../features/projects/useProjectsStore'
 import { useProjectOverlayStore } from '../../../features/projects/useProjectOverlayStore'
 import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
@@ -32,8 +28,7 @@ function relativeTime(fromIso: string, now: number): string {
 }
 
 export function ProjectsTab() {
-  const projects = useSortedProjects()
-  const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  const projects = useFilteredProjects()
 
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ProjectFilter>('all')
@@ -42,10 +37,9 @@ export function ProjectsTab() {
   const visible = useMemo(() => {
     const term = query.trim().toLowerCase()
     return projects
-      .filter((p) => (isSanitised ? !p.nsfw : true))
       .filter((p) => (filter === 'all' ? true : p.pinned))
       .filter((p) => (term ? p.title.toLowerCase().includes(term) : true))
-  }, [projects, isSanitised, filter, query])
+  }, [projects, filter, query])
 
   // Stable "now" per render so every row formats against the same
   // reference point — keeps relative timestamps consistent within one

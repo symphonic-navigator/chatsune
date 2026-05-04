@@ -9,11 +9,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useSanitisedMode } from '../../core/store/sanitisedModeStore'
 import { useNotificationStore } from '../../core/store/notificationStore'
 import { lockBodyScroll, unlockBodyScroll } from '../../core/utils/bodyScrollLock'
 import { projectsApi } from './projectsApi'
-import { useSortedProjects } from './useProjectsStore'
+import { useFilteredProjects } from './useProjectsStore'
 import { ProjectCreateModal } from './ProjectCreateModal'
 import type { ProjectDto } from './types'
 
@@ -28,8 +27,7 @@ export function ProjectPickerMobile({
   currentProjectId,
   onClose,
 }: ProjectPickerMobileProps) {
-  const sortedProjects = useSortedProjects()
-  const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  const filteredProjects = useFilteredProjects()
   const addNotification = useNotificationStore((s) => s.addNotification)
 
   const [query, setQuery] = useState('')
@@ -56,10 +54,10 @@ export function ProjectPickerMobile({
 
   const visibleProjects = useMemo(() => {
     const term = query.trim().toLowerCase()
-    return sortedProjects
-      .filter((p) => (isSanitised ? !p.nsfw : true))
-      .filter((p) => (term ? p.title.toLowerCase().includes(term) : true))
-  }, [sortedProjects, isSanitised, query])
+    return filteredProjects.filter((p) =>
+      term ? p.title.toLowerCase().includes(term) : true,
+    )
+  }, [filteredProjects, query])
 
   async function assign(projectId: string | null) {
     if (busy) return

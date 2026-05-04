@@ -1,6 +1,5 @@
 import type { ProjectDto } from '../../../features/projects/types'
-import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
-import { useSortedProjects } from '../../../features/projects/useProjectsStore'
+import { useFilteredProjects } from '../../../features/projects/useProjectsStore'
 import { PINNED_STRIPE_STYLE } from './pinnedStripe'
 
 interface MobileProjectsViewProps {
@@ -10,10 +9,10 @@ interface MobileProjectsViewProps {
 
 /**
  * Mobile second-panel content for the sidebar Projects entry. Lists
- * `useSortedProjects()` filtered through the global sanitised flag.
- * Tapping a row delegates to `onSelect`, which the sidebar host
- * wires to the Project-Detail-Overlay via `useProjectOverlayStore`
- * (Phase 9).
+ * `useFilteredProjects()` (sanitised-aware) so NSFW projects disappear
+ * in sanitised mode without per-call-site filtering. Tapping a row
+ * delegates to `onSelect`, which the sidebar host wires to the
+ * Project-Detail-Overlay via `useProjectOverlayStore` (Phase 9).
  *
  * Layout mirrors `MobileNewChatView`'s row rhythm so the two
  * second-panel screens feel of-a-piece. Unlike personas, projects
@@ -21,9 +20,7 @@ interface MobileProjectsViewProps {
  * emoji or a neutral fallback.
  */
 export function MobileProjectsView({ onSelect }: MobileProjectsViewProps) {
-  const isSanitised = useSanitisedMode((s) => s.isSanitised)
-  const all = useSortedProjects()
-  const visible = isSanitised ? all.filter((p) => !p.nsfw) : all
+  const visible = useFilteredProjects()
 
   if (visible.length === 0) {
     return (

@@ -13,7 +13,7 @@ import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import { ProjectSidebarItem } from "./ProjectSidebarItem"
-import { usePinnedProjects } from "../../../features/projects/useProjectsStore"
+import { useFilteredPinnedProjects } from "../../../features/projects/useProjectsStore"
 import { projectsApi } from "../../../features/projects/projectsApi"
 import { useProjectOverlayStore } from "../../../features/projects/useProjectOverlayStore"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
@@ -158,7 +158,9 @@ export function Sidebar({
     [personas],
   )
 
-  const pinnedProjects = usePinnedProjects()
+  // Mindspace §6.7: pinned projects in sanitised mode hide NSFW
+  // projects across every sidebar render path.
+  const pinnedProjects = useFilteredPinnedProjects()
 
   const sortedSessions = useMemo(() => {
     const pinned = sessions.filter((s) => s.pinned)

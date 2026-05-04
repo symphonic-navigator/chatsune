@@ -14,10 +14,9 @@
 // ``ProjectCreateModal``.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useSanitisedMode } from '../../core/store/sanitisedModeStore'
 import { useNotificationStore } from '../../core/store/notificationStore'
 import { projectsApi } from './projectsApi'
-import { useSortedProjects } from './useProjectsStore'
+import { useFilteredProjects } from './useProjectsStore'
 import { ProjectCreateModal } from './ProjectCreateModal'
 import type { ProjectDto } from './types'
 
@@ -32,8 +31,7 @@ export function ProjectPicker({
   currentProjectId,
   onClose,
 }: ProjectPickerProps) {
-  const sortedProjects = useSortedProjects()
-  const isSanitised = useSanitisedMode((s) => s.isSanitised)
+  const filteredProjects = useFilteredProjects()
   const addNotification = useNotificationStore((s) => s.addNotification)
 
   const [query, setQuery] = useState('')
@@ -67,15 +65,14 @@ export function ProjectPicker({
     return () => document.removeEventListener('keydown', handler)
   }, [createOpen, onClose])
 
-  // Sanitised-mode + search filter. Phase-11 will introduce a shared
-  // ``filteredProjects`` helper; until then we replicate the same
-  // pattern Sidebar.tsx and MobileProjectsView.tsx already use.
+  // Search filter on top of the shared ``useFilteredProjects`` selector
+  // (NSFW filter applied centrally — see useProjectsStore.ts).
   const visibleProjects = useMemo(() => {
     const term = query.trim().toLowerCase()
-    return sortedProjects
-      .filter((p) => (isSanitised ? !p.nsfw : true))
-      .filter((p) => (term ? p.title.toLowerCase().includes(term) : true))
-  }, [sortedProjects, isSanitised, query])
+    return filteredProjects.filter((p) =>
+      term ? p.title.toLowerCase().includes(term) : true,
+    )
+  }, [filteredProjects, query])
 
   async function assign(projectId: string | null) {
     if (busy) return
