@@ -36,6 +36,14 @@ def _chat_repo() -> ChatRepository:
 
 class CreateSessionRequest(BaseModel):
     persona_id: str
+    # Mindspace: when the persona has a default project AND the trigger
+    # is neutral (sidebar pin, persona overlay "New chat", PersonasTab
+    # "Start chat"), the frontend forwards the persona's
+    # ``default_project_id`` so the new session lands inside that
+    # project from the very first turn. Optional and nullable —
+    # context-bound triggers (project-detail-overlay) keep using the
+    # subsequent ``PATCH /sessions/{id}/project`` flow.
+    project_id: str | None = None
 
 
 @router.post("/sessions", status_code=201)
@@ -60,6 +68,7 @@ async def create_session(
         persona_id=persona["_id"],
         tools_enabled=toggle_defaults["tools_enabled"],
         auto_read=toggle_defaults["auto_read"],
+        project_id=body.project_id,
     )
     dto = ChatRepository.session_to_dto(doc)
 

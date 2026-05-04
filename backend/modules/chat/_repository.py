@@ -258,7 +258,17 @@ class ChatRepository:
         *,
         tools_enabled: bool = False,
         auto_read: bool = False,
+        project_id: str | None = None,
     ) -> dict:
+        """Create a new chat session.
+
+        Mindspace: ``project_id`` lets the caller drop the new session
+        straight into a project. Used by the neutral-trigger flow where
+        the persona has a ``default_project_id``; the value is written
+        as-is so existing read-paths (``list_sessions``,
+        ``list_sessions_for_project``) pick the session up immediately.
+        Pass ``None`` (default) for the global-history bucket.
+        """
         now = datetime.now(UTC)
         doc = {
             "_id": str(uuid4()),
@@ -268,6 +278,7 @@ class ChatRepository:
             "tools_enabled": tools_enabled,
             "auto_read": auto_read,
             "reasoning_override": None,
+            "project_id": project_id,
             "created_at": now,
             "updated_at": now,
         }

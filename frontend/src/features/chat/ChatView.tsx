@@ -165,9 +165,17 @@ export function ChatView({ persona }: ChatViewProps) {
       setResolveError('Could not load or create a chat session.')
     }
 
+    // Mindspace: when the persona has a ``default_project_id`` and the
+    // user arrived via a neutral trigger (sidebar pin, persona overlay
+    // "New chat", PersonasTab "Start chat" — all of which redirect via
+    // ``/chat/{personaId}?new=1``), forward that project id so the
+    // session lands inside the project from the very first turn. The
+    // backend treats ``null`` / missing as "global history".
+    const defaultProjectId = persona?.default_project_id ?? null
+
     if (forceNew) {
       chatApi
-        .createSession(personaId)
+        .createSession(personaId, defaultProjectId)
         .then((session) => {
           if (cancelled) return
           // Flag the post-load effect so the prompt input gets focused once
@@ -194,7 +202,7 @@ export function ChatView({ persona }: ChatViewProps) {
           navigate(`/chat/${personaId}/${latest.id}`, { replace: true })
           return undefined
         }
-        return chatApi.createSession(personaId).then((session) => {
+        return chatApi.createSession(personaId, defaultProjectId).then((session) => {
           if (cancelled) return
           navigate(`/chat/${personaId}/${session.id}`, { replace: true })
         })
@@ -206,7 +214,7 @@ export function ChatView({ persona }: ChatViewProps) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt])
+  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona?.default_project_id])
 
   const messages = useChatStore((s) => s.messages)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
