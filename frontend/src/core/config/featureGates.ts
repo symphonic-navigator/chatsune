@@ -7,4 +7,4 @@
  * code that consumes them.
  */
 
-export const PROJECTS_ENABLED = false
+export const PROJECTS_ENABLED = true

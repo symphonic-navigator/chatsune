@@ -12,6 +12,8 @@ import { startOverlayTransition } from "../../../core/hooks/useBackButtonClose"
 import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
+import { ProjectSidebarItem } from "./ProjectSidebarItem"
+import { usePinnedProjects } from "../../../features/projects/useProjectsStore"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
 import { MobileMainView } from './MobileMainView'
 import { MobileNewChatView } from './MobileNewChatView'
@@ -149,6 +151,8 @@ export function Sidebar({
     () => sortPersonas(personas),
     [personas],
   )
+
+  const pinnedProjects = usePinnedProjects()
 
   const sortedSessions = useMemo(() => {
     const pinned = sessions.filter((s) => s.pinned)
@@ -301,6 +305,25 @@ export function Sidebar({
         message: "Could not delete the session.",
       })
     }
+  }
+
+  // ── Project handlers ─────────────────────────────────────────────────
+  // The detail-overlay (Phase 9) and create-modal (Phase 7) are not yet
+  // built. The two placeholders below stub their entry points so the
+  // sidebar Projects-zone is fully wired apart from the overlays
+  // themselves; each placeholder is removed when its phase lands.
+
+  function handleOpenProject(projectId: string) {
+    closeDrawerIfMobile()
+    // TODO Phase 9: open Project-Detail-Overlay
+    console.info('TODO: open project-detail-overlay', projectId)
+  }
+
+  function handleOpenProjectCreateModal() {
+    closeDrawerIfMobile()
+    // TODO Phase 7: open Project-Create-Modal; until then, fall through to
+    // the UserModal Projects tab so users still have a discoverable surface.
+    onOpenModal('projects')
   }
 
   const isTabActive = (leaf: string): boolean => {
@@ -704,14 +727,28 @@ export function Sidebar({
           <ZoneSection
             zone="projects"
             title="Projects"
-            onOpenPage={() => {/* deferred to Projects feature */}}
-            itemCount={0}
+            onOpenPage={() => openModalAndClose('projects')}
+            itemCount={pinnedProjects.length}
+            itemHeight={32}
             emptyState={{
-              label: 'No projects yet · Create one →',
-              onClick: () => {/* deferred to Projects feature */},
+              label: 'No pinned projects · Create one →',
+              onClick: handleOpenProjectCreateModal,
             }}
           >
-            {() => null /* Projects rendering deferred to the Projects feature. */}
+            {(visibleCount) => {
+              const visible = pinnedProjects.slice(0, visibleCount)
+              return (
+                <>
+                  {visible.map((p) => (
+                    <ProjectSidebarItem
+                      key={p.id}
+                      project={p}
+                      onOpen={handleOpenProject}
+                    />
+                  ))}
+                </>
+              )
+            }}
           </ZoneSection>
         )}
 
