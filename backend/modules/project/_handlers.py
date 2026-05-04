@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from backend.database import get_db
 from backend.dependencies import require_active_session
 from backend.modules.project._repository import ProjectRepository
-from backend.modules.project._service import cascade_delete_project
+from backend.modules.project._service import (
+    cascade_delete_project,
+    get_usage_counts,
+)
 from backend.ws.event_bus import EventBus, get_event_bus
 from shared.dtos.project import (
     ProjectCreateDto,
@@ -39,12 +42,22 @@ async def list_projects(user: dict = Depends(require_active_session)):
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
+    include_usage: bool = False,
     user: dict = Depends(require_active_session),
 ):
+    """Return a single project. Mindspace: ``include_usage=true`` adds
+    a ``usage`` block (``chat_count``, ``upload_count``,
+    ``artefact_count``, ``image_count``) used by the delete modal to
+    show what a full-purge would remove.
+    """
     doc = await _repo().find_by_id(project_id, user["sub"])
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectRepository.to_dto(doc)
+    dto = ProjectRepository.to_dto(doc)
+    if not include_usage:
+        return dto
+    usage = await get_usage_counts(project_id, user["sub"])
+    return {**dto.model_dump(mode="json"), "usage": usage.model_dump()}
 
 
 @router.post("", status_code=201)

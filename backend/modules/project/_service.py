@@ -16,10 +16,48 @@ from datetime import datetime, timezone
 
 from backend.database import get_db
 from backend.modules.project._repository import ProjectRepository
+from shared.dtos.project import ProjectUsageDto
 from shared.events.project import ProjectDeletedEvent
 from shared.topics import Topics
 
 _log = logging.getLogger(__name__)
+
+
+async def get_usage_counts(project_id: str, user_id: str) -> ProjectUsageDto:
+    """Aggregate usage counts for a project across the four owning modules.
+
+    Used by ``GET /api/projects/{id}?include_usage=true`` so the
+    delete-modal can show how many chats / uploads / artefacts /
+    images would be affected by a full-purge. The lookup is cheap —
+    each module's count is a single ``count_documents`` (or an in-
+    memory filter for artefacts) — and is intentionally not cached:
+    the modal only opens after a deliberate user action and the
+    counts must be live.
+    """
+    # Deferred imports keep startup-time module graphs simple and
+    # prove every cross-module call goes through public APIs.
+    from backend.modules import artefact as artefact_service
+    from backend.modules import chat as chat_service
+    from backend.modules import images as images_service
+    from backend.modules import storage as storage_service
+
+    session_ids = await chat_service.list_session_ids_for_project(
+        project_id, user_id,
+    )
+    if not session_ids:
+        return ProjectUsageDto()
+    return ProjectUsageDto(
+        chat_count=len(session_ids),
+        upload_count=await storage_service.count_for_sessions(
+            session_ids, user_id,
+        ),
+        artefact_count=await artefact_service.count_for_sessions(
+            session_ids, user_id,
+        ),
+        image_count=await images_service.count_for_sessions(
+            session_ids, user_id,
+        ),
+    )
 
 
 async def cascade_delete_project(
