@@ -76,13 +76,20 @@ async def update_project(
     fields: dict = {}
     if body.title is not None:
         fields["title"] = body.title
-    if body.description is not None:
+    # Sentinel-aware description handling: UNSET → don't touch; None →
+    # clear; str → set. Mindspace aligns this field with the emoji
+    # pattern so PATCH callers can explicitly null the description.
+    if not isinstance(body.description, _Unset):
         fields["description"] = body.description
     if body.nsfw is not None:
         fields["nsfw"] = body.nsfw
     # Sentinel-aware emoji handling: UNSET → don't touch; None → clear; str → set.
     if not isinstance(body.emoji, _Unset):
         fields["emoji"] = body.emoji
+    # Mindspace knowledge libraries: UNSET means leave untouched, an
+    # explicit list (including empty) replaces the current value.
+    if not isinstance(body.knowledge_library_ids, _Unset):
+        fields["knowledge_library_ids"] = list(body.knowledge_library_ids)
 
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")

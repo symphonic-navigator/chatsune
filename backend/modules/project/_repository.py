@@ -21,8 +21,9 @@ class ProjectRepository:
         user_id: str,
         title: str,
         emoji: str | None,
-        description: str,
+        description: str | None,
         nsfw: bool,
+        knowledge_library_ids: list[str] | None = None,
     ) -> dict:
         now = datetime.now(UTC).replace(tzinfo=None)
         doc = {
@@ -34,6 +35,10 @@ class ProjectRepository:
             "nsfw": nsfw,
             "pinned": False,
             "sort_order": 0,
+            # Mindspace: stored as a list so MongoDB can index / query it
+            # directly. Defaults to empty when the caller doesn't supply
+            # a list — keeps the create path additive.
+            "knowledge_library_ids": list(knowledge_library_ids or []),
             "created_at": now,
             "updated_at": now,
         }
@@ -84,10 +89,18 @@ class ProjectRepository:
             user_id=doc["user_id"],
             title=doc["title"],
             emoji=doc.get("emoji"),
-            description=doc.get("description", ""),
+            # Mindspace: ``description`` is now nullable. Pre-Mindspace
+            # documents always carried a string (often ``""``); even
+            # older legacy fixtures may omit the field entirely. ``get``
+            # returns ``None`` in the latter case, matching the new DTO
+            # default.
+            description=doc.get("description"),
             nsfw=doc.get("nsfw", False),
             pinned=doc.get("pinned", False),
             sort_order=doc.get("sort_order", 0),
+            # Mindspace: legacy documents lack this field entirely; the
+            # ``[]`` default keeps reads working without a migration.
+            knowledge_library_ids=list(doc.get("knowledge_library_ids", []) or []),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )
