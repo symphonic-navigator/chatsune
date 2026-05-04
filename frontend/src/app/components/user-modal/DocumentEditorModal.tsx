@@ -151,13 +151,16 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-black/60 lg:items-center lg:justify-center lg:overflow-hidden lg:px-[5vw] lg:py-[5vh]"
       onClick={(e) => { if (e.target === e.currentTarget) handleClose() }}
       onKeyDown={handleKeyDown}
     >
-      <div role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit document' : 'New document'} className="flex w-full max-w-3xl flex-col rounded-xl border border-white/8 bg-elevated shadow-2xl" style={{ maxHeight: '80vh' }}>
+      <div role="dialog" aria-modal="true" aria-label={isEdit ? 'Edit document' : 'New document'} className="flex min-h-full w-full flex-col bg-elevated shadow-2xl lg:h-full lg:min-h-0 lg:max-w-none lg:rounded-xl lg:border lg:border-white/8">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-white/6 px-5 py-3">
+        <div
+          className="flex items-center gap-3 border-b border-white/6 px-5 py-3"
+          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
+        >
           <div className="flex-1">
             <label htmlFor={titleId} className="sr-only">Document title</label>
             <input
@@ -223,7 +226,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
         </div>
 
         {/* Editor area */}
-        <div className="flex min-h-0 flex-1">
+        <div className="flex flex-1 lg:min-h-0">
           {/* Editor */}
           <label htmlFor={editorId} className="sr-only">Document content</label>
           <textarea
@@ -233,7 +236,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
             aria-label="Document content"
             placeholder={isMarkdown ? '# Start writing in Markdown...' : 'Start writing...'}
             className={[
-              'min-h-0 resize-none bg-transparent px-5 py-4 text-[13px] font-mono text-white/75 placeholder-white/15 outline-none',
+              'min-h-[60vh] resize-none bg-transparent px-5 py-4 text-[13px] font-mono text-white/75 placeholder-white/15 outline-none lg:min-h-0',
               preview ? 'w-1/2 border-r border-white/6' : 'w-full',
             ].join(' ')}
           />
@@ -253,7 +256,7 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
         </div>
 
         {/* PTI controls */}
-        <div className="flex max-h-48 flex-col gap-3 overflow-y-auto border-t border-white/6 px-5 py-3">
+        <div className="flex flex-col gap-3 border-t border-white/6 px-5 py-3 lg:max-h-48 lg:overflow-y-auto">
           <div className="space-y-1">
             <label className="text-[11px] font-mono uppercase tracking-wider text-white/60">
               Trigger phrases
@@ -269,7 +272,10 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/6 px-5 py-3">
+        <div
+          className="flex items-center justify-between border-t border-white/6 px-5 py-3"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        >
           <div>
             {error && (
               <p className="text-[11px] text-red-400 font-mono">{error}</p>
