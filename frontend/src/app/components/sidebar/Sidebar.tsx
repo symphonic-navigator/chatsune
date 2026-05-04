@@ -14,6 +14,7 @@ import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import { ProjectSidebarItem } from "./ProjectSidebarItem"
 import { usePinnedProjects } from "../../../features/projects/useProjectsStore"
+import { projectsApi } from "../../../features/projects/projectsApi"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
 import { MobileMainView } from './MobileMainView'
 import { MobileNewChatView } from './MobileNewChatView'
@@ -308,10 +309,10 @@ export function Sidebar({
   }
 
   // ── Project handlers ─────────────────────────────────────────────────
-  // The detail-overlay (Phase 9) and create-modal (Phase 7) are not yet
-  // built. The two placeholders below stub their entry points so the
-  // sidebar Projects-zone is fully wired apart from the overlays
-  // themselves; each placeholder is removed when its phase lands.
+  // The detail-overlay (Phase 9), create-modal (Phase 7) and delete-modal
+  // (Phase 12) are not yet built. The placeholders below stub their entry
+  // points so the sidebar Projects-zone is fully wired apart from the
+  // overlays themselves; each placeholder is removed when its phase lands.
 
   function handleOpenProject(projectId: string) {
     closeDrawerIfMobile()
@@ -319,11 +320,37 @@ export function Sidebar({
     console.info('TODO: open project-detail-overlay', projectId)
   }
 
+  function handleEditProject(projectId: string) {
+    closeDrawerIfMobile()
+    // TODO Phase 9: open Project-Detail-Overlay overview tab
+    console.info('TODO: open project-detail-overlay overview', projectId)
+  }
+
+  function handleDeleteProject(projectId: string) {
+    closeDrawerIfMobile()
+    // TODO Phase 12: open DeleteProjectModal
+    console.info('TODO: open delete-project-modal', projectId)
+  }
+
   function handleOpenProjectCreateModal() {
     closeDrawerIfMobile()
     // TODO Phase 7: open Project-Create-Modal; until then, fall through to
     // the UserModal Projects tab so users still have a discoverable surface.
     onOpenModal('projects')
+  }
+
+  async function handleToggleProjectPin(projectId: string, pinned: boolean) {
+    try {
+      await projectsApi.setPinned(projectId, pinned)
+      // No optimistic update needed: useProjectsStore subscribes to
+      // PROJECT_PINNED_UPDATED and reconciles when the event arrives.
+    } catch {
+      addNotification({
+        level: 'error',
+        title: pinned ? 'Pin failed' : 'Unpin failed',
+        message: 'Could not update the project pin state.',
+      })
+    }
   }
 
   const isTabActive = (leaf: string): boolean => {
@@ -744,6 +771,9 @@ export function Sidebar({
                       key={p.id}
                       project={p}
                       onOpen={handleOpenProject}
+                      onEdit={handleEditProject}
+                      onDelete={handleDeleteProject}
+                      onTogglePin={handleToggleProjectPin}
                     />
                   ))}
                 </>
