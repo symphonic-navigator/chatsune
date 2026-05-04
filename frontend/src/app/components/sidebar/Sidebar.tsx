@@ -550,6 +550,7 @@ export function Sidebar({
                 hasLastSession={!!lastSession}
                 hasApiKeyProblem={hasApiKeyProblem}
                 isSanitised={isSanitised}
+                avatarHighlight={avatarHighlight}
                 displayName={displayName}
                 role={user?.role || ''}
                 initial={initial}
@@ -563,6 +564,7 @@ export function Sidebar({
                 onMyData={handleMyData}
                 onToggleSanitised={toggleSanitised}
                 onUserRow={handleUserRow}
+                onOpenSettings={() => openModalAndClose('settings')}
                 onLogout={() => logout()}
               />
             </div>
