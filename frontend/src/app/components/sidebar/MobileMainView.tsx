@@ -4,6 +4,7 @@ interface MobileMainViewProps {
   hasLastSession: boolean
   hasApiKeyProblem: boolean
   isSanitised: boolean
+  avatarHighlight: boolean
   displayName: string
   role: string
   initial: string
@@ -17,13 +18,14 @@ interface MobileMainViewProps {
   onMyData: () => void
   onToggleSanitised: () => void
   onUserRow: () => void
+  onOpenSettings: () => void
   onLogout: () => void
 }
 
 export function MobileMainView(props: MobileMainViewProps) {
   return (
     <div className="flex h-full flex-col">
-      {/* Top section */}
+      {/* Top section — mirrors desktop order: New Chat → Continue → Personas → History */}
       <div className="flex-shrink-0 pt-2">
         {props.isAdmin && (
           <>
@@ -42,25 +44,25 @@ export function MobileMainView(props: MobileMainViewProps) {
           </>
         )}
 
+        <NavRow icon="💬" label="New Chat" chev onClick={props.onNewChat} />
+
         {!props.isInChat && props.hasLastSession && (
           <NavRow icon="▶️" label="Continue" onClick={props.onContinue} />
         )}
 
-        <NavRow icon="💬" label="New Chat" chev onClick={props.onNewChat} />
-        <NavRow icon="💞" label="Personas" onClick={props.onPersonas} />
-
         <Divider />
 
+        <NavRow icon="💞" label="Personas" onClick={props.onPersonas} />
         <NavRow icon="📖" label="History" chev onClick={props.onHistory} />
-        <NavRow icon="🔖" label="Bookmarks" chev onClick={props.onBookmarks} />
       </div>
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Bottom section */}
+      {/* Bottom section — footer parity with desktop FooterBlock */}
       <div className="flex-shrink-0 border-t border-white/5">
         <NavRow icon="🎓" label="Knowledge" onClick={props.onKnowledge} />
+        <NavRow icon="🔖" label="Bookmarks" onClick={props.onBookmarks} />
         <NavRow icon="📂" label="My Data" onClick={props.onMyData} />
 
         <Divider />
@@ -83,27 +85,52 @@ export function MobileMainView(props: MobileMainViewProps) {
 
         <Divider />
 
-        <button
-          type="button"
-          onClick={props.onUserRow}
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-white/4"
+        <div
+          className={[
+            'flex items-center gap-2.5 px-3 py-2 transition-colors',
+            props.avatarHighlight ? 'bg-gold/7' : '',
+          ].join(' ')}
         >
-          <div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
-            {props.initial}
-            {props.hasApiKeyProblem && (
-              <span
-                aria-label="API key problem"
-                className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[7px] font-bold text-white"
+          <button
+            type="button"
+            onClick={props.onUserRow}
+            className="flex flex-1 items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity"
+            title="Your profile"
+          >
+            <div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple to-gold text-[12px] font-bold text-white">
+              {props.initial}
+              {props.hasApiKeyProblem && (
+                <span
+                  aria-label="API key problem"
+                  className="absolute -top-0.5 -right-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[7px] font-bold text-white"
+                >
+                  !
+                </span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <p
+                className={[
+                  'truncate text-[13px] font-medium transition-colors',
+                  props.avatarHighlight ? 'text-gold' : 'text-white/70',
+                ].join(' ')}
               >
-                !
-              </span>
-            )}
-          </div>
-          <div className="min-w-0 flex-1 text-left">
-            <p className="truncate text-[13px] font-medium text-white/70">{props.displayName}</p>
-            <p className="text-[10px] text-white/55">{props.role}</p>
-          </div>
-        </button>
+                {props.displayName}
+              </p>
+              <p className="text-[10px] text-white/55">{props.role}</p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={props.onOpenSettings}
+            title="Settings"
+            aria-label="Settings"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded text-[13px] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85"
+          >
+            ···
+          </button>
+        </div>
 
         <button
           type="button"

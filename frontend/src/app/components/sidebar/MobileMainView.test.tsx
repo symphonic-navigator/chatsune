@@ -9,6 +9,7 @@ const baseProps = {
   hasLastSession: false,
   hasApiKeyProblem: false,
   isSanitised: false,
+  avatarHighlight: false,
   displayName: 'Chris',
   role: 'user',
   initial: 'C',
@@ -22,6 +23,7 @@ const baseProps = {
   onMyData: vi.fn(),
   onToggleSanitised: vi.fn(),
   onUserRow: vi.fn(),
+  onOpenSettings: vi.fn(),
   onLogout: vi.fn(),
 }
 
@@ -67,20 +69,40 @@ describe('MobileMainView — conditional rows', () => {
 })
 
 describe('MobileMainView — fixed rows render unconditionally', () => {
-  it('renders New Chat, Personas, History, Bookmarks', () => {
+  it('renders New Chat, Personas, History', () => {
     renderView()
     expect(screen.getByText('New Chat')).toBeInTheDocument()
     expect(screen.getByText('Personas')).toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
-    expect(screen.getByText('Bookmarks')).toBeInTheDocument()
   })
 
-  it('renders Knowledge, My Data, Sanitised, Log out', () => {
+  it('renders Knowledge, Bookmarks, My Data, Sanitised, Log out', () => {
     renderView()
     expect(screen.getByText('Knowledge')).toBeInTheDocument()
+    expect(screen.getByText('Bookmarks')).toBeInTheDocument()
     expect(screen.getByText('My Data')).toBeInTheDocument()
     expect(screen.getByText('Sanitised')).toBeInTheDocument()
     expect(screen.getByText('Log out')).toBeInTheDocument()
+  })
+
+  it('renders the Settings ··· button next to the user row', () => {
+    renderView()
+    expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument()
+  })
+})
+
+describe('MobileMainView — button order', () => {
+  it('places Bookmarks between Knowledge and My Data (footer group, not top group)', () => {
+    renderView()
+    const all = screen.getAllByRole('button').map((b) => b.textContent ?? '')
+    const idxKnowledge = all.findIndex((t) => t.includes('Knowledge'))
+    const idxBookmarks = all.findIndex((t) => t.includes('Bookmarks'))
+    const idxMyData = all.findIndex((t) => t.includes('My Data'))
+    const idxHistory = all.findIndex((t) => t.includes('History'))
+    expect(idxKnowledge).toBeGreaterThan(-1)
+    expect(idxBookmarks).toBeGreaterThan(idxKnowledge)
+    expect(idxMyData).toBeGreaterThan(idxBookmarks)
+    expect(idxBookmarks).toBeGreaterThan(idxHistory)
   })
 })
 
@@ -99,6 +121,13 @@ describe('MobileMainView — handler wiring', () => {
     expect(onHistory).toHaveBeenCalledOnce()
   })
 
+  it('calls onBookmarks when Bookmarks row is tapped', async () => {
+    const onBookmarks = vi.fn()
+    renderView({ onBookmarks })
+    await userEvent.click(screen.getByText('Bookmarks'))
+    expect(onBookmarks).toHaveBeenCalledOnce()
+  })
+
   it('calls onMyData when My Data row is tapped', async () => {
     const onMyData = vi.fn()
     renderView({ onMyData })
@@ -111,6 +140,22 @@ describe('MobileMainView — handler wiring', () => {
     renderView({ onToggleSanitised })
     await userEvent.click(screen.getByText('Sanitised'))
     expect(onToggleSanitised).toHaveBeenCalledOnce()
+  })
+
+  it('calls onOpenSettings when the ··· Settings button is tapped', async () => {
+    const onOpenSettings = vi.fn()
+    renderView({ onOpenSettings })
+    await userEvent.click(screen.getByRole('button', { name: /settings/i }))
+    expect(onOpenSettings).toHaveBeenCalledOnce()
+  })
+
+  it('calls onUserRow when the user row body is tapped (not the Settings button)', async () => {
+    const onUserRow = vi.fn()
+    const onOpenSettings = vi.fn()
+    renderView({ onUserRow, onOpenSettings })
+    await userEvent.click(screen.getByText('Chris'))
+    expect(onUserRow).toHaveBeenCalledOnce()
+    expect(onOpenSettings).not.toHaveBeenCalled()
   })
 
   it('calls onLogout when Log out row is tapped', async () => {
