@@ -8,7 +8,7 @@ Chatsune is not only a technical solution but also a political statement - Chats
 * Freedom of thought, speech and expression
 * Sex-positivism
 * Comprehensive rejection of censorship, hedging and nudging
-* Comprehensive rejection of heterodoxy, paternalism, safetyism and "liability culture"
+* Comprehensive rejection of heteronomy, paternalism, safetyism and "liability culture"
 * A strong stand against doomerism, ludditism and technophobia
 
 Therefore not all possible upstream providers qualify for an integration of their API into Chatsune.
