@@ -115,9 +115,31 @@ async def create_session(
 
 
 @router.get("/sessions")
-async def list_sessions(user: dict = Depends(require_active_session)):
+async def list_sessions(
+    project_id: str | None = Query(default=None),
+    include_project_chats: bool = Query(default=False),
+    user: dict = Depends(require_active_session),
+):
+    """List the user's chat sessions.
+
+    Mindspace:
+      - Default behaviour (no params) excludes project-bound sessions
+        — the Sidebar / global HistoryTab show only out-of-project
+        chats, matching the pre-Mindspace experience.
+      - ``include_project_chats=true`` returns every session including
+        project-bound ones. Used by the UserModal HistoryTab "Include
+        project chats" toggle.
+      - ``project_id=<id>`` returns only sessions belonging to that
+        project (and ignores ``include_project_chats``). Used by the
+        Project-Detail-Overlay Chats tab.
+    """
     repo = _chat_repo()
-    docs = await repo.list_sessions(user["sub"])
+    if project_id is not None:
+        docs = await repo.list_sessions_for_project(user["sub"], project_id)
+    else:
+        docs = await repo.list_sessions(
+            user["sub"], exclude_in_projects=not include_project_chats,
+        )
     return [ChatRepository.session_to_dto(d) for d in docs]
 
 

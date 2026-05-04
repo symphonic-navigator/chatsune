@@ -7,6 +7,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ProjectDto } from '../types'
 
+// Stub the project-overview / personas tabs so the overlay test
+// doesn't pull in their dependency trees (router, knowledge store,
+// emoji picker, etc).
+vi.mock('../tabs/ProjectOverviewTab', () => ({
+  ProjectOverviewTab: ({ projectId }: { projectId: string }) => (
+    <div data-testid="project-overview-tab">overview:{projectId}</div>
+  ),
+}))
+vi.mock('../tabs/ProjectPersonasTab', () => ({
+  ProjectPersonasTab: ({ projectId }: { projectId: string }) => (
+    <div data-testid="project-personas-tab">personas:{projectId}</div>
+  ),
+}))
+
 // Stub the four shared user-modal tabs so this file doesn't pull in
 // their full dependency trees (HistoryTab + chat hooks, GalleryGrid +
 // images store, etc). The overlay's job is to mount the right
