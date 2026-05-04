@@ -50,6 +50,7 @@ async def create_project(
         emoji=body.emoji,
         description=body.description,
         nsfw=body.nsfw,
+        knowledge_library_ids=body.knowledge_library_ids,
     )
     dto = ProjectRepository.to_dto(doc)
     await event_bus.publish(
