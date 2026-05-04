@@ -157,12 +157,36 @@ async def upload_file(
 @router.get("/files", response_model=list[StorageFileDto])
 async def list_files(
     persona_id: str | None = Query(None),
+    project_id: str | None = Query(None),
     sort_by: str = Query("date", pattern="^(date|size)$"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user: dict = Depends(require_active_session),
 ):
+    """List the user's storage files.
+
+    Mindspace: when ``project_id`` is supplied the response is scoped
+    to files referenced by chat sessions inside that project. The
+    handler resolves project → session ids via the chat module's
+    public API, then asks storage for the file metadata. ``persona_id``
+    and ``project_id`` are mutually exclusive in practice — UI surfaces
+    only ever pass one — but we honour them sequentially: ``project_id``
+    wins when both are set.
+    """
+    if project_id is not None:
+        from backend.modules import chat as chat_service
+        from backend.modules import storage as storage_service
+
+        session_ids = await chat_service.list_session_ids_for_project(
+            project_id, user["sub"],
+        )
+        docs = await storage_service.list_for_sessions(
+            session_ids, user["sub"],
+            sort_by=sort_by, order=order, limit=limit, offset=offset,
+        )
+        return [StorageRepository.file_to_dto(d) for d in docs]
+
     repo = _repo()
     docs = await repo.find_by_user(
         user_id=user["sub"],

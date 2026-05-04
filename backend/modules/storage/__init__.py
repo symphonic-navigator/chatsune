@@ -36,6 +36,58 @@ async def get_files_by_ids(file_ids: list[str], user_id: str) -> list[dict]:
     return results
 
 
+async def count_for_sessions(session_ids: list[str], user_id: str) -> int:
+    """Mindspace: count storage files referenced by the given chat sessions.
+
+    Used by the project usage-counts endpoint and (indirectly) by the
+    delete-modal counts row. Walks ``chat_messages.attachment_refs``
+    and ``attachment_ids`` via the chat module's public API to find
+    the file-ids; then counts those files in the storage collection.
+    Empty input → 0 with no DB round-trip.
+    """
+    if not session_ids:
+        return 0
+    from backend.modules import chat as chat_service
+
+    file_ids = await chat_service.list_attachment_ids_for_sessions(
+        session_ids, user_id,
+    )
+    if not file_ids:
+        return 0
+    repo = StorageRepository(get_db())
+    return await repo.count_by_ids(file_ids, user_id)
+
+
+async def list_for_sessions(
+    session_ids: list[str], user_id: str,
+    *,
+    sort_by: str = "date",
+    order: str = "desc",
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """Mindspace: list storage files referenced by the given chat sessions.
+
+    Same lookup as :func:`count_for_sessions` but returns full file
+    documents sorted/paginated. Used by the project-filtered
+    ``GET /api/storage/files?project_id=…`` endpoint.
+    """
+    if not session_ids:
+        return []
+    from backend.modules import chat as chat_service
+
+    file_ids = await chat_service.list_attachment_ids_for_sessions(
+        session_ids, user_id,
+    )
+    if not file_ids:
+        return []
+    repo = StorageRepository(get_db())
+    return await repo.list_by_ids_sorted(
+        file_ids, user_id,
+        sort_by=sort_by, order=order, limit=limit, offset=offset,
+    )
+
+
 async def get_cached_vision_description(
     file_id: str, user_id: str, model_id: str,
 ) -> str | None:
@@ -190,4 +242,6 @@ __all__ = [
     "delete_all_for_persona",
     "bulk_export_for_persona",
     "bulk_import_for_persona",
+    "count_for_sessions",
+    "list_for_sessions",
 ]
