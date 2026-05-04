@@ -256,6 +256,20 @@ export function Sidebar({
     onToggleSessionPin?.(session.id, pinned)
   }
 
+  async function handleRenameSession(session: ChatSessionDto, title: string) {
+    try {
+      await chatApi.updateSession(session.id, { title })
+      // No optimistic update needed: useChatSessions subscribes to
+      // ChatSessionTitleUpdatedEvent and updates state when it arrives.
+    } catch {
+      addNotification({
+        level: 'error',
+        title: 'Rename failed',
+        message: 'Could not rename the session.',
+      })
+    }
+  }
+
   async function handleDeleteSession(session: ChatSessionDto) {
     const wasActive = session.id === activeSessionId
     try {
@@ -736,6 +750,7 @@ export function Sidebar({
                         onClick={handleSessionClick}
                         onDelete={handleDeleteSession}
                         onTogglePin={handleToggleSessionPin}
+                        onRename={handleRenameSession}
                       />
                     </Fragment>
                   )

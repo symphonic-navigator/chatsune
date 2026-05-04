@@ -24,13 +24,17 @@ interface HistoryItemProps {
   onClick: (session: ChatSessionDto) => void
   onDelete: (session: ChatSessionDto) => void
   onTogglePin?: (session: ChatSessionDto, pinned: boolean) => void
+  onRename?: (session: ChatSessionDto, title: string) => void
 }
 
-export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete, onTogglePin }: HistoryItemProps) {
+export function HistoryItem({ session, isPinned, isActive, monogram, colourScheme, onClick, onDelete, onTogglePin, onRename }: HistoryItemProps) {
   const chakra = colourScheme ? CHAKRA_PALETTE[colourScheme] : null
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
   const menuRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const location = useLocation()
 
   // Close menu on route change
@@ -38,6 +42,33 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
     setMenuOpen(false)
     setConfirmDelete(false)
   }, [location])
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  const startRename = () => {
+    setEditValue(session.title ?? '')
+    setEditing(true)
+    setMenuOpen(false)
+  }
+
+  const commitRename = () => {
+    const trimmed = editValue.trim()
+    if (!trimmed) {
+      setEditing(false)
+      return
+    }
+    onRename?.(session, trimmed)
+    setEditing(false)
+  }
+
+  const cancelRename = () => {
+    setEditing(false)
+  }
 
   useEffect(() => {
     if (!menuOpen) return
@@ -70,10 +101,31 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
         </div>
       )}
       <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
-        <span className="truncate text-[13px]" title={session.title ?? undefined}>
-          {session.title ?? formatSessionDate(session.updated_at)}
-        </span>
-        {session.title && (
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitRename()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                cancelRename()
+              }
+            }}
+            onBlur={commitRename}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full rounded border border-white/15 bg-black/30 px-1 py-0 text-[13px] text-white/90 outline-none focus:border-white/30"
+          />
+        ) : (
+          <span className="truncate text-[13px]" title={session.title ?? undefined}>
+            {session.title ?? formatSessionDate(session.updated_at)}
+          </span>
+        )}
+        {!editing && session.title && (
           <span className="truncate text-[11px] opacity-50">
             {formatSessionDate(session.updated_at)}
           </span>
@@ -106,6 +158,17 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
               className="w-full px-3 py-1.5 text-left text-[13px] text-white/50 transition-colors hover:bg-white/6"
             >
               {isPinned ? "Unpin" : "Pin"}
+            </button>
+          )}
+
+          {/* Rename */}
+          {onRename && (
+            <button
+              type="button"
+              onClick={startRename}
+              className="w-full px-3 py-1.5 text-left text-[13px] text-white/50 transition-colors hover:bg-white/6"
+            >
+              Rename
             </button>
           )}
 
