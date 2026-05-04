@@ -175,6 +175,43 @@ async def delete_by_session_ids(session_ids: list[str]) -> int:
     return await repo.delete_by_session_ids(session_ids)
 
 
+async def count_for_sessions(session_ids: list[str], user_id: str) -> int:
+    """Mindspace: count artefacts owned by ``user_id`` across the given sessions.
+
+    Used by the project usage-counts endpoint. The artefact collection
+    carries a ``session_id`` field directly, so the count is a single
+    ``count_documents`` against ``$in``; the user filter is applied in
+    Python after the lookup since the existing
+    :class:`ArtefactRepository.count_for_sessions` does not enforce
+    ownership (the wider session set is already user-scoped via the
+    chat module's project lookup).
+    """
+    if not session_ids:
+        return 0
+    repo = ArtefactRepository(get_db())
+    # Defensive ownership filter — should already be guaranteed by the
+    # caller, but cheap and safe to verify here too. We use list_for_sessions
+    # rather than count_for_sessions so we can apply the user_id check.
+    docs = await repo.list_for_sessions(session_ids)
+    return sum(1 for d in docs if d.get("user_id") == user_id)
+
+
+async def list_for_sessions_for_user(
+    session_ids: list[str], user_id: str,
+) -> list[dict]:
+    """Mindspace: return artefacts owned by ``user_id`` across the given sessions.
+
+    Used by the project-filtered ``GET /api/artefacts?project_id=…``
+    endpoint. Sorted by ``created_at`` ascending — same order as
+    :meth:`ArtefactRepository.list_for_sessions`.
+    """
+    if not session_ids:
+        return []
+    repo = ArtefactRepository(get_db())
+    docs = await repo.list_for_sessions(session_ids)
+    return [d for d in docs if d.get("user_id") == user_id]
+
+
 async def delete_all_for_sessions(session_ids: list[str]) -> int:
     """Alias for ``delete_by_session_ids`` — named for symmetry with other
     modules' rollback hooks so the Phase 2 import orchestrator can uniformly
@@ -283,4 +320,6 @@ __all__ = [
     "delete_all_for_sessions",
     "bulk_export_for_sessions",
     "bulk_import_for_sessions",
+    "count_for_sessions",
+    "list_for_sessions_for_user",
 ]

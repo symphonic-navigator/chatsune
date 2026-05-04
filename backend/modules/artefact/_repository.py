@@ -113,6 +113,18 @@ class ArtefactRepository:
         ).sort("created_at", 1)
         return await cursor.to_list(length=10000)
 
+    async def count_for_sessions(self, session_ids: list[str]) -> int:
+        """Mindspace: count artefacts whose ``session_id`` is in ``session_ids``.
+
+        Empty input → 0 with no DB round-trip. Used by the project
+        usage-counts endpoint and the delete-modal counts row.
+        """
+        if not session_ids:
+            return 0
+        return await self._artefacts.count_documents(
+            {"session_id": {"$in": session_ids}},
+        )
+
     async def list_versions_for_artefacts(
         self, artefact_ids: list[str],
     ) -> dict[str, list[dict]]:
