@@ -162,7 +162,7 @@ export function JobLogTab() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 overflow-y-auto">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-white/30 font-mono uppercase tracking-wider mr-1">
