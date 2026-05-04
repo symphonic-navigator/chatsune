@@ -8,6 +8,7 @@ import logging
 from backend.database import get_db
 from backend.modules.project._handlers import router
 from backend.modules.project._repository import ProjectRepository
+from backend.modules.project._service import cascade_delete_project
 
 _log = logging.getLogger(__name__)
 
@@ -76,4 +77,5 @@ __all__ = [
     "list_project_ids_for_user",
     "remove_library_from_all_projects",
     "set_pinned",
+    "cascade_delete_project",
 ]
