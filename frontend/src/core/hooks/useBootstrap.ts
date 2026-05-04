@@ -5,6 +5,7 @@ import { ApiError } from "../api/client"
 import { useAuthStore } from "../store/authStore"
 import { useEventStore } from "../store/eventStore"
 import { useIntegrationsStore } from "../../features/integrations/store"
+import { useProjectsStore } from "../../features/projects/useProjectsStore"
 
 /** Checks setup status, then attempts a silent token refresh if setup is complete. */
 export function useBootstrap() {
@@ -38,6 +39,12 @@ export function useBootstrap() {
           }
           // Fire-and-forget: load integration definitions and user configs
           useIntegrationsStore.getState().load()
+          // Mindspace: hydrate the projects store as soon as the user is
+          // authenticated. The sidebar Projects-zone (Phase 6) and the
+          // ProjectsTab in UserModal both read from this store; firing
+          // the load here means the data is already in memory by the
+          // time those surfaces render.
+          void useProjectsStore.getState().load()
         } catch {
           // No valid session — stay logged out
         }
