@@ -58,8 +58,57 @@ class ProjectRepository:
         )
 
     async def list_for_user(self, user_id: str) -> list[dict]:
-        cursor = self._collection.find({"user_id": user_id}).sort("created_at", -1)
+        # Mindspace: list order is "pinned first, then most-recently-updated".
+        # The compound index ``user_pinned_updated`` covers this sort.
+        cursor = self._collection.find({"user_id": user_id}).sort(
+            [("pinned", -1), ("updated_at", -1)],
+        )
         return await cursor.to_list(length=500)
+
+    async def get_library_ids(self, project_id: str, user_id: str) -> list[str]:
+        """Return the project's ``knowledge_library_ids`` or ``[]``.
+
+        Projection-only fetch — used by the chat orchestrator on every
+        inference turn, so we avoid pulling the full project document.
+        Missing project (wrong owner / deleted) returns ``[]`` for the
+        caller to treat the same as "project carries no libraries".
+        """
+        doc = await self._collection.find_one(
+            {"_id": project_id, "user_id": user_id},
+            projection={"knowledge_library_ids": 1},
+        )
+        if doc is None:
+            return []
+        return list(doc.get("knowledge_library_ids", []) or [])
+
+    async def remove_library_from_all_projects(self, library_id: str) -> int:
+        """Pull a deleted knowledge-library id from every project that wired it.
+
+        Returns the number of project documents that were updated. Called
+        by the knowledge-library cascade so that orphan library references
+        never survive a delete. Bumps ``updated_at`` so subscribers see a
+        change and clients refresh affected projects.
+        """
+        now = datetime.now(UTC).replace(tzinfo=None)
+        result = await self._collection.update_many(
+            {"knowledge_library_ids": library_id},
+            {
+                "$pull": {"knowledge_library_ids": library_id},
+                "$set": {"updated_at": now},
+            },
+        )
+        return result.modified_count
+
+    async def set_pinned(
+        self, project_id: str, user_id: str, pinned: bool,
+    ) -> bool:
+        """Toggle the pinned flag, returning ``True`` iff a doc was modified."""
+        now = datetime.now(UTC).replace(tzinfo=None)
+        result = await self._collection.update_one(
+            {"_id": project_id, "user_id": user_id},
+            {"$set": {"pinned": pinned, "updated_at": now}},
+        )
+        return result.modified_count > 0
 
     async def update(
         self, project_id: str, user_id: str, fields: dict,
