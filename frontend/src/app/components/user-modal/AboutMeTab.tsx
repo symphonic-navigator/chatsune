@@ -117,7 +117,7 @@ export function AboutMeTab() {
     !!user && deleteConfirmText === user.username && !deleting
 
   return (
-    <div className="p-6 max-w-2xl flex flex-col gap-8">
+    <div className="p-6 max-w-2xl flex flex-col gap-8 overflow-y-auto">
 
       {/* Display Name */}
       <div>
