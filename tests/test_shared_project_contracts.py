@@ -41,7 +41,8 @@ def test_project_dto_round_trip():
 def test_create_dto_defaults():
     dto = ProjectCreateDto(title="Hi")
     assert dto.emoji is None
-    assert dto.description == ""
+    # Mindspace nullable description: default is ``None``, not ``""``.
+    assert dto.description is None
     assert dto.nsfw is False
 
 

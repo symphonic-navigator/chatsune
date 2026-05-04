@@ -60,7 +60,9 @@ async def test_create_project_minimal(client: AsyncClient):
     data = resp.json()
     assert data["title"] == "Hi"
     assert data["emoji"] is None
-    assert data["description"] == ""
+    # Mindspace nullable description: omitting the field now reads back
+    # as None (was ``""`` pre-Mindspace).
+    assert data["description"] is None
 
 
 async def test_create_project_blank_title_rejected(client: AsyncClient):
