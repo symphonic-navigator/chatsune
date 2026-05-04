@@ -23,10 +23,10 @@ const THRESHOLD_OPTIONS: { value: VoiceActivationThreshold; label: string }[] = 
 const STT_PROVIDER = 'stt_provider'
 
 const STYLE_OPTIONS: { value: VisualiserStyle; label: string }[] = [
-  { value: 'sharp', label: 'Scharf' },
-  { value: 'soft',  label: 'Weich' },
-  { value: 'glow',  label: 'Glühend' },
-  { value: 'glass', label: 'Glas' },
+  { value: 'sharp', label: 'Sharp' },
+  { value: 'soft',  label: 'Soft' },
+  { value: 'glow',  label: 'Glowing' },
+  { value: 'glass', label: 'Glass' },
 ]
 
 const OPTION_STYLE: CSSProperties = {
@@ -124,7 +124,7 @@ export function VoiceTab() {
 
       <div>
         <label className={LABEL} htmlFor="voice-redemption">
-          Pause-Toleranz <span className="text-white/85">{(redemptionMs / 1000).toFixed(1)}s</span>
+          Pause-Tolerance <span className="text-white/85">{(redemptionMs / 1000).toFixed(1)}s</span>
         </label>
         <p className="text-[11px] text-white/40 font-mono mb-2 leading-relaxed">
           How long the conversation waits in silence before sending what you have
@@ -166,7 +166,7 @@ export function VoiceTab() {
 
       <div className="border-t border-white/10 pt-6">
         <h3 className="text-sm uppercase tracking-[0.15em] text-white/70 font-mono mb-4">
-          Sprachausgabe-Visualisierung
+          Speech-Visualisation
         </h3>
 
         <label className="flex items-center gap-3 mb-4">
@@ -175,12 +175,12 @@ export function VoiceTab() {
             checked={v.enabled}
             onChange={(e) => setVisEnabled(e.target.checked)}
           />
-          <span className="text-sm text-white/85">Visualisierung anzeigen</span>
+          <span className="text-sm text-white/85">Show visualisation</span>
         </label>
 
         {reducedMotion && (
           <p className="text-[11px] text-amber-300/80 font-mono mb-4 leading-relaxed">
-            Dein Betriebssystem hat „Bewegung reduzieren" aktiviert — die Visualisierung ist deaktiviert.
+            Your operating system has been configured to reduce motion. Visualisation is deactivated.
           </p>
         )}
 
@@ -205,7 +205,7 @@ export function VoiceTab() {
           </div>
 
           <label className={LABEL} htmlFor="vis-opacity">
-            Deckkraft <span className="text-white/85">{Math.round(v.opacity * 100)}%</span>
+            Opacity <span className="text-white/85">{Math.round(v.opacity * 100)}%</span>
           </label>
           <input
             id="vis-opacity"
@@ -218,7 +218,7 @@ export function VoiceTab() {
           />
 
           <label className={LABEL} htmlFor="vis-bar-count">
-            Anzahl Säulen <span className="text-white/85">{v.barCount}</span>
+            Number of bars <span className="text-white/85">{v.barCount}</span>
           </label>
           <input
             id="vis-bar-count"
