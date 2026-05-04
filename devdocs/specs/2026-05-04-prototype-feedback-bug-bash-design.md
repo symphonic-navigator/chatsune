@@ -35,50 +35,52 @@ and execute as one batch.
 
 ### Item 1 — User-modal "+ Create persona" lands on overview, not edit
 
-**Reported behaviour:** In the user-modal Personas tab, the "+ Create
-persona" button takes the user to a "persona overview" instead of
-opening the new-persona creation form.
+**Reported behaviour (reproduced by Chris on dev, mobile and desktop):**
+In the user-modal Personas tab, "+ Create persona" closes the modal
+and the user lands on the personas grid page. The persona-overlay
+appears briefly (or not at all) and is gone before they can interact.
 
-**Current code:**
+**Root cause:** Browser-history-slot collision in the back-button
+overlay system.
 
-- `frontend/src/app/components/user-modal/PersonasTab.tsx` renders the
-  button and wires `onClick={onCreatePersona}`.
-- `frontend/src/app/layouts/AppLayout.tsx:334` provides the handler:
-  `onCreatePersona={() => openPersonaOverlay(null, "edit")}`.
-- `openPersonaOverlay(null, "edit")` sets state
-  `{ personaId: null, tab: "edit" }`.
-- `<PersonaOverlay isCreating={personaOverlay.personaId === null}
-  activeTab={personaOverlay.tab} ... />` is rendered with
-  `isCreating={true}`, `activeTab="edit"`.
-- `PersonaOverlay.tsx:298` guards the OverviewTab render with
-  `activeTab === 'overview' && !isCreating`, so it should not show.
+- `useBackButtonClose` (`frontend/src/core/hooks/useBackButtonClose.ts`)
+  pushes a phantom history entry when an overlay opens and pops it
+  with `history.back()` when it closes.
+- The user-modal uses it (`UserModal.tsx:68`,
+  `useBackButtonClose(true, onClose, 'user-modal')`).
+- The persona-overlay also uses it (`PersonaOverlay.tsx:77`).
+- `openPersonaOverlay` (`AppLayout.tsx:163`) calls
+  `setModalOpen(false)` and `setPersonaOverlay(...)` in the same
+  tick. The user-modal unmount fires `history.back()`, the
+  persona-overlay mount fires `pushState` — these race, the popstate
+  from the back is interpreted by the global `BackButtonProvider` as
+  a user-initiated back, and it closes the persona-overlay
+  immediately.
+- The codebase already has the fix primitive: `startOverlayTransition
+  ('source-id')` (same file, line 17). When called before a
+  programmatic close, it tells the next overlay to mount with
+  `replaceState` instead of `pushState`, donating the closing
+  overlay's slot. Sidebar already uses this pattern at
+  `Sidebar.tsx:166` and `:177`.
+- `openPersonaOverlay` does **not** call `startOverlayTransition`. That
+  is the bug.
 
-On paper this should already open the EditTab. We don't yet have a
-confirmed reproduction path that isolates the actual bug. Two
-hypotheses:
+**Fix:** In `AppLayout.tsx`'s `openPersonaOverlay`, call
+`startOverlayTransition('user-modal')` when `modalOpen` is true and
+`startOverlayTransition('admin-modal')` when `adminTab !== null`,
+*before* the corresponding `setModalOpen(false)` /
+`setAdminTab(null)` calls. Same treatment for any other handler in
+`AppLayout.tsx` that programmatically closes one overlay while
+opening another — audit the file for `setModalOpen(false)` and
+`setAdminTab(null)` followed by another overlay's setter and apply
+the same fix where applicable.
 
-1. The user is reading "I see the personas grid page" as "overview" —
-   meaning the user-modal closes but the persona-overlay never mounts
-   (e.g. a race between modal-close and overlay-open).
-2. The overlay does mount but the EditTab is rendering an empty,
-   read-only-feeling state that the user reads as "overview".
-
-**Plan:** During implementation, reproduce locally first. Likely
-candidates to check, in order:
-
-1. Verify that clicking "+ Create persona" in the user-modal actually
-   results in the persona-overlay being mounted (devtools React tree).
-2. If the overlay mounts but the EditTab shows nothing actionable,
-   inspect EditTab for a `persona` truthiness guard that shortcuts
-   when `persona === null` even though `isCreating === true`.
-3. If the overlay never mounts, inspect the modal close path —
-   `setModalOpen(false)` and `setPersonaOverlay({ ... })` are both
-   called from `openPersonaOverlay`, so the order is fine, but a
-   secondary effect inside the user-modal might be re-opening the
-   personas grid behind it.
-
-**Expected fix shape:** A small adjustment in either the EditTab
-empty-state rendering or the overlay mount sequence. No API change.
+**Acceptance:** Clicking "+ Create persona" from the user-modal
+Personas tab closes the user-modal and opens the persona-overlay
+on the Edit tab, ready for input. Persona-overlay does not flash
+and disappear. Browser back from the persona-overlay returns to no
+overlay (not back to the user-modal — that would be a separate
+nice-to-have).
 
 **Acceptance:** From any tab in the user-modal, clicking "+ Create
 persona" closes the user-modal and shows the persona-overlay with the
@@ -339,7 +341,8 @@ form controls are bumped.
 - `frontend/src/app/components/persona-overlay/PersonaOverlay.tsx` — Item 6 (header pt)
 - `frontend/src/app/components/user-modal/UserModal.tsx` — Item 6 (header pt), confirm during planning
 - `frontend/src/index.css` — Item 7 (mobile form-control min font-size)
-- Item 1: file(s) discovered during reproduction.
+- `frontend/src/app/layouts/AppLayout.tsx` — Item 1
+  (`startOverlayTransition` before cross-overlay swaps)
 
 **Deleted:**
 
@@ -359,12 +362,9 @@ form controls are bumped.
 
 ## Risks & Open Questions
 
-- **Item 1 root cause is unknown.** Implementation has to start with
-  reproduction. If the bug turns out to be deeper than expected (e.g.
-  state-management redesign needed), it should be split out into its
-  own fix and the rest of the bundle continues without it.
-- **Items 6 and 7 are blind to us.** Best-effort, verified by the
-  reporting tester post-deploy.
+- **Items 6 and 7 are blind to us.** Best-effort, verified by Ksena
+  (the reporting iPhone tester) post-deploy. She has volunteered to
+  re-test on the next build.
 
 ## Manual verification (pre-merge)
 
