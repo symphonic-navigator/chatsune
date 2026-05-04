@@ -128,6 +128,31 @@ describe('ProjectPicker — list rendering', () => {
     expect(screen.getByText('Tame')).toBeInTheDocument()
     expect(screen.queryByText('Spicy')).not.toBeInTheDocument()
   })
+
+  it('excludes the currently-active project from the picker if it is NSFW (§6.7)', async () => {
+    // Spec: "What is already open stays open" — the chip shows the
+    // active project (verified in ProjectSwitcher.test.tsx) but the
+    // picker list is filtered.
+    sanitisedState.value = true
+    const { useProjectsStore } = await import('../useProjectsStore')
+    useProjectsStore.getState().upsert(
+      makeProject({ id: 'p-spicy', title: 'Spicy', nsfw: true }),
+    )
+    useProjectsStore.getState().upsert(
+      makeProject({ id: 'p-tame', title: 'Tame', nsfw: false }),
+    )
+
+    const { ProjectPicker } = await import('../ProjectPicker')
+    render(
+      <ProjectPicker
+        sessionId="s1"
+        currentProjectId="p-spicy"
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.queryByText('Spicy')).not.toBeInTheDocument()
+    expect(screen.getByText('Tame')).toBeInTheDocument()
+  })
 })
 
 describe('ProjectPicker — assignment', () => {

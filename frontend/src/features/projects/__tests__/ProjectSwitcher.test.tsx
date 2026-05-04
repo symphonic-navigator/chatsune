@@ -118,3 +118,42 @@ describe('ProjectSwitcher — picker toggling', () => {
     expect(screen.queryByTestId('picker-desktop')).not.toBeInTheDocument()
   })
 })
+
+describe('ProjectSwitcher — active NSFW project in sanitised mode (§6.7)', () => {
+  // Spec: "Active chat in NSFW-project, user toggles sanitised on:
+  // chat stays open, top-bar switcher continues to display the
+  // project. Sanitised filters discoverability, not active state."
+  //
+  // The switcher chip reads from the unfiltered ``useProjectsStore``
+  // directly so the active project is always visible even when
+  // ``useFilteredProjects`` would hide it from the picker list.
+  it('keeps showing the chip for an NSFW project when sanitised mode is on', async () => {
+    const { useProjectsStore } = await import('../useProjectsStore')
+    useProjectsStore.getState().upsert(
+      makeProject({
+        id: 'p-spicy',
+        title: 'Spicy Project',
+        emoji: '🌶️',
+        nsfw: true,
+      }),
+    )
+    // Flip sanitised on at the global store level. The switcher must
+    // still render the chip — only the picker contents (verified in
+    // ProjectPicker.test.tsx) get filtered.
+    const { useSanitisedMode } = await import(
+      '../../../core/store/sanitisedModeStore'
+    )
+    useSanitisedMode.setState({ isSanitised: true })
+
+    const { ProjectSwitcher } = await import('../ProjectSwitcher')
+    render(
+      <ProjectSwitcher sessionId="sess-1" currentProjectId="p-spicy" />,
+    )
+
+    expect(screen.getByText('Spicy Project')).toBeInTheDocument()
+    expect(screen.getByText('🌶️')).toBeInTheDocument()
+
+    // Reset for subsequent tests.
+    useSanitisedMode.setState({ isSanitised: false })
+  })
+})
