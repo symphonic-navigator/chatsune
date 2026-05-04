@@ -387,6 +387,7 @@ export default function AppLayout() {
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar
           personas={personas}
+          sessions={sessions}
           onOpenPersonaOverlay={(id) => openPersonaOverlay(id, "overview")}
           hasApiKeyProblem={hasApiKeyProblem}
         />

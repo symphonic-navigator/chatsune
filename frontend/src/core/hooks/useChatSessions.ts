@@ -38,6 +38,7 @@ export function useChatSessions() {
         auto_read: false,
         reasoning_override: null,
         pinned: false,
+        project_id: (p.project_id as string | null | undefined) ?? null,
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
       }
@@ -83,12 +84,28 @@ export function useChatSessions() {
       )
     })
 
+    // Mindspace: a session was assigned to (or detached from) a project.
+    // Mirror the new `project_id` into local state so the chat top-bar
+    // switcher and any other consumers re-render without a follow-up
+    // REST call.
+    const unsubProject = eventBus.on(
+      Topics.CHAT_SESSION_PROJECT_UPDATED,
+      (event: BaseEvent) => {
+        const sessionId = event.payload.session_id as string
+        const projectId = (event.payload.project_id as string | null | undefined) ?? null
+        setSessions((prev) =>
+          prev.map((s) => (s.id === sessionId ? { ...s, project_id: projectId } : s)),
+        )
+      },
+    )
+
     return () => {
       unsubCreated()
       unsubDeleted()
       unsubTitle()
       unsubPinned()
       unsubRestored()
+      unsubProject()
     }
   }, [])
 

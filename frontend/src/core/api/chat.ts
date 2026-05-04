@@ -28,6 +28,13 @@ interface ChatSessionDto {
   auto_read: boolean
   reasoning_override: boolean | null
   pinned: boolean
+  /**
+   * Mindspace: optional owning project. ``null`` means the session
+   * belongs to no project (the legacy / global-history bucket). Mirrors
+   * the backend ``ChatSessionDto.project_id`` field — see
+   * ``shared/dtos/chat.py``.
+   */
+  project_id: string | null
   created_at: string
   updated_at: string
 }
