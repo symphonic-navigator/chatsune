@@ -33,7 +33,7 @@ import { personasApi } from "../../core/api/personas"
 import type { CreatePersonaRequest, UpdatePersonaRequest } from "../../core/types/persona"
 import { useRecentEmojisStore } from "../../features/chat/recentEmojisStore"
 import { BackButtonProvider } from '../../core/back-button/BackButtonProvider'
-import { useBackButtonClose } from '../../core/hooks/useBackButtonClose'
+import { useBackButtonClose, startOverlayTransition } from '../../core/hooks/useBackButtonClose'
 
 export default function AppLayout() {
   useWebSocket()
@@ -162,11 +162,13 @@ export default function AppLayout() {
 
   const openPersonaOverlay = useCallback(
     (personaId: string | null, tab: PersonaOverlayTab = "overview") => {
+      if (modalOpen) startOverlayTransition('user-modal')
+      else if (adminTab !== null) startOverlayTransition('admin-modal')
       setModalOpen(false)
       setAdminTab(null)
       setPersonaOverlay({ personaId, tab })
     },
-    [],
+    [modalOpen, adminTab],
   )
 
   const closePersonaOverlay = useCallback(() => {
