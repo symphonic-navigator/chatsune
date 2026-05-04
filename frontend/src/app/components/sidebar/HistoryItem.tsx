@@ -37,10 +37,11 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
   const inputRef = useRef<HTMLInputElement>(null)
   const location = useLocation()
 
-  // Close menu on route change
+  // Close menu and reset edit state on route change
   useEffect(() => {
     setMenuOpen(false)
     setConfirmDelete(false)
+    setEditing(false)
   }, [location])
 
   useEffect(() => {

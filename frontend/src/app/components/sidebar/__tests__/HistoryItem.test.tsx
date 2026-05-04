@@ -92,4 +92,33 @@ describe('HistoryItem rename', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onRename).not.toHaveBeenCalled()
   })
+
+  it('Escape followed by blur does not call onRename', () => {
+    const onRename = vi.fn()
+    renderItem({ onRename })
+    fireEvent.click(screen.getByLabelText('More options'))
+    fireEvent.click(screen.getByText('Rename'))
+    const input = screen.getByDisplayValue('Old title')
+    fireEvent.change(input, { target: { value: 'Changed' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    fireEvent.blur(input)
+    expect(onRename).not.toHaveBeenCalled()
+  })
+
+  it('Rename menu entry is absent when onRename prop is not provided', () => {
+    render(
+      <MemoryRouter>
+        <HistoryItem
+          session={makeSession()}
+          isPinned={false}
+          isActive={false}
+          onClick={vi.fn()}
+          onDelete={vi.fn()}
+          onTogglePin={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByLabelText('More options'))
+    expect(screen.queryByText('Rename')).not.toBeInTheDocument()
+  })
 })
