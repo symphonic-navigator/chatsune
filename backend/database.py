@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import timezone
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from redis.asyncio import Redis
@@ -42,7 +43,16 @@ async def _wait_for_primary(client: AsyncIOMotorClient, timeout_seconds: float =
 
 async def connect_db() -> None:
     global _mongo_client, _redis_client
-    _mongo_client = AsyncIOMotorClient(settings.mongodb_uri)
+    # BSON dates are stored as UTC instants (no offset on the wire). Production
+    # code consistently writes ``datetime.now(timezone.utc)`` so the values
+    # going in are tz-aware UTC. ``tz_aware=True`` makes PyMongo decode them
+    # back into tz-aware datetimes on read; ``tzinfo=timezone.utc`` pins the
+    # decoded instances to UTC, which matches what's actually stored. Without
+    # this, Pydantic v2 serialises naive datetimes without an offset suffix
+    # and JS clients then interpret backend timestamps as local time.
+    _mongo_client = AsyncIOMotorClient(
+        settings.mongodb_uri, tz_aware=True, tzinfo=timezone.utc,
+    )
     _redis_client = Redis.from_url(settings.redis_uri, decode_responses=True)
     await _wait_for_primary(_mongo_client)
 
