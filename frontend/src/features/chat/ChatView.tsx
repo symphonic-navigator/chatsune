@@ -165,6 +165,22 @@ export function ChatView({ persona }: ChatViewProps) {
       setResolveError('Could not load or create a chat session.')
     }
 
+    // Mindspace: defer creation until the persona has loaded so its
+    // ``default_project_id`` is available — otherwise the session is
+    // created with ``project_id=null`` and stays project-less because
+    // the URL flips to ``/chat/{personaId}/{sessionId}`` before the
+    // personas fetch resolves. The dep array re-runs the effect once
+    // the persona arrives. We only gate paths that would create or
+    // pick a session (``forceNew`` and the implicit-create branch);
+    // a path where ``sessionId`` is already in the URL has bailed
+    // earlier on the ``!personaId || sessionId`` guard.
+    if (!persona && (forceNew || !sessionId)) {
+      return () => {
+        cancelled = true
+        clearTimeout(timeoutId)
+      }
+    }
+
     // Mindspace: when the persona has a ``default_project_id`` and the
     // user arrived via a neutral trigger (sidebar pin, persona overlay
     // "New chat", PersonasTab "Start chat" — all of which redirect via
@@ -214,7 +230,7 @@ export function ChatView({ persona }: ChatViewProps) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona?.default_project_id])
+  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona])
 
   const messages = useChatStore((s) => s.messages)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
