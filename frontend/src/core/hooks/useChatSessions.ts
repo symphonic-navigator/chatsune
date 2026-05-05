@@ -28,6 +28,11 @@ export function useChatSessions() {
   useEffect(() => {
     const unsubCreated = eventBus.on(Topics.CHAT_SESSION_CREATED, (event: BaseEvent) => {
       const p = event.payload
+      const projectId = (p.project_id as string | null | undefined) ?? null
+      // Mindspace: this hook represents global, non-project history.
+      // Project-bound sessions are loaded by the project-detail-overlay's
+      // own scoped fetch and must not enter this list.
+      if (projectId !== null) return
       const newSession: ChatSessionDto = {
         id: p.session_id as string,
         user_id: p.user_id as string,
@@ -38,7 +43,7 @@ export function useChatSessions() {
         auto_read: false,
         reasoning_override: null,
         pinned: false,
-        project_id: (p.project_id as string | null | undefined) ?? null,
+        project_id: null,
         created_at: p.created_at as string,
         updated_at: p.updated_at as string,
       }
@@ -85,17 +90,30 @@ export function useChatSessions() {
     })
 
     // Mindspace: a session was assigned to (or detached from) a project.
-    // Mirror the new `project_id` into local state so the chat top-bar
-    // switcher and any other consumers re-render without a follow-up
-    // REST call.
+    // This hook represents global, non-project history, so membership
+    // changes are add/remove operations rather than an in-place patch:
+    //   - Assigned to a project (project_id !== null) → drop from this list.
+    //   - Detached (project_id === null) → fetch the session and prepend
+    //     it, so it surfaces in the sidebar / global HistoryTab without a
+    //     full refetch.
     const unsubProject = eventBus.on(
       Topics.CHAT_SESSION_PROJECT_UPDATED,
       (event: BaseEvent) => {
         const sessionId = event.payload.session_id as string
         const projectId = (event.payload.project_id as string | null | undefined) ?? null
-        setSessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, project_id: projectId } : s)),
-        )
+        if (projectId !== null) {
+          setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+          return
+        }
+        // Detached → pull the session and prepend it. Failures are
+        // swallowed silently, mirroring the initial fetch above.
+        chatApi.getSession(sessionId).then((fetched) => {
+          setSessions((prev) =>
+            prev.some((s) => s.id === fetched.id) ? prev : [fetched, ...prev],
+          )
+        }).catch(() => {
+          // Ignore — empty/unreachable history is acceptable here.
+        })
       },
     )
 

@@ -110,6 +110,7 @@ async def create_session(
             user_id=dto.user_id,
             persona_id=dto.persona_id,
             title=dto.title,
+            project_id=dto.project_id,
             created_at=dto.created_at,
             updated_at=dto.updated_at,
             correlation_id=correlation_id,

@@ -130,6 +130,11 @@ class ChatSessionCreatedEvent(BaseModel):
     user_id: str
     persona_id: str
     title: str | None = None
+    # Mindspace: ``None`` = global history, otherwise the owning project.
+    # Carried so the frontend can route the new session into the right
+    # bucket (sidebar global history vs project-detail-overlay) without
+    # a follow-up REST call.
+    project_id: str | None = None
     created_at: datetime
     updated_at: datetime
     correlation_id: str
