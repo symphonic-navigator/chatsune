@@ -13,7 +13,7 @@ import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
 import { ProjectSidebarItem } from "./ProjectSidebarItem"
-import { useFilteredPinnedProjects } from "../../../features/projects/useProjectsStore"
+import { useFilteredProjects } from "../../../features/projects/useProjectsStore"
 import { projectsApi } from "../../../features/projects/projectsApi"
 import { useProjectOverlayStore } from "../../../features/projects/useProjectOverlayStore"
 import { MobileSidebarHeader } from './MobileSidebarHeader'
@@ -166,9 +166,19 @@ export function Sidebar({
     [personas],
   )
 
-  // Mindspace §6.7: pinned projects in sanitised mode hide NSFW
-  // projects across every sidebar render path.
-  const pinnedProjects = useFilteredPinnedProjects()
+  // Mindspace §6.7: NSFW-filtered projects across every sidebar render
+  // path (sanitised mode hides NSFW projects). The Projects zone now
+  // mirrors the Personas / History zones — it fills empty slots below
+  // the pinned set with the most recently updated non-pinned projects,
+  // and exposes the rest via the ZoneSection "More…" trigger.
+  const allProjects = useFilteredProjects()
+  const orderedProjects = useMemo(() => {
+    const byUpdated = (a: typeof allProjects[number], b: typeof allProjects[number]) =>
+      b.updated_at.localeCompare(a.updated_at)
+    const pinned = allProjects.filter((p) => p.pinned).sort(byUpdated)
+    const nonPinned = allProjects.filter((p) => !p.pinned).sort(byUpdated)
+    return [...pinned, ...nonPinned]
+  }, [allProjects])
 
   const sortedSessions = useMemo(() => {
     const pinned = sessions.filter((s) => s.pinned)
@@ -339,7 +349,7 @@ export function Sidebar({
 
   function handleDeleteProject(projectId: string) {
     closeDrawerIfMobile()
-    const project = pinnedProjects.find((p) => p.id === projectId)
+    const project = orderedProjects.find((p) => p.id === projectId)
     setDeleteProject({
       id: projectId,
       title: project?.title ?? 'Untitled project',
@@ -813,26 +823,30 @@ export function Sidebar({
             zone="projects"
             title="Projects"
             onOpenPage={() => openModalAndClose('projects')}
-            itemCount={pinnedProjects.length}
+            itemCount={orderedProjects.length}
             itemHeight={32}
             emptyState={{
-              label: 'No pinned projects · Create one →',
+              label: 'No projects yet · Create one →',
               onClick: handleOpenProjectCreateModal,
             }}
           >
             {(visibleCount) => {
-              const visible = pinnedProjects.slice(0, visibleCount)
+              const visible = orderedProjects.slice(0, visibleCount)
+              const firstUnpinnedIdx = visible.findIndex((p) => !p.pinned)
+              const hasPinnedAndUnpinned = firstUnpinnedIdx > 0
               return (
                 <>
-                  {visible.map((p) => (
-                    <ProjectSidebarItem
-                      key={p.id}
-                      project={p}
-                      onOpen={handleOpenProject}
-                      onEdit={handleEditProject}
-                      onDelete={handleDeleteProject}
-                      onTogglePin={handleToggleProjectPin}
-                    />
+                  {visible.map((p, idx) => (
+                    <Fragment key={p.id}>
+                      {hasPinnedAndUnpinned && idx === firstUnpinnedIdx && <PinnedDivider />}
+                      <ProjectSidebarItem
+                        project={p}
+                        onOpen={handleOpenProject}
+                        onEdit={handleEditProject}
+                        onDelete={handleDeleteProject}
+                        onTogglePin={handleToggleProjectPin}
+                      />
+                    </Fragment>
                   ))}
                 </>
               )
