@@ -34,8 +34,24 @@ interface HistoryTabProps {
   projectFilter?: string
 }
 
+// Parse a backend timestamp into a ``Date`` anchored to UTC. The
+// backend stamps ``updated_at`` / ``created_at`` from
+// ``datetime.now(UTC)`` but Motor returns naive datetimes (no
+// ``tz_aware=True`` on the client) and Pydantic v2 then serialises
+// those without a ``Z`` suffix — so the wire string can be
+// ``2026-05-05T02:39:00`` rather than ``...Z``. JavaScript treats an
+// un-suffixed ISO string as the browser's local time, which would
+// shift every history row by the local UTC offset. Appending ``Z``
+// when the string carries no offset marker keeps the rendered time
+// in sync with the user's wall clock regardless of how the backend
+// happens to serialise the field.
+function parseTimestamp(isoString: string): Date {
+  const hasOffset = /[zZ]|[+-]\d{2}:?\d{2}$/.test(isoString)
+  return new Date(hasOffset ? isoString : `${isoString}Z`)
+}
+
 function getDateGroup(isoString: string): string {
-  const date = new Date(isoString)
+  const date = parseTimestamp(isoString)
   const now = new Date()
   const today = now.toDateString()
   const yesterday = new Date(now.getTime() - 86_400_000).toDateString()
@@ -59,8 +75,13 @@ function groupSessions(sessions: ChatSessionDto[]): [string, ChatSessionDto[]][]
   return Array.from(map.entries())
 }
 
+// Render a backend timestamp in the browser's local time. ``undefined``
+// locale follows the user's browser preference; the absence of a
+// ``timeZone`` option means local time is used. ``parseTimestamp``
+// anchors the date to UTC so the local conversion is correct even
+// when the wire string lacks an offset marker.
 function formatDate(isoString: string): string {
-  return new Date(isoString).toLocaleDateString(undefined, {
+  return parseTimestamp(isoString).toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
