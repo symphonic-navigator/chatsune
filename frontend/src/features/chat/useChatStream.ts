@@ -301,10 +301,15 @@ export function handleChatEvent(
       // checks risked dropping a fully-streamed assistant turn whenever a
       // non-fatal error (e.g. unknown tool) reset the per-iteration
       // accumulators on the server before the persistence point.
-      if (backendMessageId) {
+      //
+      // Incognito sessions never persist, so the backend always sends an
+      // empty message_id; finalise locally with a synthetic UUID so the
+      // assistant turn stays visible for the rest of the chat.
+      const isIncognitoSession = sessionId?.startsWith('incognito-') ?? false
+      if (backendMessageId || isIncognitoSession) {
         getStore().finishStreaming(
           {
-            id: backendMessageId,
+            id: backendMessageId ?? crypto.randomUUID(),
             session_id: sessionId ?? '',
             role: 'assistant',
             content: persistedContent,
@@ -330,11 +335,12 @@ export function handleChatEvent(
           livePillContents,
         )
       } else {
-        // No persisted message — discard the optimistic streaming state.
-        // After the backend's matching guard fix this branch should only
-        // fire on genuine internal errors that produced zero content AND
-        // zero thinking. If it ever fires with non-empty streamed content,
-        // investigate: it indicates a backend persistence regression.
+        // No persisted message and not an incognito chat — discard the
+        // optimistic streaming state. After the backend's matching guard
+        // fix this branch should only fire on genuine internal errors
+        // that produced zero content AND zero thinking. If it ever fires
+        // with non-empty streamed content, investigate: it indicates a
+        // backend persistence regression.
         getStore().cancelStreaming()
       }
       getStore().setContextStatus(contextStatus)
