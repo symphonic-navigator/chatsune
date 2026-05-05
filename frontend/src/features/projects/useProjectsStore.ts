@@ -8,15 +8,22 @@
 // central filter point and the store stays neutral.
 //
 // Event subscriptions are registered once at module load. They forward
-// the four project-bus topics into store mutations:
+// the four project-bus topics into store mutations.
 //
-//   project.created          → upsert(payload)
-//   project.updated          → upsert(payload)
-//   project.deleted          → remove(payload.id)
+// Wire shape: the backend's ``ProjectCreatedEvent`` and
+// ``ProjectUpdatedEvent`` are wrapper models — ``event.payload`` carries
+// ``{type, project_id, user_id, project, timestamp}`` and the actual
+// ``ProjectDto`` lives at ``payload.project``. The other two events
+// (``project.deleted`` / ``project.pinned.updated``) carry narrow
+// payloads that include ``project_id`` directly.
+//
+//   project.created          → upsert(payload.project)
+//   project.updated          → upsert(payload.project)
+//   project.deleted          → remove(payload.project_id)
 //   project.pinned.updated   → patch ``pinned`` only (the payload of
 //                              this event is intentionally narrow —
-//                              {id, pinned, user_id} — so we must not
-//                              clobber the rest of the doc)
+//                              {project_id, pinned, user_id} — so we
+//                              must not clobber the rest of the doc)
 
 import { useMemo } from 'react'
 import { create } from 'zustand'
@@ -81,14 +88,25 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
 // for the lifetime of the app — a single bad cast pollutes the store.
 
 eventBus.on(Topics.PROJECT_CREATED, (event: BaseEvent) => {
-  const project = event.payload as unknown as ProjectDto
+  // Backend ``ProjectCreatedEvent`` is a wrapper — the DTO lives at
+  // ``payload.project``, alongside ``project_id`` / ``user_id``.
+  const project = (event.payload as { project?: unknown }).project as
+    | ProjectDto
+    | undefined
   if (project && typeof project.id === 'string') {
     useProjectsStore.getState().upsert(project)
   }
 })
 
 eventBus.on(Topics.PROJECT_UPDATED, (event: BaseEvent) => {
-  const project = event.payload as unknown as ProjectDto
+  // Backend ``ProjectUpdatedEvent`` is a wrapper — the DTO lives at
+  // ``payload.project``. The previous ``payload as ProjectDto`` cast
+  // failed the ``id`` gate (the wrapper carries ``project_id``), so
+  // edits made through ``projectsApi.patch`` never reached the store
+  // and the UI stayed stale until F5.
+  const project = (event.payload as { project?: unknown }).project as
+    | ProjectDto
+    | undefined
   if (project && typeof project.id === 'string') {
     useProjectsStore.getState().upsert(project)
   }

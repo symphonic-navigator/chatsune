@@ -109,7 +109,7 @@ describe('useProjectsStore — upsert / remove', () => {
 })
 
 describe('useProjectsStore — event subscriptions', () => {
-  it('project.created event upserts the payload', async () => {
+  it('project.created event upserts the nested project DTO', async () => {
     const { useProjectsStore } = await import('../useProjectsStore')
     const { eventBus } = await import('../../../core/websocket/eventBus')
     const { Topics } = await import('../../../core/types/events')
@@ -122,13 +122,21 @@ describe('useProjectsStore — event subscriptions', () => {
       scope: 'global',
       correlation_id: 'c1',
       timestamp: '2026-05-04T00:00:00Z',
-      payload: project as unknown as Record<string, unknown>,
+      // Backend ``ProjectCreatedEvent`` is a wrapper around the DTO —
+      // mirror the real wire shape so the handler under test sees what
+      // the backend actually sends.
+      payload: {
+        project_id: project.id,
+        user_id: 'u1',
+        project: project,
+        timestamp: '2026-05-04T00:00:00Z',
+      } as unknown as Record<string, unknown>,
     })
 
     expect(useProjectsStore.getState().projects['evt-1']).toEqual(project)
   })
 
-  it('project.updated event upserts the payload', async () => {
+  it('project.updated event upserts the nested project DTO', async () => {
     const { useProjectsStore } = await import('../useProjectsStore')
     const { eventBus } = await import('../../../core/websocket/eventBus')
     const { Topics } = await import('../../../core/types/events')
@@ -143,7 +151,15 @@ describe('useProjectsStore — event subscriptions', () => {
       scope: 'global',
       correlation_id: 'c2',
       timestamp: '2026-05-04T00:00:00Z',
-      payload: updated as unknown as Record<string, unknown>,
+      // Backend ``ProjectUpdatedEvent`` is a wrapper — DTO is nested
+      // under ``project``. Casting ``payload`` directly to the DTO (as
+      // an earlier handler did) silently dropped every edit.
+      payload: {
+        project_id: updated.id,
+        user_id: 'u1',
+        project: updated,
+        timestamp: '2026-05-04T00:00:00Z',
+      } as unknown as Record<string, unknown>,
     })
 
     expect(useProjectsStore.getState().projects.u1.title).toBe('Updated')
