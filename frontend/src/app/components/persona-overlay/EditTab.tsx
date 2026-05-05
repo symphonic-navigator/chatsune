@@ -16,11 +16,14 @@ interface EditTabProps {
   chakra: ChakraPaletteEntry
   onSave: (personaId: string | null, data: Record<string, unknown>) => Promise<void>
   isCreating?: boolean
+  /** Notified whenever the in-form dirty state flips. Used by the
+   *  parent overlay to gate close / tab-change with a discard prompt. */
+  onDirtyChange?: (isDirty: boolean) => void
 }
 
 const CHAKRA_COLOURS: ChakraColour[] = ['root', 'sacral', 'solar', 'heart', 'throat', 'third_eye', 'crown']
 
-export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
+export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: EditTabProps) {
   const [name, setName] = useState(persona.name)
   const [tagline, setTagline] = useState(persona.tagline)
   const [colourScheme, setColourScheme] = useState<ChakraColour>(persona.colour_scheme)
@@ -119,7 +122,13 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
   // is not currently active. The toggle is greyed while Hard-CoT takes over.
   const softCotDisabled = canReason && reasoningEnabled
 
-  const isDirty = isCreating ||
+  // ``hasUnsavedChanges`` reflects whether the form differs from the
+  // persisted persona. The create-mode prefix in ``isDirty`` (below) is
+  // there so the Save button becomes available immediately on a new
+  // persona, but it must NOT count as "unsaved changes" for the
+  // discard-confirm prompt — an untouched create form has nothing to
+  // discard.
+  const hasUnsavedChanges =
     name !== persona.name ||
     tagline !== persona.tagline ||
     colourScheme !== persona.colour_scheme ||
@@ -132,9 +141,33 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
     useMemory !== persona.use_memory ||
     modelUniqueId !== persona.model_unique_id
 
+  const isDirty = isCreating || hasUnsavedChanges
+
   const canSave = isCreating
     ? name.trim() !== '' && tagline.trim() !== '' && modelUniqueId !== ''
     : isDirty
+
+  // Bubble the navigation-meaningful dirty state up to the parent overlay
+  // so it can intercept close / tab-change with a discard prompt. We use
+  // ``hasUnsavedChanges`` (not ``isDirty``) so an untouched create form
+  // does not trigger spurious "discard?" prompts.
+  useEffect(() => {
+    onDirtyChange?.(hasUnsavedChanges)
+    return () => onDirtyChange?.(false)
+  }, [hasUnsavedChanges, onDirtyChange])
+
+  // Browser tab/window close while there are unsaved changes triggers
+  // the native browser warning. Modern browsers ignore the message text
+  // and show their own copy; the assignment is what arms the prompt.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges])
 
   async function handleSave() {
     if (!canSave || saving) return
@@ -374,16 +407,19 @@ export function EditTab({ persona, chakra, onSave, isCreating }: EditTabProps) {
             value={systemPrompt}
             onChange={(e) => {
               setSystemPrompt(e.target.value)
-              // Auto-grow
+              // Auto-grow up to ``maxHeight``; once the content exceeds that
+              // ceiling the textarea stops growing and the global dark
+              // scrollbar (defined in index.css) takes over.
               e.currentTarget.style.height = 'auto'
-              e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`
+              e.currentTarget.style.height = `${Math.min(e.currentTarget.scrollHeight, 320)}px`
             }}
             rows={5}
             style={{
               ...inputStyle,
               resize: 'none',
               lineHeight: '1.5',
-              overflowY: 'hidden',
+              maxHeight: 320,
+              overflowY: 'auto',
             }}
             onFocus={(e) => { e.currentTarget.style.borderColor = `${chakra.hex}66` }}
             onBlur={(e) => { e.currentTarget.style.borderColor = `${chakra.hex}26` }}

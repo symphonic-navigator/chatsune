@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   startRouteTransition,
   useBackButtonClose,
@@ -77,8 +77,45 @@ const DEFAULT_PERSONA: PersonaDto = {
 }
 
 export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, onClose, onTabChange, onSave, onNavigate, sessions }: PersonaOverlayProps) {
-  useBackButtonClose(true, onClose, 'persona-overlay')
   const modalRef = useRef<HTMLDivElement>(null)
+
+  // Tracks whether the EditTab has unsaved form changes. Held in a ref so
+  // every keystroke does not re-render the overlay, with a parallel state
+  // value only because the back-button close path needs a stable callback.
+  const editDirtyRef = useRef(false)
+  const handleEditDirtyChange = useCallback((isDirty: boolean) => {
+    editDirtyRef.current = isDirty
+  }, [])
+
+  // Shared discard-confirm prompt used by every leave path that would
+  // drop unsaved EditTab changes. ``window.confirm`` is the existing
+  // codebase pattern (HomelabCard, ApiKeyList, ModelConfigModal, …).
+  const confirmDiscard = useCallback((): boolean => {
+    if (!editDirtyRef.current) return true
+    return window.confirm(
+      'You have unsaved changes. Discard them and leave?',
+    )
+  }, [])
+
+  const guardedOnClose = useCallback(() => {
+    if (!confirmDiscard()) return
+    onClose()
+  }, [confirmDiscard, onClose])
+
+  const guardedOnTabChange = useCallback(
+    (tab: PersonaOverlayTab) => {
+      // Only the Edit tab carries dirty form state; switching to any other
+      // tab while dirty would unmount EditTab and silently drop the user's
+      // input. Prompt before doing so.
+      if (activeTab === 'edit' && tab !== 'edit') {
+        if (!confirmDiscard()) return
+      }
+      onTabChange(tab)
+    },
+    [activeTab, confirmDiscard, onTabChange],
+  )
+
+  useBackButtonClose(true, guardedOnClose, 'persona-overlay')
   const resolved = persona ?? (isCreating
     ? {
         ...DEFAULT_PERSONA,
@@ -92,7 +129,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
 
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onClose()
+        guardedOnClose()
         return
       }
       if (e.key !== 'Tab') return
@@ -121,7 +158,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
       document.removeEventListener('keydown', onKey)
       previousFocus?.focus()
     }
-  }, [onClose])
+  }, [guardedOnClose])
 
   const addNotification = useNotificationStore((s) => s.addNotification)
   // Subscribe so we re-render on any secrets-store change, ensuring
@@ -181,7 +218,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
     <>
       <div
         className="fixed inset-0 bg-black/50 z-10"
-        onClick={onClose}
+        onClick={guardedOnClose}
         aria-hidden
       />
 
@@ -223,7 +260,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={guardedOnClose}
             aria-label="Close"
             className="flex h-6 w-6 items-center justify-center rounded text-[12px] text-white/40 hover:bg-white/8 hover:text-white/70 transition-colors"
           >
@@ -255,7 +292,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                   aria-selected={isActive}
                   aria-controls={`persona-tabpanel-${tab.id}`}
                   tabIndex={isActive ? 0 : -1}
-                  onClick={() => onTabChange(tab.id)}
+                  onClick={() => guardedOnTabChange(tab.id)}
                   className={[
                     'px-3 py-2.5 border-b-2 -mb-px cursor-pointer transition-colors whitespace-nowrap flex flex-col items-start',
                     isActive
@@ -289,7 +326,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           <OverlayMobileNav
             tree={mobileTree}
             activeId={activeTab}
-            onSelect={(id) => onTabChange(id as PersonaOverlayTab)}
+            onSelect={(id) => guardedOnTabChange(id as PersonaOverlayTab)}
             accentColour={chakra.hex}
             ariaLabel="Open persona navigation"
           />
@@ -332,7 +369,15 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
               onDelete={handleDeletePersona}
             />
           )}
-          {activeTab === 'edit' && <EditTab persona={resolved} chakra={chakra} onSave={onSave} isCreating={isCreating} />}
+          {activeTab === 'edit' && (
+            <EditTab
+              persona={resolved}
+              chakra={chakra}
+              onSave={onSave}
+              isCreating={isCreating}
+              onDirtyChange={handleEditDirtyChange}
+            />
+          )}
           {activeTab === 'knowledge' && !isCreating && <KnowledgeTab persona={resolved} chakra={chakra} />}
           {activeTab === 'memories' && !isCreating && <MemoriesTab persona={resolved} chakra={chakra} />}
           {activeTab === 'history' && !isCreating && <HistoryTab persona={resolved} chakra={chakra} onClose={onClose} />}
