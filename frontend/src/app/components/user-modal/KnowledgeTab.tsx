@@ -380,23 +380,36 @@ export function KnowledgeTab() {
 
       {/* Document editor modal */}
       {documentModal.mode !== 'none' && (() => {
-        const docLibrary = libraries.find((l) => l.id === documentModal.libraryId)
+        const modal = documentModal
+        const docLibrary = libraries.find((l) => l.id === modal.libraryId)
         const libraryDefaultRefresh = docLibrary?.default_refresh ?? 'standard'
+        const editDocId = modal.mode === 'edit' ? modal.doc.id : null
         return (
           <DocumentEditorModal
-            libraryId={documentModal.libraryId}
+            libraryId={modal.libraryId}
             libraryDefaultRefresh={libraryDefaultRefresh}
-            initial={documentModal.mode === 'edit'
+            initial={modal.mode === 'edit'
               ? {
-                  title: documentModal.doc.title,
-                  content: documentModal.doc.content,
-                  media_type: documentModal.doc.media_type,
-                  trigger_phrases: documentModal.doc.trigger_phrases,
-                  refresh: documentModal.doc.refresh,
+                  title: modal.doc.title,
+                  content: modal.doc.content,
+                  media_type: modal.doc.media_type,
+                  trigger_phrases: modal.doc.trigger_phrases,
+                  refresh: modal.doc.refresh,
                 }
               : undefined}
             onSave={handleSaveDocument}
-            onDelete={documentModal.mode === 'edit' ? handleDeleteDocument : undefined}
+            onAutosaveTriggerPhrases={
+              editDocId
+                ? async (phrases) => {
+                    await knowledgeApi.updateDocument(
+                      modal.libraryId,
+                      editDocId,
+                      { trigger_phrases: phrases },
+                    )
+                  }
+                : undefined
+            }
+            onDelete={modal.mode === 'edit' ? handleDeleteDocument : undefined}
             onClose={() => setDocumentModal({ mode: 'none' })}
           />
         )

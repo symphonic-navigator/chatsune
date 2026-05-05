@@ -22,11 +22,18 @@ interface DocumentEditorModalProps {
     trigger_phrases: string[]
     refresh: RefreshFrequency | null
   }) => Promise<void>
+  /**
+   * Optional autosave callback for trigger phrases — fires (debounced) after
+   * the user adds or removes a phrase. Only wired in edit mode; in create mode
+   * the document does not exist yet so phrases live with the rest of the
+   * payload until the explicit Save click.
+   */
+  onAutosaveTriggerPhrases?: (phrases: string[]) => Promise<void>
   onDelete?: () => Promise<void>
   onClose: () => void
 }
 
-export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefresh, initial, onSave, onDelete, onClose }: DocumentEditorModalProps) {
+export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefresh, initial, onSave, onAutosaveTriggerPhrases, onDelete, onClose }: DocumentEditorModalProps) {
   const highlighter = useHighlighter()
   const markdownComponents = useMemo(() => createMarkdownComponents(highlighter), [highlighter])
   const [title, setTitle] = useState(initial?.title ?? '')
@@ -48,11 +55,17 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
 
   const isDirty = useRef(false)
   const isEdit = initial !== undefined
+  // Tracks the last successfully persisted trigger phrases so handleClose
+  // does not flag autosaved changes as "unsaved".
+  const persistedPhrasesRef = useRef<string[]>(initial?.trigger_phrases ?? [])
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autosaveLastSentRef = useRef<string[]>(initial?.trigger_phrases ?? [])
 
   useEffect(() => {
     titleRef.current?.focus()
     return () => {
       if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current)
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
     }
   }, [])
 
@@ -66,11 +79,38 @@ export function DocumentEditorModal({ libraryId: _libraryId, libraryDefaultRefre
     isDirty.current = false
   }, [])
 
+  // Debounced autosave for trigger phrases — fires after the user adds or
+  // removes a phrase. Skips initial mount (initial render already matches
+  // the server state) and only runs in edit mode (a fresh document has no
+  // ID to PATCH against).
+  useEffect(() => {
+    if (!onAutosaveTriggerPhrases) return
+    const last = autosaveLastSentRef.current
+    const unchanged =
+      triggerPhrases.length === last.length &&
+      triggerPhrases.every((p, i) => p === last[i])
+    if (unchanged) return
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current)
+    const snapshot = triggerPhrases.slice()
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveLastSentRef.current = snapshot
+      onAutosaveTriggerPhrases(snapshot)
+        .then(() => {
+          persistedPhrasesRef.current = snapshot
+        })
+        .catch(() => {
+          // Allow a retry on the next change by un-marking this snapshot
+          // as the last sent value.
+          autosaveLastSentRef.current = persistedPhrasesRef.current
+        })
+    }, 500)
+  }, [triggerPhrases, onAutosaveTriggerPhrases])
+
   function handleClose() {
-    const initialPhrases = initial?.trigger_phrases ?? []
+    const referencePhrases = persistedPhrasesRef.current
     const phrasesChanged =
-      triggerPhrases.length !== initialPhrases.length ||
-      triggerPhrases.some((p, i) => p !== initialPhrases[i])
+      triggerPhrases.length !== referencePhrases.length ||
+      triggerPhrases.some((p, i) => p !== referencePhrases[i])
     if (
       isDirty.current &&
       (
