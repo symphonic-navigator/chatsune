@@ -9,11 +9,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import type { ProjectDto } from '../../../../features/projects/types'
 
-// projectsApi is only touched indirectly via the create-modal stub.
+// projectsApi is touched directly by the per-row pin toggle, and
+// indirectly by the create-modal stub.
 vi.mock('../../../../features/projects/projectsApi', () => ({
   projectsApi: {
     create: vi.fn(),
     list: vi.fn().mockResolvedValue([]),
+    setPinned: vi.fn().mockResolvedValue({ ok: true }),
   },
 }))
 
