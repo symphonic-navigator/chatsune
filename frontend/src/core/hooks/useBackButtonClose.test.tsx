@@ -137,6 +137,30 @@ describe('useBackButtonClose', () => {
     expect(replaceSpy).not.toHaveBeenCalled()
   })
 
+  it('skips history.back() on close when the closing overlay is the source of an overlay transition', async () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'outgoing-overlay'),
+      { initialProps: { open: true } },
+    )
+    await Promise.resolve()
+    expect(useHistoryStackStore.getState().stack).toHaveLength(1)
+
+    // Caller marks the outgoing overlay as the source of a transition,
+    // then closes it. The hook must NOT call history.back() because the
+    // incoming overlay will reuse this slot via replaceState — an
+    // unconditional back() here would queue a popstate that pops the
+    // newly-mounted overlay off the stack.
+    startOverlayTransition('outgoing-overlay')
+    rerender({ open: false })
+
+    expect(backSpy).not.toHaveBeenCalled()
+    expect(useHistoryStackStore.getState().stack).toHaveLength(0)
+    // Flush the auto-clear setTimeout so the marker does not leak.
+    await new Promise((r) => setTimeout(r, 5))
+  })
+
   it('clears the transition marker via setTimeout(0) when no overlay claims it', async () => {
     vi.useFakeTimers()
     try {

@@ -112,12 +112,19 @@ export function useBackButtonClose(
         const { wasTop } = useHistoryStackStore
           .getState()
           .remove(overlayIdRef.current)
-        const consuming =
+        const consumingRoute =
           pendingRouteTransitionFrom === overlayIdRef.current
-        if (consuming) {
+        if (consumingRoute) {
           pendingRouteTransitionFrom = null
         }
-        if (wasTop && !consuming) {
+        // When this overlay is the source of an overlay-to-overlay
+        // transition, the incoming overlay will reuse our history slot
+        // via ``replaceState``. Skipping ``history.back()`` here avoids
+        // queuing a stale popstate that would otherwise pop the
+        // incoming overlay off as soon as it mounts.
+        const consumingOverlay =
+          pendingTransitionFrom === overlayIdRef.current
+        if (wasTop && !consumingRoute && !consumingOverlay) {
           window.history.back()
         }
       }
