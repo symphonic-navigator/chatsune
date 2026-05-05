@@ -170,11 +170,11 @@ export function ChatView({ persona }: ChatViewProps) {
     // created with ``project_id=null`` and stays project-less because
     // the URL flips to ``/chat/{personaId}/{sessionId}`` before the
     // personas fetch resolves. The dep array re-runs the effect once
-    // the persona arrives. We only gate paths that would create or
-    // pick a session (``forceNew`` and the implicit-create branch);
-    // a path where ``sessionId`` is already in the URL has bailed
-    // earlier on the ``!personaId || sessionId`` guard.
-    if (!persona && (forceNew || !sessionId)) {
+    // the persona arrives. The ``!personaId || sessionId`` guard at
+    // the top of the effect already short-circuits the path where
+    // ``sessionId`` is in the URL, so we only ever reach this gate
+    // on a creation path.
+    if (!persona) {
       return () => {
         cancelled = true
         clearTimeout(timeoutId)
