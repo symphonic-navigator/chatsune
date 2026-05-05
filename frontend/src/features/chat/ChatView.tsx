@@ -17,6 +17,12 @@ import { ContextStatusPill } from './ContextStatusPill'
 import { useAttachments } from './useAttachments'
 import { AttachmentStrip } from './AttachmentStrip'
 import { UploadBrowserPanel } from './UploadBrowserPanel'
+import {
+  canSendImages as computeCanSendImages,
+  isImageFile,
+  isImageMediaType,
+  VISION_BLOCKED_MESSAGE,
+} from './visionGate'
 import { CHAKRA_PALETTE, type ChakraColour } from '../../core/types/chakra'
 import type { PersonaDto } from '../../core/types/persona'
 import { useBookmarks } from '../../core/hooks/useBookmarks'
@@ -319,6 +325,18 @@ export function ChatView({ persona }: ChatViewProps) {
   // the component (see the empty-state block) and reused here — they resolve
   // persona-owned unique ids (e.g. ``mistral:``, ``xai:``) through the
   // unified hub; a raw ``listConnectionModels`` call 404s for those.
+
+  // Vision gate: can the persona's effective model render images? True iff
+  // the primary model has ``supports_vision`` OR the persona has a
+  // vision-fallback model that itself has ``supports_vision``. Recomputed
+  // live so picking a non-vision model mid-session disables image uploads
+  // immediately. While the enriched-models hub is still loading we keep
+  // the gate permissive so we do not flash a "blocked" state on first
+  // mount before the model record arrives — the actual upload still
+  // re-checks at submit time via this same predicate.
+  const canSendImages = modelsLoading
+    ? true
+    : computeCanSendImages(persona, findModelByUniqueId)
 
   // Look up tool/reasoning capabilities for a model unique id and update local state.
   // Synchronous now: the enriched-models hub populates once and answers from memory.
@@ -754,6 +772,64 @@ export function ChatView({ persona }: ChatViewProps) {
     setPartialSavedNotice(true)
     setTimeout(() => setPartialSavedNotice(false), 6000)
   }, [])
+
+  // Surface the standardised "model can't see images" toast. Centralised
+  // so every blocked image-entry point (file picker, drag-drop, paste,
+  // upload browser, generated-images browser, camera) shows the exact
+  // same wording.
+  const notifyImagesBlocked = useCallback(() => {
+    useNotificationStore.getState().addNotification({
+      level: 'warning',
+      title: 'Image uploads disabled',
+      message: VISION_BLOCKED_MESSAGE,
+      duration: 6000,
+    })
+  }, [])
+
+  // File-pick / drag-drop / paste-image entry point used by ChatInput.
+  // Splits the dropped batch so non-image attachments (PDFs, text, etc.)
+  // still upload normally when the persona is image-blocked. Toasts once
+  // per batch when at least one image was filtered out.
+  const handleFilesSelected = useCallback(
+    (files: File[]) => {
+      if (!canSendImages) {
+        const blocked = files.filter(isImageFile)
+        const allowed = files.filter((f) => !isImageFile(f))
+        if (blocked.length > 0) notifyImagesBlocked()
+        allowed.forEach((f) => attachments.addFile(f))
+        return
+      }
+      files.forEach((f) => attachments.addFile(f))
+    },
+    [canSendImages, attachments, notifyImagesBlocked],
+  )
+
+  // Upload-browser pick of an existing storage record. The browser also
+  // surfaces non-image files (PDFs, text), so we only block when the
+  // chosen file is itself an image.
+  const handleSelectExistingFile = useCallback(
+    (file: import('../../core/api/storage').StorageFileDto) => {
+      if (!canSendImages && isImageMediaType(file.media_type)) {
+        notifyImagesBlocked()
+        return
+      }
+      attachments.addExistingFile(file)
+    },
+    [canSendImages, attachments, notifyImagesBlocked],
+  )
+
+  // Generated-images tab — every entry is by definition an image, so the
+  // gate is unconditional when the persona is image-blocked.
+  const handleSelectGeneratedImage = useCallback(
+    (image: import('../../core/api/images').GeneratedImageSummaryDto) => {
+      if (!canSendImages) {
+        notifyImagesBlocked()
+        return
+      }
+      attachments.addGeneratedImage(image)
+    },
+    [canSendImages, attachments, notifyImagesBlocked],
+  )
 
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
@@ -1273,7 +1349,7 @@ export function ChatView({ persona }: ChatViewProps) {
               title={sessionPinned ? 'Unpin chat' : 'Pin chat'}
               className={`ml-1.5 flex h-5 w-5 items-center justify-center rounded text-[12px] transition-colors ${sessionPinned ? 'text-gold' : 'text-white/35 hover:text-white/65'}`}
             >
-              {sessionPinned ? '📌' : '📍'}
+              {sessionPinned ? '📍' : '📌'}
             </button>
           )}
         </div>
@@ -1450,8 +1526,8 @@ export function ChatView({ persona }: ChatViewProps) {
           {showUploadBrowser && (
             <UploadBrowserPanel
               personaId={personaId}
-              onSelect={(file) => attachments.addExistingFile(file)}
-              onSelectImage={(image) => attachments.addGeneratedImage(image)}
+              onSelect={handleSelectExistingFile}
+              onSelectImage={handleSelectGeneratedImage}
               onClose={() => setShowUploadBrowser(false)}
             />
           )}
@@ -1468,7 +1544,7 @@ export function ChatView({ persona }: ChatViewProps) {
             />
           )}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
-            onFilesSelected={(files) => files.forEach((f) => attachments.addFile(f))}
+            onFilesSelected={handleFilesSelected}
             isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
             sttEnabled={sttEnabled}
             voicePhase={pipelineState.phase}
@@ -1489,6 +1565,8 @@ export function ChatView({ persona }: ChatViewProps) {
                 personaHasVoice={personaHasVoice}
                 voiceSummary={voiceSummary}
                 liveAvailability={liveAvailability}
+                canSendImages={canSendImages}
+                imageBlockedReason={VISION_BLOCKED_MESSAGE}
                 handlers={{
                   attach: () => chatInputRef.current?.openFilePicker(),
                   camera: () => chatInputRef.current?.openCamera(),

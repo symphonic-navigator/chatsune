@@ -32,6 +32,14 @@ type Props = {
   personaHasVoice: boolean
   voiceSummary: VoiceSummary
   liveAvailability: { canEnterLive: boolean; reason: 'no-voice' | 'not-allowed' | null }
+  // ``false`` when the persona's effective vision capability is missing —
+  // disables the camera button (image-only) and surfaces a tooltip
+  // explaining how to unblock. The attach + browse buttons stay enabled
+  // because they may be used for non-image files (PDFs, text). When
+  // omitted, the buttons behave as if uploads are allowed (backwards
+  // compatible default for any future caller).
+  canSendImages?: boolean
+  imageBlockedReason?: string
   handlers: {
     attach: () => void
     camera: () => void
@@ -51,10 +59,15 @@ export function CockpitBar(props: Props) {
   const cockpit = useCockpitSession(props.sessionId)
   const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
 
+  const cameraDisabled = props.canSendImages === false
   const attachGroupChildren = (
     <>
       <AttachButton onClick={props.handlers.attach} />
-      <CameraButton onClick={props.handlers.camera} />
+      <CameraButton
+        onClick={props.handlers.camera}
+        disabled={cameraDisabled}
+        disabledReason={cameraDisabled ? props.imageBlockedReason : undefined}
+      />
       <BrowseButton onClick={props.handlers.browse} />
     </>
   )
