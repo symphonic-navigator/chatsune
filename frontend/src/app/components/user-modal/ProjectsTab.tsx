@@ -12,7 +12,9 @@ import { useMemo, useState } from 'react'
 import { useFilteredProjects } from '../../../features/projects/useProjectsStore'
 import { useProjectOverlayStore } from '../../../features/projects/useProjectOverlayStore'
 import { ProjectCreateModal } from '../../../features/projects/ProjectCreateModal'
+import { projectsApi } from '../../../features/projects/projectsApi'
 import { PINNED_STRIPE_STYLE } from '../sidebar/pinnedStripe'
+import { useNotificationStore } from '../../../core/store/notificationStore'
 import type { ProjectDto } from '../../../features/projects/types'
 
 type ProjectFilter = 'all' | 'pinned'
@@ -49,6 +51,23 @@ export function ProjectsTab() {
   const openProject = useProjectOverlayStore((s) => s.open)
   function handleOpenProject(id: string) {
     openProject(id)
+  }
+
+  // Pin toggling is fire-and-forget: the backend emits
+  // ``PROJECT_PINNED_UPDATED`` and ``useProjectsStore`` patches the local
+  // map in place, so we do not touch local state here. We only surface a
+  // toast on failure rather than fail silently.
+  const addNotification = useNotificationStore((s) => s.addNotification)
+  async function handleTogglePin(project: ProjectDto) {
+    try {
+      await projectsApi.setPinned(project.id, !project.pinned)
+    } catch {
+      addNotification({
+        level: 'error',
+        title: 'Pin failed',
+        message: 'Could not update the pinned state for this project.',
+      })
+    }
   }
 
   return (
@@ -107,6 +126,7 @@ export function ProjectsTab() {
                 project={project}
                 now={now}
                 onOpen={() => handleOpenProject(project.id)}
+                onTogglePin={() => handleTogglePin(project)}
               />
             ))}
           </div>
@@ -180,9 +200,10 @@ interface ProjectRowProps {
   project: ProjectDto
   now: number
   onOpen: () => void
+  onTogglePin: () => void
 }
 
-function ProjectRow({ project, now, onOpen }: ProjectRowProps) {
+function ProjectRow({ project, now, onOpen, onTogglePin }: ProjectRowProps) {
   const displayName = project.title || 'Untitled project'
   const emoji = project.emoji?.trim() || ''
   const description = project.description?.trim() ?? ''
@@ -197,47 +218,79 @@ function ProjectRow({ project, now, onOpen }: ProjectRowProps) {
     ? { ...baseStyle, ...PINNED_STRIPE_STYLE }
     : baseStyle
 
+  // The outer wrapper is a ``<div>`` (not a ``<button>``) because we
+  // nest a pin-toggle button inside the row — nested buttons are
+  // invalid HTML and break keyboard / a11y semantics. The inner
+  // ``<button>`` carries the row-open click; the pin button lives as a
+  // sibling, absolutely positioned in the top-right corner.
   return (
-    <button
-      type="button"
+    <div
       data-testid="project-row"
       data-project-id={project.id}
-      onClick={onOpen}
-      className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-white/5"
+      className="relative flex w-full items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
       style={style}
     >
-      <span
-        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 text-[18px]"
-        aria-hidden="true"
+      <button
+        type="button"
+        data-testid="project-row-body"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-start gap-3 bg-transparent border-none p-0 text-left cursor-pointer"
       >
-        {emoji || <span className="text-white/35">—</span>}
-      </span>
+        <span
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-white/5 text-[18px]"
+          aria-hidden="true"
+        >
+          {emoji || <span className="text-white/35">—</span>}
+        </span>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-semibold text-white/90">
-            {displayName}
-          </span>
-          {project.pinned && (
-            <span
-              data-testid="project-pinned-badge"
-              className="flex-shrink-0 rounded border border-gold/35 bg-gold/10 px-1 py-[1px] font-mono text-[9px] uppercase tracking-wider text-gold/85"
-            >
-              pinned
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Right padding leaves room for the absolute-positioned pin
+              button so the ``updated …`` timestamp does not slide
+              underneath it on narrow rows. */}
+          <div className="flex items-center gap-2 pr-7">
+            <span className="truncate text-[13px] font-semibold text-white/90">
+              {displayName}
             </span>
-          )}
-          {updatedLabel && (
-            <span className="ml-auto flex-shrink-0 font-mono text-[10px] text-white/40">
-              updated {updatedLabel}
+            {project.pinned && (
+              <span
+                data-testid="project-pinned-badge"
+                className="flex-shrink-0 rounded border border-gold/35 bg-gold/10 px-1 py-[1px] font-mono text-[9px] uppercase tracking-wider text-gold/85"
+              >
+                pinned
+              </span>
+            )}
+            {updatedLabel && (
+              <span className="ml-auto flex-shrink-0 font-mono text-[10px] text-white/40">
+                updated {updatedLabel}
+              </span>
+            )}
+          </div>
+          {description && (
+            <span className="mt-0.5 line-clamp-2 text-[12px] text-white/55">
+              {description}
             </span>
           )}
         </div>
-        {description && (
-          <span className="mt-0.5 line-clamp-2 text-[12px] text-white/55">
-            {description}
-          </span>
-        )}
-      </div>
-    </button>
+      </button>
+
+      <button
+        type="button"
+        data-testid="project-pin-toggle"
+        onClick={(e) => {
+          e.stopPropagation()
+          onTogglePin()
+        }}
+        className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded text-[12px] transition-colors ${
+          project.pinned
+            ? 'bg-gold/15 text-gold'
+            : 'text-white/30 hover:text-white/60'
+        }`}
+        aria-label={project.pinned ? 'Unpin project' : 'Pin project'}
+        aria-pressed={project.pinned}
+        title={project.pinned ? 'Unpin project' : 'Pin project'}
+      >
+        📌
+      </button>
+    </div>
   )
 }
