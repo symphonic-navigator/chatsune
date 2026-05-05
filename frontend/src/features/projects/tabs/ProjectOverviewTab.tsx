@@ -201,6 +201,7 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
                 onSelect={(picked) => void handleEmojiSelect(picked)}
                 onClose={() => setEmojiPickerOpen(false)}
                 recentEmojis={recentProjectEmojis}
+                overlay
               />
             )}
           </div>

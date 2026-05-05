@@ -156,6 +156,7 @@ export function ProjectCreateModal({
                   onSelect={handleEmojiSelect}
                   onClose={() => setEmojiPickerOpen(false)}
                   recentEmojis={recentProjectEmojis}
+                  overlay
                 />
               )}
             </div>
