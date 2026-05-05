@@ -798,14 +798,7 @@ async def run_inference(
     # Set session state to streaming
     await repo.update_session_state(session_id, "streaming")
 
-    from backend.modules.chat._soft_cot import is_soft_cot_active
     from backend.modules.chat._soft_cot_parser import wrap_with_soft_cot_parser
-
-    soft_cot_on = is_soft_cot_active(
-        soft_cot_enabled=bool(persona and persona.get("soft_cot_enabled")),
-        supports_reasoning=supports_reasoning,
-        reasoning_enabled=reasoning_enabled,
-    )
 
     async def stream_fn(extra_messages=None):
         req = request
@@ -814,8 +807,7 @@ async def run_inference(
             req = request.model_copy(update={"messages": extended})
 
         upstream = llm_stream_completion(user_id, model_unique_id, req)
-        if soft_cot_on:
-            upstream = wrap_with_soft_cot_parser(upstream)
+        upstream = wrap_with_soft_cot_parser(upstream)
 
         async for event in upstream:
             yield event

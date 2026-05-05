@@ -162,3 +162,85 @@ async def test_other_event_types_pass_through():
     assert "ToolCallEvent" in type_names
     assert "StreamError" in type_names
     assert "StreamDone" in type_names
+
+
+@pytest.mark.asyncio
+async def test_thinking_tag_whole_block():
+    """The ``<thinking>...</thinking>`` form must also be routed to ThinkingDelta."""
+    src = _stream(
+        ContentDelta(delta="<thinking>foo</thinking>visible"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "foo"
+    assert content == "visible"
+
+
+@pytest.mark.asyncio
+async def test_mixed_think_and_thinking_blocks():
+    """Stream containing both tag forms in sequence must route both to
+    ThinkingDelta and pass content between/after through unchanged."""
+    src = _stream(
+        ContentDelta(delta="<think>a</think>middle<thinking>b</thinking>end"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "ab"
+    assert content == "middleend"
+
+
+@pytest.mark.asyncio
+async def test_thinking_tag_split_across_chunks():
+    """``<thinking>``/``</thinking>`` split across chunk boundaries must not
+    leak any tag fragment as ContentDelta."""
+    src = _stream(
+        ContentDelta(delta="<thi"),
+        ContentDelta(delta="nking>"),
+        ContentDelta(delta="foo"),
+        ContentDelta(delta="</thi"),
+        ContentDelta(delta="nking>"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "foo"
+    assert content == ""
+
+
+@pytest.mark.asyncio
+async def test_disambiguation_short_tag_not_leaked_as_content():
+    """Tricky overlap: ``<think`` arrives first, then ``>x</think>``. The
+    parser must not commit ``<think`` as content while ``<thinking>`` is
+    still possible — and must correctly resolve to ``<think>`` once ``>``
+    arrives."""
+    src = _stream(
+        ContentDelta(delta="<think"),
+        ContentDelta(delta=">x</think>"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "x"
+    assert content == ""
+
+
+@pytest.mark.asyncio
+async def test_thinking_disambiguation_after_short_prefix():
+    """``<think`` followed by ``ing>x</thinking>`` must resolve to
+    ``<thinking>`` and route ``x`` to ThinkingDelta with no content leak."""
+    src = _stream(
+        ContentDelta(delta="<think"),
+        ContentDelta(delta="ing>x</thinking>"),
+        StreamDone(),
+    )
+    out = await _collect(wrap_with_soft_cot_parser(src))
+    thinking = "".join(e.delta for e in out if isinstance(e, ThinkingDelta))
+    content = "".join(e.delta for e in out if isinstance(e, ContentDelta))
+    assert thinking == "x"
+    assert content == ""

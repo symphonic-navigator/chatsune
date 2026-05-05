@@ -720,14 +720,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 correlation_id=correlation_id,
             )
 
-        from backend.modules.chat._soft_cot import is_soft_cot_active
         from backend.modules.chat._soft_cot_parser import wrap_with_soft_cot_parser
-
-        soft_cot_on = is_soft_cot_active(
-            soft_cot_enabled=bool(persona.get("soft_cot_enabled")),
-            supports_reasoning=supports_reasoning,
-            reasoning_enabled=reasoning_enabled_for_call,
-        )
 
         def stream_fn(extra_messages=None):
             req = request
@@ -735,9 +728,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 extended = list(request.messages) + extra_messages
                 req = request.model_copy(update={"messages": extended})
             upstream = llm_stream_completion(user_id, model_unique_id, req)
-            if soft_cot_on:
-                return wrap_with_soft_cot_parser(upstream)
-            return upstream
+            return wrap_with_soft_cot_parser(upstream)
 
         async def save_fn(
             content: str,
