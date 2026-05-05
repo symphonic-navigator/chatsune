@@ -131,6 +131,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const isIncognito = searchParams.get('incognito') === '1'
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
   const effectiveSessionId = isIncognito ? incognitoIdRef.current : sessionId
+  const inFlightCreateForPersonaRef = useRef<string | null>(null)
 
   useEffect(() => {
     setIsResolvingSession(false)
@@ -174,7 +175,7 @@ export function ChatView({ persona }: ChatViewProps) {
     // the top of the effect already short-circuits the path where
     // ``sessionId`` is in the URL, so we only ever reach this gate
     // on a creation path.
-    if (!persona) {
+    if (!persona?.id) {
       return () => {
         cancelled = true
         clearTimeout(timeoutId)
@@ -190,6 +191,13 @@ export function ChatView({ persona }: ChatViewProps) {
     const defaultProjectId = persona?.default_project_id ?? null
 
     if (forceNew) {
+      if (inFlightCreateForPersonaRef.current === personaId) {
+        return () => {
+          cancelled = true
+          clearTimeout(timeoutId)
+        }
+      }
+      inFlightCreateForPersonaRef.current = personaId
       chatApi
         .createSession(personaId, defaultProjectId)
         .then((session) => {
@@ -200,7 +208,10 @@ export function ChatView({ persona }: ChatViewProps) {
           navigate(`/chat/${personaId}/${session.id}`, { replace: true })
         })
         .catch(fail)
-        .finally(finish)
+        .finally(() => {
+          inFlightCreateForPersonaRef.current = null
+          finish()
+        })
       return () => {
         cancelled = true
         clearTimeout(timeoutId)
@@ -230,7 +241,7 @@ export function ChatView({ persona }: ChatViewProps) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona])
+  }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona?.id, persona?.default_project_id])
 
   const messages = useChatStore((s) => s.messages)
   const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
@@ -355,7 +366,6 @@ export function ChatView({ persona }: ChatViewProps) {
     let cancelled = false
 
     if (isIncognito) {
-      applyModelCapabilities(persona?.model_unique_id)
       return () => { cancelled = true }
     }
 
@@ -420,7 +430,6 @@ export function ChatView({ persona }: ChatViewProps) {
           tools: session.tools_enabled ?? false,
           autoRead: session.auto_read ?? false,
         })
-        applyModelCapabilities(persona?.model_unique_id)
       })
       .catch((err) => {
         if (cancelled) return
@@ -429,7 +438,11 @@ export function ChatView({ persona }: ChatViewProps) {
       })
 
     return () => { cancelled = true }
-  }, [sessionId, scrollToBottom, isIncognito, persona?.id, persona?.model_unique_id, applyModelCapabilities])
+  }, [sessionId, isIncognito, persona?.id])
+
+  useEffect(() => {
+    applyModelCapabilities(persona?.model_unique_id)
+  }, [persona?.model_unique_id, applyModelCapabilities, isIncognito])
 
   // Stop in-flight TTS / response when the user switches sessions. Two
   // separate paths feed audioPlayback: the live-stream Group (whose
