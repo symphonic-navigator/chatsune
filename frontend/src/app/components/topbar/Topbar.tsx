@@ -4,12 +4,12 @@ import { useEventStore } from "../../../core/store/eventStore"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { CroppedAvatar } from "../avatar-crop/CroppedAvatar"
 import type { PersonaDto } from "../../../core/types/persona"
-import type { ChatSessionDto } from "../../../core/api/chat"
 import { useEnrichedModels } from "../../../core/hooks/useEnrichedModels"
 import { JobsPill } from "./JobsPill"
 import { useDrawerStore } from "../../../core/store/drawerStore"
 import { ProjectSwitcher } from "../../../features/projects/ProjectSwitcher"
 import { PROJECTS_ENABLED } from "../../../core/config/featureGates"
+import { useChatStore } from "../../../core/store/chatStore"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -87,14 +87,6 @@ function LivePill({ isLive, wsStatus }: { isLive: boolean; wsStatus: string }) {
 
 interface TopbarProps {
   personas: PersonaDto[]
-  /**
-   * All chat sessions for the current user, used to look up the
-   * ``project_id`` of the active session for the in-chat
-   * ProjectSwitcher. Forwarded by ``AppLayout`` from the existing
-   * ``useChatSessions`` hook so we don't open a second subscription
-   * for the same data.
-   */
-  sessions: ChatSessionDto[]
   onOpenPersonaOverlay?: (personaId: string) => void
   /**
    * Forwarded from `AppLayout`. On mobile the Provider/Jobs/Live pills are
@@ -142,13 +134,18 @@ function BurgerButton({ hasProblem }: { hasProblem: boolean }) {
   )
 }
 
-export function Topbar({ personas, sessions, onOpenPersonaOverlay, hasApiKeyProblem = false }: TopbarProps) {
+export function Topbar({ personas, onOpenPersonaOverlay, hasApiKeyProblem = false }: TopbarProps) {
   // TODO Phase 8: surface the active connection's display name alongside
   // the model slug (replaces the old provider-credential lookup).
   const wsStatus = useEventStore((s) => s.status)
   const navigate = useNavigate()
   const location = useLocation()
   const [showAvatar, setShowAvatar] = useState(false)
+  // Source of truth for the in-chat ProjectSwitcher chip. ChatView
+  // hydrates this from ``chatApi.getSession`` and keeps it in sync via
+  // ``CHAT_SESSION_PROJECT_UPDATED``; the sessions list is unreliable
+  // here because ``useChatSessions`` excludes project-bound chats.
+  const activeProjectId = useChatStore((s) => s.activeProjectId)
 
   const chatMatch = useMatch("/chat/:personaId/:sessionId?")
 
@@ -219,23 +216,20 @@ export function Topbar({ personas, sessions, onOpenPersonaOverlay, hasApiKeyProb
           <ModelPill modelUniqueId={persona.model_unique_id} />
         )}
         {/* In-chat project switcher — only meaningful when there is an
-            active session. The switcher itself reads `project_id` from
-            the sessions list passed in from `AppLayout`. */}
-        {PROJECTS_ENABLED && chatMatch?.params.sessionId && (() => {
-          const sessionId = chatMatch.params.sessionId
-          const session = sessions.find((s) => s.id === sessionId)
-          // Render even when the session isn't in the list yet (e.g.
-          // during a brief gap between create and list-refresh) — the
-          // switcher tolerates a null project_id and shows "No project".
-          return (
-            <div className="ml-auto flex-shrink-0">
-              <ProjectSwitcher
-                sessionId={sessionId}
-                currentProjectId={session?.project_id ?? null}
-              />
-            </div>
-          )
-        })()}
+            active session. The current ``project_id`` is sourced from
+            ``useChatStore`` (hydrated by ChatView from
+            ``chatApi.getSession`` and kept in sync via
+            ``CHAT_SESSION_PROJECT_UPDATED``); the sessions prop cannot
+            be used because ``useChatSessions`` omits project-bound
+            chats. */}
+        {PROJECTS_ENABLED && chatMatch?.params.sessionId && (
+          <div className="ml-auto flex-shrink-0">
+            <ProjectSwitcher
+              sessionId={chatMatch.params.sessionId}
+              currentProjectId={activeProjectId}
+            />
+          </div>
+        )}
         <div className={[
           'flex-shrink-0 hidden items-center gap-1.5 lg:flex',
           // Only push to the right when the switcher isn't already

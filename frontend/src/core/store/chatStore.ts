@@ -63,6 +63,14 @@ interface ChatState {
   toolsEnabled: boolean
   autoRead: boolean
   reasoningOverride: boolean | null
+  /**
+   * The ``project_id`` of the currently-loaded chat session, mirrored
+   * here so the in-chat ProjectSwitcher in the Topbar can render
+   * reliably even when ``useChatSessions`` does not include
+   * project-bound chats. Hydrated from ``chatApi.getSession`` in
+   * ChatView and kept in sync via ``CHAT_SESSION_PROJECT_UPDATED``.
+   */
+  activeProjectId: string | null
   setMessages: (messages: ChatMessageDto[]) => void
   appendMessage: (message: ChatMessageDto) => void
   setWaitingForResponse: (waiting: boolean) => void
@@ -104,6 +112,7 @@ interface ChatState {
   setContextFillPercentage: (percentage: number) => void
   setContextTokens: (used: number, max: number) => void
   setReasoningOverride: (override: boolean | null) => void
+  setActiveProjectId: (projectId: string | null) => void
   activeSessionId: string | null
   reset: (sessionId?: string) => void
 }
@@ -130,6 +139,7 @@ const INITIAL_STATE = {
   toolsEnabled: false,
   autoRead: false,
   reasoningOverride: null as boolean | null,
+  activeProjectId: null as string | null,
   activeSessionId: null as string | null,
 }
 
@@ -269,5 +279,6 @@ export const useChatStore = create<ChatState>((set, _get) => ({
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setContextTokens: (used, max) => set({ contextUsedTokens: used, contextMaxTokens: max }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
+  setActiveProjectId: (projectId) => set({ activeProjectId: projectId }),
   reset: (sessionId) => set({ ...INITIAL_STATE, activeSessionId: sessionId ?? null }),
 }))

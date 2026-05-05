@@ -160,3 +160,30 @@ describe('chatStore', () => {
     expect(useChatStore.getState().streamingSlow).toBe(false)
   })
 })
+
+describe('useChatStore — activeProjectId', () => {
+  beforeEach(() => {
+    useChatStore.getState().reset()
+  })
+
+  it('starts as null', () => {
+    expect(useChatStore.getState().activeProjectId).toBeNull()
+  })
+
+  it('setActiveProjectId stores a project id', () => {
+    useChatStore.getState().setActiveProjectId('p-1')
+    expect(useChatStore.getState().activeProjectId).toBe('p-1')
+  })
+
+  it('setActiveProjectId(null) clears it', () => {
+    useChatStore.getState().setActiveProjectId('p-1')
+    useChatStore.getState().setActiveProjectId(null)
+    expect(useChatStore.getState().activeProjectId).toBeNull()
+  })
+
+  it('reset() clears active project', () => {
+    useChatStore.getState().setActiveProjectId('p-1')
+    useChatStore.getState().reset()
+    expect(useChatStore.getState().activeProjectId).toBeNull()
+  })
+})

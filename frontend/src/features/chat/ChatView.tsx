@@ -398,6 +398,7 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setToolsEnabled(session.tools_enabled ?? false)
         useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
+        useChatStore.getState().setActiveProjectId(session.project_id ?? null)
         useCockpitStore.getState().hydrateFromServer(session.id, {
           thinking: session.reasoning_override === true,
           tools: session.tools_enabled ?? false,
@@ -431,6 +432,20 @@ export function ChatView({ persona }: ChatViewProps) {
     const off = eventBus.on(Topics.CHAT_SESSION_PINNED_UPDATED, (event: BaseEvent) => {
       if (event.payload.session_id !== effectiveSessionId) return
       setSessionPinned(Boolean(event.payload.pinned))
+    })
+    return off
+  }, [effectiveSessionId])
+
+  // Keep the in-chat project switcher in sync when the session is moved
+  // into / out of a project from another tab, the global History tab, or
+  // the personas-tab create-from-project flow. Mirrors the pinned listener
+  // above; the store is the single source of truth read by the Topbar.
+  useEffect(() => {
+    if (!effectiveSessionId) return
+    const off = eventBus.on(Topics.CHAT_SESSION_PROJECT_UPDATED, (event: BaseEvent) => {
+      if (event.payload.session_id !== effectiveSessionId) return
+      const next = (event.payload.project_id as string | null | undefined) ?? null
+      useChatStore.getState().setActiveProjectId(next)
     })
     return off
   }, [effectiveSessionId])
