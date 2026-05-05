@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useHistoryStackStore } from '../store/historyStackStore'
 
 let pendingTransitionFrom: string | null = null
+let pendingRouteTransitionFrom: string | null = null
 
 /**
  * Mark that a programmatic overlay close is happening because another overlay
@@ -19,6 +20,26 @@ export function startOverlayTransition(fromOverlayId: string): void {
   setTimeout(() => {
     if (pendingTransitionFrom === fromOverlayId) {
       pendingTransitionFrom = null
+    }
+  }, 0)
+}
+
+/**
+ * Mark that a programmatic overlay close is happening because the
+ * caller is navigating to a new route. The overlay's own cleanup will
+ * skip its ``window.history.back()`` call when it sees a matching
+ * pending transition — react-router has already pushed a new entry,
+ * and an extra ``history.back()`` would race with it and revert the
+ * URL.
+ *
+ * Auto-clears via ``setTimeout(0)`` if no overlay claims it (e.g. the
+ * navigate ran but the overlay stays mounted).
+ */
+export function startRouteTransition(fromOverlayId: string): void {
+  pendingRouteTransitionFrom = fromOverlayId
+  setTimeout(() => {
+    if (pendingRouteTransitionFrom === fromOverlayId) {
+      pendingRouteTransitionFrom = null
     }
   }, 0)
 }
@@ -91,7 +112,12 @@ export function useBackButtonClose(
         const { wasTop } = useHistoryStackStore
           .getState()
           .remove(overlayIdRef.current)
-        if (wasTop) {
+        const consuming =
+          pendingRouteTransitionFrom === overlayIdRef.current
+        if (consuming) {
+          pendingRouteTransitionFrom = null
+        }
+        if (wasTop && !consuming) {
           window.history.back()
         }
       }

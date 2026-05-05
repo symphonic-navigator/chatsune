@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom'
 import { usePersonas } from '../../../core/hooks/usePersonas'
 import { useNotificationStore } from '../../../core/store/notificationStore'
 import { useSanitisedMode } from '../../../core/store/sanitisedModeStore'
+import { startRouteTransition } from '../../../core/hooks/useBackButtonClose'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import { chatApi } from '../../../core/api/chat'
@@ -97,6 +98,10 @@ export function ProjectPersonasTab({ projectId, onClose }: ProjectPersonasTabPro
       // here drops the new session straight into this project, removing
       // the redundant ``setSessionProject`` follow-up call.
       const session = await chatApi.createSession(persona.id, projectId)
+      // Mark the route transition BEFORE ``onClose()`` so the
+      // overlay's cleanup skips its phantom ``history.back()`` —
+      // otherwise it races with ``navigate()`` and reverts the URL.
+      startRouteTransition('project-overlay')
       onClose()
       navigate(`/chat/${persona.id}/${session.id}`)
     } catch {

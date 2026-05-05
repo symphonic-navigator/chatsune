@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { useBackButtonClose } from '../../../core/hooks/useBackButtonClose'
+import {
+  startRouteTransition,
+  useBackButtonClose,
+} from '../../../core/hooks/useBackButtonClose'
 import { CHAKRA_PALETTE } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 import type { DeletionReportDto } from '../../../core/types/deletion'
@@ -146,6 +149,7 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
 
   const handleDismissDeletionReport = () => {
     setDeletionReport(null)
+    startRouteTransition('persona-overlay')
     onClose()
     onNavigate?.('/personas')
   }
@@ -308,15 +312,18 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
                   .filter((s) => s.persona_id === resolved.id)
                   .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]
                 if (last) {
+                  startRouteTransition('persona-overlay')
                   onNavigate?.(`/chat/${resolved.id}/${last.id}`)
                   onClose()
                 }
               }}
               onNewChat={() => {
+                startRouteTransition('persona-overlay')
                 onNavigate?.(`/chat/${resolved.id}?new=1`)
                 onClose()
               }}
               onNewIncognitoChat={() => {
+                startRouteTransition('persona-overlay')
                 onNavigate?.(`/chat/${resolved.id}?incognito=1`)
                 onClose()
               }}

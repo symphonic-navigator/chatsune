@@ -1,6 +1,10 @@
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { startOverlayTransition, useBackButtonClose } from './useBackButtonClose'
+import {
+  startOverlayTransition,
+  startRouteTransition,
+  useBackButtonClose,
+} from './useBackButtonClose'
 import { useHistoryStackStore } from '../store/historyStackStore'
 
 beforeEach(() => {
@@ -157,6 +161,76 @@ describe('useBackButtonClose', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('skips history.back() on close when a route transition is pending for that overlay', async () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'route-overlay'),
+      { initialProps: { open: true } },
+    )
+    await Promise.resolve()
+    expect(useHistoryStackStore.getState().stack).toHaveLength(1)
+
+    // Caller about to navigate to a new route: mark the transition,
+    // then close the overlay. The hook must NOT call history.back()
+    // because react-router has already pushed a new entry, and an
+    // extra back() would race and revert the URL.
+    startRouteTransition('route-overlay')
+    rerender({ open: false })
+
+    expect(backSpy).not.toHaveBeenCalled()
+    expect(useHistoryStackStore.getState().stack).toHaveLength(0)
+  })
+
+  it('still calls history.back() on close when no route transition was marked', async () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'route-overlay-2'),
+      { initialProps: { open: true } },
+    )
+    await Promise.resolve()
+    rerender({ open: false })
+
+    expect(backSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('only consumes the route transition when the overlay id matches', async () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'route-overlay-3'),
+      { initialProps: { open: true } },
+    )
+    await Promise.resolve()
+
+    // Marker is for a DIFFERENT overlay — must not be consumed here.
+    startRouteTransition('some-other-overlay')
+    rerender({ open: false })
+
+    expect(backSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('self-clears the route transition marker via setTimeout(0)', async () => {
+    const backSpy = vi.spyOn(window.history, 'back').mockImplementation(() => {})
+    const onClose = vi.fn()
+
+    // Mark a transition, but don't close anything before the
+    // setTimeout(0) flushes — the marker must clear itself.
+    startRouteTransition('route-overlay-4')
+    await new Promise((r) => setTimeout(r, 5))
+
+    const { rerender } = renderHook(
+      ({ open }) => useBackButtonClose(open, onClose, 'route-overlay-4'),
+      { initialProps: { open: true } },
+    )
+    await Promise.resolve()
+    rerender({ open: false })
+
+    // Marker auto-cleared, so close must still go back.
+    expect(backSpy).toHaveBeenCalledTimes(1)
   })
 
   it('does not push or call history.back when mount/cleanup/remount happens before microtask flushes (StrictMode-style)', async () => {
