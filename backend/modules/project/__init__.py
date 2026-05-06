@@ -46,6 +46,17 @@ async def get_library_ids(project_id: str, user_id: str) -> list[str]:
     return await _repo().get_library_ids(project_id, user_id)
 
 
+async def get_system_prompt(project_id: str, user_id: str) -> str | None:
+    """Return the project's Custom Instructions or ``None``.
+
+    Returns ``None`` if the project does not exist, does not belong to
+    the user, or has no CI set. Used by the chat prompt assembler on
+    every inference turn — mirrors ``get_library_ids`` in shape and
+    cost.
+    """
+    return await _repo().get_system_prompt(project_id, user_id)
+
+
 async def list_project_ids_for_user(user_id: str) -> list[str]:
     """Return every project ``_id`` owned by ``user_id``.
 
@@ -80,6 +91,7 @@ __all__ = [
     "ProjectRepository",
     "delete_all_for_user",
     "get_library_ids",
+    "get_system_prompt",
     "list_project_ids_for_user",
     "remove_library_from_all_projects",
     "set_pinned",
