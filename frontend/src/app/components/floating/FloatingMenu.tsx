@@ -108,6 +108,13 @@ export function FloatingMenu({
 
   if (!open) return null
 
+  // Portal to <html>, NOT <body>. The app's body has
+  // `transform: scale(var(--ui-scale))` (see index.css), which makes
+  // body the containing block for any `position: fixed` descendant
+  // (CSS spec: a transformed ancestor wins over the viewport). That
+  // would re-scale our coordinates and break edge detection at any
+  // ui-scale != 1. Rendering as a sibling of body sidesteps the
+  // transform entirely.
   return createPortal(
     <div
       ref={menuRef}
@@ -124,6 +131,6 @@ export function FloatingMenu({
     >
       {children}
     </div>,
-    document.body,
+    document.documentElement,
   )
 }
