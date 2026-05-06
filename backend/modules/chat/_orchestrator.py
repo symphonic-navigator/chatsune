@@ -578,6 +578,7 @@ async def run_inference(
         user_id=user_id,
         persona_id=persona_id,
         model_unique_id=model_unique_id,
+        project_id=session.get("project_id"),
         supports_reasoning=supports_reasoning,
         reasoning_enabled_for_call=reasoning_enabled,
         tools_enabled=tools_enabled_flag,
