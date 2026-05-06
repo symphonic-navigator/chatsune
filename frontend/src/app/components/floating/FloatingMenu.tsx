@@ -48,39 +48,36 @@ export function FloatingMenu({
       setPosition(null)
       return
     }
-    const compute = () => {
-      const anchor = anchorRef.current
-      if (!anchor) return
-      const a = anchor.getBoundingClientRect()
-      const menuHeight = menuRef.current?.offsetHeight ?? 200
-      const vw = window.innerWidth
-      const vh = window.innerHeight
+    // useLayoutEffect runs after refs are attached and DOM is committed,
+    // so menuRef.current.offsetHeight reflects the real mounted height
+    // here — no fallback or rAF re-measure needed.
+    const anchor = anchorRef.current
+    const menu = menuRef.current
+    if (!anchor || !menu) return
+    const a = anchor.getBoundingClientRect()
+    const menuHeight = menu.offsetHeight
+    const vw = window.innerWidth
+    const vh = window.innerHeight
 
-      // Default: below the anchor, right edges aligned.
-      let top = a.bottom + 4
-      let left = a.right - width
+    // Default: below the anchor, right edges aligned.
+    let top = a.bottom + 4
+    let left = a.right - width
 
-      // Vertical flip: open above when below would overflow.
-      if (top + menuHeight > vh - VIEWPORT_MARGIN) {
-        top = a.top - menuHeight - 4
-      }
-      // Horizontal flip: align to anchor's left edge when default
-      // would overflow the viewport's left edge.
-      if (left < VIEWPORT_MARGIN) {
-        left = a.left
-      }
-      // Defensive clamp so the menu always stays inside the
-      // viewport with the configured margin.
-      top = Math.max(VIEWPORT_MARGIN, Math.min(top, vh - menuHeight - VIEWPORT_MARGIN))
-      left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - width - VIEWPORT_MARGIN))
-
-      setPosition({ top, left })
+    // Vertical flip: open above when below would overflow.
+    if (top + menuHeight > vh - VIEWPORT_MARGIN) {
+      top = a.top - menuHeight - 4
     }
-    // First compute uses the height fallback (200) before the menu
-    // is in the DOM; the rAF compute uses the real measured height.
-    compute()
-    const raf = requestAnimationFrame(compute)
-    return () => cancelAnimationFrame(raf)
+    // Horizontal flip: align to anchor's left edge when default
+    // would overflow the viewport's left edge.
+    if (left < VIEWPORT_MARGIN) {
+      left = a.left
+    }
+    // Defensive clamp so the menu always stays inside the
+    // viewport with the configured margin.
+    top = Math.max(VIEWPORT_MARGIN, Math.min(top, vh - menuHeight - VIEWPORT_MARGIN))
+    left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - width - VIEWPORT_MARGIN))
+
+    setPosition({ top, left })
   }, [open, anchorRef, width])
 
   useEffect(() => {
