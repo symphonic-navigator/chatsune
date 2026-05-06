@@ -142,6 +142,16 @@ export default function AppLayout() {
   const [activeTop, setActiveTop] = useState<TopTabId>('about-me')
   const [activeSub, setActiveSub] = useState<SubTabId | undefined>(undefined)
 
+  // Close the UserModal when the user navigates into any chat route.
+  // This covers Start-Chat actions triggered from inside the modal
+  // stack (e.g. Project Personas tab, History tab) — the modal would
+  // otherwise stay mounted on top of the freshly opened chat.
+  useEffect(() => {
+    if (location.pathname.startsWith('/chat/')) {
+      setModalOpen(false)
+    }
+  }, [location.pathname])
+
   function openModal(leaf: LeafId | string) {
     const { top, sub: resolved } = resolveLeaf(leaf)
     const remembered = useSubtabStore.getState().lastSub[top]
