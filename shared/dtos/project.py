@@ -139,13 +139,6 @@ class ProjectUpdateDto(BaseModel):
             return v
         return _validate_description(v)
 
-    @field_validator("system_prompt")
-    @classmethod
-    def _check_system_prompt(cls, v: Any) -> Any:
-        if isinstance(v, _Unset) or v is None:
-            return v
-        return v
-
 
 class ProjectUsageDto(BaseModel):
     """Per-project usage counts surfaced by ``GET /api/projects/{id}?include_usage=true``.
