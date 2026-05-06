@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { useViewport } from "../../../core/hooks/useViewport"
 import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 import type { ProjectDto } from "../../../features/projects/types"
+import { FloatingMenu } from "../floating/FloatingMenu"
 
 type MenuEntry =
   | { divider: true }
@@ -39,20 +40,9 @@ export function ProjectSidebarItem({
   onTogglePin,
 }: ProjectSidebarItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const longPressTimer = useRef<number | null>(null)
   const { isMobile } = useViewport()
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [menuOpen])
 
   function clearLongPress() {
     if (longPressTimer.current !== null) {
@@ -139,6 +129,7 @@ export function ProjectSidebarItem({
       </span>
 
       <button
+        ref={triggerRef}
         type="button"
         aria-label="More options"
         title="More options"
@@ -153,31 +144,30 @@ export function ProjectSidebarItem({
         ···
       </button>
 
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          role="menu"
-          className="absolute right-2 top-8 z-50 w-44 rounded-lg border border-white/10 bg-elevated py-1 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {menuItems.map((item, idx) => {
-            if ("divider" in item) {
-              return <div key={`div-${idx}`} className="mx-2 my-1 h-px bg-white/10" aria-hidden />
-            }
-            return (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                onClick={item.action}
-                className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      <FloatingMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={triggerRef}
+        width={176}
+        role="menu"
+      >
+        {menuItems.map((item, idx) => {
+          if ("divider" in item) {
+            return <div key={`div-${idx}`} className="mx-2 my-1 h-px bg-white/10" aria-hidden />
+          }
+          return (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={item.action}
+              className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </FloatingMenu>
     </div>
   )
 }

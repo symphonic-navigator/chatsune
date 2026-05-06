@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef } from "react"
 import type { PersonaDto } from "../../../core/types/persona"
 import { CHAKRA_PALETTE, type ChakraColour } from "../../../core/types/chakra"
 import { useMemoryStore } from "../../../core/store/memoryStore"
@@ -6,6 +6,7 @@ import type { JournalEntryDto } from "../../../core/api/memory"
 import { useViewport } from "../../../core/hooks/useViewport"
 import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 import { KissMarkIcon } from "../../../core/components/symbols"
+import { FloatingMenu } from "../floating/FloatingMenu"
 
 type MenuEntry =
   | { divider: true }
@@ -44,24 +45,13 @@ export function PersonaItem({
   onOpenOverlay,
 }: PersonaItemProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const { isMobile } = useViewport()
 
   const uncommitted = useMemoryStore((s) => s.uncommittedEntries[persona.id] ?? EMPTY_ENTRIES)
   const uncommittedCount = uncommitted.length
 
   const chakra = CHAKRA_PALETTE[persona.colour_scheme as ChakraColour] ?? CHAKRA_PALETTE.solar
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [menuOpen])
 
   // Menu order: New Chat, New Incognito, [divider], Overview, Edit, [divider], Pin/Unpin.
   // Dividers are dropped on mobile to keep the menu compact.
@@ -126,6 +116,7 @@ export function PersonaItem({
           </span>
         )}
         <button
+          ref={triggerRef}
           type="button"
           aria-label="More options"
           title="More options"
@@ -138,29 +129,28 @@ export function PersonaItem({
         </button>
       </div>
 
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          className="absolute right-2 top-8 z-50 w-48 rounded-lg border border-white/10 bg-elevated py-1 shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {menuItems.map((item, idx) => {
-            if ("divider" in item) {
-              return <div key={`div-${idx}`} className="h-px bg-white/10 my-1 mx-2" aria-hidden />
-            }
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.action}
-                className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
-              >
-                {item.label}
-              </button>
-            )
-          })}
-        </div>
-      )}
+      <FloatingMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRef={triggerRef}
+        width={192}
+      >
+        {menuItems.map((item, idx) => {
+          if ("divider" in item) {
+            return <div key={`div-${idx}`} className="h-px bg-white/10 my-1 mx-2" aria-hidden />
+          }
+          return (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.action}
+              className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
+            >
+              {item.label}
+            </button>
+          )
+        })}
+      </FloatingMenu>
     </div>
   )
 }
