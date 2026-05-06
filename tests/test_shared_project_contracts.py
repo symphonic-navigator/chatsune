@@ -17,6 +17,7 @@ from shared.dtos.project import (
     ProjectCreateDto,
     ProjectDto,
     ProjectUpdateDto,
+    _Unset,
 )
 
 
@@ -138,3 +139,66 @@ def test_project_deleted_event():
         timestamp=datetime.now(timezone.utc),
     )
     assert ev.type == "project.deleted"
+
+
+def test_project_dto_round_trips_system_prompt():
+    now = datetime.now(timezone.utc)
+    dto = ProjectDto(
+        id="p1",
+        user_id="u1",
+        title="t",
+        emoji=None,
+        description=None,
+        nsfw=False,
+        pinned=False,
+        sort_order=0,
+        knowledge_library_ids=[],
+        system_prompt="be helpful",
+        created_at=now,
+        updated_at=now,
+    )
+    assert dto.system_prompt == "be helpful"
+
+
+def test_project_dto_system_prompt_defaults_to_none():
+    now = datetime.now(timezone.utc)
+    dto = ProjectDto(
+        id="p1",
+        user_id="u1",
+        title="t",
+        emoji=None,
+        description=None,
+        nsfw=False,
+        pinned=False,
+        sort_order=0,
+        knowledge_library_ids=[],
+        created_at=now,
+        updated_at=now,
+    )
+    assert dto.system_prompt is None
+
+
+def test_project_create_dto_accepts_system_prompt():
+    dto = ProjectCreateDto(title="t", system_prompt="hi")
+    assert dto.system_prompt == "hi"
+
+
+def test_project_create_dto_system_prompt_defaults_to_none():
+    dto = ProjectCreateDto(title="t")
+    assert dto.system_prompt is None
+
+
+def test_project_update_dto_system_prompt_uses_unset_sentinel():
+    dto = ProjectUpdateDto()
+    assert isinstance(dto.system_prompt, _Unset)
+
+
+def test_project_update_dto_system_prompt_explicit_none_clears():
+    dto = ProjectUpdateDto(system_prompt=None)
+    assert dto.system_prompt is None
+    assert not isinstance(dto.system_prompt, _Unset)
+
+
+def test_project_update_dto_system_prompt_accepts_string():
+    dto = ProjectUpdateDto(system_prompt="updated")
+    assert dto.system_prompt == "updated"
