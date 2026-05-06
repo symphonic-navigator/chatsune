@@ -1,0 +1,39 @@
+DRAFT — wäre ein Kandidat für INSIGHTS.md, aber Chris kann das selbst entscheiden ob er's übernimmt.
+
+## Body has transform: scale(--ui-scale) — gotcha for fixed-positioned overlays
+
+`frontend/src/index.css:50-58` applies `transform: scale(var(--ui-scale, 1))`
+to `<body>` plus `width/height: calc(100vw / --ui-scale)` to keep visual
+size stable across UI-scale settings. This is intentional and avoids a
+non-standard `zoom`-property quirk on iPhone SE.
+
+Side effect: any `position: fixed` descendant of `<body>` has `<body>`
+as its containing block (CSS Transforms 1: a transformed element wins
+over the viewport). Two consequences for floating UI:
+
+1. Fixed-positioned children read their `top/left` in body's pre-transform
+   coord space, then get re-scaled. `getBoundingClientRect()` returns
+   visual viewport coords (post-transform). Setting
+   `top: getBoundingClientRect().bottom + 4` produces an offset that
+   grows linearly with distance from body's top-left.
+
+2. `window.innerWidth/innerHeight` are visual viewport dimensions.
+   Comparing those against pre-transform top/left for edge detection
+   gives wrong answers.
+
+`FloatingMenu` (`frontend/src/app/components/floating/FloatingMenu.tsx`)
+solves this by reading `--ui-scale` from `documentElement` and dividing
+all viewport-derived inputs (anchor rect, vw/vh, gap, margin) by the
+scale before computing position. `menu.offsetHeight` and the `width`
+prop stay unscaled — they're already in body coords.
+
+Tried first: portal to `document.documentElement` (= sibling of body,
+escapes the transformed containing block). Did NOT work in practice
+in this codebase — the menu still rendered as a child of `<body>`
+despite `createPortal(jsx, document.documentElement)`. Root cause
+unknown; possibly a Vite HMR cache or React-DOM behaviour. Math
+compensation is more robust because it doesn't depend on portal
+behaviour.
+
+When adding new portalled overlays, EITHER inherit the math from
+FloatingMenu OR keep them outside any transformed ancestor.
