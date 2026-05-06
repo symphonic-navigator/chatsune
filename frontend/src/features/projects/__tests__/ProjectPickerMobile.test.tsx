@@ -53,6 +53,7 @@ vi.mock('../ProjectCreateModal', () => ({
               pinned: false,
               sort_order: 0,
               knowledge_library_ids: [],
+              system_prompt: null,
               created_at: '2026-05-04T00:00:00Z',
               updated_at: '2026-05-04T00:00:00Z',
             })
@@ -75,6 +76,7 @@ function makeProject(overrides: Partial<ProjectDto> = {}): ProjectDto {
     pinned: false,
     sort_order: 0,
     knowledge_library_ids: [],
+    system_prompt: null,
     created_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z',
     ...overrides,
