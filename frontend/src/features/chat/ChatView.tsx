@@ -1275,6 +1275,7 @@ export function ChatView({ persona }: ChatViewProps) {
                     <li>No messages stored</li>
                     <li>No memory updated</li>
                     <li>No journal entries</li>
+                    <li>No bookmarks</li>
                   </ul>
                   <p className="mt-1.5 text-white/50">Once you close or leave this chat, everything is gone.</p>
                 </div>
@@ -1517,7 +1518,7 @@ export function ChatView({ persona }: ChatViewProps) {
               containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
               onEdit={handleEdit} onRegenerate={handleRegenerate}
               bookmarkedMessageIds={bookmarkedMessageIds}
-              onBookmark={(msgId) => setBookmarkTargetMsgId(msgId)}
+              onBookmark={isIncognito ? undefined : (msgId) => setBookmarkTargetMsgId(msgId)}
               sttEnabled={sttEnabled}
               persona={persona}
             />

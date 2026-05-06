@@ -46,7 +46,7 @@ interface MessageListProps {
   onEdit: (messageId: string, content: string) => void
   onRegenerate: () => void
   bookmarkedMessageIds: Set<string>
-  onBookmark: (messageId: string) => void
+  onBookmark?: (messageId: string) => void
   sttEnabled?: boolean
   persona?: PersonaDto | null
 }
@@ -279,7 +279,7 @@ export function MessageList({
                   isEditable={!msg.id.startsWith('optimistic-')}
                   editDisabled={isStreaming}
                   isBookmarked={isBm}
-                  onBookmark={() => onBookmark(msg.id)}
+                  onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}
                 />
               </div>
             )
@@ -307,7 +307,7 @@ export function MessageList({
                 )}
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
-                  isBookmarked={isBm} onBookmark={() => onBookmark(msg.id)}
+                  isBookmarked={isBm} onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}
                   canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate}
                   status={msg.status ?? 'completed'}
                   refusalText={msg.refusal_text ?? null}
