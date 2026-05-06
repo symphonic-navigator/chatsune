@@ -74,6 +74,7 @@ async def create_project(
         description=body.description,
         nsfw=body.nsfw,
         knowledge_library_ids=body.knowledge_library_ids,
+        system_prompt=body.system_prompt,
     )
     dto = ProjectRepository.to_dto(doc)
     await event_bus.publish(
@@ -114,6 +115,10 @@ async def update_project(
     # explicit list (including empty) replaces the current value.
     if not isinstance(body.knowledge_library_ids, _Unset):
         fields["knowledge_library_ids"] = list(body.knowledge_library_ids)
+    # Sentinel-aware system_prompt handling: UNSET → don't touch;
+    # None → clear; str → set. Mirrors the description / emoji pattern.
+    if not isinstance(body.system_prompt, _Unset):
+        fields["system_prompt"] = body.system_prompt
 
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")

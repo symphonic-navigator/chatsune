@@ -308,3 +308,78 @@ async def test_patch_omitting_knowledge_library_ids_preserves(
     body = resp.json()
     assert body["title"] == "P2"
     assert body["knowledge_library_ids"] == ["lib-a"]
+
+
+# ---------------------------------------------------------------------------
+# system_prompt — create + patch
+# ---------------------------------------------------------------------------
+
+async def test_create_accepts_system_prompt(
+    client: AsyncClient, auth_user_id, db,
+):
+    resp = await client.post(
+        "/api/projects",
+        json={"title": "P", "system_prompt": "be helpful"},
+    )
+    assert resp.status_code == 201, resp.text
+    data = resp.json()
+    assert data["system_prompt"] == "be helpful"
+
+
+async def test_create_system_prompt_defaults_to_none(
+    client: AsyncClient, auth_user_id, db,
+):
+    resp = await client.post("/api/projects", json={"title": "P"})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["system_prompt"] is None
+
+
+async def test_patch_sets_system_prompt(
+    client: AsyncClient, auth_user_id, db,
+):
+    repo = ProjectRepository(db)
+    proj = await repo.create(
+        user_id=auth_user_id, title="P",
+        emoji=None, description=None, nsfw=False,
+    )
+    resp = await client.patch(
+        f"/api/projects/{proj['_id']}",
+        json={"system_prompt": "new"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["system_prompt"] == "new"
+
+
+async def test_patch_clears_system_prompt_with_explicit_null(
+    client: AsyncClient, auth_user_id, db,
+):
+    repo = ProjectRepository(db)
+    proj = await repo.create(
+        user_id=auth_user_id, title="P",
+        emoji=None, description=None, nsfw=False,
+        system_prompt="initial",
+    )
+    resp = await client.patch(
+        f"/api/projects/{proj['_id']}",
+        json={"system_prompt": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["system_prompt"] is None
+
+
+async def test_patch_omitting_system_prompt_leaves_value(
+    client: AsyncClient, auth_user_id, db,
+):
+    repo = ProjectRepository(db)
+    proj = await repo.create(
+        user_id=auth_user_id, title="P",
+        emoji=None, description=None, nsfw=False,
+        system_prompt="keep me",
+    )
+    resp = await client.patch(
+        f"/api/projects/{proj['_id']}",
+        json={"title": "renamed"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["system_prompt"] == "keep me"
+    assert resp.json()["title"] == "renamed"
