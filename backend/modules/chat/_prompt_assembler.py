@@ -33,6 +33,27 @@ async def _get_persona_prompt(persona_id: str | None, user_id: str) -> str | Non
     return persona.get("system_prompt")
 
 
+async def _get_project_prompt(project_id: str | None, user_id: str) -> str | None:
+    """Fetch the project's Custom Instructions, or None.
+
+    Tolerant of any error — chat inference must not die because of a
+    CI lookup. Errors are caught and logged; the layer is then simply
+    omitted, mirroring the project-library lookup pattern in the
+    orchestrator.
+    """
+    if not project_id:
+        return None
+    try:
+        from backend.modules import project as project_service
+        return await project_service.get_system_prompt(project_id, user_id)
+    except Exception:
+        _log.exception(
+            "project CI lookup failed for project=%s user=%s",
+            project_id, user_id,
+        )
+        return None
+
+
 async def _get_persona_doc(persona_id: str | None, user_id: str) -> dict | None:
     """Fetch the full persona document (used for soft_cot_enabled lookup)."""
     if not persona_id:
@@ -51,12 +72,16 @@ async def assemble(
     user_id: str,
     persona_id: str | None,
     model_unique_id: str,
+    *,
+    project_id: str | None = None,
     supports_reasoning: bool = False,
     reasoning_enabled_for_call: bool = False,
     tools_enabled: bool = False,
 ) -> str:
     """Assemble the full XML system prompt for LLM consumption.
 
+    ``project_id`` enables the project Custom Instructions layer, inserted
+    between model-instructions and persona; ``None`` skips the layer entirely.
     ``supports_reasoning`` and ``reasoning_enabled_for_call`` drive the
     Soft-CoT visibility decision. ``tools_enabled`` gates only the
     prompt extensions of integrations that provide tools — those
@@ -72,6 +97,7 @@ async def assemble(
 
     admin_prompt = await _get_admin_prompt()
     model_instructions = await _get_model_instructions(user_id, model_unique_id)
+    project_prompt = await _get_project_prompt(project_id, user_id)
     persona_prompt = await _get_persona_prompt(persona_id, user_id)
     persona_doc = await _get_persona_doc(persona_id, user_id)
     user_about_me = await _get_user_about_me(user_id)
@@ -92,7 +118,18 @@ async def assemble(
                 f'<modelinstructions priority="high">\n{cleaned}\n</modelinstructions>'
             )
 
-    # Layer 3: Persona — user-controlled, sanitised
+    # Layer 3: Project Custom Instructions — user-controlled, sanitised.
+    # Sits between model-instructions and persona so project-level scope
+    # brackets the persona's voice. Layer is omitted entirely when no
+    # project is bound to the session, or when the project has no CI.
+    if project_prompt and project_prompt.strip():
+        cleaned = sanitise(project_prompt.strip())
+        if cleaned:
+            parts.append(
+                f'<projectinstructions priority="high">\n{cleaned}\n</projectinstructions>'
+            )
+
+    # Layer 4: Persona — user-controlled, sanitised
     if persona_prompt and persona_prompt.strip():
         cleaned = sanitise(persona_prompt.strip())
         if cleaned:
@@ -143,7 +180,7 @@ async def assemble(
             '</toolavailability>'
         )
 
-    # Layer 4: User about_me — user-controlled, sanitised
+    # Layer 5: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():
         cleaned = sanitise(user_about_me.strip())
         if cleaned:

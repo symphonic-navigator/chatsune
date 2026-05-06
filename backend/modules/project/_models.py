@@ -31,5 +31,8 @@ class ProjectDocument(BaseModel):
     # level libraries at retrieval time. Defaults to empty so legacy
     # documents read without raising.
     knowledge_library_ids: list[str] = Field(default_factory=list)
+    # Mindspace: optional per-project Custom Instructions. ``None`` for
+    # legacy documents that lack the field; backwards-compatible read.
+    system_prompt: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -97,6 +97,7 @@ function makeProject(overrides: Partial<ProjectDto> = {}): ProjectDto {
     pinned: false,
     sort_order: 0,
     knowledge_library_ids: [],
+    system_prompt: null,
     created_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z',
     ...overrides,
@@ -264,5 +265,58 @@ describe('ProjectOverviewTab — emoji', () => {
 
     expect(patchMock).toHaveBeenCalledWith('p1', { emoji: '🚀' })
     expect(setRecentProjectEmojisMock).toHaveBeenCalledWith(['🚀'])
+  })
+})
+
+describe('ProjectOverviewTab — system prompt', () => {
+  it('renders the textarea with the project current CI', async () => {
+    projectsState.value = makeProject({ system_prompt: 'be brief' })
+    const { ProjectOverviewTab } = await import('../tabs/ProjectOverviewTab')
+    render(<ProjectOverviewTab projectId="p1" />)
+
+    const textarea = screen.getByTestId(
+      'project-overview-system-prompt',
+    ) as HTMLTextAreaElement
+    expect(textarea.value).toBe('be brief')
+  })
+
+  it('PATCHes system_prompt on blur with changed text', async () => {
+    const { ProjectOverviewTab } = await import('../tabs/ProjectOverviewTab')
+    render(<ProjectOverviewTab projectId="p1" />)
+
+    const textarea = screen.getByTestId('project-overview-system-prompt')
+    fireEvent.focus(textarea)
+    fireEvent.change(textarea, { target: { value: 'new ci' } })
+    fireEvent.blur(textarea)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(patchMock).toHaveBeenCalledWith('p1', { system_prompt: 'new ci' })
+  })
+
+  it('PATCHes system_prompt: null on blur when emptied', async () => {
+    projectsState.value = makeProject({ system_prompt: 'old' })
+    const { ProjectOverviewTab } = await import('../tabs/ProjectOverviewTab')
+    render(<ProjectOverviewTab projectId="p1" />)
+
+    const textarea = screen.getByTestId('project-overview-system-prompt')
+    fireEvent.focus(textarea)
+    fireEvent.change(textarea, { target: { value: '   ' } })
+    fireEvent.blur(textarea)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(patchMock).toHaveBeenCalledWith('p1', { system_prompt: null })
+  })
+
+  it('does not PATCH on blur when text is unchanged', async () => {
+    projectsState.value = makeProject({ system_prompt: 'same' })
+    const { ProjectOverviewTab } = await import('../tabs/ProjectOverviewTab')
+    render(<ProjectOverviewTab projectId="p1" />)
+
+    const textarea = screen.getByTestId('project-overview-system-prompt')
+    fireEvent.focus(textarea)
+    fireEvent.blur(textarea)
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(patchMock).not.toHaveBeenCalled()
   })
 })

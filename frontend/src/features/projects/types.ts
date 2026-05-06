@@ -27,6 +27,12 @@ export interface ProjectDto {
    * legacy documents that lack the field entirely.
    */
   knowledge_library_ids: string[]
+  /**
+   * Optional per-project Custom Instructions injected into the
+   * assembled system prompt between model-instructions and persona.
+   * `null` for projects without CI.
+   */
+  system_prompt: string | null
   created_at: string
   updated_at: string
 }
@@ -41,6 +47,7 @@ export interface ProjectCreateDto {
   description?: string | null
   nsfw?: boolean
   knowledge_library_ids?: string[]
+  system_prompt?: string | null
 }
 
 /**
@@ -54,6 +61,11 @@ export interface ProjectUpdateDto {
   description?: string | null
   nsfw?: boolean
   knowledge_library_ids?: string[]
+  /**
+   * Omit to leave unchanged. `null` clears the CI server-side;
+   * a string sets it.
+   */
+  system_prompt?: string | null
 }
 
 /**

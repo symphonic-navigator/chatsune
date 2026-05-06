@@ -66,6 +66,10 @@ class ProjectDto(BaseModel):
     # Mindspace: knowledge libraries attached to this project. Defaults
     # to empty for legacy documents that lack the field entirely.
     knowledge_library_ids: list[str] = Field(default_factory=list)
+    # Project-level custom instructions injected into the assembled system
+    # prompt between model instructions and persona. Defaults to ``None`` for
+    # backwards-compatible reads of legacy documents.
+    system_prompt: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -76,6 +80,7 @@ class ProjectCreateDto(BaseModel):
     description: str | None = None
     nsfw: bool = False
     knowledge_library_ids: list[str] = Field(default_factory=list)
+    system_prompt: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -111,6 +116,7 @@ class ProjectUpdateDto(BaseModel):
     description: str | None | _Unset = Field(default=UNSET)
     nsfw: bool | None = None
     knowledge_library_ids: list[str] | _Unset = Field(default=UNSET)
+    system_prompt: str | None | _Unset = Field(default=UNSET)
 
     @field_validator("title")
     @classmethod

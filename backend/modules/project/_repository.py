@@ -31,6 +31,7 @@ class ProjectRepository:
         description: str | None,
         nsfw: bool,
         knowledge_library_ids: list[str] | None = None,
+        system_prompt: str | None = None,
     ) -> dict:
         now = datetime.now(UTC).replace(tzinfo=None)
         doc = {
@@ -46,6 +47,7 @@ class ProjectRepository:
             # directly. Defaults to empty when the caller doesn't supply
             # a list — keeps the create path additive.
             "knowledge_library_ids": list(knowledge_library_ids or []),
+            "system_prompt": system_prompt,
             "created_at": now,
             "updated_at": now,
         }
@@ -80,6 +82,24 @@ class ProjectRepository:
         if doc is None:
             return []
         return list(doc.get("knowledge_library_ids", []) or [])
+
+    async def get_system_prompt(
+        self, project_id: str, user_id: str,
+    ) -> str | None:
+        """Return the project's Custom Instructions or ``None``.
+
+        Projection-only fetch — used by the chat orchestrator on every
+        inference turn, mirroring ``get_library_ids``. Returns ``None``
+        if the project does not exist, is not owned by ``user_id``, or
+        has no CI set.
+        """
+        doc = await self._collection.find_one(
+            {"_id": project_id, "user_id": user_id},
+            projection={"system_prompt": 1},
+        )
+        if doc is None:
+            return None
+        return doc.get("system_prompt")
 
     async def remove_library_from_all_projects(
         self, user_id: str, library_id: str,
@@ -164,6 +184,9 @@ class ProjectRepository:
             # Mindspace: legacy documents lack this field entirely; the
             # ``[]`` default keeps reads working without a migration.
             knowledge_library_ids=list(doc.get("knowledge_library_ids", []) or []),
+            # Mindspace: legacy documents lack the field; ``None`` default
+            # round-trips cleanly into the DTO's nullable shape.
+            system_prompt=doc.get("system_prompt"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
         )

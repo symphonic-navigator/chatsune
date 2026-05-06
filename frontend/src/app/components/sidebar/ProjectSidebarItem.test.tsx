@@ -21,6 +21,7 @@ const mockProject: ProjectDto = {
   pinned: true,
   sort_order: 0,
   knowledge_library_ids: [],
+  system_prompt: null,
   created_at: "2026-05-01T12:00:00Z",
   updated_at: "2026-05-04T12:00:00Z",
 }

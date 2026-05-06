@@ -45,8 +45,10 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
   // actively editing that field.
   const [name, setName] = useState(project?.title ?? '')
   const [description, setDescription] = useState(project?.description ?? '')
+  const [systemPrompt, setSystemPrompt] = useState(project?.system_prompt ?? '')
   const [editingName, setEditingName] = useState(false)
   const [editingDescription, setEditingDescription] = useState(false)
+  const [editingSystemPrompt, setEditingSystemPrompt] = useState(false)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [libDropdownOpen, setLibDropdownOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -63,7 +65,8 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
     if (!project) return
     if (!editingName) setName(project.title)
     if (!editingDescription) setDescription(project.description ?? '')
-  }, [project, editingName, editingDescription])
+    if (!editingSystemPrompt) setSystemPrompt(project.system_prompt ?? '')
+  }, [project, editingName, editingDescription, editingSystemPrompt])
 
   // Close the library-picker dropdown on outside click.
   useEffect(() => {
@@ -155,6 +158,14 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
       return
     }
     await patch({ description: trimmed === '' ? null : trimmed })
+  }
+
+  async function handleSystemPromptBlur() {
+    setEditingSystemPrompt(false)
+    const trimmed = systemPrompt.trim()
+    const current = project?.system_prompt ?? ''
+    if (trimmed === current) return
+    await patch({ system_prompt: trimmed === '' ? null : trimmed })
   }
 
   async function handleNsfwToggle() {
@@ -256,6 +267,30 @@ export function ProjectOverviewTab({ projectId }: ProjectOverviewTabProps) {
             onBlur={() => void handleDescriptionBlur()}
             placeholder="Optional — what is this project about?"
             data-testid="project-overview-description"
+            className="resize-none rounded-md border border-white/10 bg-white/4 px-3 py-2 text-[13px] text-white/85 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/6"
+          />
+        </div>
+
+        {/* Custom Instructions */}
+        <div className="flex flex-col">
+          <label
+            htmlFor="project-overview-system-prompt"
+            className="mb-1 text-[11px] font-mono uppercase tracking-wider text-white/45"
+          >
+            Custom Instructions
+          </label>
+          <p className="mb-1.5 text-[11px] text-white/50">
+            Sent to the model as instructions for this project. Sits between model-level guidance and the persona.
+          </p>
+          <textarea
+            id="project-overview-system-prompt"
+            value={systemPrompt}
+            rows={6}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            onFocus={() => setEditingSystemPrompt(true)}
+            onBlur={() => void handleSystemPromptBlur()}
+            placeholder="Optional — instructions sent to the model for chats inside this project."
+            data-testid="project-overview-system-prompt"
             className="resize-none rounded-md border border-white/10 bg-white/4 px-3 py-2 text-[13px] text-white/85 placeholder-white/35 outline-none transition-colors focus:border-white/20 focus:bg-white/6"
           />
         </div>
