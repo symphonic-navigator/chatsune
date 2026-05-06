@@ -106,6 +106,8 @@ def _sample_dto() -> ProjectDto:
         nsfw=False,
         pinned=False,
         sort_order=0,
+        knowledge_library_ids=[],
+        system_prompt=None,
         created_at=now,
         updated_at=now,
     )

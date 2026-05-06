@@ -180,7 +180,7 @@ async def assemble(
             '</toolavailability>'
         )
 
-    # Layer 4: User about_me — user-controlled, sanitised
+    # Layer 5: User about_me — user-controlled, sanitised
     if user_about_me and user_about_me.strip():
         cleaned = sanitise(user_about_me.strip())
         if cleaned:
