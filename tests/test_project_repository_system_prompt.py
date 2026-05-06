@@ -7,9 +7,10 @@ from backend.modules.project import ProjectRepository
 
 
 @pytest_asyncio.fixture
-async def repo(client, db):
-    """The ``client`` fixture wires up the app + clean DB; ``db`` gives
-    us a Motor handle bound to the test database."""
+async def repo(db):
+    """``db`` already declares ``clean_db`` as a dependency, so the
+    test DB is reset between tests without dragging in the full ASGI
+    app / Redis / event-bus that ``client`` would set up."""
     return ProjectRepository(db)
 
 
