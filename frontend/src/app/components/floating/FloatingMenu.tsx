@@ -49,33 +49,55 @@ export function FloatingMenu({
       return
     }
     // useLayoutEffect runs after refs are attached and DOM is committed,
-    // so menuRef.current.offsetHeight reflects the real mounted height
-    // here — no fallback or rAF re-measure needed.
+    // so menuRef.current.offsetHeight reflects the real mounted height.
     const anchor = anchorRef.current
     const menu = menuRef.current
     if (!anchor || !menu) return
+
+    // The app's <body> has `transform: scale(var(--ui-scale))` (see
+    // index.css). Body therefore becomes the containing block for any
+    // `position: fixed` descendant, which means our menu's top/left
+    // are interpreted in body's pre-transform coordinate space and
+    // then re-scaled by the transform. getBoundingClientRect() and
+    // window.innerWidth/innerHeight however report visual viewport
+    // coordinates (post-transform). We compensate by dividing every
+    // viewport-derived input by --ui-scale so the math is consistent
+    // in body coords. menu.offsetHeight is already in body coords
+    // (layout pixels, pre-transform), so it stays unscaled.
+    const scale =
+      parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--ui-scale'),
+      ) || 1
+
     const a = anchor.getBoundingClientRect()
     const menuHeight = menu.offsetHeight
-    const vw = window.innerWidth
-    const vh = window.innerHeight
+    const vw = window.innerWidth / scale
+    const vh = window.innerHeight / scale
+    const margin = VIEWPORT_MARGIN / scale
+    const gap = 4 / scale
 
-    // Default: below the anchor, right edges aligned.
-    let top = a.bottom + 4
-    let left = a.right - width
+    const aTop = a.top / scale
+    const aBottom = a.bottom / scale
+    const aLeft = a.left / scale
+    const aRight = a.right / scale
+
+    // Default: below the anchor, right edges aligned (body coords).
+    let top = aBottom + gap
+    let left = aRight - width
 
     // Vertical flip: open above when below would overflow.
-    if (top + menuHeight > vh - VIEWPORT_MARGIN) {
-      top = a.top - menuHeight - 4
+    if (top + menuHeight > vh - margin) {
+      top = aTop - menuHeight - gap
     }
     // Horizontal flip: align to anchor's left edge when default
     // would overflow the viewport's left edge.
-    if (left < VIEWPORT_MARGIN) {
-      left = a.left
+    if (left < margin) {
+      left = aLeft
     }
-    // Defensive clamp so the menu always stays inside the
-    // viewport with the configured margin.
-    top = Math.max(VIEWPORT_MARGIN, Math.min(top, vh - menuHeight - VIEWPORT_MARGIN))
-    left = Math.max(VIEWPORT_MARGIN, Math.min(left, vw - width - VIEWPORT_MARGIN))
+    // Defensive clamp so the menu always stays inside the viewport
+    // with the configured margin (all in body coords).
+    top = Math.max(margin, Math.min(top, vh - menuHeight - margin))
+    left = Math.max(margin, Math.min(left, vw - width - margin))
 
     setPosition({ top, left })
   }, [open, anchorRef, width])
@@ -108,13 +130,10 @@ export function FloatingMenu({
 
   if (!open) return null
 
-  // Portal to <html>, NOT <body>. The app's body has
-  // `transform: scale(var(--ui-scale))` (see index.css), which makes
-  // body the containing block for any `position: fixed` descendant
-  // (CSS spec: a transformed ancestor wins over the viewport). That
-  // would re-scale our coordinates and break edge detection at any
-  // ui-scale != 1. Rendering as a sibling of body sidesteps the
-  // transform entirely.
+  // Portal to <body>. The position computation above already
+  // compensates for body's `transform: scale(var(--ui-scale))` so
+  // top/left are expressed in body's pre-transform coord space; the
+  // transform then re-scales them to the correct visual position.
   return createPortal(
     <div
       ref={menuRef}
@@ -131,6 +150,6 @@ export function FloatingMenu({
     >
       {children}
     </div>,
-    document.documentElement,
+    document.body,
   )
 }
