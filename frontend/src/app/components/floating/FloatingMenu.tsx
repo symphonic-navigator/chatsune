@@ -8,7 +8,7 @@ export interface FloatingMenuProps {
   onClose: () => void
   /** Ref to the trigger element. Used to anchor the menu and to keep
    *  click-outside detection from firing on the trigger itself. */
-  anchorRef: React.RefObject<HTMLElement>
+  anchorRef: React.RefObject<HTMLElement | null>
   /** Menu width in pixels. Default 192 (Tailwind w-48). */
   width?: number
   /** Optional ARIA role override. Default `menu`. */
