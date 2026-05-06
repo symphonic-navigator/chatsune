@@ -497,6 +497,24 @@ export function ChatView({ persona }: ChatViewProps) {
     return off
   }, [effectiveSessionId])
 
+  // Bug fix: when the active chat session is deleted server-side
+  // (from sidebar or any settings UI), navigate the chat view away.
+  // This is the reactive piece the sidebar's imperative `navigate(...)`
+  // has been silently relying on. By subscribing to the event directly
+  // rather than watching a session-list store, we cover both global
+  // and project-bound chats — useChatSessions deliberately excludes
+  // project chats from its store.
+  useEffect(() => {
+    if (isIncognito) return
+    if (!sessionId) return
+    const unsub = eventBus.on(Topics.CHAT_SESSION_DELETED, (event: BaseEvent) => {
+      if ((event.payload.session_id as string) === sessionId) {
+        navigate('/personas')
+      }
+    })
+    return unsub
+  }, [sessionId, isIncognito, navigate])
+
   // When navigated here from the global Artefacts tab with a pendingArtefactId,
   // fetch the artefact detail and open the overlay once the session is ready.
   useEffect(() => {
