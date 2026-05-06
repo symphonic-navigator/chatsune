@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { chatApi, type ChatSessionDto } from '../../../core/api/chat'
-import { useChatSessions } from '../../../core/hooks/useChatSessions'
+import { eventBus } from '../../../core/websocket/eventBus'
+import { Topics, type BaseEvent } from '../../../core/types/events'
+import { useProjectsStore } from '../../../features/projects/useProjectsStore'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
 import type { PersonaDto } from '../../../core/types/persona'
 
@@ -50,12 +52,53 @@ const BTN_NEUTRAL = `${BTN} border-white/8 text-white/40 hover:text-white/60 hov
 const BTN_RED = `${BTN} border-red-400/30 text-red-400 bg-red-400/10 hover:bg-red-400/15`
 
 export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
-  const { sessions, isLoading } = useChatSessions()
+  const [sessions, setSessions] = useState<ChatSessionDto[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const projects = useProjectsStore((s) => s.projects)
   const [search, setSearch] = useState('')
   const navigate = useNavigate()
   const [searchResults, setSearchResults] = useState<ChatSessionDto[] | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Fetch this persona's full chat history (including project-bound
+  // chats). useChatSessions intentionally excludes project chats —
+  // see useChatSessions.ts:32-34. We do our own fetch here, mirroring
+  // the user-modal HistoryTab's pattern at HistoryTab.tsx:140-142.
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    chatApi
+      .listSessions({ include_project_chats: true })
+      .then((res) => {
+        if (cancelled) return
+        const forPersona = res
+          .filter((s) => s.persona_id === persona.id)
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+        setSessions(forPersona)
+      })
+      .catch(() => {
+        // Empty list on failure — matches useChatSessions's silent-fail style.
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [persona.id])
+
+  // Live update on delete: when any session for this persona is
+  // deleted, drop it from the local list. This pairs with the new
+  // reactive listener in ChatView (Task 1) so the persona-overlay
+  // HistoryTab does not show stale rows.
+  useEffect(() => {
+    const unsub = eventBus.on(Topics.CHAT_SESSION_DELETED, (event: BaseEvent) => {
+      const sessionId = event.payload.session_id as string
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
@@ -91,8 +134,8 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
     if (searchResults !== null) {
       return searchResults
     }
-    return sessions.filter((s) => s.persona_id === persona.id)
-  }, [sessions, searchResults, persona.id])
+    return sessions
+  }, [sessions, searchResults])
 
   const grouped = useMemo(() => groupSessions(filtered), [filtered])
 
@@ -131,14 +174,18 @@ export function HistoryTab({ persona, chakra, onClose }: HistoryTabProps) {
             <div className="px-3 pt-4 pb-1 text-[10px] uppercase tracking-widest text-white/60 font-mono">
               {group}
             </div>
-            {groupSessions.map((s) => (
-              <SessionRow
-                key={s.id}
-                session={s}
-                chakra={chakra}
-                onOpen={() => handleOpen(s)}
-              />
-            ))}
+            {groupSessions.map((s) => {
+              const project = s.project_id ? projects[s.project_id] ?? null : null
+              return (
+                <SessionRow
+                  key={s.id}
+                  session={s}
+                  chakra={chakra}
+                  onOpen={() => handleOpen(s)}
+                  projectPill={project ? { emoji: project.emoji, title: project.title } : null}
+                />
+              )
+            })}
           </div>
         ))}
       </div>
@@ -151,9 +198,10 @@ interface SessionRowProps {
   session: ChatSessionDto
   chakra: ChakraPaletteEntry
   onOpen: () => void
+  projectPill: { emoji: string | null; title: string } | null
 }
 
-function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
+function SessionRow({ session, chakra, onOpen, projectPill }: SessionRowProps) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -276,9 +324,20 @@ function SessionRow({ session, chakra, onOpen }: SessionRowProps) {
                 style={{ borderColor: `${chakra.hex}40` }}
               />
             ) : (
-              <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
-                {session.title ?? formatDate(session.updated_at)}
-              </p>
+              <>
+                <p className="text-[13px] text-white/65 group-hover:text-white/80 truncate transition-colors">
+                  {session.title ?? formatDate(session.updated_at)}
+                </p>
+                {projectPill && (
+                  <span
+                    data-testid="history-project-pill"
+                    className="ml-1 flex-shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] text-white/65"
+                    style={{ background: 'rgba(255,255,255,0.05)' }}
+                  >
+                    {projectPill.emoji ?? '—'} {projectPill.title}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <p className="text-[10px] text-white/60 font-mono mt-0.5">
