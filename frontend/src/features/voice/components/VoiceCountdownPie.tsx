@@ -3,6 +3,8 @@ import { useVoiceSettingsStore } from '../stores/voiceSettingsStore'
 import { useVisualiserLayoutStore } from '../stores/visualiserLayoutStore'
 import { usePauseRedemptionStore } from '../stores/pauseRedemptionStore'
 import { drawPieFrame } from '../infrastructure/pieRenderers'
+import { usePhase } from '../usePhase'
+import { useBargeSettingsStore } from '../stores/bargeSettingsStore'
 
 const DEFAULT_HEX = '#8C76D7'
 const PIE_DIAMETER_RATIO = 0.18   // ~18 % of the chatview width, capped.
@@ -37,6 +39,14 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
   const opacity = useVoiceSettingsStore((s) => s.visualisation.opacity)
   const enabled = useVoiceSettingsStore((s) => s.visualisation.enabled)
 
+  const bargingEnabled = useBargeSettingsStore((s) => s.enabled)
+  const phase = usePhase()
+  // Mirror the hook-level barge gate: when barging is off and the
+  // persona is currently speaking, incoming VAD onsets are dropped, so
+  // the redemption countdown is meaningless and confusing. Suppress
+  // the pie entirely in that window. See bargeGate.ts.
+  const bargeSuppressed = !bargingEnabled && phase === 'speaking'
+
   const chatview = useVisualiserLayoutStore((s) => s.chatview)
   const textColumn = useVisualiserLayoutStore((s) => s.textColumn)
   // Use the textColumn rect to match the visualiser's horizontal centre (spec §3.2).
@@ -48,7 +58,7 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
   const rafRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!active || !enabled || !layout || !canvasRef.current) return
+    if (!active || !enabled || !layout || !canvasRef.current || bargeSuppressed) return
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
@@ -105,9 +115,9 @@ export function VoiceCountdownPie({ personaColourHex = DEFAULT_HEX }: Props) {
         rafRef.current = null
       }
     }
-  }, [active, enabled, layout, textColumn, chatview, startedAt, windowMs, style, opacity, personaColourHex])
+  }, [active, enabled, layout, textColumn, chatview, startedAt, windowMs, style, opacity, personaColourHex, bargeSuppressed])
 
-  if (!active || !enabled || !layout) return null
+  if (!active || !enabled || !layout || bargeSuppressed) return null
 
   return (
     <canvas
