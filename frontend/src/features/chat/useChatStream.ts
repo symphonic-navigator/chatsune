@@ -11,7 +11,7 @@ import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
 import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
-import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
+import { getActiveGroupForSession, subscribeGroups } from './responseTaskGroup'
 import { useCockpitStore } from './cockpit/cockpitStore'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
@@ -41,10 +41,19 @@ export function handleChatEvent(
   const getStore = useChatStore.getState
   const p = event.payload as Record<string, unknown>
 
+  // The hook is invoked with the active chat session id. Every event we
+  // handle here is gated by `session_id === sessionId` (or by matching the
+  // active correlationId), so the streaming-action sessionId opt is always
+  // the hook's `sessionId`. Background-completion handling — listening for
+  // events whose session_id does NOT match the active one — is added by
+  // Tasks 6 and 7 (multi-Group registry + voice teardown rework).
+  if (!sessionId) return
+  const writeOpts = { sessionId }
+
   switch (event.type) {
     case Topics.CHAT_STREAM_STARTED: {
       if (p.session_id !== sessionId) return
-      getStore().startStreaming(event.correlation_id)
+      getStore().startStreaming(event.correlation_id, writeOpts)
       // Create tag buffer for this streaming session.
       const enabledIds = useIntegrationsStore.getState().getEnabledIds()
       if (enabledIds.length > 0) {
@@ -56,7 +65,7 @@ export function handleChatEvent(
         // assistant turn before our send path runs), fall back to a fresh
         // local map and `'text_only'` so the buffer still works in
         // immediate-emit mode.
-        const activeGroup = getActiveGroup()
+        const activeGroup = getActiveGroupForSession(sessionId)
         const fallbackMap = new Map<string, PendingEffect>()
         const fallbackPillMap = new Map<string, string>()
         const sharedMap =
@@ -74,7 +83,7 @@ export function handleChatEvent(
         const correlationId = event.correlation_id
         activeTagBuffer = new ResponseTagBuffer(
           (placeholder, replacement) => {
-            getStore().replaceInStreamingContent(placeholder, replacement)
+            getStore().replaceInStreamingContent(placeholder, replacement, writeOpts)
           },
           streamSource,
           sharedMap,
@@ -87,7 +96,7 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_CONTENT_DELTA: {
-      const g = getActiveGroup()
+      const g = getActiveGroupForSession(sessionId)
       if (!g || g.id !== event.correlation_id) {
         console.debug(`[useChatStream] drop CHAT_CONTENT_DELTA (no matching group, id=${event.correlation_id})`)
         return
@@ -99,13 +108,15 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_THINKING_DELTA: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().appendStreamingThinking(p.delta as string)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().appendStreamingThinking(p.delta as string, writeOpts)
       break
     }
     case Topics.CHAT_STREAM_SLOW: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().setStreamingSlow(true)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().setStreamingSlow(true, writeOpts)
       break
     }
     case Topics.CHAT_VISION_DESCRIPTION: {
@@ -116,22 +127,24 @@ export function handleChatEvent(
         status: p.status as 'pending' | 'success' | 'error',
         text: (p.text as string | null) ?? null,
         error: (p.error as string | null) ?? null,
-      })
+      }, writeOpts)
       break
     }
     case Topics.CHAT_TOOL_CALL_STARTED: {
-      if (event.correlation_id !== getStore().correlationId) return
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
       getStore().addToolCall({
         id: p.tool_call_id as string,
         toolName: p.tool_name as string,
         arguments: p.arguments as Record<string, unknown>,
         status: 'running',
-      })
+      }, writeOpts)
       break
     }
     case Topics.CHAT_TOOL_CALL_COMPLETED: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().completeToolCall(p.tool_call_id as string)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().completeToolCall(p.tool_call_id as string, writeOpts)
       const artefactRef = p.artefact_ref as ArtefactRef | null | undefined
       const imageRefsRaw = p.image_refs as unknown
       const moderatedCount = (p.moderated_count as number | undefined) ?? 0
@@ -155,14 +168,14 @@ export function handleChatEvent(
           success: false,
           moderated_count: moderatedCount,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       } else if (artefactRef) {
         const entry: TimelineEntry = {
           kind: 'artefact',
           seq: 0,
           ref: artefactRef,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       } else if (toolName === 'generate_image') {
         // Mirrors the artefact_ref pattern: the inference loop attaches
         // image_refs to the tool_call.completed event for generate_image so
@@ -176,7 +189,7 @@ export function handleChatEvent(
             refs,
             moderated_count: moderatedCount,
           }
-          getStore().appendStreamingEvent(entry)
+          getStore().appendStreamingEvent(entry, writeOpts)
         }
       } else if (
         toolName
@@ -198,24 +211,38 @@ export function handleChatEvent(
           success,
           moderated_count: moderatedCount,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       }
       break
     }
     case Topics.CHAT_WEB_SEARCH_CONTEXT: {
-      if (event.correlation_id !== getStore().correlationId) return
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
       const items = p.items as Array<{ title: string; url: string; snippet: string; source_type?: 'search' | 'fetch' }>
       const entry: TimelineEntry = {
         kind: 'web_search',
         seq: 0,
         items,
       }
-      getStore().appendStreamingEvent(entry)
+      getStore().appendStreamingEvent(entry, writeOpts)
       break
     }
     case Topics.CHAT_STREAM_ENDED: {
-      if (p.session_id !== sessionId) return
-      const g = getActiveGroup()
+      // Background-completions: a CHAT_STREAM_ENDED for a non-active
+      // session must still clear that session's streaming slot, otherwise
+      // the sidebar pulse-dot stays on forever (the slot's `isStreaming`
+      // is the source of truth). We use the payload's `session_id` for
+      // all slot bookkeeping so background sessions are reconciled
+      // correctly. UI side effects that assume the active session
+      // (auto-read trigger, the module-level activeTagBuffer flush, the
+      // active Group's onStreamEnd hand-off) remain gated on the hook's
+      // `sessionId`.
+      const eventSessionId = p.session_id as string | undefined
+      if (!eventSessionId) return
+      const isActiveSession = eventSessionId === sessionId
+      const eventWriteOpts = { sessionId: eventSessionId }
+
+      const g = isActiveSession ? getActiveGroupForSession(sessionId) : null
       if (g && g.id === event.correlation_id) g.onStreamEnd()
       // Snapshot the live pill map. The Map reference is shared with the
       // active Group; we hand an independent shallow copy to the chat store
@@ -224,15 +251,18 @@ export function handleChatEvent(
       // never writes to renderedPillsMap (only handleTag() during process()
       // does) so the snapshot timing relative to flush() is irrelevant —
       // we take it here for clarity, before the local buffer reference is
-      // nulled out below.
+      // nulled out below. Only meaningful for the active session — a
+      // background session never owned the module-level Group state.
       const livePillContents: Map<string, string> | undefined =
         g && g.id === event.correlation_id && g.renderedPillsMap
           ? new Map(g.renderedPillsMap)
           : undefined
-      // Flush incomplete tag buffer
-      if (activeTagBuffer) {
+      // Flush incomplete tag buffer — only for the active session. The
+      // module-level activeTagBuffer is owned by the active stream; a
+      // background-completion finish must not drain it.
+      if (isActiveSession && activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder)
+        if (remainder) getStore().appendStreamingContent(remainder, eventWriteOpts)
         activeTagBuffer = null
       }
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
@@ -260,7 +290,8 @@ export function handleChatEvent(
       // Refused messages may have no content — still persist them so
       // the refusal band shows immediately without a page refresh.
       const backendMessageId = p.message_id as string | undefined
-      const content = getStore().streamingContent
+      const slot = getStore().getStreamFor(eventSessionId)
+      const content = slot?.streamingContent ?? ''
       // Backend sends raw assistant content (with unprocessed integration
       // tags) so the persisted message in the store carries the same
       // string the database holds. ReadAloud re-parses the tags from this
@@ -269,8 +300,8 @@ export function handleChatEvent(
       // backends that have not rolled out raw_content yet.
       const rawContent = (p.raw_content as string | null | undefined) ?? null
       const persistedContent = rawContent ?? content
-      const thinking = getStore().streamingThinking
-      const refusalText = getStore().streamingRefusalText
+      const thinking = slot?.streamingThinking ?? ''
+      const refusalText = slot?.streamingRefusalText ?? null
       // The persisted timeline arrives on the stream-ended payload as
       // `events`. We adopt it verbatim — anything we accumulated client-side
       // during the stream is discarded by `finishStreaming`. While the
@@ -279,14 +310,18 @@ export function handleChatEvent(
       const persistedEvents = p.events as TimelineEntry[] | null | undefined
       const events: TimelineEntry[] = Array.isArray(persistedEvents)
         ? persistedEvents
-        : getStore().streamingEvents
+        : (slot?.streamingEvents ?? [])
       // Auto-read trigger: if the session has auto-read on and the message
       // completed normally with content, signal the ReadAloudButton for this
       // messageId to start playback. Lives here (not in AssistantMessage)
       // because the messageId changes from optimistic to backend at commit
       // time, which remounts the component and loses any local transition.
+      // Gated on the active session — auto-read for a background session
+      // would start playing TTS for a chat the user is not currently
+      // viewing, which is wrong.
       if (
-        backendMessageId
+        isActiveSession
+        && backendMessageId
         && content
         && messageStatus === 'completed'
         && getStore().autoRead
@@ -305,12 +340,17 @@ export function handleChatEvent(
       // Incognito sessions never persist, so the backend always sends an
       // empty message_id; finalise locally with a synthetic UUID so the
       // assistant turn stays visible for the rest of the chat.
-      const isIncognitoSession = sessionId?.startsWith('incognito-') ?? false
+      //
+      // ``finishStreaming`` already branches on whether the writeOpts
+      // session is the active one — for background sessions it clears
+      // the slot but does not append the message into the visible
+      // transcript (that comes from getMessages on next session switch).
+      const isIncognitoSession = eventSessionId.startsWith('incognito-')
       if (backendMessageId || isIncognitoSession) {
         getStore().finishStreaming(
           {
             id: backendMessageId ?? crypto.randomUUID(),
-            session_id: sessionId ?? '',
+            session_id: eventSessionId,
             role: 'assistant',
             content: persistedContent,
             thinking: thinking || null,
@@ -333,6 +373,7 @@ export function handleChatEvent(
           usedTokens,
           maxTokens,
           livePillContents,
+          eventWriteOpts,
         )
       } else {
         // No persisted message and not an incognito chat — discard the
@@ -341,11 +382,8 @@ export function handleChatEvent(
         // that produced zero content AND zero thinking. If it ever fires
         // with non-empty streamed content, investigate: it indicates a
         // backend persistence regression.
-        getStore().cancelStreaming()
+        getStore().cancelStreaming(eventWriteOpts)
       }
-      getStore().setContextStatus(contextStatus)
-      getStore().setContextFillPercentage(fillPercentage)
-      getStore().setContextTokens(usedTokens, maxTokens)
       break
     }
     case Topics.CHAT_STREAM_ERROR: {
@@ -363,30 +401,63 @@ export function handleChatEvent(
         'edit_failed',
       ])
       const isSessionError = sessionLevelCodes.has(errorCode)
-      if (!isSessionError && event.correlation_id !== getStore().correlationId) return
+
+      // Resolve which session this error belongs to. The event itself
+      // carries no session_id, so we search streamsBySession for the slot
+      // whose correlationId matches. Background-completion safety: a
+      // CHAT_STREAM_ERROR for a non-active session must still clear that
+      // session's slot, otherwise the sidebar pulse-dot is stuck on. If
+      // no slot matches and this is not a session-level error, drop the
+      // event (stale / already cleared).
+      let resolvedSessionId: string | null = null
+      const streams = getStore().streamsBySession
+      for (const [sid, slot] of streams) {
+        if (slot.correlationId === event.correlation_id) {
+          resolvedSessionId = sid
+          break
+        }
+      }
+      if (!isSessionError && !resolvedSessionId) return
+      const errorWriteSessionId = resolvedSessionId ?? sessionId
+      const errorWriteOpts = { sessionId: errorWriteSessionId }
+      const isActiveSession = errorWriteSessionId === sessionId
 
       const recoverable = p.recoverable as boolean
       const userMessage = p.user_message as string
-      getStore().setError({
-        errorCode,
-        recoverable,
-        userMessage,
-      })
-      getStore().setWaitingForResponse(false)
+      // Surface the error banner only for the active session — the user
+      // cannot see (and would be confused by) a banner about a chat they
+      // are not currently viewing.
+      if (isActiveSession) {
+        getStore().setError({
+          errorCode,
+          recoverable,
+          userMessage,
+        })
+      }
+      getStore().setWaitingForResponse(false, errorWriteOpts)
 
       // Flush the tag buffer here too: a stream that errors before its
       // CHAT_STREAM_ENDED counterpart still has parked effects in the
       // pending map, and dropping the buffer without flush() would lose
-      // those triggers entirely.
-      if (activeTagBuffer) {
+      // those triggers entirely. Only meaningful for the active session
+      // — the module-level activeTagBuffer is owned by the active stream.
+      if (isActiveSession && activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder)
+        if (remainder) getStore().appendStreamingContent(remainder, errorWriteOpts)
         activeTagBuffer = null
       }
 
       if (errorCode === 'refusal') {
-        getStore().setStreamingRefusalText(userMessage)
+        getStore().setStreamingRefusalText(userMessage, errorWriteOpts)
       }
+
+      // For non-active background sessions, the error has been recorded
+      // (waiting flag cleared) but we do not raise a toast — surfacing
+      // an interruption banner for a chat the user is not viewing would
+      // be noise. The stale slot will be cleared either by the
+      // CHAT_STREAM_ENDED that typically follows, or by the ChatView
+      // reconciliation when the user returns to that session.
+      if (!isActiveSession) break
 
       // Session-level errors have their own banner path (ChatView
       // renders them inline above the composer); everything else
@@ -503,10 +574,13 @@ export function useChatStream(sessionId: string | null) {
     const unsub = eventBus.on('chat.*', handleEvent)
     // A stream that gets cancelled (barge, supersede, user-stop, teardown)
     // never reaches CHAT_STREAM_ENDED or CHAT_STREAM_ERROR, so the buffer
-    // flush in those handlers does not run. Subscribe to the active-group
-    // registry and flush whenever a Group transitions to `cancelled` so
-    // parked entries do not leak into the next stream's buffer.
-    const unsubGroup = subscribeActiveGroup((group) => {
+    // flush in those handlers does not run. Subscribe to the per-session
+    // registry and flush whenever THIS session's Group transitions to
+    // `cancelled` so parked entries do not leak into the next stream's
+    // buffer. Filter by sid — background completions for other sessions
+    // must not drain our active tag buffer.
+    const unsubGroup = subscribeGroups((sid, group) => {
+      if (sid !== sessionId) return
       if (group && group.state === 'cancelled') {
         flushActiveTagBufferOnCancel()
       }

@@ -16,7 +16,7 @@ import type { BargeState } from '../bargeController'
  *   - the `active` / `isHolding` flags on this store
  *   - the three reactive-source fields below (currentBargeState,
  *     sttInFlight, vadActive), written by `useConversationMode`
- *   - the active Group's state, read via `subscribeActiveGroup`
+ *   - the active session's Group state, read via `subscribeGroups`
  *
  * The store holds only state — not orchestration.
  */

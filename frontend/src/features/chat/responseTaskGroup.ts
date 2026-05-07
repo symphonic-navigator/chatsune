@@ -153,9 +153,17 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
     const reasonSuffix = reason ? ` (reason=${reason})` : ''
     logger.info(`${prefix} ${state} → ${next}${reasonSuffix}`)
     state = next
-    notifyActiveGroup(logger)
+    notifyAll(sessionId, group, logger)
     if (state === 'done' || state === 'cancelled') {
-      clearActiveGroup(group)
+      // Skip the clear + null-notify when the state change is a supersede;
+      // registerActiveGroup is about to install the new group and notify
+      // with it. Otherwise listeners would see a spurious null pulse
+      // between the cancelled snapshot and the new-group snapshot, which
+      // synchronous useSyncExternalStore subscribers (usePhase) read as
+      // 'no active group' and briefly flip the voice phase to idle.
+      if (reason !== 'superseded') {
+        clearGroupForSession(sessionId)
+      }
     }
   }
 
@@ -233,14 +241,23 @@ export function createResponseTaskGroup(deps: ResponseTaskGroupDeps): ResponseTa
 }
 
 // --- Registry --------------------------------------------------------------
+//
+// Background-completions: multiple inferences may stream concurrently for
+// different sessions (e.g. user switches persona while a long answer is in
+// flight). The registry therefore keys Groups by `sessionId`, not by a
+// single global slot. Per-session supersede semantics still apply: a second
+// register for the same session cancels the first.
 
-let activeGroup: ResponseTaskGroup | null = null
+const groupsBySession = new Map<string, ResponseTaskGroup>()
 
-export type GroupListener = (group: ResponseTaskGroup | null) => void
+export type GroupListener = (
+  sessionId: string,
+  group: ResponseTaskGroup | null,
+) => void
 
 const listeners = new Set<GroupListener>()
 
-export function subscribeActiveGroup(fn: GroupListener): () => void {
+export function subscribeGroups(fn: GroupListener): () => void {
   listeners.add(fn)
   return () => {
     listeners.delete(fn)
@@ -251,11 +268,15 @@ export function subscribeActiveGroup(fn: GroupListener): () => void {
 // unsubscribes itself (or another listener) during the callback does not
 // break the loop. Listener errors are isolated to keep one faulty consumer
 // from silencing the others.
-function notifyActiveGroup(logger?: GroupLogger): void {
+function notifyAll(
+  sessionId: string,
+  group: ResponseTaskGroup | null,
+  logger?: GroupLogger,
+): void {
   const snapshot = Array.from(listeners)
   for (const fn of snapshot) {
     try {
-      fn(activeGroup)
+      fn(sessionId, group)
     }
     catch (err) {
       if (logger) logger.error('[group registry] listener threw', err)
@@ -265,34 +286,54 @@ function notifyActiveGroup(logger?: GroupLogger): void {
 }
 
 export function registerActiveGroup(g: ResponseTaskGroup): void {
-  if (activeGroup && activeGroup.state !== 'done' && activeGroup.state !== 'cancelled') {
-    activeGroup.cancel('superseded')
+  const existing = groupsBySession.get(g.sessionId)
+  if (
+    existing
+    && existing.state !== 'done'
+    && existing.state !== 'cancelled'
+    && existing !== g
+  ) {
+    existing.cancel('superseded')
   }
-  activeGroup = g
-  notifyActiveGroup()
+  groupsBySession.set(g.sessionId, g)
+  notifyAll(g.sessionId, g)
 }
 
 /**
- * Cancel the current active Group (if any) without immediately installing a
- * replacement. Used by callers that need to cancel the predecessor BEFORE
- * building the successor's children — otherwise the new playbackChild's
+ * Cancel the active Group for the given session (if any) without immediately
+ * installing a replacement. Used by callers that need to cancel the predecessor
+ * BEFORE building the successor's children — otherwise the new playbackChild's
  * setCurrentToken preempts the old child's clearScope, leaving audioPlayback
  * stuck at paused=true after a voice-barge supersede. See
  * devdocs/voice-barge-structural-redesign.md §5 for the wider architecture.
+ *
+ * Replaces the old `cancelCurrentActiveGroup` from the single-slot registry.
  */
-export function cancelCurrentActiveGroup(reason: CancelReason = 'superseded'): void {
-  if (activeGroup && activeGroup.state !== 'done' && activeGroup.state !== 'cancelled') {
-    activeGroup.cancel(reason)
+export function cancelGroupForSession(
+  sessionId: string,
+  reason: CancelReason = 'superseded',
+): void {
+  const g = groupsBySession.get(sessionId)
+  if (g && g.state !== 'done' && g.state !== 'cancelled') {
+    g.cancel(reason)
   }
 }
 
-export function getActiveGroup(): ResponseTaskGroup | null {
-  return activeGroup
+export function getActiveGroupForSession(
+  sessionId: string,
+): ResponseTaskGroup | null {
+  return groupsBySession.get(sessionId) ?? null
 }
 
-export function clearActiveGroup(g: ResponseTaskGroup): void {
-  if (activeGroup === g) {
-    activeGroup = null
-    notifyActiveGroup()
+/** Iterate over every currently-active group across all sessions. */
+export function forEachActiveGroup(fn: (g: ResponseTaskGroup) => void): void {
+  for (const g of groupsBySession.values()) fn(g)
+}
+
+export function clearGroupForSession(sessionId: string): void {
+  const g = groupsBySession.get(sessionId)
+  if (g) {
+    groupsBySession.delete(sessionId)
+    notifyAll(sessionId, null)
   }
 }

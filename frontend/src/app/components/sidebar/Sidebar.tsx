@@ -12,6 +12,8 @@ import { startOverlayTransition } from "../../../core/hooks/useBackButtonClose"
 import { SidebarFlyout } from './SidebarFlyout'
 import { PersonaItem } from "./PersonaItem"
 import { HistoryItem } from "./HistoryItem"
+import { StreamingIndicatorDot } from '../../../features/chat/StreamingIndicatorDot'
+import { useChatStore } from '../../../core/store/chatStore'
 import { ProjectSidebarItem } from "./ProjectSidebarItem"
 import { useFilteredProjects } from "../../../features/projects/useProjectsStore"
 import { projectsApi } from "../../../features/projects/projectsApi"
@@ -188,6 +190,27 @@ export function Sidebar({
     unpinned.sort(byUpdated)
     return [...pinned, ...unpinned]
   }, [sessions])
+
+  // For the Personas zone we want a subtle pulse-dot on any persona row
+  // whose chat sessions include an active inference. The dot itself reads
+  // the streaming slot for one specific session, so we resolve persona id
+  // → first streaming session id here and pass it down to PersonaItem.
+  // Subscribes to the keys of `streamsBySession` so re-renders fire when
+  // a stream starts or ends; map content does not need to be deep-equal.
+  const streamingSessionIds = useChatStore((s) =>
+    Array.from(s.streamsBySession.keys()).filter(
+      (id) => s.streamsBySession.get(id)?.isStreaming,
+    ).join(','),
+  )
+  const streamingSessionByPersona = useMemo(() => {
+    const ids = streamingSessionIds ? streamingSessionIds.split(',') : []
+    const result: Record<string, string> = {}
+    for (const sid of ids) {
+      const sess = sessions.find((s) => s.id === sid)
+      if (sess && !result[sess.persona_id]) result[sess.persona_id] = sid
+    }
+    return result
+  }, [streamingSessionIds, sessions])
 
   // On mobile the sidebar lives in an off-canvas drawer; once the user has
   // picked something, collapse it automatically so the chat is visible.
@@ -580,7 +603,10 @@ export function Sidebar({
                           s.id === activeSessionId ? 'bg-white/8' : 'hover:bg-white/5'
                         }`}
                       >
-                        <span className="truncate text-[12px] text-white/70">{s.title ?? 'Untitled session'}</span>
+                        <span className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-white/70">
+                          <StreamingIndicatorDot sessionId={s.id} />
+                          <span className="truncate">{s.title ?? 'Untitled session'}</span>
+                        </span>
                         <span className="text-[10px] text-white/60">{persona?.name}</span>
                       </button>
                     )
@@ -601,7 +627,10 @@ export function Sidebar({
                       s.id === activeSessionId ? 'bg-white/8' : 'hover:bg-white/5'
                     }`}
                   >
-                    <span className="truncate text-[12px] text-white/70">{s.title ?? 'Untitled session'}</span>
+                    <span className="flex min-w-0 items-center gap-1.5 truncate text-[12px] text-white/70">
+                      <StreamingIndicatorDot sessionId={s.id} />
+                      <span className="truncate">{s.title ?? 'Untitled session'}</span>
+                    </span>
                     <span className="text-[10px] text-white/25">{persona?.name}</span>
                   </button>
                 )
@@ -803,6 +832,7 @@ export function Sidebar({
                     <PersonaItem
                       persona={p}
                       isActive={p.id === activePersonaId}
+                      streamingSessionId={streamingSessionByPersona[p.id] ?? null}
                       onSelect={handlePersonaSelect}
                       onNewChat={handleNewChat}
                       onNewIncognitoChat={(persona) => { onCloseModal(); closeDrawerIfMobile(); navigate(`/chat/${persona.id}?incognito=1`) }}

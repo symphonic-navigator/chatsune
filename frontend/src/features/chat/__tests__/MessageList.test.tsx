@@ -13,13 +13,15 @@ vi.mock('../../artefact/ArtefactCard', () => ({
   ),
 }))
 
-// Mock chatStore — MessageList reads visionDescriptions, correlationId, streamingSlow
-// AssistantMessage additionally reads messagePillContents to look up cached
-// inline-trigger pills for the rendered message id.
-vi.mock('../../../core/store/chatStore', () => ({
-  useChatStore: (selector: (s: { visionDescriptions: Record<string, unknown>; correlationId: null; streamingSlow: boolean; messagePillContents: Record<string, Map<string, string>> }) => unknown) =>
-    selector({ visionDescriptions: {}, correlationId: null, streamingSlow: false, messagePillContents: {} }),
-}))
+vi.mock('../../../core/store/chatStore', () => {
+  const state = { messagePillContents: {}, activeSessionId: null }
+  const useChatStore = ((selector: (s: typeof state) => unknown) => selector(state)) as unknown as {
+    (selector: (s: typeof state) => unknown): unknown
+    getState: () => typeof state
+  }
+  useChatStore.getState = () => state
+  return { useChatStore }
+})
 
 function makeMsg(overrides: Partial<ChatMessageDto>): ChatMessageDto {
   return {
@@ -49,6 +51,9 @@ describe('MessageList — persisted timeline rendering', () => {
     activeToolCalls: [],
     isWaitingForResponse: false,
     isStreaming: false,
+    visionDescriptions: {},
+    streamingCorrelationId: null,
+    streamingSlow: false,
     accentColour: '#000',
     highlighter: null,
     containerRef: noop,

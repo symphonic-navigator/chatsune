@@ -45,8 +45,13 @@ function makeMessage(id: string, content: string): ChatMessageDto {
 }
 
 describe('persisted pill cache', () => {
+  // Reset to a known sessionId so finishStreaming knows the active session
+  // and appends the persisted message into the visible transcript.
+  const SESSION_ID = 'session-test'
+  const opts = { sessionId: SESSION_ID }
+
   beforeEach(() => {
-    useChatStore.getState().reset()
+    useChatStore.getState().reset(SESSION_ID)
   })
 
   it('caches the live pill map on stream end', () => {
@@ -60,6 +65,7 @@ describe('persisted pill cache', () => {
       0,
       0,
       pillsMap,
+      opts,
     )
     const cached = useChatStore.getState().messagePillContents['msg-1']
     expect(cached).toBeDefined()
@@ -74,6 +80,7 @@ describe('persisted pill cache', () => {
       0,
       0,
       new Map(),
+      opts,
     )
     expect(useChatStore.getState().messagePillContents['msg-2']).toBeUndefined()
   })
@@ -85,6 +92,8 @@ describe('persisted pill cache', () => {
       0,
       0,
       0,
+      undefined,
+      opts,
     )
     expect(useChatStore.getState().messagePillContents['msg-3']).toBeUndefined()
   })
@@ -98,6 +107,7 @@ describe('persisted pill cache', () => {
       0,
       0,
       pillsMap,
+      opts,
     )
     expect(useChatStore.getState().messagePillContents['msg-4']).toBeDefined()
     useChatStore.getState().deleteMessage('msg-4')

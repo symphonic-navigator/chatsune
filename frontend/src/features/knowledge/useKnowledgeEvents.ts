@@ -67,11 +67,25 @@ export function useKnowledgeEvents() {
           const chunks = p.results as RetrievedChunkDto[]
           const items: KnowledgeContextItem[] = chunks.map((c) => ({ ...c, source: 'search' as const }))
           // The store assigns `seq` itself, so `0` here is a placeholder.
-          chatStore().appendStreamingEvent({
+          // Streaming events are now per-session — find the slot whose
+          // correlationId matches this event and append into that. If no
+          // matching slot exists (rare race), fall back to activeSessionId.
+          const state = chatStore()
+          const corrId = event.correlation_id
+          let targetSessionId: string | null = null
+          for (const [sid, slot] of state.streamsBySession) {
+            if (slot.correlationId === corrId) {
+              targetSessionId = sid
+              break
+            }
+          }
+          if (!targetSessionId) targetSessionId = state.activeSessionId
+          if (!targetSessionId) break
+          state.appendStreamingEvent({
             kind: 'knowledge_search',
             seq: 0,
             items,
-          })
+          }, { sessionId: targetSessionId })
           break
         }
       }

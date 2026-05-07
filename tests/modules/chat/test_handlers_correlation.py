@@ -34,7 +34,7 @@ async def test_handle_chat_send_uses_client_correlation_id(repo, monkeypatch):
         AsyncMock(),
     )
     monkeypatch.setattr(
-        "backend.modules.chat._handlers_ws.cancel_all_for_user",
+        "backend.modules.chat._handlers_ws.cancel_inflight_for_session",
         AsyncMock(return_value=0),
     )
     monkeypatch.setattr(
@@ -80,7 +80,7 @@ async def test_handle_chat_send_generates_when_missing(repo, monkeypatch):
         AsyncMock(),
     )
     monkeypatch.setattr(
-        "backend.modules.chat._handlers_ws.cancel_all_for_user",
+        "backend.modules.chat._handlers_ws.cancel_inflight_for_session",
         AsyncMock(return_value=0),
     )
     monkeypatch.setattr(

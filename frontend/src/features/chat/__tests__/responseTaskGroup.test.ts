@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import {
   createResponseTaskGroup,
   registerActiveGroup,
-  getActiveGroup,
-  clearActiveGroup,
+  getActiveGroupForSession,
+  clearGroupForSession,
   type GroupChild,
 } from '../responseTaskGroup'
 
@@ -29,8 +29,7 @@ describe('ResponseTaskGroup', () => {
 
   beforeEach(() => {
     sendWs.mockClear()
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
   })
 
   it('starts in before-first-delta state', () => {
@@ -179,8 +178,7 @@ describe('ResponseTaskGroup registry', () => {
 
   beforeEach(() => {
     sendWs.mockClear()
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
   })
 
   it('registerActiveGroup cancels the predecessor with reason superseded', () => {
@@ -201,7 +199,7 @@ describe('ResponseTaskGroup registry', () => {
 
     expect(child1.onCancel).toHaveBeenCalledWith('superseded', 'c1')
     expect(g1.state).toBe('cancelled')
-    expect(getActiveGroup()).toBe(g2)
+    expect(getActiveGroupForSession('s1')).toBe(g2)
   })
 
   it('terminal group auto-clears from registry', async () => {
@@ -214,6 +212,6 @@ describe('ResponseTaskGroup registry', () => {
     g.onDelta('hi')
     g.onStreamEnd()
     await new Promise((r) => setTimeout(r, 0))
-    expect(getActiveGroup()).toBeNull()
+    expect(getActiveGroupForSession('s1')).toBeNull()
   })
 })

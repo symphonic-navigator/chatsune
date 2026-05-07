@@ -57,7 +57,7 @@ vi.mock('../../pipeline/voicePipeline', () => ({
 }))
 
 vi.mock('../../../chat/responseTaskGroup', () => ({
-  getActiveGroup: () => ({ pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() }),
+  getActiveGroupForSession: () => ({ pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() }),
 }))
 
 vi.mock('../../components/ReadAloudButton', () => ({
@@ -106,9 +106,10 @@ function resetConvModeStore() {
 }
 
 function resetChatStore() {
+  // Streaming state moved into per-session slots; emptying the map yields
+  // the same "no stream" semantics the old top-level fields expressed.
   useChatStore.setState({
-    isStreaming: false,
-    isWaitingForResponse: false,
+    streamsBySession: new Map(),
     reasoningOverride: null,
   })
 }

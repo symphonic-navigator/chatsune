@@ -53,9 +53,9 @@ export function buildChildren(opts: BuildChildrenOpts): GroupChild[] {
       sessionId,
       correlationId,
       chatStore: useChatStore.getState() as {
-        startStreaming(correlationId: string): void
-        appendStreamingContent(delta: string): void
-        cancelStreaming(): void
+        startStreaming(correlationId: string, opts: { sessionId: string }): void
+        appendStreamingContent(delta: string, opts: { sessionId: string }): void
+        cancelStreaming(opts: { sessionId: string }): void
       },
     }),
   ]

@@ -15,7 +15,7 @@ import type { CapturedAudio } from '../types'
 import { tryDispatchCommand, vosk, useVoiceLifecycleStore } from '../../voice-commands'
 import { useBargeSettingsStore } from '../stores/bargeSettingsStore'
 import { shouldSuppressBarge } from '../bargeGate'
-import { getActiveGroup } from '../../chat/responseTaskGroup'
+import { getActiveGroupForSession } from '../../chat/responseTaskGroup'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -148,6 +148,9 @@ export function useConversationMode({
   const controllerRef = useRef<BargeController | null>(null)
   if (controllerRef.current === null) {
     controllerRef.current = createBargeController({
+      // Lazy resolver — controller identity stays stable across session
+      // switches; the session id is read fresh at every start/resume/etc.
+      getSessionId: () => sessionIdRef.current,
       buildAndRegisterGroup: (corr, transcript) =>
         buildAndRegisterGroupRef.current(corr, transcript),
       sendChatMessage: (corr, transcript) =>
@@ -434,7 +437,10 @@ export function useConversationMode({
     // persona is currently speaking. Both paths share the same effect:
     // VAD keeps running for the indicator, but no barge fires, no
     // utterance is recorded, and no STT pipeline is triggered.
-    const groupStateForLog = getActiveGroup()?.state ?? null
+    const sidForLog = sessionIdRef.current
+    const groupStateForLog = sidForLog
+      ? getActiveGroupForSession(sidForLog)?.state ?? null
+      : null
     const bargeSuppressed = shouldSuppressBarge({
       enabled: useBargeSettingsStore.getState().enabled,
       groupState: groupStateForLog,

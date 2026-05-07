@@ -13,7 +13,7 @@
  * mutate `Barge.state`.
  */
 
-import { getActiveGroup } from '../chat/responseTaskGroup'
+import { getActiveGroupForSession } from '../chat/responseTaskGroup'
 
 export type BargeState = 'pending-stt' | 'confirmed' | 'resumed' | 'stale' | 'abandoned'
 
@@ -32,6 +32,14 @@ export interface BargeLogger {
 }
 
 export interface BargeControllerDeps {
+  /** Resolver for the current session id. The controller is created lazily
+   *  once per hook lifetime, so a getter (rather than a static value) lets
+   *  the surrounding hook keep its stable controller identity even when the
+   *  session id behind it is updated. Returns null between sessions; in
+   *  that case the controller's group lookups simply no-op (voice mode is
+   *  exited when session id is null anyway). */
+  getSessionId: () => string | null
+
   /** Build and register a new ResponseTaskGroup for the voice-send transcript.
    *  Must call registerActiveGroup internally (mirrors ChatView.createAndRegisterGroup
    *  in frontend/src/features/chat/ChatView.tsx:499). Returns the new Group's id. */
@@ -57,11 +65,16 @@ function hash8(id: string): string {
 }
 
 export function createBargeController(deps: BargeControllerDeps): BargeController {
-  const { buildAndRegisterGroup, sendChatMessage, logger } = deps
+  const { getSessionId, buildAndRegisterGroup, sendChatMessage, logger } = deps
   let currentBarge: Barge | null = null
 
   function prefix(barge: Barge): string {
     return `[barge ${hash8(barge.id)}]`
+  }
+
+  function activeGroupForCurrentSession() {
+    const sid = getSessionId()
+    return sid ? getActiveGroupForSession(sid) : null
   }
 
   return {
@@ -70,7 +83,7 @@ export function createBargeController(deps: BargeControllerDeps): BargeControlle
     },
 
     start(): Barge {
-      const active = getActiveGroup()
+      const active = activeGroupForCurrentSession()
       const barge: Barge = {
         id: crypto.randomUUID(),
         pausedGroupId: active?.id ?? null,
@@ -126,7 +139,7 @@ export function createBargeController(deps: BargeControllerDeps): BargeControlle
       }
       barge.state = 'resumed'
       logger.info(`${prefix(barge)} resume`)
-      const active = getActiveGroup()
+      const active = activeGroupForCurrentSession()
       if (active && barge.pausedGroupId !== null && active.id === barge.pausedGroupId) {
         active.resume()
       }
@@ -147,7 +160,7 @@ export function createBargeController(deps: BargeControllerDeps): BargeControlle
       // Un-pause iff the Group we paused is still the active one. Mirrors
       // the current handleMisfire behaviour: misfire-after-pause must put
       // audio back even though the Barge itself is dropped.
-      const active = getActiveGroup()
+      const active = activeGroupForCurrentSession()
       if (active && barge.pausedGroupId !== null && active.id === barge.pausedGroupId) {
         active.resume()
       }
@@ -160,7 +173,7 @@ export function createBargeController(deps: BargeControllerDeps): BargeControlle
         logger.info(`${prefix(currentBarge)} abandon`)
         currentBarge = null
       }
-      getActiveGroup()?.cancel('teardown')
+      activeGroupForCurrentSession()?.cancel('teardown')
     },
   }
 }

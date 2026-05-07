@@ -56,7 +56,12 @@ import type { NarratorMode } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
 import { usePhase } from '../voice/usePhase'
-import { createResponseTaskGroup, registerActiveGroup, getActiveGroup, cancelCurrentActiveGroup } from './responseTaskGroup'
+import {
+  createResponseTaskGroup,
+  registerActiveGroup,
+  getActiveGroupForSession,
+  cancelGroupForSession,
+} from './responseTaskGroup'
 import { stopActiveReadAloud } from '../voice/components/ReadAloudButton'
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
@@ -138,6 +143,17 @@ export function ChatView({ persona }: ChatViewProps) {
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
   const effectiveSessionId = isIncognito ? incognitoIdRef.current : sessionId
   const inFlightCreateForPersonaRef = useRef<string | null>(null)
+
+  // Snapshot of `effectiveSessionId` captured once per mount. Used by the
+  // unmount-only cleanup effects so a StrictMode double-invoke unmount of a
+  // stale instance cannot accidentally cancel a freshly-mounted instance's
+  // Group on the same session (or worse, mis-target the wrong session id
+  // because closures captured the value at first render).
+  const sessionIdAtMount = useRef<string | null>(effectiveSessionId)
+  useEffect(() => {
+    sessionIdAtMount.current = effectiveSessionId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     setIsResolvingSession(false)
@@ -250,12 +266,18 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona?.id, persona?.default_project_id])
 
   const messages = useChatStore((s) => s.messages)
-  const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const streamingContent = useChatStore((s) => s.streamingContent)
-  const streamingThinking = useChatStore((s) => s.streamingThinking)
-  const streamingEvents = useChatStore((s) => s.streamingEvents)
-  const activeToolCalls = useChatStore((s) => s.activeToolCalls)
+  // Streaming state lives per-session in `streamsBySession` since Task 5
+  // (background completions). Read the slot for the active session — the
+  // `EMPTY_STREAM` defaults match the old top-level zero values.
+  const stream = useChatStore((s) =>
+    effectiveSessionId ? s.streamsBySession.get(effectiveSessionId) ?? null : null,
+  )
+  const isWaitingForResponse = stream?.isWaitingForResponse ?? false
+  const isStreaming = stream?.isStreaming ?? false
+  const streamingContent = stream?.streamingContent ?? ''
+  const streamingThinking = stream?.streamingThinking ?? ''
+  const streamingEvents = stream?.streamingEvents ?? []
+  const activeToolCalls = stream?.activeToolCalls ?? []
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
@@ -448,6 +470,18 @@ export function ChatView({ persona }: ChatViewProps) {
           tools: session.tools_enabled ?? false,
           autoRead: session.auto_read ?? false,
         })
+        // Reconcile a stale streaming slot: if the backend reports the
+        // session is idle (any in-flight inference has completed) but the
+        // frontend still shows isStreaming, clear the slot. Defensive —
+        // the un-gated CHAT_STREAM_ENDED handler covers the same-WS-session
+        // case, but this also covers reconnect / login scenarios where the
+        // END event was missed.
+        if (session.state === 'idle') {
+          const slot = useChatStore.getState().getStreamFor(sessionId)
+          if (slot?.isStreaming) {
+            useChatStore.getState().cancelStreaming({ sessionId })
+          }
+        }
       })
       .catch((err) => {
         if (cancelled) return
@@ -467,8 +501,9 @@ export function ChatView({ persona }: ChatViewProps) {
   // playbackChild.onCancel clears its scope) and read-aloud (which calls
   // audioPlayback.enqueue directly, bypassing the Group). Cancel both.
   useEffect(() => {
+    const sid = effectiveSessionId
     return () => {
-      cancelCurrentActiveGroup('teardown')
+      if (sid) cancelGroupForSession(sid, 'teardown')
       stopActiveReadAloud()
     }
   }, [effectiveSessionId])
@@ -637,7 +672,7 @@ export function ChatView({ persona }: ChatViewProps) {
     // still matches the old correlationId. If we built children first, the
     // new playbackChild's setCurrentToken would preempt the old child's
     // clearScope, leaving paused=true stuck.
-    cancelCurrentActiveGroup()
+    cancelGroupForSession(sessionId)
 
     const mode: Mode = conversationActive ? 'voice' : 'text'
     const ttsEngine = mode === 'voice' ? resolveTTSEngine(persona) : null
@@ -744,7 +779,7 @@ export function ChatView({ persona }: ChatViewProps) {
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
-      useChatStore.getState().setWaitingForResponse(true)
+      useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
 
       if (isIncognito) {
         const allMessages = useChatStore.getState().messages
@@ -784,12 +819,13 @@ export function ChatView({ persona }: ChatViewProps) {
   )
 
   const handleCancel = useCallback(() => {
-    const g = getActiveGroup()
+    if (!effectiveSessionId) return
+    const g = getActiveGroupForSession(effectiveSessionId)
     if (!g) return
     g.cancel('user-stop')
     setPartialSavedNotice(true)
     setTimeout(() => setPartialSavedNotice(false), 6000)
-  }, [])
+  }, [effectiveSessionId])
 
   // Surface the standardised "model can't see images" toast. Centralised
   // so every blocked image-entry point (file picker, drag-drop, paste,
@@ -872,7 +908,7 @@ export function ChatView({ persona }: ChatViewProps) {
         const store = useChatStore.getState()
         store.truncateAfter(messageId)
         store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
+        store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
         const allMessages = useChatStore.getState().messages
         sendMessage({
           type: 'chat.incognito.send',
@@ -889,7 +925,7 @@ export function ChatView({ persona }: ChatViewProps) {
         const store = useChatStore.getState()
         store.truncateAfter(messageId)
         store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
+        store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
         sendMessage({
           type: 'chat.edit',
           session_id: effectiveSessionId,
@@ -912,7 +948,7 @@ export function ChatView({ persona }: ChatViewProps) {
       const msgs = store.messages
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
       if (lastAssistant) store.deleteMessage(lastAssistant.id)
-      store.setWaitingForResponse(true)
+      store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
       const allMessages = useChatStore.getState().messages
       sendMessage({
         type: 'chat.incognito.send',
@@ -922,7 +958,7 @@ export function ChatView({ persona }: ChatViewProps) {
         messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
       })
     } else {
-      useChatStore.getState().setWaitingForResponse(true)
+      useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
       sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId, correlation_id: correlationId })
     }
   }, [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup])
@@ -1020,16 +1056,24 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [isStreaming, isWaitingForResponse])
 
-  // Cleanup on unmount.
+  // Cleanup on unmount. Use the mount-time session id so a StrictMode
+  // double-invoke unmount cannot mis-target a session that was never owned
+  // by this component instance — the per-session registry's
+  // `cancelGroupForSession` no-ops when no group is registered for the id.
   useEffect(() => {
-    return () => { getActiveGroup()?.cancel('teardown') }
+    return () => {
+      const sid = sessionIdAtMount.current
+      if (sid) cancelGroupForSession(sid, 'teardown')
+    }
   }, [])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
-    getActiveGroup()?.cancel('teardown')
+    if (effectiveSessionId) {
+      getActiveGroupForSession(effectiveSessionId)?.cancel('teardown')
+    }
     voicePipeline.startRecording('push-to-talk')
-  }, [])
+  }, [effectiveSessionId])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -1044,10 +1088,12 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
-      getActiveGroup()?.cancel('teardown')
+      if (effectiveSessionId) {
+        getActiveGroupForSession(effectiveSessionId)?.cancel('teardown')
+      }
       voicePipeline.startRecording('push-to-talk')
     }
-  }, [pipelineState.phase])
+  }, [pipelineState.phase, effectiveSessionId])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({
@@ -1533,6 +1579,9 @@ export function ChatView({ persona }: ChatViewProps) {
               streamingEvents={streamingEvents} activeToolCalls={activeToolCalls}
               isWaitingForResponse={isWaitingForResponse}
               isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
+              visionDescriptions={stream?.visionDescriptions ?? {}}
+              streamingCorrelationId={stream?.correlationId ?? null}
+              streamingSlow={stream?.streamingSlow ?? false}
               containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
               onEdit={handleEdit} onRegenerate={handleRegenerate}
               bookmarkedMessageIds={bookmarkedMessageIds}

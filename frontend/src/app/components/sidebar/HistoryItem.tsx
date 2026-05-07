@@ -5,6 +5,9 @@ import type { ChakraColour } from "../../../core/types/chakra"
 import { CHAKRA_PALETTE } from "../../../core/types/chakra"
 import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 import { FloatingMenu } from "../floating/FloatingMenu"
+import { StreamingIndicatorDot } from "../../../features/chat/StreamingIndicatorDot"
+import { useChatStore } from "../../../core/store/chatStore"
+import { sendMessage } from "../../../core/websocket/connection"
 
 function formatSessionDate(isoString: string): string {
   const d = new Date(isoString)
@@ -37,6 +40,13 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
   const triggerRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const location = useLocation()
+
+  // Subscribe to this session's streaming slot so the right-click "Stop
+  // generation" entry appears when an inference is in flight here. The
+  // dot itself subscribes independently via StreamingIndicatorDot.
+  const isStreamingHere = useChatStore((s) =>
+    Boolean(s.streamsBySession.get(session.id)?.isStreaming),
+  )
 
   // Close menu and reset edit state on route change
   useEffect(() => {
@@ -78,6 +88,13 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
         ${isActive ? "bg-white/6 text-white/80" : "text-white/28 hover:bg-white/4 hover:text-white/55"}`}
       style={isPinned ? { ...PINNED_STRIPE_STYLE, paddingLeft: '5px', paddingRight: '8px' } : { paddingLeft: '8px', paddingRight: '8px' }}
       onClick={() => onClick(session)}
+      onContextMenu={(e) => {
+        // Right-click opens the same FloatingMenu used by the "···"
+        // affordance, so the Stop-generation entry surfaces without
+        // having to hover and aim. Anchored at the trigger button.
+        e.preventDefault()
+        setMenuOpen(true)
+      }}
     >
       {chakra && monogram && (
         <div
@@ -111,8 +128,9 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
             className="w-full rounded border border-white/15 bg-black/30 px-1 py-0 text-[13px] text-white/90 outline-none focus:border-white/30"
           />
         ) : (
-          <span className="truncate text-[13px]" title={session.title ?? undefined}>
-            {session.title ?? formatSessionDate(session.updated_at)}
+          <span className="flex min-w-0 items-center gap-1.5 truncate text-[13px]" title={session.title ?? undefined}>
+            <StreamingIndicatorDot sessionId={session.id} />
+            <span className="truncate">{session.title ?? formatSessionDate(session.updated_at)}</span>
           </span>
         )}
         {!editing && session.title && (
@@ -141,6 +159,24 @@ export function HistoryItem({ session, isPinned, isActive, monogram, colourSchem
         anchorRef={triggerRef}
         width={160}
       >
+        {/* Stop generation — only when an inference is streaming for this session */}
+        {isStreamingHere && (
+          <button
+            type="button"
+            onClick={() => {
+              const correlationId = useChatStore.getState()
+                .streamsBySession.get(session.id)?.correlationId
+              if (correlationId) {
+                sendMessage({ type: 'chat.cancel', correlation_id: correlationId })
+              }
+              setMenuOpen(false)
+            }}
+            className="w-full px-3 py-1.5 text-left text-[13px] text-white/70 transition-colors hover:bg-white/6"
+          >
+            Stop generation
+          </button>
+        )}
+
         {/* Pin / Unpin */}
         {onTogglePin && (
           <button

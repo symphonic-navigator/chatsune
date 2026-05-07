@@ -11,14 +11,14 @@ _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 
 from backend.database import get_db, get_redis
 from backend.modules.chat import (
-    cancel_all_for_user,
     handle_chat_cancel,
     handle_chat_edit,
     handle_chat_regenerate,
     handle_chat_retract,
     handle_chat_send,
     handle_incognito_send,
-    trigger_disconnect_extraction,
+    maybe_trigger_disconnect_extraction,
+    reset_disconnect_extraction_guard,
 )
 from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry, eager_discover_mcp
 from backend.modules.tools._mcp_discovery import register_local_tools
@@ -38,6 +38,95 @@ _background_tasks: set[asyncio.Task] = set()
 def get_background_tasks() -> set[asyncio.Task]:
     """Return the set of in-flight WebSocket background tasks."""
     return _background_tasks
+
+
+async def _delayed_disconnect_cleanup(
+    *,
+    user_id: str,
+    connection_id: str,
+) -> None:
+    """Run cleanup actions a few seconds after a WS disconnect.
+
+    The 10-second grace absorbs flaky-network reconnects. After the
+    grace, if the user is still offline:
+    - Pending client-side tool futures are resolved with a synthetic
+      'client disconnected' error so the inference loop can complete
+      cleanly without the user.
+    - The MCP registry tied to this WS connection is removed.
+
+    What this function NO LONGER does (compared to the pre-background-
+    completions design):
+    - It does **not** cancel inflight inferences. They run to natural
+      completion and persist their answers, even if the user never
+      reconnects. See devdocs/specs/2026-05-07-background-completions-
+      design.md.
+    - It does **not** trigger disconnect-extraction directly. That is
+      now anchored to inference cleanup (Task 4) so the extractor sees
+      the final answers, not snapshots taken mid-stream.
+    """
+    try:
+        await asyncio.sleep(10)
+        await _run_disconnect_cleanup(
+            user_id=user_id,
+            connection_id=connection_id,
+            has_reconnect=_manager_has_reconnect(user_id),
+        )
+    except asyncio.CancelledError:
+        # Event-loop shutdown during the grace window. Let asyncio see
+        # this so the task closes cleanly; cleanup intentionally does
+        # not run in this case.
+        raise
+    except Exception as exc:
+        _log.error(
+            "Error in delayed disconnect cleanup for user %s: %s",
+            user_id, exc,
+        )
+
+
+def _manager_has_reconnect(user_id: str) -> bool:
+    """Has the user reconnected during the grace period?"""
+    return get_manager().has_connections(user_id)
+
+
+async def _run_disconnect_cleanup(
+    *,
+    user_id: str,
+    connection_id: str,
+    has_reconnect: bool,
+) -> None:
+    """Perform post-grace disconnect cleanup. Sleep-free so tests can drive it directly."""
+    if has_reconnect:
+        return
+    try:
+        get_client_dispatcher().cancel_for_user(user_id)
+    except Exception:
+        _log.warning(
+            "Failed to resolve pending client tools for user %s",
+            user_id, exc_info=True,
+        )
+    remove_mcp_registry(connection_id)
+
+    # Safety net: if the user disconnected and has no inflight inferences
+    # right now (so the inference-cleanup anchor will never fire), trigger
+    # extraction directly. Wait an additional 30 s after the 10 s grace so
+    # any inference that started just before disconnect has a chance to
+    # register itself in ``_inflight``.
+    safety_task = asyncio.create_task(_extraction_safety_net(user_id))
+    _background_tasks.add(safety_task)
+    safety_task.add_done_callback(_background_tasks.discard)
+
+
+async def _extraction_safety_net(user_id: str) -> None:
+    try:
+        await asyncio.sleep(30)
+        await maybe_trigger_disconnect_extraction(user_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        _log.warning(
+            "extraction safety net failed for user %s",
+            user_id, exc_info=True,
+        )
 
 
 ws_router = APIRouter()
@@ -70,6 +159,12 @@ async def websocket_endpoint(
     manager = get_manager()
     await ws.accept()
     connection_id = await manager.connect(user_id, role, ws)
+    # Fresh connection: clear any one-shot disconnect-extraction guard so the
+    # next offline window is eligible to trigger extraction again. Done after
+    # manager.connect so has_connections() already returns True — this avoids
+    # a narrow window where the safety-net task could observe no connections
+    # while the guard is already cleared, double-triggering extraction.
+    reset_disconnect_extraction_guard(user_id)
     try:
         await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
     except Exception:
@@ -273,50 +368,14 @@ async def websocket_endpoint(
         # so this must happen first.
         await manager.disconnect(user_id, ws)
 
-        # Give the user a short grace period to reconnect before cancelling
-        # in-flight inferences. Without this grace period, a flaky network
-        # (or a chat that is waiting on the ollama_local concurrency lock,
-        # which may take >30 s behind a background job) causes a momentary
-        # WS drop to kill the chat — even though the user never went away.
-        async def _delayed_disconnect_cleanup() -> None:
-            try:
-                await asyncio.sleep(10)
-                if manager.has_connections(user_id):
-                    # User reconnected in time — keep the inference alive.
-                    return
-                cancelled = await cancel_all_for_user(user_id)
-                if cancelled > 0:
-                    _log.info(
-                        "Cancelled %d in-flight inferences after disconnect grace period for user %s",
-                        cancelled, user_id,
-                    )
-                # Fail any pending client-side tool futures for this user.
-                # Their inference loop has been cancelled above; this just
-                # ensures the dispatch futures resolve cleanly instead of
-                # lingering until their server-side timeout.
-                try:
-                    get_client_dispatcher().cancel_for_user(user_id)
-                except Exception:
-                    _log.warning(
-                        "Failed to cancel pending client tools for user %s",
-                        user_id, exc_info=True,
-                    )
-                remove_mcp_registry(connection_id)
-                try:
-                    await trigger_disconnect_extraction(user_id)
-                except Exception:
-                    # H-003: do NOT swallow silently. The retry/buffer logic
-                    # inside ``trigger_disconnect_extraction`` is the safety
-                    # net; log loudly here so we notice if it breaks.
-                    _log.error(
-                        "disconnect_extraction_failed user=%s", user_id, exc_info=True,
-                    )
-            except Exception as exc:
-                _log.error(
-                    "Error in delayed disconnect cleanup for user %s: %s",
-                    user_id, exc,
-                )
-
-        cleanup_task = asyncio.create_task(_delayed_disconnect_cleanup())
+        # Spawn the disconnect cleanup as a fire-and-forget background
+        # task — it sleeps for the grace period and then runs cleanup
+        # if the user has not reconnected.
+        cleanup_task = asyncio.create_task(
+            _delayed_disconnect_cleanup(
+                user_id=user_id,
+                connection_id=connection_id,
+            )
+        )
         _background_tasks.add(cleanup_task)
         cleanup_task.add_done_callback(_background_tasks.discard)

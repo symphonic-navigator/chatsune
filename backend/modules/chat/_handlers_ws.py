@@ -13,11 +13,12 @@ from backend.modules.chat._emoji_extractor import extract_emojis
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._orchestrator import (
     _cancel_events,
-    _cancel_user_ids,
+    _inflight,
     _consume_pending_cancel,
     _make_tool_executor,
-    cancel_all_for_user,
+    cancel_inflight_for_session,
     emit_session_expired,
+    maybe_trigger_disconnect_extraction,
     request_cancel,
     run_inference,
     track_extraction_trigger,
@@ -221,17 +222,15 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             )
             return
 
-        # Per-user single-stream policy: a new user action cancels any
-        # in-flight inference the user still has running. The old run's
-        # finally block will release the per-user inference lock shortly
-        # after the cancel event fires; the new run_inference call below
-        # then acquires it. Partially streamed content from the old run
-        # is persisted by the runner (see _inference.py).
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.send cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.send cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         # Resolve attachments if provided
@@ -427,12 +426,15 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             await emit_session_expired(user_id, session_id)
             return
 
-        # Per-user single-stream policy — see handle_chat_send.
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.edit cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.edit cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         # Validate message exists and belongs to this session
@@ -520,12 +522,15 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
             await emit_session_expired(user_id, session_id)
             return
 
-        # Per-user single-stream policy — see handle_chat_send.
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.regenerate cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.regenerate cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         last_msg = await repo.get_last_message(session_id)
@@ -702,7 +707,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         correlation_id = data.get("correlation_id") or str(uuid4())
         cancel_event = asyncio.Event()
         _cancel_events[correlation_id] = cancel_event
-        _cancel_user_ids[correlation_id] = user_id
+        _inflight[correlation_id] = (user_id, session_id)
         if _consume_pending_cancel(correlation_id, user_id):
             cancel_event.set()
 
@@ -774,6 +779,13 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             ))
         finally:
             _cancel_events.pop(correlation_id, None)
-            _cancel_user_ids.pop(correlation_id, None)
+            _inflight.pop(correlation_id, None)
+            try:
+                await maybe_trigger_disconnect_extraction(user_id)
+            except Exception:
+                _log.warning(
+                    "maybe_trigger_disconnect_extraction raised in handle_incognito_send finally for user=%s",
+                    user_id, exc_info=True,
+                )
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)

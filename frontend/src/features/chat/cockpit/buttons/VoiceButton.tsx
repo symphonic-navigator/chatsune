@@ -5,7 +5,7 @@ import { useVoicePipeline } from '@/features/voice/stores/voicePipelineStore'
 import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
 import { useIsReadingAloud, stopActiveReadAloud } from '@/features/voice/components/ReadAloudButton'
 import { usePhase } from '@/features/voice/usePhase'
-import { getActiveGroup } from '@/features/chat/responseTaskGroup'
+import { getActiveGroupForSession } from '@/features/chat/responseTaskGroup'
 import { useVoiceLifecycleStore } from '@/features/voice-commands'
 import { deriveVoiceUIState } from './_voiceState'
 import type { VoiceUIState } from './_voiceState'
@@ -78,7 +78,7 @@ export function VoiceButton({ sessionId, personaHasVoice, voiceSummary, onOpenVo
     //  3. Fall-through stopAll on any audio that slipped through both paths
     //     (belt-and-suspenders).
     stopActiveReadAloud()
-    const group = getActiveGroup()
+    const group = getActiveGroupForSession(sessionId)
     if (group) group.cancel('user-stop')
     stopPlayback()
   }

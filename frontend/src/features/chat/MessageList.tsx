@@ -7,7 +7,7 @@ import type {
   TimelineEntryKnowledgeSearch,
   ToolCallRef,
 } from '../../core/api/chat'
-import { useChatStore, type LiveVisionDescription } from '../../core/store/chatStore'
+import { type LiveVisionDescription } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 import { useReportBounds } from '../voice/infrastructure/useReportBounds'
@@ -37,6 +37,15 @@ interface MessageListProps {
   activeToolCalls: ActiveToolCall[]
   isWaitingForResponse: boolean
   isStreaming: boolean
+  /**
+   * Per-session streaming-state slices. Threaded as props from ChatView
+   * because the chatStore now keys these by sessionId — reading them
+   * directly via useChatStore selectors here would lose the active-session
+   * scoping that the parent already has.
+   */
+  visionDescriptions: Record<string, LiveVisionDescription>
+  streamingCorrelationId: string | null
+  streamingSlow: boolean
   accentColour: string
   highlighter: Highlighter | null
   containerRef: (node: HTMLDivElement | null) => void
@@ -146,6 +155,7 @@ function renderTimelineEntry(
 export function MessageList({
   sessionId, messages, streamingContent, streamingThinking, streamingEvents, activeToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
+  visionDescriptions, streamingCorrelationId, streamingSlow,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
 }: MessageListProps) {
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
@@ -156,9 +166,8 @@ export function MessageList({
     (lastMsg.role === 'assistant' || lastMsg.role === 'user')
   const showStandaloneRegenerate = canRegenerate && lastMsg !== null && lastMsg.role === 'user'
 
-  const visionDescriptions = useChatStore((s) => s.visionDescriptions)
-  const correlationId = useChatStore((s) => s.correlationId)
-  const streamingSlow = useChatStore((s) => s.streamingSlow)
+  // Renamed locally to keep the rest of the body unchanged.
+  const correlationId = streamingCorrelationId
 
   const textColumnRef = useReportBounds<HTMLDivElement>('textColumn')
 

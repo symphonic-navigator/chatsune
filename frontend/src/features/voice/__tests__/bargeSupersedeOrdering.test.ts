@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   registerActiveGroup,
-  clearActiveGroup,
-  getActiveGroup,
-  cancelCurrentActiveGroup,
+  clearGroupForSession,
+  cancelGroupForSession,
   createResponseTaskGroup,
   type GroupChild,
   type ResponseTaskGroup,
@@ -46,8 +45,7 @@ function makeGroupWithChild(correlationId: string, child: GroupChild): ResponseT
 
 describe('barge supersede ordering (audioPlayback paused reset)', () => {
   beforeEach(() => {
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
     // Reset audioPlayback to a clean state. stopAll clears queue/paused/playing
     // but leaves currentToken intact — null it explicitly.
     audioPlayback.stopAll()
@@ -55,8 +53,7 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
   })
 
   afterEach(() => {
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
     audioPlayback.stopAll()
     audioPlayback.setCurrentToken(null)
   })
@@ -77,7 +74,7 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
     // the real method call by observing that a second pause is a no-op.)
 
     // --- NEW ORDERING: cancel predecessor BEFORE building G2 children.
-    cancelCurrentActiveGroup()
+    cancelGroupForSession('s1')
 
     // At this point G1's playbackChild.onCancel has fired. Because
     // currentToken was still 'g1' when clearScope ran, the paused flag
@@ -113,7 +110,7 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
 
     unsubscribe()
     // Cleanup for next test.
-    clearActiveGroup(g2)
+    clearGroupForSession('s1')
   })
 
   it('OLD (broken) ordering reproduces the bug: paused stays true', () => {
@@ -145,7 +142,7 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
     expect(listener).not.toHaveBeenCalled()
 
     unsubscribe()
-    clearActiveGroup(g2)
+    clearGroupForSession('s1')
   })
 
   it('call-order: G1.onCancel clearScope fires BEFORE G2 setCurrentToken', () => {
@@ -178,7 +175,7 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
     callLog.length = 0
 
     // --- NEW ordering under test: cancel first, then build G2.
-    cancelCurrentActiveGroup()
+    cancelGroupForSession('s1')
     const g2Child = createPlaybackChild({ correlationId: 'g2', gapMs: 0 })
     const g2 = makeGroupWithChild('g2', g2Child)
     registerActiveGroup(g2)
@@ -195,6 +192,6 @@ describe('barge supersede ordering (audioPlayback paused reset)', () => {
 
     clearScopeSpy.mockRestore()
     setCurrentTokenSpy.mockRestore()
-    clearActiveGroup(g2)
+    clearGroupForSession('s1')
   })
 })

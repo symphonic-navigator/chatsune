@@ -14,9 +14,16 @@ const BOOT_GRACE_MS = 5_000
  * Exported for unit testing.
  */
 export function reloadWhenIdle(doReload: () => void): void {
-  const isBusy = () =>
-    useChatStore.getState().isStreaming ||
-    useConversationModeStore.getState().active
+  // Streaming state lives per-session in `streamsBySession` since Task 5
+  // (background completions). The PWA reload trigger should consider any
+  // active stream — including background completions — as "busy" so we
+  // never reload mid-inference and lose tokens the user is watching.
+  const isBusy = () => {
+    for (const slot of useChatStore.getState().streamsBySession.values()) {
+      if (slot.isStreaming || slot.isWaitingForResponse) return true
+    }
+    return useConversationModeStore.getState().active
+  }
 
   if (!isBusy()) {
     doReload()
