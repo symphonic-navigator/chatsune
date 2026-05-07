@@ -22,7 +22,8 @@ export interface TtsExpectedInput {
   audioActive: boolean
   /** True iff a read-aloud session is synthesising or playing. */
   isReadingAloud: boolean
-  /** True iff `getActiveGroup() !== null`. */
+  /** True iff the active session has a registered Group (i.e.
+   *  `getActiveGroupForSession(activeSessionId) !== null`). */
   hasActiveGroup: boolean
   /** True iff conversation mode is currently active (continuous voice). */
   liveModeActive: boolean

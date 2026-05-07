@@ -11,7 +11,7 @@ import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
 import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
-import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
+import { getActiveGroupForSession, subscribeGroups } from './responseTaskGroup'
 import { useCockpitStore } from './cockpit/cockpitStore'
 
 let activeTagBuffer: ResponseTagBuffer | null = null
@@ -65,7 +65,7 @@ export function handleChatEvent(
         // assistant turn before our send path runs), fall back to a fresh
         // local map and `'text_only'` so the buffer still works in
         // immediate-emit mode.
-        const activeGroup = getActiveGroup()
+        const activeGroup = getActiveGroupForSession(sessionId)
         const fallbackMap = new Map<string, PendingEffect>()
         const fallbackPillMap = new Map<string, string>()
         const sharedMap =
@@ -96,7 +96,7 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_CONTENT_DELTA: {
-      const g = getActiveGroup()
+      const g = getActiveGroupForSession(sessionId)
       if (!g || g.id !== event.correlation_id) {
         console.debug(`[useChatStream] drop CHAT_CONTENT_DELTA (no matching group, id=${event.correlation_id})`)
         return
@@ -229,7 +229,7 @@ export function handleChatEvent(
     }
     case Topics.CHAT_STREAM_ENDED: {
       if (p.session_id !== sessionId) return
-      const g = getActiveGroup()
+      const g = getActiveGroupForSession(sessionId)
       if (g && g.id === event.correlation_id) g.onStreamEnd()
       // Snapshot the live pill map. The Map reference is shared with the
       // active Group; we hand an independent shallow copy to the chat store
@@ -517,10 +517,13 @@ export function useChatStream(sessionId: string | null) {
     const unsub = eventBus.on('chat.*', handleEvent)
     // A stream that gets cancelled (barge, supersede, user-stop, teardown)
     // never reaches CHAT_STREAM_ENDED or CHAT_STREAM_ERROR, so the buffer
-    // flush in those handlers does not run. Subscribe to the active-group
-    // registry and flush whenever a Group transitions to `cancelled` so
-    // parked entries do not leak into the next stream's buffer.
-    const unsubGroup = subscribeActiveGroup((group) => {
+    // flush in those handlers does not run. Subscribe to the per-session
+    // registry and flush whenever THIS session's Group transitions to
+    // `cancelled` so parked entries do not leak into the next stream's
+    // buffer. Filter by sid — background completions for other sessions
+    // must not drain our active tag buffer.
+    const unsubGroup = subscribeGroups((sid, group) => {
+      if (sid !== sessionId) return
       if (group && group.state === 'cancelled') {
         flushActiveTagBufferOnCancel()
       }

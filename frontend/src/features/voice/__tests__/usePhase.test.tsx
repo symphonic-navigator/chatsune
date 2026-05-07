@@ -5,10 +5,10 @@ import { useConversationModeStore } from '../stores/conversationModeStore'
 import {
   createResponseTaskGroup,
   registerActiveGroup,
-  getActiveGroup,
-  clearActiveGroup,
+  clearGroupForSession,
   type GroupChild,
 } from '../../chat/responseTaskGroup'
+import { useChatStore } from '../../../core/store/chatStore'
 
 function silentLogger() {
   return { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -38,13 +38,16 @@ function resetStore() {
 describe('usePhase', () => {
   beforeEach(() => {
     resetStore()
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('sess-1')
+    // usePhase derives the phase from the active chat session's Group;
+    // tests below register Groups under sess-1 and expect them to drive
+    // the hook output.
+    useChatStore.setState({ activeSessionId: 'sess-1' })
   })
 
   afterEach(() => {
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('sess-1')
+    useChatStore.setState({ activeSessionId: null })
     resetStore()
   })
 

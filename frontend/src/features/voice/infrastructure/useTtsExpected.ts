@@ -2,9 +2,10 @@ import { useEffect, useRef } from 'react'
 import { audioPlayback } from './audioPlayback'
 import { useIsReadingAloud } from '../components/ReadAloudButton'
 import {
-  getActiveGroup,
-  subscribeActiveGroup,
+  getActiveGroupForSession,
+  subscribeGroups,
 } from '../../chat/responseTaskGroup'
+import { useChatStore } from '../../../core/store/chatStore'
 import { useConversationModeStore } from '../stores/conversationModeStore'
 import { useCockpitStore } from '../../chat/cockpit/cockpitStore'
 import { computeTtsExpected } from './ttsExpected'
@@ -47,7 +48,8 @@ export function useTtsExpected(
   const accessorRef = useRef<TtsExpectedAccessor | null>(null)
   if (accessorRef.current === null) {
     const accessor: TtsExpectedAccessor = () => {
-      const group = getActiveGroup()
+      const activeSid = useChatStore.getState().activeSessionId
+      const group = activeSid ? getActiveGroupForSession(activeSid) : null
       const cockpit = useCockpitStore.getState()
       const autoRead = group !== null
         ? cockpit.bySession[group.sessionId]?.autoRead === true
@@ -76,9 +78,14 @@ export function useTtsExpected(
 
     // Sources to subscribe to.
     const unsubAudio = audioPlayback.subscribe(evaluate)
-    // GroupListener receives the group value; evaluate ignores it and reads
-    // getActiveGroup() directly so the signature stays uniform with the others.
-    const unsubGroup = subscribeActiveGroup(evaluate)
+    // GroupListener receives `(sessionId, group)`; evaluate ignores both and
+    // reads getActiveGroupForSession() for the active session directly so
+    // the signature stays uniform with the others. Cross-session
+    // notifications are filtered inside evaluate's accessor.
+    const unsubGroup = subscribeGroups((sid) => {
+      const activeSid = useChatStore.getState().activeSessionId
+      if (sid === activeSid) evaluate()
+    })
     const unsubMode = useConversationModeStore.subscribe(evaluate)
     const unsubCockpit = useCockpitStore.subscribe(evaluate)
 

@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import {
   registerActiveGroup,
-  getActiveGroup,
-  clearActiveGroup,
+  clearGroupForSession,
   createResponseTaskGroup,
   type ResponseTaskGroup,
   type GroupChild,
@@ -59,7 +58,8 @@ function makeDeps(overrides: Partial<BargeControllerDeps> = {}): BargeController
   buildAndRegisterGroup: Mock
   sendChatMessage: Mock
 } {
-  const base = {
+  const base: BargeControllerDeps = {
+    getSessionId: () => 's1',
     buildAndRegisterGroup: vi.fn((correlationId: string, _transcript: string) => {
       const { group } = makeGroup(correlationId)
       registerActiveGroup(group)
@@ -76,8 +76,7 @@ function makeDeps(overrides: Partial<BargeControllerDeps> = {}): BargeController
 
 describe('bargeController', () => {
   beforeEach(() => {
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
   })
 
   describe('start()', () => {

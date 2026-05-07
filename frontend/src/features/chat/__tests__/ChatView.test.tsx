@@ -273,8 +273,9 @@ vi.mock('../../voice/usePhase', () => ({ usePhase: () => 'idle' }))
 vi.mock('../responseTaskGroup', () => ({
   createResponseTaskGroup: () => ({}),
   registerActiveGroup: () => {},
-  getActiveGroup: () => null,
-  cancelCurrentActiveGroup: () => {},
+  getActiveGroupForSession: () => null,
+  cancelGroupForSession: () => {},
+  subscribeGroups: () => () => {},
 }))
 
 vi.mock('../../voice/components/ReadAloudButton', () => ({

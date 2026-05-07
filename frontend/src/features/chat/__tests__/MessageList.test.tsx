@@ -13,10 +13,15 @@ vi.mock('../../artefact/ArtefactCard', () => ({
   ),
 }))
 
-vi.mock('../../../core/store/chatStore', () => ({
-  useChatStore: (selector: (s: { messagePillContents: Record<string, Map<string, string>> }) => unknown) =>
-    selector({ messagePillContents: {} }),
-}))
+vi.mock('../../../core/store/chatStore', () => {
+  const state = { messagePillContents: {}, activeSessionId: null }
+  const useChatStore = ((selector: (s: typeof state) => unknown) => selector(state)) as unknown as {
+    (selector: (s: typeof state) => unknown): unknown
+    getState: () => typeof state
+  }
+  useChatStore.getState = () => state
+  return { useChatStore }
+})
 
 function makeMsg(overrides: Partial<ChatMessageDto>): ChatMessageDto {
   return {

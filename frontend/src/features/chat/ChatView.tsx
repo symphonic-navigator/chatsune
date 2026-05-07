@@ -56,7 +56,12 @@ import type { NarratorMode } from '../voice/types'
 import { useConversationModeStore } from '../voice/stores/conversationModeStore'
 import { useConversationMode } from '../voice/hooks/useConversationMode'
 import { usePhase } from '../voice/usePhase'
-import { createResponseTaskGroup, registerActiveGroup, getActiveGroup, cancelCurrentActiveGroup } from './responseTaskGroup'
+import {
+  createResponseTaskGroup,
+  registerActiveGroup,
+  getActiveGroupForSession,
+  cancelGroupForSession,
+} from './responseTaskGroup'
 import { stopActiveReadAloud } from '../voice/components/ReadAloudButton'
 import { buildChildren, type Mode } from './buildChildren'
 import { ConversationModeButton } from '../voice/components/ConversationModeButton'
@@ -138,6 +143,17 @@ export function ChatView({ persona }: ChatViewProps) {
   const incognitoIdRef = useRef(`incognito-${crypto.randomUUID()}`)
   const effectiveSessionId = isIncognito ? incognitoIdRef.current : sessionId
   const inFlightCreateForPersonaRef = useRef<string | null>(null)
+
+  // Snapshot of `effectiveSessionId` captured once per mount. Used by the
+  // unmount-only cleanup effects so a StrictMode double-invoke unmount of a
+  // stale instance cannot accidentally cancel a freshly-mounted instance's
+  // Group on the same session (or worse, mis-target the wrong session id
+  // because closures captured the value at first render).
+  const sessionIdAtMount = useRef<string | null>(effectiveSessionId)
+  useEffect(() => {
+    sessionIdAtMount.current = effectiveSessionId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     setIsResolvingSession(false)
@@ -473,8 +489,9 @@ export function ChatView({ persona }: ChatViewProps) {
   // playbackChild.onCancel clears its scope) and read-aloud (which calls
   // audioPlayback.enqueue directly, bypassing the Group). Cancel both.
   useEffect(() => {
+    const sid = effectiveSessionId
     return () => {
-      cancelCurrentActiveGroup('teardown')
+      if (sid) cancelGroupForSession(sid, 'teardown')
       stopActiveReadAloud()
     }
   }, [effectiveSessionId])
@@ -643,7 +660,7 @@ export function ChatView({ persona }: ChatViewProps) {
     // still matches the old correlationId. If we built children first, the
     // new playbackChild's setCurrentToken would preempt the old child's
     // clearScope, leaving paused=true stuck.
-    cancelCurrentActiveGroup()
+    cancelGroupForSession(sessionId)
 
     const mode: Mode = conversationActive ? 'voice' : 'text'
     const ttsEngine = mode === 'voice' ? resolveTTSEngine(persona) : null
@@ -790,12 +807,13 @@ export function ChatView({ persona }: ChatViewProps) {
   )
 
   const handleCancel = useCallback(() => {
-    const g = getActiveGroup()
+    if (!effectiveSessionId) return
+    const g = getActiveGroupForSession(effectiveSessionId)
     if (!g) return
     g.cancel('user-stop')
     setPartialSavedNotice(true)
     setTimeout(() => setPartialSavedNotice(false), 6000)
-  }, [])
+  }, [effectiveSessionId])
 
   // Surface the standardised "model can't see images" toast. Centralised
   // so every blocked image-entry point (file picker, drag-drop, paste,
@@ -1026,16 +1044,24 @@ export function ChatView({ persona }: ChatViewProps) {
     }
   }, [isStreaming, isWaitingForResponse])
 
-  // Cleanup on unmount.
+  // Cleanup on unmount. Use the mount-time session id so a StrictMode
+  // double-invoke unmount cannot mis-target a session that was never owned
+  // by this component instance — the per-session registry's
+  // `cancelGroupForSession` no-ops when no group is registered for the id.
   useEffect(() => {
-    return () => { getActiveGroup()?.cancel('teardown') }
+    return () => {
+      const sid = sessionIdAtMount.current
+      if (sid) cancelGroupForSession(sid, 'teardown')
+    }
   }, [])
 
   // Mic handlers
   const handleMicPress = useCallback(() => {
-    getActiveGroup()?.cancel('teardown')
+    if (effectiveSessionId) {
+      getActiveGroupForSession(effectiveSessionId)?.cancel('teardown')
+    }
     voicePipeline.startRecording('push-to-talk')
-  }, [])
+  }, [effectiveSessionId])
 
   const handleMicRelease = useCallback(() => {
     voicePipeline.stopRecording()
@@ -1050,10 +1076,12 @@ export function ChatView({ persona }: ChatViewProps) {
     if (pipelineState.phase === 'listening' || pipelineState.phase === 'recording') {
       voicePipeline.stopRecording()
     } else {
-      getActiveGroup()?.cancel('teardown')
+      if (effectiveSessionId) {
+        getActiveGroupForSession(effectiveSessionId)?.cancel('teardown')
+      }
       voicePipeline.startRecording('push-to-talk')
     }
-  }, [pipelineState.phase])
+  }, [pipelineState.phase, effectiveSessionId])
 
   // Ctrl+Space shortcut: hold = push-to-talk, tap = toggle push-to-talk recording
   useCtrlSpace({

@@ -7,27 +7,30 @@ import { ReadAloudButton } from '../voice/components/ReadAloudButton'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
 import { useIntegrationsStore } from '../integrations/store'
 import { useChatStore } from '../../core/store/chatStore'
-import { getActiveGroup, subscribeActiveGroup } from './responseTaskGroup'
+import { getActiveGroupForSession, subscribeGroups } from './responseTaskGroup'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 
 const REFUSAL_FALLBACK_TEXT = 'The model declined this request.'
 
-// useSyncExternalStore plumbing for the active-Group registry. Pattern
+// useSyncExternalStore plumbing for the per-session Group registry. Pattern
 // mirrors usePhase: snapshot is `<groupId>:<groupState>` so React's
 // Object.is identity check reacts to state-only changes; the actual Group
 // reference (and its mutated renderedPillsMap) is still read live below.
 //
-// The registry's listener carries the current Group as its argument, but
-// useSyncExternalStore expects a no-arg listener. The tiny adaptor below
-// matches the pattern in `voice/usePhase.ts` for consistency — we use the
-// same shape everywhere we subscribe to the active-Group registry from
-// React.
+// The registry's listener carries `(sessionId, group)`; we filter to the
+// active chat session so a background completion for an inactive session
+// does not force this message bubble to re-render.
 function subscribeActiveGroupForRsx(onStoreChange: () => void): () => void {
-  return subscribeActiveGroup(() => onStoreChange())
+  return subscribeGroups((sid) => {
+    const activeSid = useChatStore.getState().activeSessionId
+    if (sid === activeSid) onStoreChange()
+  })
 }
 function activeGroupSnapshot(): string {
-  const g = getActiveGroup()
+  const activeSid = useChatStore.getState().activeSessionId
+  if (!activeSid) return 'none'
+  const g = getActiveGroupForSession(activeSid)
   return g === null ? 'none' : `${g.id}:${g.state}`
 }
 function serverSnapshot(): string {
@@ -117,11 +120,11 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
   //  - The chat store's appendStreamingContent fires for every content delta,
   //    which re-renders this component and reads the (already-mutated) map
   //    live below. This is the path that actually picks up new map entries.
-  //  - useSyncExternalStore on subscribeActiveGroup catches Group identity /
-  //    state changes (start, cancel, end) so we re-pick up the right map
-  //    after a Group transition — the snapshot string only encodes
-  //    `<groupId>:<groupState>` and does NOT change when the map gains an
-  //    entry.
+  //  - useSyncExternalStore on the per-session group registry catches Group
+  //    identity / state changes (start, cancel, end) so we re-pick up the
+  //    right map after a Group transition — the snapshot string only
+  //    encodes `<groupId>:<groupState>` and does NOT change when the map
+  //    gains an entry.
   // We deliberately do NOT bump a per-mutation counter — the chat-store
   // re-render covers map writes for the streaming bubble, so an additional
   // version field would only be redundant work.
@@ -130,8 +133,9 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
     activeGroupSnapshot,
     serverSnapshot,
   )
-  const liveStreamPillContents = isStreaming
-    ? (getActiveGroup()?.renderedPillsMap ?? null)
+  const activeSessionId = useChatStore((s) => s.activeSessionId)
+  const liveStreamPillContents = isStreaming && activeSessionId
+    ? (getActiveGroupForSession(activeSessionId)?.renderedPillsMap ?? null)
     : null
 
   // Cached pill map for this message id, populated by `finishStreaming`

@@ -57,7 +57,7 @@ vi.mock('../../pipeline/voicePipeline', () => ({
 }))
 
 vi.mock('../../../chat/responseTaskGroup', () => ({
-  getActiveGroup: () => ({ pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() }),
+  getActiveGroupForSession: () => ({ pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() }),
 }))
 
 vi.mock('../../components/ReadAloudButton', () => ({

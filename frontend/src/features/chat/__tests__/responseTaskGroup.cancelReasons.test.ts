@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   createResponseTaskGroup,
-  getActiveGroup,
-  clearActiveGroup,
+  clearGroupForSession,
   type CancelReason,
 } from '../responseTaskGroup'
 
@@ -22,8 +21,7 @@ function makeLogger() {
 
 describe('ResponseTaskGroup cancel reasons → WS frame', () => {
   beforeEach(() => {
-    const existing = getActiveGroup()
-    if (existing) clearActiveGroup(existing)
+    clearGroupForSession('s1')
   })
 
   it('teardown before first delta sends nothing', () => {
