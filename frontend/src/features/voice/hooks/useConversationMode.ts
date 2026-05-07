@@ -13,6 +13,9 @@ import { createBargeController, type BargeController } from '../bargeController'
 import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
 import { tryDispatchCommand, vosk, useVoiceLifecycleStore } from '../../voice-commands'
+import { useBargeSettingsStore } from '../stores/bargeSettingsStore'
+import { shouldSuppressBarge } from '../bargeGate'
+import { getActiveGroup } from '../../chat/responseTaskGroup'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -428,8 +431,23 @@ export function useConversationMode({
     // barge fires, no utterance is recorded, no STT pipeline is triggered.
     // Mark the utterance as muted-origin so speech-end drops it even if the
     // user unmutes before the VAD detects the silence boundary.
-    if (micMutedRef.current) {
+    // Two reasons to behave as if the mic were muted: the user has
+    // explicitly muted it, OR the user has barging turned off and the
+    // persona is currently speaking. Both paths share the same effect:
+    // VAD keeps running for the indicator, but no barge fires, no
+    // utterance is recorded, and no STT pipeline is triggered.
+    const bargeSuppressed = shouldSuppressBarge({
+      enabled: useBargeSettingsStore.getState().enabled,
+      groupState: getActiveGroup()?.state ?? null,
+    })
+    if (micMutedRef.current || bargeSuppressed) {
       utteranceStartedWhileMutedRef.current = true
+      if (bargeSuppressed && !micMutedRef.current) {
+        console.info('[BargeGate] suppressed VAD onset', {
+          groupState: getActiveGroup()?.state,
+          bargingEnabled: false,
+        })
+      }
       return
     }
     utteranceStartedWhileMutedRef.current = false
