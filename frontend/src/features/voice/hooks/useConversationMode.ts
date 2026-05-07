@@ -13,6 +13,9 @@ import { createBargeController, type BargeController } from '../bargeController'
 import { micActivity } from '../infrastructure/micActivity'
 import type { CapturedAudio } from '../types'
 import { tryDispatchCommand, vosk, useVoiceLifecycleStore } from '../../voice-commands'
+import { useBargeSettingsStore } from '../stores/bargeSettingsStore'
+import { shouldSuppressBarge } from '../bargeGate'
+import { getActiveGroup } from '../../chat/responseTaskGroup'
 
 // Silero fires onSpeechStart on any loud-enough frame — including brief
 // non-speech noise (chair creaks, keyboard clicks) that later turns out
@@ -420,18 +423,39 @@ export function useConversationMode({
    * the pending barge is cancelled and nothing is muted.
    */
   const handleSpeechStart = useCallback(() => {
+    // Internal ref always tracks the VAD-tracking window, even when the
+    // onset is going to be suppressed. Other handlers (speech-end,
+    // misfire, hold-release) read this ref to reason about the
+    // utterance lifecycle.
     vadActiveRef.current = true
-    setVadActive(true)
-    micActivity.setVadActive(true)
     if (!activeRef.current) return
-    // Mic muted: VAD keeps running (so the UI sees the indicator), but no
-    // barge fires, no utterance is recorded, no STT pipeline is triggered.
-    // Mark the utterance as muted-origin so speech-end drops it even if the
-    // user unmutes before the VAD detects the silence boundary.
-    if (micMutedRef.current) {
+    // Two reasons to behave as if the mic were muted: the user has
+    // explicitly muted it, OR the user has barging turned off and the
+    // persona is currently speaking. Both paths share the same effect:
+    // VAD keeps running for the indicator, but no barge fires, no
+    // utterance is recorded, and no STT pipeline is triggered.
+    const groupStateForLog = getActiveGroup()?.state ?? null
+    const bargeSuppressed = shouldSuppressBarge({
+      enabled: useBargeSettingsStore.getState().enabled,
+      groupState: groupStateForLog,
+    })
+    if (micMutedRef.current || bargeSuppressed) {
       utteranceStartedWhileMutedRef.current = true
+      if (bargeSuppressed && !micMutedRef.current) {
+        console.info('[BargeGate] suppressed VAD onset', {
+          groupState: groupStateForLog,
+          bargingEnabled: false,
+        })
+      }
+      // Deliberately do NOT publish vadActive to the store or micActivity:
+      // the onset is being dropped, so the UI must not flip into the
+      // 'user-speaking' phase (which would render the Hold-to-keep-talking
+      // button) and the visualiser must not pulse.
       return
     }
+    // Past the gate — publish vad-active so the UI reacts.
+    setVadActive(true)
+    micActivity.setVadActive(true)
     utteranceStartedWhileMutedRef.current = false
     // In paused mode, audio routes to Vosk only — no upstream STT, no barge,
     // no controller. Without this short-circuit, executeBarge() would create

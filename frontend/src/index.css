@@ -160,6 +160,21 @@ body {
   animation: thinkPulse 2s ease-in-out infinite;
 }
 
+@keyframes pulseSlow {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.animate-pulse-slow {
+  animation: pulseSlow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-slow {
+    animation: none;
+  }
+}
+
 /* Toast animations */
 @keyframes toastEnter {
   from {

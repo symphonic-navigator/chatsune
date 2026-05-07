@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useViewport } from '@/core/hooks/useViewport'
+import { BargingToggleButton } from './buttons/BargingToggleButton'
+import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
 import { ThinkingButton } from './buttons/ThinkingButton'
 import { ToolsButton } from './buttons/ToolsButton'
 import type { ToolGroup } from './buttons/ToolsButton'
@@ -55,6 +57,7 @@ function Sep() {
 
 export function CockpitBar(props: Props) {
   const { isMobile } = useViewport()
+  const liveActive = useConversationModeStore((s) => s.active)
   const [infoOpen, setInfoOpen] = useState(false)
   const cockpit = useCockpitSession(props.sessionId)
   const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
@@ -140,6 +143,12 @@ export function CockpitBar(props: Props) {
         canEnterLive={props.liveAvailability.canEnterLive}
         disabledReason={props.liveAvailability.reason}
       />
+      {!isMobile && liveActive && (
+        <>
+          <Sep />
+          <BargingToggleButton />
+        </>
+      )}
       {isMobile && (
         <CockpitButton
           icon="😊"
@@ -150,13 +159,17 @@ export function CockpitBar(props: Props) {
         />
       )}
       {isMobile && (
-        <CockpitButton
-          icon="ⓘ"
-          state="idle"
-          accent="neutral"
-          label="Status info"
-          onClick={() => setInfoOpen(true)}
-        />
+        liveActive ? (
+          <BargingToggleButton />
+        ) : (
+          <CockpitButton
+            icon="ⓘ"
+            state="idle"
+            accent="neutral"
+            label="Status info"
+            onClick={() => setInfoOpen(true)}
+          />
+        )
       )}
 
       {isMobile && (
