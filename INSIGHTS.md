@@ -1021,3 +1021,55 @@ Adding it would require either an OR-specific message translator
 (more code, more divergence from Mistral / xAI / nano-gpt) or a
 parameter on the shared `CompletionMessage` model that every other
 adapter would ignore. Neither is justified before we have usage data.
+
+## INS-033 — Background completions: stream-end events must reach non-active sessions (2026-05-07)
+
+**Context:** With background completions, an inference for session A
+keeps running after the user navigates to session B. The backend
+publishes `CHAT_STREAM_ENDED` for A when it finishes. The frontend
+must clear A's slot in `chatStore.streamsBySession` so the sidebar
+pulse-dot disappears and the slot is in a clean state for the user's
+next visit.
+
+**The trap:** `useChatStream` is a per-active-session hook. There is
+only one instance at a time, bound to the currently-mounted ChatView's
+session id. The natural reflex is to gate every event handler on
+`if (event.session_id !== hookSessionId) return` — and that is exactly
+what the hook did before this feature.
+
+With background completions, that gate is wrong for slot-bookkeeping
+events. The Group for session A has been cancelled with reason
+`'teardown'` (UI unmounted), so its `chatStoreSink.onStreamEnd` will
+not run either. If `useChatStream` also drops the event, nothing on
+the frontend ever clears A's slot. The dot stays on forever.
+
+**The split:** events fall into two categories.
+
+- *Slot-bookkeeping*: `CHAT_STREAM_ENDED`, `CHAT_STREAM_ERROR`. These
+  must mutate the slot identified by the **event's** session id, not
+  the hook's. `chatStore.finishStreaming` already has the
+  `isActive = sessionId === activeSessionId` branch that prevents
+  background-session messages from polluting the visible transcript;
+  the slot itself is cleared unconditionally by `clearStream`.
+- *Active-session UI side effects*: scroll, focus, toast banners,
+  `activeTagBuffer` flush, the active Group's `onStreamEnd` hand-off.
+  These stay gated on the hook's session id — raising a banner about
+  a chat the user is not viewing would be confusing.
+
+`CHAT_STREAM_ERROR` does not carry `session_id` in its DTO. The hook
+resolves the slot by scanning `streamsBySession` for the matching
+`correlationId` instead. A small price for not changing the event
+shape.
+
+**ChatView reconciliation as a safety net:** the `getSession.then`
+path in ChatView checks `session.state === 'idle'` and clears any
+stale `isStreaming: true` slot it finds. This covers the rare case
+where an END event arrived before the frontend was alive (login,
+hard reload before catchup completes), where the in-band hook fix
+cannot help.
+
+**Generalisable rule:** when a feature lets state survive across
+component lifetimes (background completions, long-running jobs,
+deferred ops), audit every per-component event handler for gates
+that drop events meant for the orphaned state. The gate is usually
+correct for UI side effects and wrong for state mutations.
