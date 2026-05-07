@@ -17,7 +17,7 @@ describe('chatStoreSink', () => {
       sessionId: 's1', correlationId: 'c1', chatStore: store as any,
     })
     sink.onDelta('hello', 'c1')
-    expect(store.appendStreamingContent).toHaveBeenCalledWith('hello')
+    expect(store.appendStreamingContent).toHaveBeenCalledWith('hello', { sessionId: 's1' })
   })
 
   it('onDelta drops when token does not match', () => {

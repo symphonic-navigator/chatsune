@@ -92,21 +92,13 @@ vi.mock('../../../core/api/artefact', () => ({
 vi.mock('../../../core/store/chatStore', () => {
   const state = {
     messages: [],
-    isWaitingForResponse: false,
-    isStreaming: false,
-    streamingContent: '',
-    streamingThinking: '',
-    streamingEvents: [],
-    activeToolCalls: [],
+    streamsBySession: new Map(),
     contextStatus: null,
     contextFillPercentage: null,
     contextUsedTokens: null,
     contextMaxTokens: null,
     error: null,
     sessionTitle: null,
-    visionDescriptions: {},
-    correlationId: null,
-    streamingSlow: false,
     messagePillContents: {},
     reset: vi.fn(),
   }

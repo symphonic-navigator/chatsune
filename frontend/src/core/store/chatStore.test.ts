@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useChatStore } from './chatStore'
 import type { ChatMessageDto, TimelineEntry } from '../api/chat'
 
+const SESSION_ID = 'session-test'
+const opts = { sessionId: SESSION_ID }
+
 function reset() {
-  useChatStore.setState({
-    streamingEvents: [],
-    streamingRefusalText: null,
-    activeToolCalls: [],
-  } as Partial<ReturnType<typeof useChatStore.getState>> as ReturnType<typeof useChatStore.getState>)
+  // Reset to a known sessionId so finishStreaming knows the active session
+  // and appends the persisted message into the visible transcript.
+  useChatStore.getState().reset(SESSION_ID)
 }
 
 function createFinalMessage(): ChatMessageDto {
@@ -46,9 +47,9 @@ describe('chatStore — streaming events and refusal slices', () => {
       seq: 0,
       items: [{ title: 't', url: 'u', snippet: 's' }],
     }
-    useChatStore.getState().appendStreamingEvent(a)
-    useChatStore.getState().appendStreamingEvent(b)
-    const events = useChatStore.getState().streamingEvents
+    useChatStore.getState().appendStreamingEvent(a, opts)
+    useChatStore.getState().appendStreamingEvent(b, opts)
+    const events = useChatStore.getState().getStreamFor(SESSION_ID)?.streamingEvents ?? []
     expect(events).toHaveLength(2)
     expect(events[0].seq).toBe(0)
     expect(events[1].seq).toBe(1)
@@ -61,13 +62,14 @@ describe('chatStore — streaming events and refusal slices', () => {
       kind: 'knowledge_search',
       seq: 999,
       items: [],
-    })
-    expect(useChatStore.getState().streamingEvents[0].seq).toBe(0)
+    }, opts)
+    const events = useChatStore.getState().getStreamFor(SESSION_ID)?.streamingEvents ?? []
+    expect(events[0].seq).toBe(0)
   })
 
   it('setStreamingRefusalText sets the refusal text', () => {
-    useChatStore.getState().setStreamingRefusalText('declined')
-    expect(useChatStore.getState().streamingRefusalText).toBe('declined')
+    useChatStore.getState().setStreamingRefusalText('declined', opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingRefusalText).toBe('declined')
   })
 
   it('addToolCall is idempotent on tool_call_id', () => {
@@ -77,16 +79,16 @@ describe('chatStore — streaming events and refusal slices', () => {
       arguments: { q: 'first' },
       status: 'running' as const,
     }
-    useChatStore.getState().addToolCall(tc)
+    useChatStore.getState().addToolCall(tc, opts)
     // Same id, different arguments — represents a duplicate
     // ToolCallStarted event from a misbehaving upstream stream.
-    useChatStore.getState().addToolCall({ ...tc, arguments: { q: 'second' } })
-    const calls = useChatStore.getState().activeToolCalls
+    useChatStore.getState().addToolCall({ ...tc, arguments: { q: 'second' } }, opts)
+    const calls = useChatStore.getState().getStreamFor(SESSION_ID)?.activeToolCalls ?? []
     expect(calls).toHaveLength(1)
     expect(calls[0].arguments).toEqual({ q: 'second' })
   })
 
-  it('finishStreaming clears streamingEvents and refusal text', () => {
+  it('finishStreaming clears the slot (and thus streamingEvents/refusalText)', () => {
     useChatStore.getState().appendStreamingEvent({
       kind: 'artefact',
       seq: 0,
@@ -97,13 +99,12 @@ describe('chatStore — streaming events and refusal slices', () => {
         artefact_type: 'code',
         operation: 'create',
       },
-    })
-    useChatStore.getState().setStreamingRefusalText('declined')
+    }, opts)
+    useChatStore.getState().setStreamingRefusalText('declined', opts)
 
     const finalMessage = createFinalMessage()
-    useChatStore.getState().finishStreaming(finalMessage, 'green', 0)
-    expect(useChatStore.getState().streamingEvents).toEqual([])
-    expect(useChatStore.getState().streamingRefusalText).toBeNull()
+    useChatStore.getState().finishStreaming(finalMessage, 'green', 0, 0, 0, undefined, opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)).toBeNull()
   })
 
   it('startStreaming resets streamingEvents', () => {
@@ -111,18 +112,18 @@ describe('chatStore — streaming events and refusal slices', () => {
       kind: 'web_search',
       seq: 0,
       items: [{ title: 't', url: 'u', snippet: 's' }],
-    })
-    useChatStore.getState().startStreaming('corr-2')
-    expect(useChatStore.getState().streamingEvents).toEqual([])
+    }, opts)
+    useChatStore.getState().startStreaming('corr-2', opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingEvents).toEqual([])
   })
 
-  it('cancelStreaming resets streamingEvents', () => {
+  it('cancelStreaming resets streamingEvents (slot cleared)', () => {
     useChatStore.getState().appendStreamingEvent({
       kind: 'web_search',
       seq: 0,
       items: [{ title: 't', url: 'u', snippet: 's' }],
-    })
-    useChatStore.getState().cancelStreaming()
-    expect(useChatStore.getState().streamingEvents).toEqual([])
+    }, opts)
+    useChatStore.getState().cancelStreaming(opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)).toBeNull()
   })
 })

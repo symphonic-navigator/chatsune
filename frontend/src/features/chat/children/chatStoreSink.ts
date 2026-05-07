@@ -3,12 +3,14 @@ import type { GroupChild } from '../responseTaskGroup'
 /**
  * Minimum shape of the chat store consumed by the sink. Keeps this module
  * free of imports from the concrete Zustand store so tests can inject a
- * plain mock.
+ * plain mock. Each method takes the same `{ sessionId }` opt the underlying
+ * store now requires — the sink fills it from `opts.sessionId` so the
+ * Group's session id is the single source of truth at the call site.
  */
 export interface ChatStoreLike {
-  startStreaming(correlationId: string): void
-  appendStreamingContent(delta: string): void
-  cancelStreaming(): void
+  startStreaming(correlationId: string, opts: { sessionId: string }): void
+  appendStreamingContent(delta: string, opts: { sessionId: string }): void
+  cancelStreaming(opts: { sessionId: string }): void
 }
 
 export interface ChatStoreSinkOpts {
@@ -19,6 +21,7 @@ export interface ChatStoreSinkOpts {
 
 export function createChatStoreSink(opts: ChatStoreSinkOpts): GroupChild {
   const prefix = `[chatStoreSink ${opts.correlationId.slice(0, 8)}]`
+  const writeOpts = { sessionId: opts.sessionId }
 
   return {
     name: 'chatStoreSink',
@@ -28,7 +31,7 @@ export function createChatStoreSink(opts: ChatStoreSinkOpts): GroupChild {
         console.debug(`${prefix} drop delta (token mismatch)`)
         return
       }
-      opts.chatStore.appendStreamingContent(delta)
+      opts.chatStore.appendStreamingContent(delta, writeOpts)
     },
 
     onStreamEnd(token: string): Promise<void> {

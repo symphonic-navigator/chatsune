@@ -250,12 +250,18 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [searchParams, personaId, sessionId, navigate, isIncognito, resolveAttempt, persona?.id, persona?.default_project_id])
 
   const messages = useChatStore((s) => s.messages)
-  const isWaitingForResponse = useChatStore((s) => s.isWaitingForResponse)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const streamingContent = useChatStore((s) => s.streamingContent)
-  const streamingThinking = useChatStore((s) => s.streamingThinking)
-  const streamingEvents = useChatStore((s) => s.streamingEvents)
-  const activeToolCalls = useChatStore((s) => s.activeToolCalls)
+  // Streaming state lives per-session in `streamsBySession` since Task 5
+  // (background completions). Read the slot for the active session — the
+  // `EMPTY_STREAM` defaults match the old top-level zero values.
+  const stream = useChatStore((s) =>
+    effectiveSessionId ? s.streamsBySession.get(effectiveSessionId) ?? null : null,
+  )
+  const isWaitingForResponse = stream?.isWaitingForResponse ?? false
+  const isStreaming = stream?.isStreaming ?? false
+  const streamingContent = stream?.streamingContent ?? ''
+  const streamingThinking = stream?.streamingThinking ?? ''
+  const streamingEvents = stream?.streamingEvents ?? []
+  const activeToolCalls = stream?.activeToolCalls ?? []
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
@@ -744,7 +750,7 @@ export function ChatView({ persona }: ChatViewProps) {
         created_at: new Date().toISOString(),
       }
       useChatStore.getState().appendMessage(optimisticMsg)
-      useChatStore.getState().setWaitingForResponse(true)
+      useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
 
       if (isIncognito) {
         const allMessages = useChatStore.getState().messages
@@ -872,7 +878,7 @@ export function ChatView({ persona }: ChatViewProps) {
         const store = useChatStore.getState()
         store.truncateAfter(messageId)
         store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
+        store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
         const allMessages = useChatStore.getState().messages
         sendMessage({
           type: 'chat.incognito.send',
@@ -889,7 +895,7 @@ export function ChatView({ persona }: ChatViewProps) {
         const store = useChatStore.getState()
         store.truncateAfter(messageId)
         store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true)
+        store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
         sendMessage({
           type: 'chat.edit',
           session_id: effectiveSessionId,
@@ -912,7 +918,7 @@ export function ChatView({ persona }: ChatViewProps) {
       const msgs = store.messages
       const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
       if (lastAssistant) store.deleteMessage(lastAssistant.id)
-      store.setWaitingForResponse(true)
+      store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
       const allMessages = useChatStore.getState().messages
       sendMessage({
         type: 'chat.incognito.send',
@@ -922,7 +928,7 @@ export function ChatView({ persona }: ChatViewProps) {
         messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
       })
     } else {
-      useChatStore.getState().setWaitingForResponse(true)
+      useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
       sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId, correlation_id: correlationId })
     }
   }, [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup])
@@ -1533,6 +1539,9 @@ export function ChatView({ persona }: ChatViewProps) {
               streamingEvents={streamingEvents} activeToolCalls={activeToolCalls}
               isWaitingForResponse={isWaitingForResponse}
               isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
+              visionDescriptions={stream?.visionDescriptions ?? {}}
+              streamingCorrelationId={stream?.correlationId ?? null}
+              streamingSlow={stream?.streamingSlow ?? false}
               containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
               onEdit={handleEdit} onRegenerate={handleRegenerate}
               bookmarkedMessageIds={bookmarkedMessageIds}

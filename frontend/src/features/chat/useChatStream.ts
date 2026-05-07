@@ -41,10 +41,19 @@ export function handleChatEvent(
   const getStore = useChatStore.getState
   const p = event.payload as Record<string, unknown>
 
+  // The hook is invoked with the active chat session id. Every event we
+  // handle here is gated by `session_id === sessionId` (or by matching the
+  // active correlationId), so the streaming-action sessionId opt is always
+  // the hook's `sessionId`. Background-completion handling — listening for
+  // events whose session_id does NOT match the active one — is added by
+  // Tasks 6 and 7 (multi-Group registry + voice teardown rework).
+  if (!sessionId) return
+  const writeOpts = { sessionId }
+
   switch (event.type) {
     case Topics.CHAT_STREAM_STARTED: {
       if (p.session_id !== sessionId) return
-      getStore().startStreaming(event.correlation_id)
+      getStore().startStreaming(event.correlation_id, writeOpts)
       // Create tag buffer for this streaming session.
       const enabledIds = useIntegrationsStore.getState().getEnabledIds()
       if (enabledIds.length > 0) {
@@ -74,7 +83,7 @@ export function handleChatEvent(
         const correlationId = event.correlation_id
         activeTagBuffer = new ResponseTagBuffer(
           (placeholder, replacement) => {
-            getStore().replaceInStreamingContent(placeholder, replacement)
+            getStore().replaceInStreamingContent(placeholder, replacement, writeOpts)
           },
           streamSource,
           sharedMap,
@@ -99,13 +108,15 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_THINKING_DELTA: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().appendStreamingThinking(p.delta as string)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().appendStreamingThinking(p.delta as string, writeOpts)
       break
     }
     case Topics.CHAT_STREAM_SLOW: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().setStreamingSlow(true)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().setStreamingSlow(true, writeOpts)
       break
     }
     case Topics.CHAT_VISION_DESCRIPTION: {
@@ -116,22 +127,24 @@ export function handleChatEvent(
         status: p.status as 'pending' | 'success' | 'error',
         text: (p.text as string | null) ?? null,
         error: (p.error as string | null) ?? null,
-      })
+      }, writeOpts)
       break
     }
     case Topics.CHAT_TOOL_CALL_STARTED: {
-      if (event.correlation_id !== getStore().correlationId) return
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
       getStore().addToolCall({
         id: p.tool_call_id as string,
         toolName: p.tool_name as string,
         arguments: p.arguments as Record<string, unknown>,
         status: 'running',
-      })
+      }, writeOpts)
       break
     }
     case Topics.CHAT_TOOL_CALL_COMPLETED: {
-      if (event.correlation_id !== getStore().correlationId) return
-      getStore().completeToolCall(p.tool_call_id as string)
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().completeToolCall(p.tool_call_id as string, writeOpts)
       const artefactRef = p.artefact_ref as ArtefactRef | null | undefined
       const imageRefsRaw = p.image_refs as unknown
       const moderatedCount = (p.moderated_count as number | undefined) ?? 0
@@ -155,14 +168,14 @@ export function handleChatEvent(
           success: false,
           moderated_count: moderatedCount,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       } else if (artefactRef) {
         const entry: TimelineEntry = {
           kind: 'artefact',
           seq: 0,
           ref: artefactRef,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       } else if (toolName === 'generate_image') {
         // Mirrors the artefact_ref pattern: the inference loop attaches
         // image_refs to the tool_call.completed event for generate_image so
@@ -176,7 +189,7 @@ export function handleChatEvent(
             refs,
             moderated_count: moderatedCount,
           }
-          getStore().appendStreamingEvent(entry)
+          getStore().appendStreamingEvent(entry, writeOpts)
         }
       } else if (
         toolName
@@ -198,19 +211,20 @@ export function handleChatEvent(
           success,
           moderated_count: moderatedCount,
         }
-        getStore().appendStreamingEvent(entry)
+        getStore().appendStreamingEvent(entry, writeOpts)
       }
       break
     }
     case Topics.CHAT_WEB_SEARCH_CONTEXT: {
-      if (event.correlation_id !== getStore().correlationId) return
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
       const items = p.items as Array<{ title: string; url: string; snippet: string; source_type?: 'search' | 'fetch' }>
       const entry: TimelineEntry = {
         kind: 'web_search',
         seq: 0,
         items,
       }
-      getStore().appendStreamingEvent(entry)
+      getStore().appendStreamingEvent(entry, writeOpts)
       break
     }
     case Topics.CHAT_STREAM_ENDED: {
@@ -232,7 +246,7 @@ export function handleChatEvent(
       // Flush incomplete tag buffer
       if (activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder)
+        if (remainder) getStore().appendStreamingContent(remainder, writeOpts)
         activeTagBuffer = null
       }
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
@@ -260,7 +274,8 @@ export function handleChatEvent(
       // Refused messages may have no content — still persist them so
       // the refusal band shows immediately without a page refresh.
       const backendMessageId = p.message_id as string | undefined
-      const content = getStore().streamingContent
+      const slot = getStore().getStreamFor(sessionId)
+      const content = slot?.streamingContent ?? ''
       // Backend sends raw assistant content (with unprocessed integration
       // tags) so the persisted message in the store carries the same
       // string the database holds. ReadAloud re-parses the tags from this
@@ -269,8 +284,8 @@ export function handleChatEvent(
       // backends that have not rolled out raw_content yet.
       const rawContent = (p.raw_content as string | null | undefined) ?? null
       const persistedContent = rawContent ?? content
-      const thinking = getStore().streamingThinking
-      const refusalText = getStore().streamingRefusalText
+      const thinking = slot?.streamingThinking ?? ''
+      const refusalText = slot?.streamingRefusalText ?? null
       // The persisted timeline arrives on the stream-ended payload as
       // `events`. We adopt it verbatim — anything we accumulated client-side
       // during the stream is discarded by `finishStreaming`. While the
@@ -279,7 +294,7 @@ export function handleChatEvent(
       const persistedEvents = p.events as TimelineEntry[] | null | undefined
       const events: TimelineEntry[] = Array.isArray(persistedEvents)
         ? persistedEvents
-        : getStore().streamingEvents
+        : (slot?.streamingEvents ?? [])
       // Auto-read trigger: if the session has auto-read on and the message
       // completed normally with content, signal the ReadAloudButton for this
       // messageId to start playback. Lives here (not in AssistantMessage)
@@ -333,6 +348,7 @@ export function handleChatEvent(
           usedTokens,
           maxTokens,
           livePillContents,
+          writeOpts,
         )
       } else {
         // No persisted message and not an incognito chat — discard the
@@ -341,11 +357,8 @@ export function handleChatEvent(
         // that produced zero content AND zero thinking. If it ever fires
         // with non-empty streamed content, investigate: it indicates a
         // backend persistence regression.
-        getStore().cancelStreaming()
+        getStore().cancelStreaming(writeOpts)
       }
-      getStore().setContextStatus(contextStatus)
-      getStore().setContextFillPercentage(fillPercentage)
-      getStore().setContextTokens(usedTokens, maxTokens)
       break
     }
     case Topics.CHAT_STREAM_ERROR: {
@@ -363,7 +376,8 @@ export function handleChatEvent(
         'edit_failed',
       ])
       const isSessionError = sessionLevelCodes.has(errorCode)
-      if (!isSessionError && event.correlation_id !== getStore().correlationId) return
+      const slot = getStore().getStreamFor(sessionId)
+      if (!isSessionError && event.correlation_id !== slot?.correlationId) return
 
       const recoverable = p.recoverable as boolean
       const userMessage = p.user_message as string
@@ -372,7 +386,7 @@ export function handleChatEvent(
         recoverable,
         userMessage,
       })
-      getStore().setWaitingForResponse(false)
+      getStore().setWaitingForResponse(false, writeOpts)
 
       // Flush the tag buffer here too: a stream that errors before its
       // CHAT_STREAM_ENDED counterpart still has parked effects in the
@@ -380,12 +394,12 @@ export function handleChatEvent(
       // those triggers entirely.
       if (activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder)
+        if (remainder) getStore().appendStreamingContent(remainder, writeOpts)
         activeTagBuffer = null
       }
 
       if (errorCode === 'refusal') {
-        getStore().setStreamingRefusalText(userMessage)
+        getStore().setStreamingRefusalText(userMessage, writeOpts)
       }
 
       // Session-level errors have their own banner path (ChatView

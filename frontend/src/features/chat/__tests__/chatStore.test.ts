@@ -2,18 +2,20 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useChatStore } from '../../../core/store/chatStore'
 import type { ChatMessageDto } from '../../../core/api/chat'
 
+const SESSION_ID = 'session-test'
+const opts = { sessionId: SESSION_ID }
+
 describe('chatStore', () => {
   beforeEach(() => {
-    useChatStore.getState().reset()
+    // Reset to a known sessionId so finishStreaming knows the active session
+    // and appends the persisted message into the visible transcript.
+    useChatStore.getState().reset(SESSION_ID)
   })
 
   it('starts with empty state', () => {
     const state = useChatStore.getState()
     expect(state.messages).toEqual([])
-    expect(state.isStreaming).toBe(false)
-    expect(state.correlationId).toBeNull()
-    expect(state.streamingContent).toBe('')
-    expect(state.streamingThinking).toBe('')
+    expect(state.getStreamFor(SESSION_ID)).toBeNull()
     expect(state.contextStatus).toBe('green')
   })
 
@@ -27,48 +29,44 @@ describe('chatStore', () => {
   })
 
   it('appendStreamingContent accumulates deltas', () => {
-    const { startStreaming, appendStreamingContent } = useChatStore.getState()
-    startStreaming('corr-1')
-    appendStreamingContent('Hello ')
-    appendStreamingContent('world')
-    expect(useChatStore.getState().streamingContent).toBe('Hello world')
+    const { startStreaming, appendStreamingContent, getStreamFor } = useChatStore.getState()
+    startStreaming('corr-1', opts)
+    appendStreamingContent('Hello ', opts)
+    appendStreamingContent('world', opts)
+    expect(getStreamFor(SESSION_ID)?.streamingContent).toBe('Hello world')
   })
 
   it('appendStreamingThinking accumulates deltas', () => {
-    const { startStreaming, appendStreamingThinking } = useChatStore.getState()
-    startStreaming('corr-1')
-    appendStreamingThinking('Let me think...')
-    appendStreamingThinking(' about this.')
-    expect(useChatStore.getState().streamingThinking).toBe('Let me think... about this.')
+    const { startStreaming, appendStreamingThinking, getStreamFor } = useChatStore.getState()
+    startStreaming('corr-1', opts)
+    appendStreamingThinking('Let me think...', opts)
+    appendStreamingThinking(' about this.', opts)
+    expect(getStreamFor(SESSION_ID)?.streamingThinking).toBe('Let me think... about this.')
   })
 
   it('finishStreaming assembles final message and resets streaming state', () => {
-    const { startStreaming, appendStreamingContent, appendStreamingThinking, finishStreaming } = useChatStore.getState()
-    startStreaming('corr-1')
-    appendStreamingContent('Answer')
-    appendStreamingThinking('Reasoning')
+    const { startStreaming, appendStreamingContent, appendStreamingThinking, finishStreaming, getStreamFor } = useChatStore.getState()
+    startStreaming('corr-1', opts)
+    appendStreamingContent('Answer', opts)
+    appendStreamingThinking('Reasoning', opts)
     finishStreaming({
       id: 'msg-1', session_id: 's1', role: 'assistant', content: 'Answer',
       thinking: 'Reasoning', web_search_context: null, attachments: null, knowledge_context: null, token_count: 10, created_at: '2026-01-01T00:00:00Z',
-    }, 'yellow', 0.55)
+    }, 'yellow', 0.55, 0, 0, undefined, opts)
 
     const state = useChatStore.getState()
-    expect(state.isStreaming).toBe(false)
-    expect(state.streamingContent).toBe('')
-    expect(state.streamingThinking).toBe('')
+    expect(getStreamFor(SESSION_ID)).toBeNull()
     expect(state.messages[state.messages.length - 1]?.content).toBe('Answer')
     expect(state.contextStatus).toBe('yellow')
     expect(state.contextFillPercentage).toBe(0.55)
   })
 
   it('cancelStreaming resets streaming state', () => {
-    const { startStreaming, appendStreamingContent, cancelStreaming } = useChatStore.getState()
-    startStreaming('corr-1')
-    appendStreamingContent('Partial ans')
-    cancelStreaming()
-    const state = useChatStore.getState()
-    expect(state.isStreaming).toBe(false)
-    expect(state.streamingContent).toBe('')
+    const { startStreaming, appendStreamingContent, cancelStreaming, getStreamFor } = useChatStore.getState()
+    startStreaming('corr-1', opts)
+    appendStreamingContent('Partial ans', opts)
+    cancelStreaming(opts)
+    expect(getStreamFor(SESSION_ID)).toBeNull()
   })
 
   it('truncateAfter removes messages after given ID', () => {
@@ -126,38 +124,39 @@ describe('chatStore', () => {
     expect(useChatStore.getState().activeSessionId).toBeNull()
   })
 
-  it('streamingSlow defaults to false', () => {
+  it('streamingSlow defaults to false (no slot)', () => {
     const state = useChatStore.getState()
-    expect(state.streamingSlow).toBe(false)
+    expect(state.getStreamFor(SESSION_ID)).toBeNull()
   })
 
   it('setStreamingSlow sets the flag to true', () => {
-    useChatStore.getState().setStreamingSlow(true)
-    expect(useChatStore.getState().streamingSlow).toBe(true)
+    useChatStore.getState().setStreamingSlow(true, opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingSlow).toBe(true)
   })
 
   it('appendStreamingContent clears streamingSlow', () => {
-    useChatStore.getState().setStreamingSlow(true)
-    useChatStore.getState().appendStreamingContent('hi')
-    expect(useChatStore.getState().streamingSlow).toBe(false)
+    useChatStore.getState().setStreamingSlow(true, opts)
+    useChatStore.getState().appendStreamingContent('hi', opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingSlow).toBe(false)
   })
 
   it('appendStreamingThinking clears streamingSlow', () => {
-    useChatStore.getState().setStreamingSlow(true)
-    useChatStore.getState().appendStreamingThinking('thought')
-    expect(useChatStore.getState().streamingSlow).toBe(false)
+    useChatStore.getState().setStreamingSlow(true, opts)
+    useChatStore.getState().appendStreamingThinking('thought', opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingSlow).toBe(false)
   })
 
   it('startStreaming resets streamingSlow', () => {
-    useChatStore.getState().setStreamingSlow(true)
-    useChatStore.getState().startStreaming('corr-2')
-    expect(useChatStore.getState().streamingSlow).toBe(false)
+    useChatStore.getState().setStreamingSlow(true, opts)
+    useChatStore.getState().startStreaming('corr-2', opts)
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingSlow).toBe(false)
   })
 
   it('cancelStreaming clears streamingSlow', () => {
-    useChatStore.getState().setStreamingSlow(true)
-    useChatStore.getState().cancelStreaming()
-    expect(useChatStore.getState().streamingSlow).toBe(false)
+    useChatStore.getState().setStreamingSlow(true, opts)
+    useChatStore.getState().cancelStreaming(opts)
+    // After cancelStreaming, the slot is cleared entirely.
+    expect(useChatStore.getState().getStreamFor(SESSION_ID)).toBeNull()
   })
 })
 

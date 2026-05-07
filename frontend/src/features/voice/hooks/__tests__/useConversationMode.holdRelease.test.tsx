@@ -106,9 +106,10 @@ function resetConvModeStore() {
 }
 
 function resetChatStore() {
+  // Streaming state moved into per-session slots; emptying the map yields
+  // the same "no stream" semantics the old top-level fields expressed.
   useChatStore.setState({
-    isStreaming: false,
-    isWaitingForResponse: false,
+    streamsBySession: new Map(),
     reasoningOverride: null,
   })
 }

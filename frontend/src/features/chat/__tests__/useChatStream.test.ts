@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useChatStore } from '../../../core/store/chatStore'
+import { useChatStore, type SessionStreamingState } from '../../../core/store/chatStore'
 import { handleChatEvent } from '../useChatStream'
 import type { BaseEvent } from '../../../core/types/events'
+import type { TimelineEntry } from '../../../core/api/chat'
 
 // Mock the notification store so we can spy on addNotification without
 // importing the real Zustand store which may have side-effects.
@@ -15,6 +16,8 @@ vi.mock('../../../core/store/notificationStore', () => ({
 // Mock sendMessage — we pass it as a parameter but some cases invoke it
 // inside action callbacks; we only need to verify it is not called here.
 const mockSendMessage = vi.fn()
+
+const SESSION_ID = 's1'
 
 function makeEvent(overrides: Partial<BaseEvent> & { type: string }): BaseEvent {
   return {
@@ -30,15 +33,41 @@ function makeEvent(overrides: Partial<BaseEvent> & { type: string }): BaseEvent 
 
 type StoreState = ReturnType<typeof useChatStore.getState>
 
+/** Seed the per-session streaming slot with a partial overlay over the
+ * empty defaults. Replaces the old `useChatStore.setState({ ... })` pattern
+ * which used to set top-level streaming fields directly — those moved into
+ * `streamsBySession` in Task 5. */
+function seedStream(patch: Partial<SessionStreamingState>): void {
+  const empty: SessionStreamingState = {
+    isWaitingForResponse: false,
+    isStreaming: false,
+    correlationId: null,
+    streamingContent: '',
+    streamingThinking: '',
+    streamingEvents: [],
+    streamingRefusalText: null,
+    activeToolCalls: [],
+    visionDescriptions: {},
+    streamingSlow: false,
+  }
+  const next = new Map<string, SessionStreamingState>()
+  next.set(SESSION_ID, { ...empty, ...patch })
+  useChatStore.setState({
+    streamsBySession: next,
+    activeSessionId: SESSION_ID,
+  } as Partial<StoreState> as StoreState)
+}
+
+function readStream(): SessionStreamingState | null {
+  return useChatStore.getState().getStreamFor(SESSION_ID)
+}
+
 describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
   beforeEach(() => {
     mockAddNotification.mockReset()
     mockSendMessage.mockReset()
-    useChatStore.setState({
-      correlationId: 'c1',
-      streamingEvents: [],
-      activeToolCalls: [],
-    } as Partial<StoreState> as StoreState)
+    useChatStore.getState().reset(SESSION_ID)
+    seedStream({ correlationId: 'c1', isStreaming: true })
   })
 
   it('appends an artefact timeline entry when artefact_ref is present', () => {
@@ -61,7 +90,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('artefact')
     if (events[0].kind === 'artefact') {
@@ -85,7 +114,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    expect(useChatStore.getState().streamingEvents).toEqual([])
+    expect(readStream()?.streamingEvents ?? []).toEqual([])
   })
 
   it('appends an image entry for generate_image with refs', () => {
@@ -108,7 +137,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('image')
     if (events[0].kind === 'image') {
@@ -131,7 +160,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('tool_call')
     if (events[0].kind === 'tool_call') {
@@ -154,7 +183,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('tool_call')
     if (events[0].kind === 'tool_call') {
@@ -177,7 +206,7 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('tool_call')
     if (events[0].kind === 'tool_call') {
@@ -191,11 +220,8 @@ describe('useChatStream — CHAT_WEB_SEARCH_CONTEXT', () => {
   beforeEach(() => {
     mockAddNotification.mockReset()
     mockSendMessage.mockReset()
-    useChatStore.setState({
-      correlationId: 'c1',
-      streamingEvents: [],
-      activeToolCalls: [],
-    } as Partial<StoreState> as StoreState)
+    useChatStore.getState().reset(SESSION_ID)
+    seedStream({ correlationId: 'c1', isStreaming: true })
   })
 
   it('appends a web_search timeline entry', () => {
@@ -211,7 +237,7 @@ describe('useChatStream — CHAT_WEB_SEARCH_CONTEXT', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    const events = useChatStore.getState().streamingEvents
+    const events = readStream()?.streamingEvents ?? []
     expect(events).toHaveLength(1)
     expect(events[0].kind).toBe('web_search')
     if (events[0].kind === 'web_search') {
@@ -225,10 +251,8 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
   beforeEach(() => {
     mockAddNotification.mockReset()
     mockSendMessage.mockReset()
-    useChatStore.setState({
-      correlationId: 'c1',
-      streamingRefusalText: null,
-    } as Partial<StoreState> as StoreState)
+    useChatStore.getState().reset(SESSION_ID)
+    seedStream({ correlationId: 'c1', isStreaming: true, streamingRefusalText: null })
   })
 
   it('sets streamingRefusalText and uses "Request declined" toast title when error_code=refusal', () => {
@@ -244,7 +268,7 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    expect(useChatStore.getState().streamingRefusalText).toBe('Model declined your request.')
+    expect(readStream()?.streamingRefusalText).toBe('Model declined your request.')
     expect(mockAddNotification).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Request declined' }),
     )
@@ -263,7 +287,7 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    expect(useChatStore.getState().streamingRefusalText).toBeNull()
+    expect(readStream()?.streamingRefusalText ?? null).toBeNull()
     expect(mockAddNotification).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Response interrupted' }),
     )
@@ -282,7 +306,7 @@ describe('useChatStream — CHAT_STREAM_ERROR with refusal', () => {
 
     handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
 
-    expect(useChatStore.getState().streamingRefusalText).toBeNull()
+    expect(readStream()?.streamingRefusalText ?? null).toBeNull()
     expect(mockAddNotification).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Error' }),
     )
@@ -293,24 +317,17 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   beforeEach(() => {
     mockAddNotification.mockReset()
     mockSendMessage.mockReset()
-    useChatStore.setState({
-      correlationId: 'c1',
-      streamingContent: '',
-      streamingThinking: '',
-      streamingEvents: [],
-      streamingRefusalText: null,
-      messages: [],
-      activeToolCalls: [],
-      contextStatus: 'green',
-      contextFillPercentage: 0,
-    } as Partial<StoreState> as StoreState)
+    useChatStore.getState().reset(SESSION_ID)
+    seedStream({ correlationId: 'c1', isStreaming: true })
   })
 
   it('assembles final message with refused status and refusal_text', () => {
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: '',
       streamingRefusalText: 'declined',
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -330,11 +347,13 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('persists content-less refused messages on finish', () => {
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: '',
       streamingThinking: '',
       streamingRefusalText: 'declined',
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -351,16 +370,19 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('uses persisted events from stream-ended payload when present', () => {
-    useChatStore.setState({
+    const seededEvents: TimelineEntry[] = [
+      {
+        kind: 'web_search',
+        seq: 0,
+        items: [{ title: 'live', url: 'u', snippet: 's' }],
+      },
+    ]
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: 'body',
-      streamingEvents: [
-        {
-          kind: 'web_search',
-          seq: 0,
-          items: [{ title: 'live', url: 'u', snippet: 's' }],
-        },
-      ],
-    } as Partial<StoreState> as StoreState)
+      streamingEvents: seededEvents,
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -389,19 +411,22 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('falls back to streamingEvents when payload omits events (BE rollout lag)', () => {
-    useChatStore.setState({
-      streamingContent: 'body',
-      streamingEvents: [
-        {
-          kind: 'artefact',
-          seq: 0,
-          ref: {
-            artefact_id: 'a1', handle: 'h1', title: 't1',
-            artefact_type: 'code', operation: 'create',
-          },
+    const seededEvents: TimelineEntry[] = [
+      {
+        kind: 'artefact',
+        seq: 0,
+        ref: {
+          artefact_id: 'a1', handle: 'h1', title: 't1',
+          artefact_type: 'code', operation: 'create',
         },
-      ],
-    } as Partial<StoreState> as StoreState)
+      },
+    ]
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
+      streamingContent: 'body',
+      streamingEvents: seededEvents,
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -426,12 +451,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     // cancelStreaming and discarded the message the user just saw being
     // streamed. With Fix C the FE trusts ``backendMessageId`` whenever
     // present.
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: '',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -457,12 +484,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     // tags without an F5 reload. Without this, voice-mode replies
     // ending in `<screen_effect rising_emojis ...>` only fired the
     // effect after a hard refresh.
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: 'visible body​[effect:abc]​',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -482,12 +511,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('falls back to streamingContent when raw_content is absent (BE rollout lag)', () => {
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: 'streamed body',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -507,12 +538,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('falls back to streamingContent when raw_content is null', () => {
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: 'streamed body',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -532,13 +565,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
   })
 
   it('cancels streaming when no message_id is sent and no content was streamed', () => {
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: '',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-      messages: [],
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
@@ -558,13 +592,14 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     // Backwards-compat safety: if a future regression reintroduces a path
     // that streams content but fails to persist, we drop the optimistic
     // streaming state rather than fabricating an unpersisted message.
-    useChatStore.setState({
+    seedStream({
+      correlationId: 'c1',
+      isStreaming: true,
       streamingContent: 'streamed but unpersisted',
       streamingThinking: '',
       streamingEvents: [],
       streamingRefusalText: null,
-      messages: [],
-    } as Partial<StoreState> as StoreState)
+    })
     const event = makeEvent({
       type: 'chat.stream.ended',
       correlation_id: 'c1',
