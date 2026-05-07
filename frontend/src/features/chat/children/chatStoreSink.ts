@@ -1,4 +1,4 @@
-import type { GroupChild } from '../responseTaskGroup'
+import type { CancelReason, GroupChild } from '../responseTaskGroup'
 
 /**
  * Minimum shape of the chat store consumed by the sink. Keeps this module
@@ -43,13 +43,22 @@ export function createChatStoreSink(opts: ChatStoreSinkOpts): GroupChild {
       return Promise.resolve()
     },
 
-    onCancel(_reason, token: string): void {
+    onCancel(reason: CancelReason, token: string): void {
+      // Mismatched token → not our stream. Same defensive check as
+      // onDelta and onStreamEnd; cheap insurance against a future
+      // multi-session edge case where a stale token reaches the wrong
+      // sink and would otherwise wipe the wrong session's slot.
       if (token !== opts.correlationId) return
-      // Deliberately a no-op. The CHAT_STREAM_ENDED handler in useChatStream is
-      // authoritative for finalize-vs-cancel — it decides based on the backend's
-      // persisted partial content (message_id + content). Calling cancelStreaming()
-      // here would erase streamingContent before the handler can read it, causing
-      // the partial message to be lost.
+      // Background-completion semantics: 'teardown' = the UI is
+      // unmounting (persona switch, history view, etc.) but the
+      // inference is still running on the backend. Leave the streaming
+      // slot in place so a future remount of the same session resumes
+      // the live stream. Every other reason is a definitive end (user
+      // pressed Stop, a new send superseded this one, etc.) — wipe the
+      // slot now so the partial bubble disappears immediately on user
+      // intent, without waiting for CHAT_STREAM_ENDED from the server.
+      if (reason === 'teardown') return
+      opts.chatStore.cancelStreaming(writeOpts)
     },
 
     teardown(): void {},
