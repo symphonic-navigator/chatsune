@@ -7,6 +7,7 @@ import { useViewport } from "../../../core/hooks/useViewport"
 import { PINNED_STRIPE_STYLE } from "./pinnedStripe"
 import { KissMarkIcon } from "../../../core/components/symbols"
 import { FloatingMenu } from "../floating/FloatingMenu"
+import { StreamingIndicatorDot } from "../../../features/chat/StreamingIndicatorDot"
 
 type MenuEntry =
   | { divider: true }
@@ -24,6 +25,14 @@ function memoryDotColour(count: number): string {
 interface PersonaItemProps {
   persona: PersonaDto
   isActive: boolean
+  /**
+   * Id of any session belonging to this persona that is currently
+   * streaming a response. When provided, a subtle pulse-dot is rendered
+   * next to the persona name to surface background completions in
+   * personas other than the active one. The Sidebar computes this from
+   * the chat-sessions list and `chatStore.streamsBySession`.
+   */
+  streamingSessionId?: string | null
   onSelect: (persona: PersonaDto) => void
   onNewChat: (persona: PersonaDto) => void
   onNewIncognitoChat: (persona: PersonaDto) => void
@@ -36,6 +45,7 @@ interface PersonaItemProps {
 export function PersonaItem({
   persona,
   isActive,
+  streamingSessionId,
   onSelect,
   onNewChat,
   onNewIncognitoChat,
@@ -85,10 +95,11 @@ export function PersonaItem({
       </div>
 
       <span
-        className={`min-w-0 flex-1 truncate text-[13px] transition-colors
+        className={`flex min-w-0 flex-1 items-center gap-1.5 truncate text-[13px] transition-colors
           ${isActive ? "text-white/90" : "text-white/50 group-hover:text-white/75"}`}
       >
-        {persona.name}
+        {streamingSessionId && <StreamingIndicatorDot sessionId={streamingSessionId} />}
+        <span className="truncate">{persona.name}</span>
       </span>
 
       {uncommittedCount > 0 && (

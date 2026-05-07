@@ -175,6 +175,25 @@ body {
   }
 }
 
+/* Subtle pulse for the sidebar streaming-dot indicator. Softer than
+ * `animate-pulse-slow` — opacity oscillates between 0.4 and 0.95 so the
+ * dot stays clearly visible at the dim end. */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 0.95; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-soft {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Toast animations */
 @keyframes toastEnter {
   from {
