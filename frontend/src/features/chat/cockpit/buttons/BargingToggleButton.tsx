@@ -63,7 +63,7 @@ export function BargingToggleButton() {
       onClick={toggle}
       title={title}
       aria-label={title}
-      aria-pressed={!enabled}
+      aria-pressed={enabled}
       data-barge-state={state}
       className={className}
     >

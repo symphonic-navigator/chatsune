@@ -51,10 +51,13 @@ describe('BargingToggleButton', () => {
   it('toggles the store on click', () => {
     useBargeSettingsStore.setState({ enabled: true })
     render(<BargingToggleButton />)
+    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button'))
     expect(useBargeSettingsStore.getState().enabled).toBe(false)
+    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'false')
     fireEvent.click(screen.getByRole('button'))
     expect(useBargeSettingsStore.getState().enabled).toBe(true)
+    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('uses tooltip text matching the active state', () => {
