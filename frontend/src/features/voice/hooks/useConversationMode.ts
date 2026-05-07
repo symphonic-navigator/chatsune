@@ -423,9 +423,11 @@ export function useConversationMode({
    * the pending barge is cancelled and nothing is muted.
    */
   const handleSpeechStart = useCallback(() => {
+    // Internal ref always tracks the VAD-tracking window, even when the
+    // onset is going to be suppressed. Other handlers (speech-end,
+    // misfire, hold-release) read this ref to reason about the
+    // utterance lifecycle.
     vadActiveRef.current = true
-    setVadActive(true)
-    micActivity.setVadActive(true)
     if (!activeRef.current) return
     // Two reasons to behave as if the mic were muted: the user has
     // explicitly muted it, OR the user has barging turned off and the
@@ -445,8 +447,15 @@ export function useConversationMode({
           bargingEnabled: false,
         })
       }
+      // Deliberately do NOT publish vadActive to the store or micActivity:
+      // the onset is being dropped, so the UI must not flip into the
+      // 'user-speaking' phase (which would render the Hold-to-keep-talking
+      // button) and the visualiser must not pulse.
       return
     }
+    // Past the gate — publish vad-active so the UI reacts.
+    setVadActive(true)
+    micActivity.setVadActive(true)
     utteranceStartedWhileMutedRef.current = false
     // In paused mode, audio routes to Vosk only — no upstream STT, no barge,
     // no controller. Without this short-circuit, executeBarge() would create
