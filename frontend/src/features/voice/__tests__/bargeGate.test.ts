@@ -7,6 +7,8 @@ describe('shouldSuppressBarge', () => {
     expect(shouldSuppressBarge({ enabled: true, groupState: 'streaming' })).toBe(false)
     expect(shouldSuppressBarge({ enabled: true, groupState: 'tailing' })).toBe(false)
     expect(shouldSuppressBarge({ enabled: true, groupState: 'before-first-delta' })).toBe(false)
+    expect(shouldSuppressBarge({ enabled: true, groupState: 'done' })).toBe(false)
+    expect(shouldSuppressBarge({ enabled: true, groupState: 'cancelled' })).toBe(false)
   })
 
   it('returns true when disabled and group is in speaking phase', () => {
@@ -24,5 +26,13 @@ describe('shouldSuppressBarge', () => {
   it('returns false when disabled and there is no active group', () => {
     // Phase listening — barging-off must not suppress fresh speech.
     expect(shouldSuppressBarge({ enabled: false, groupState: null })).toBe(false)
+  })
+
+  it('returns false when disabled and the group has reached a terminal state', () => {
+    // done / cancelled = the response task group has already finished.
+    // Suppression only makes sense while audio is actively playing (streaming/tailing);
+    // a finished group should not block a new barge attempt.
+    expect(shouldSuppressBarge({ enabled: false, groupState: 'done' })).toBe(false)
+    expect(shouldSuppressBarge({ enabled: false, groupState: 'cancelled' })).toBe(false)
   })
 })
