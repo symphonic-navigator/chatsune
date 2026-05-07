@@ -427,24 +427,21 @@ export function useConversationMode({
     setVadActive(true)
     micActivity.setVadActive(true)
     if (!activeRef.current) return
-    // Mic muted: VAD keeps running (so the UI sees the indicator), but no
-    // barge fires, no utterance is recorded, no STT pipeline is triggered.
-    // Mark the utterance as muted-origin so speech-end drops it even if the
-    // user unmutes before the VAD detects the silence boundary.
     // Two reasons to behave as if the mic were muted: the user has
     // explicitly muted it, OR the user has barging turned off and the
     // persona is currently speaking. Both paths share the same effect:
     // VAD keeps running for the indicator, but no barge fires, no
     // utterance is recorded, and no STT pipeline is triggered.
+    const groupStateForLog = getActiveGroup()?.state ?? null
     const bargeSuppressed = shouldSuppressBarge({
       enabled: useBargeSettingsStore.getState().enabled,
-      groupState: getActiveGroup()?.state ?? null,
+      groupState: groupStateForLog,
     })
     if (micMutedRef.current || bargeSuppressed) {
       utteranceStartedWhileMutedRef.current = true
       if (bargeSuppressed && !micMutedRef.current) {
         console.info('[BargeGate] suppressed VAD onset', {
-          groupState: getActiveGroup()?.state,
+          groupState: groupStateForLog,
           bargingEnabled: false,
         })
       }
