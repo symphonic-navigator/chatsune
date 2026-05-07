@@ -37,3 +37,66 @@ behaviour.
 
 When adding new portalled overlays, EITHER inherit the math from
 FloatingMenu OR keep them outside any transformed ancestor.
+
+---
+
+## "User is speaking" lives in three layers — gating one of them is not enough
+
+Surfaced during the barging-toggle build (May 2026). When suppressing
+incoming VAD onsets while barging is off + persona speaking, the obvious
+fix — gating `bargeController.start()` in `useConversationMode.handleSpeechStart`
+— turned out to be **necessary but not sufficient**. Two visible UI
+elements still flashed during a "should be invisible" suppressed onset,
+because they read state from sibling layers that the hook gate doesn't
+touch.
+
+The three independent state surfaces, each living one layer apart:
+
+1. **Hook layer** — `useConversationMode.handleSpeechStart` calls
+   `setVadActive(true)` and `micActivity.setVadActive(true)`. The first
+   feeds `derivePhase`, which derives `phase = 'user-speaking'`, which
+   gates the `HoldToKeepTalking` overlay. The second feeds the
+   `VoiceVisualiser` pulse animation. Both are decoupled from the
+   barge-controller path.
+2. **Capture layer** — `audioCapture.handleVadFrame` runs at ~96 ms
+   cadence (one VAD frame). Once silence frames cross
+   `GRACE_FRAMES`, it opens `pauseRedemptionStore` and the
+   `VoiceCountdownPie` becomes visible. This loop has zero awareness
+   of the hook's barge-suppression decision — it only knows raw VAD
+   probabilities.
+3. **Controller layer** — `bargeController.start()` pauses the active
+   `ResponseTaskGroup` and starts STT. Gated cleanly by the suppression
+   check.
+
+Initial fix only addressed (3). UI then showed a flash of the Hold
+overlay (driven by 1) and the countdown pie (driven by 2) for every
+suppressed onset — the audio path was correctly silent, but the user
+saw two false signals that *something* was being processed.
+
+Fixes that actually landed:
+
+- Layer 1: defer `setVadActive` and `micActivity.setVadActive` until
+  *past* the suppression early-return, so phase never enters
+  `user-speaking` for a dropped onset
+  (`useConversationMode.ts:425-472`). The internal `vadActiveRef`
+  ref stays set before the gate — other handlers (`handleSpeechEnd`,
+  `handleMisfire`, hold-release) need it true to reason about utterance
+  lifecycle. Public state (store + visualiser) is what's gated; private
+  state (refs) is not.
+- Layer 2: hide the countdown pie at its render site when barging is
+  off and `phase === 'speaking'`
+  (`VoiceCountdownPie.tsx`). Same logical predicate as the hook gate,
+  expressed via `usePhase()` for reactivity. Did NOT push the gate down
+  into `audioCapture.handleVadFrame` — the capture layer sits below the
+  conversation-mode hook in the dependency graph and shouldn't import
+  upward.
+
+Heuristic for next time: when adding a "suppress audio path" feature,
+list every UI element that reflects "user is speaking" *somewhere*
+(phase pill, visualiser pulse, hold overlay, countdown pie, mic
+indicator on the cockpit button…). For each, find its source store and
+ask whether that store is downstream of your gate or not. The ones that
+aren't need their own predicate at the render site or just before they
+write to their store. The audio path being silent is necessary but
+weakly correlated with the UI being silent — they're separate
+correctness properties.
