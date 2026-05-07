@@ -348,18 +348,3 @@ To be exercised on a real device (mobile and desktop) before merge:
   it occupies the same slot as `ⓘ` on mobile, which has been working
   fine; visual review at the smallest supported breakpoint
   (`375px` for iPhone SE) is part of manual verification.
-
----
-
-## Out-of-scope follow-ups
-
-These are explicitly deferred and may surface as their own briefs after
-tester feedback:
-
-- A first-use hint or tooltip-on-mount pointing the toggle out.
-- Server-side sync of the preference across devices (would conflict
-  with the per-environment intent and is not currently desired).
-- Per-persona barging defaults (e.g. a persona that should never be
-  interrupted regardless of user setting).
-- Hard-disable barging via persona config (separate concern from this
-  user-controlled, per-device toggle).
