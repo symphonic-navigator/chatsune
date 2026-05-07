@@ -111,10 +111,12 @@ def _format_pti_knowledge_block(items: list[dict]) -> str:
 # Active cancel events keyed by correlation_id
 _cancel_events: dict[str, asyncio.Event] = {}
 
-# Maps correlation_id -> user_id so cancel_all_for_user can filter in-flight
-# inferences by owner. Written by run_inference and handle_incognito_send,
-# cleaned up in their respective finally blocks.
-_cancel_user_ids: dict[str, str] = {}
+# Maps correlation_id -> (user_id, session_id) so cancel_inflight_for_session
+# can filter in-flight inferences by owner+session, and so the disconnect-
+# extraction anchor (Task 4) can answer "does this user have any inflight?".
+# Written by run_inference and handle_incognito_send, cleaned up in their
+# respective finally blocks.
+_inflight: dict[str, tuple[str, str]] = {}
 
 # Cancels can arrive before run_inference has finished resolving prompt/model
 # setup and registered its cancel_event. Keep a short tombstone so the event is
@@ -149,7 +151,8 @@ def request_cancel(correlation_id: str, user_id: str | None = None) -> bool:
         return False
     event = _cancel_events.get(correlation_id)
     if event is not None:
-        owner = _cancel_user_ids.get(correlation_id)
+        owner_session = _inflight.get(correlation_id)
+        owner = owner_session[0] if owner_session else None
         if user_id is None or owner is None or owner == user_id:
             event.set()
             return True
@@ -175,15 +178,44 @@ def _consume_pending_cancel(correlation_id: str, user_id: str) -> bool:
 async def cancel_all_for_user(user_id: str) -> int:
     """Cancel every in-flight inference belonging to the given user.
 
-    Used on WebSocket disconnect to avoid burning tokens on a response the
-    user will never see. Returns the number of inferences signalled.
+    Retained for tests and admin tooling. The WS-disconnect cleanup path
+    no longer calls this — it is replaced by per-session granularity at
+    the chat-handler layer.
     """
-    targets = [cid for cid, uid in _cancel_user_ids.items() if uid == user_id]
+    targets = [cid for cid, (uid, _sid) in _inflight.items() if uid == user_id]
     for cid in targets:
         event = _cancel_events.get(cid)
         if event is not None:
             event.set()
     return len(targets)
+
+
+async def cancel_inflight_for_session(user_id: str, session_id: str) -> int:
+    """Cancel every in-flight inference belonging to (user_id, session_id).
+
+    Used by chat.send / chat.edit / chat.regenerate to enforce the
+    per-session single-stream policy: a fresh user action in the same
+    session supersedes the running answer; cross-session activity does
+    not.
+    """
+    targets = [
+        cid for cid, (uid, sid) in _inflight.items()
+        if uid == user_id and sid == session_id
+    ]
+    for cid in targets:
+        event = _cancel_events.get(cid)
+        if event is not None:
+            event.set()
+    return len(targets)
+
+
+def _user_has_inflight(user_id: str) -> bool:
+    """True if at least one inflight inference exists for this user.
+
+    Read by the disconnect-extraction anchor (Task 4) so the trigger
+    fires only when the user is offline AND has no work pending.
+    """
+    return any(uid == user_id for uid, _sid in _inflight.values())
 
 
 def _make_tool_executor(
@@ -670,7 +702,7 @@ async def run_inference(
     correlation_id = correlation_id or str(uuid4())
     cancel_event = asyncio.Event()
     _cancel_events[correlation_id] = cancel_event
-    _cancel_user_ids[correlation_id] = user_id
+    _inflight[correlation_id] = (user_id, session_id)
     if _consume_pending_cancel(correlation_id, user_id):
         cancel_event.set()
 
@@ -940,7 +972,7 @@ async def run_inference(
         # and disconnect scenarios where the stream ends without exception.
         await repo.update_session_state(session_id, "idle")
         _cancel_events.pop(correlation_id, None)
-        _cancel_user_ids.pop(correlation_id, None)
+        _inflight.pop(correlation_id, None)
 
 
 async def emit_session_expired(user_id: str, session_id: str) -> None:

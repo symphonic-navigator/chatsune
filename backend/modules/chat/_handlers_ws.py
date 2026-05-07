@@ -13,7 +13,7 @@ from backend.modules.chat._emoji_extractor import extract_emojis
 from backend.modules.chat._inference import InferenceRunner
 from backend.modules.chat._orchestrator import (
     _cancel_events,
-    _cancel_user_ids,
+    _inflight,
     _consume_pending_cancel,
     _make_tool_executor,
     cancel_all_for_user,
@@ -702,7 +702,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         correlation_id = data.get("correlation_id") or str(uuid4())
         cancel_event = asyncio.Event()
         _cancel_events[correlation_id] = cancel_event
-        _cancel_user_ids[correlation_id] = user_id
+        _inflight[correlation_id] = (user_id, session_id)
         if _consume_pending_cancel(correlation_id, user_id):
             cancel_event.set()
 
@@ -774,6 +774,6 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             ))
         finally:
             _cancel_events.pop(correlation_id, None)
-            _cancel_user_ids.pop(correlation_id, None)
+            _inflight.pop(correlation_id, None)
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)

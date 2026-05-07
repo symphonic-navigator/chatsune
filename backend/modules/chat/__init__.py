@@ -22,6 +22,7 @@ from backend.modules.chat._handlers_ws import (
 )
 from backend.modules.chat._orchestrator import (
     cancel_all_for_user,
+    cancel_inflight_for_session,
     trigger_disconnect_extraction,
 )
 from backend.modules.chat._prompt_assembler import assemble_preview
@@ -436,6 +437,7 @@ __all__ = [
     "handle_chat_cancel", "handle_chat_retract",
     "handle_incognito_send", "update_session_title",
     "trigger_disconnect_extraction", "cancel_all_for_user",
+    "cancel_inflight_for_session",
     "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
