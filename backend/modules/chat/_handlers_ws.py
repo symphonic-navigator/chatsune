@@ -16,7 +16,7 @@ from backend.modules.chat._orchestrator import (
     _inflight,
     _consume_pending_cancel,
     _make_tool_executor,
-    cancel_all_for_user,
+    cancel_inflight_for_session,
     emit_session_expired,
     request_cancel,
     run_inference,
@@ -221,17 +221,15 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             )
             return
 
-        # Per-user single-stream policy: a new user action cancels any
-        # in-flight inference the user still has running. The old run's
-        # finally block will release the per-user inference lock shortly
-        # after the cancel event fires; the new run_inference call below
-        # then acquires it. Partially streamed content from the old run
-        # is persisted by the runner (see _inference.py).
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.send cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.send cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         # Resolve attachments if provided
@@ -427,12 +425,15 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             await emit_session_expired(user_id, session_id)
             return
 
-        # Per-user single-stream policy — see handle_chat_send.
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.edit cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.edit cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         # Validate message exists and belongs to this session
@@ -520,12 +521,15 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
             await emit_session_expired(user_id, session_id)
             return
 
-        # Per-user single-stream policy — see handle_chat_send.
-        cancelled = await cancel_all_for_user(user_id)
+        # Per-session single-stream policy: a new user action cancels
+        # the in-flight inference for *this session only*. Inferences
+        # in other sessions (e.g. the user's other persona) keep
+        # running in the background and persist when they finish.
+        cancelled = await cancel_inflight_for_session(user_id, session_id)
         if cancelled:
             _log.info(
-                "chat.regenerate cancelled %d in-flight inference(s) for user=%s",
-                cancelled, user_id,
+                "chat.regenerate cancelled %d in-flight inference(s) for session=%s user=%s",
+                cancelled, session_id, user_id,
             )
 
         last_msg = await repo.get_last_message(session_id)

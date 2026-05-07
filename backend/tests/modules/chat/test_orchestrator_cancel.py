@@ -69,3 +69,17 @@ def test_request_cancel_with_user_id_filter_rejects_other_user():
     fired = request_cancel("cor-1", user_id="user-b")
     assert fired is False
     assert not _cancel_events["cor-1"].is_set()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_sessions_do_not_cancel_each_other():
+    """User has two inflight inferences in two different sessions;
+    cancelling for one session must leave the other untouched."""
+    e_a = _register("cor-a", "user-a", "session-A")
+    e_b = _register("cor-b", "user-a", "session-B")
+
+    n = await cancel_inflight_for_session("user-a", "session-A")
+
+    assert n == 1
+    assert e_a.is_set()
+    assert not e_b.is_set()
