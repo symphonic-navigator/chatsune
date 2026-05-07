@@ -470,6 +470,18 @@ export function ChatView({ persona }: ChatViewProps) {
           tools: session.tools_enabled ?? false,
           autoRead: session.auto_read ?? false,
         })
+        // Reconcile a stale streaming slot: if the backend reports the
+        // session is idle (any in-flight inference has completed) but the
+        // frontend still shows isStreaming, clear the slot. Defensive —
+        // the un-gated CHAT_STREAM_ENDED handler covers the same-WS-session
+        // case, but this also covers reconnect / login scenarios where the
+        // END event was missed.
+        if (session.state === 'idle') {
+          const slot = useChatStore.getState().getStreamFor(sessionId)
+          if (slot?.isStreaming) {
+            useChatStore.getState().cancelStreaming({ sessionId })
+          }
+        }
       })
       .catch((err) => {
         if (cancelled) return

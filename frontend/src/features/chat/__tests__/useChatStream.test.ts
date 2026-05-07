@@ -615,3 +615,96 @@ describe('useChatStream — CHAT_STREAM_ENDED refusal and event persistence', ()
     expect(useChatStore.getState().messages).toHaveLength(0)
   })
 })
+
+describe('useChatStream — background-completion (non-active session)', () => {
+  beforeEach(() => {
+    mockAddNotification.mockReset()
+    mockSendMessage.mockReset()
+    useChatStore.setState({ streamsBySession: new Map() } as Partial<StoreState> as StoreState)
+  })
+
+  it('CHAT_STREAM_ENDED for a non-active session clears that session\'s slot', () => {
+    // Active session is B. A background stream is running for session A.
+    // The hook is bound to B; without un-gating, A's END event would be
+    // dropped and A's slot would stay isStreaming forever.
+    useChatStore.getState().reset('session-B')
+    useChatStore.getState().startStreaming('cor-A', { sessionId: 'session-A' })
+    useChatStore.getState().appendStreamingContent('partial', { sessionId: 'session-A' })
+
+    // Sanity: slot exists and is streaming.
+    expect(useChatStore.getState().getStreamFor('session-A')?.isStreaming).toBe(true)
+
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'cor-A',
+      payload: {
+        session_id: 'session-A',
+        message_id: 'm-bg',
+        status: 'completed',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(
+      event,
+      mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage,
+      'session-B',
+    )
+
+    // Slot for A is cleared.
+    expect(useChatStore.getState().getStreamFor('session-A')).toBeNull()
+    // The visible transcript (which is the active session B's) is NOT
+    // polluted with A's message — finishStreaming's isActive branch
+    // should have prevented that.
+    expect(useChatStore.getState().messages).toHaveLength(0)
+  })
+
+  it('CHAT_STREAM_ENDED without a backend message_id still clears a non-active session\'s slot', () => {
+    useChatStore.getState().reset('session-B')
+    useChatStore.getState().startStreaming('cor-A', { sessionId: 'session-A' })
+
+    const event = makeEvent({
+      type: 'chat.stream.ended',
+      correlation_id: 'cor-A',
+      payload: {
+        session_id: 'session-A',
+        // message_id absent
+        status: 'error',
+        context_status: 'green',
+        context_fill_percentage: 0,
+      },
+    })
+    handleChatEvent(
+      event,
+      mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage,
+      'session-B',
+    )
+
+    expect(useChatStore.getState().getStreamFor('session-A')).toBeNull()
+  })
+
+  it('CHAT_STREAM_ERROR for a non-active session clears that session\'s slot without raising a toast', () => {
+    useChatStore.getState().reset('session-B')
+    useChatStore.getState().startStreaming('cor-A', { sessionId: 'session-A' })
+
+    const event = makeEvent({
+      type: 'chat.stream.error',
+      correlation_id: 'cor-A',
+      payload: {
+        error_code: 'stream_timeout',
+        recoverable: true,
+        user_message: 'Stream timed out.',
+      },
+    })
+    handleChatEvent(
+      event,
+      mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage,
+      'session-B',
+    )
+
+    // Waiting flag should be cleared on the resolved (non-active) slot.
+    expect(useChatStore.getState().getStreamFor('session-A')?.isWaitingForResponse).toBe(false)
+    // No toast should have been raised — the user is not viewing A.
+    expect(mockAddNotification).not.toHaveBeenCalled()
+  })
+})

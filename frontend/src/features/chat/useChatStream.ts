@@ -228,8 +228,21 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_STREAM_ENDED: {
-      if (p.session_id !== sessionId) return
-      const g = getActiveGroupForSession(sessionId)
+      // Background-completions: a CHAT_STREAM_ENDED for a non-active
+      // session must still clear that session's streaming slot, otherwise
+      // the sidebar pulse-dot stays on forever (the slot's `isStreaming`
+      // is the source of truth). We use the payload's `session_id` for
+      // all slot bookkeeping so background sessions are reconciled
+      // correctly. UI side effects that assume the active session
+      // (auto-read trigger, the module-level activeTagBuffer flush, the
+      // active Group's onStreamEnd hand-off) remain gated on the hook's
+      // `sessionId`.
+      const eventSessionId = p.session_id as string | undefined
+      if (!eventSessionId) return
+      const isActiveSession = eventSessionId === sessionId
+      const eventWriteOpts = { sessionId: eventSessionId }
+
+      const g = isActiveSession ? getActiveGroupForSession(sessionId) : null
       if (g && g.id === event.correlation_id) g.onStreamEnd()
       // Snapshot the live pill map. The Map reference is shared with the
       // active Group; we hand an independent shallow copy to the chat store
@@ -238,15 +251,18 @@ export function handleChatEvent(
       // never writes to renderedPillsMap (only handleTag() during process()
       // does) so the snapshot timing relative to flush() is irrelevant —
       // we take it here for clarity, before the local buffer reference is
-      // nulled out below.
+      // nulled out below. Only meaningful for the active session — a
+      // background session never owned the module-level Group state.
       const livePillContents: Map<string, string> | undefined =
         g && g.id === event.correlation_id && g.renderedPillsMap
           ? new Map(g.renderedPillsMap)
           : undefined
-      // Flush incomplete tag buffer
-      if (activeTagBuffer) {
+      // Flush incomplete tag buffer — only for the active session. The
+      // module-level activeTagBuffer is owned by the active stream; a
+      // background-completion finish must not drain it.
+      if (isActiveSession && activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder, writeOpts)
+        if (remainder) getStore().appendStreamingContent(remainder, eventWriteOpts)
         activeTagBuffer = null
       }
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
@@ -274,7 +290,7 @@ export function handleChatEvent(
       // Refused messages may have no content — still persist them so
       // the refusal band shows immediately without a page refresh.
       const backendMessageId = p.message_id as string | undefined
-      const slot = getStore().getStreamFor(sessionId)
+      const slot = getStore().getStreamFor(eventSessionId)
       const content = slot?.streamingContent ?? ''
       // Backend sends raw assistant content (with unprocessed integration
       // tags) so the persisted message in the store carries the same
@@ -300,8 +316,12 @@ export function handleChatEvent(
       // messageId to start playback. Lives here (not in AssistantMessage)
       // because the messageId changes from optimistic to backend at commit
       // time, which remounts the component and loses any local transition.
+      // Gated on the active session — auto-read for a background session
+      // would start playing TTS for a chat the user is not currently
+      // viewing, which is wrong.
       if (
-        backendMessageId
+        isActiveSession
+        && backendMessageId
         && content
         && messageStatus === 'completed'
         && getStore().autoRead
@@ -320,12 +340,17 @@ export function handleChatEvent(
       // Incognito sessions never persist, so the backend always sends an
       // empty message_id; finalise locally with a synthetic UUID so the
       // assistant turn stays visible for the rest of the chat.
-      const isIncognitoSession = sessionId?.startsWith('incognito-') ?? false
+      //
+      // ``finishStreaming`` already branches on whether the writeOpts
+      // session is the active one — for background sessions it clears
+      // the slot but does not append the message into the visible
+      // transcript (that comes from getMessages on next session switch).
+      const isIncognitoSession = eventSessionId.startsWith('incognito-')
       if (backendMessageId || isIncognitoSession) {
         getStore().finishStreaming(
           {
             id: backendMessageId ?? crypto.randomUUID(),
-            session_id: sessionId ?? '',
+            session_id: eventSessionId,
             role: 'assistant',
             content: persistedContent,
             thinking: thinking || null,
@@ -348,7 +373,7 @@ export function handleChatEvent(
           usedTokens,
           maxTokens,
           livePillContents,
-          writeOpts,
+          eventWriteOpts,
         )
       } else {
         // No persisted message and not an incognito chat — discard the
@@ -357,7 +382,7 @@ export function handleChatEvent(
         // that produced zero content AND zero thinking. If it ever fires
         // with non-empty streamed content, investigate: it indicates a
         // backend persistence regression.
-        getStore().cancelStreaming(writeOpts)
+        getStore().cancelStreaming(eventWriteOpts)
       }
       break
     }
@@ -376,31 +401,63 @@ export function handleChatEvent(
         'edit_failed',
       ])
       const isSessionError = sessionLevelCodes.has(errorCode)
-      const slot = getStore().getStreamFor(sessionId)
-      if (!isSessionError && event.correlation_id !== slot?.correlationId) return
+
+      // Resolve which session this error belongs to. The event itself
+      // carries no session_id, so we search streamsBySession for the slot
+      // whose correlationId matches. Background-completion safety: a
+      // CHAT_STREAM_ERROR for a non-active session must still clear that
+      // session's slot, otherwise the sidebar pulse-dot is stuck on. If
+      // no slot matches and this is not a session-level error, drop the
+      // event (stale / already cleared).
+      let resolvedSessionId: string | null = null
+      const streams = getStore().streamsBySession
+      for (const [sid, slot] of streams) {
+        if (slot.correlationId === event.correlation_id) {
+          resolvedSessionId = sid
+          break
+        }
+      }
+      if (!isSessionError && !resolvedSessionId) return
+      const errorWriteSessionId = resolvedSessionId ?? sessionId
+      const errorWriteOpts = { sessionId: errorWriteSessionId }
+      const isActiveSession = errorWriteSessionId === sessionId
 
       const recoverable = p.recoverable as boolean
       const userMessage = p.user_message as string
-      getStore().setError({
-        errorCode,
-        recoverable,
-        userMessage,
-      })
-      getStore().setWaitingForResponse(false, writeOpts)
+      // Surface the error banner only for the active session — the user
+      // cannot see (and would be confused by) a banner about a chat they
+      // are not currently viewing.
+      if (isActiveSession) {
+        getStore().setError({
+          errorCode,
+          recoverable,
+          userMessage,
+        })
+      }
+      getStore().setWaitingForResponse(false, errorWriteOpts)
 
       // Flush the tag buffer here too: a stream that errors before its
       // CHAT_STREAM_ENDED counterpart still has parked effects in the
       // pending map, and dropping the buffer without flush() would lose
-      // those triggers entirely.
-      if (activeTagBuffer) {
+      // those triggers entirely. Only meaningful for the active session
+      // — the module-level activeTagBuffer is owned by the active stream.
+      if (isActiveSession && activeTagBuffer) {
         const remainder = activeTagBuffer.flush()
-        if (remainder) getStore().appendStreamingContent(remainder, writeOpts)
+        if (remainder) getStore().appendStreamingContent(remainder, errorWriteOpts)
         activeTagBuffer = null
       }
 
       if (errorCode === 'refusal') {
-        getStore().setStreamingRefusalText(userMessage, writeOpts)
+        getStore().setStreamingRefusalText(userMessage, errorWriteOpts)
       }
+
+      // For non-active background sessions, the error has been recorded
+      // (waiting flag cleared) but we do not raise a toast — surfacing
+      // an interruption banner for a chat the user is not viewing would
+      // be noise. The stale slot will be cleared either by the
+      // CHAT_STREAM_ENDED that typically follows, or by the ChatView
+      // reconciliation when the user returns to that session.
+      if (!isActiveSession) break
 
       // Session-level errors have their own banner path (ChatView
       // renders them inline above the composer); everything else
