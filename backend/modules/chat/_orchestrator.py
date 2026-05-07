@@ -127,6 +127,37 @@ _pending_cancels: dict[str, tuple[str | None, float]] = {}
 # In-flight idle extraction timers keyed by "user_id:persona_id"
 _idle_extraction_tasks: dict[str, asyncio.Task] = {}
 
+# Per-user lock that serialises the disconnect-extraction trigger check.
+# Without this, two inferences finishing simultaneously could both observe
+# "no connections and no inflight" and both call trigger_disconnect_extraction.
+_disconnect_extraction_locks: dict[str, asyncio.Lock] = {}
+
+# One-shot guard so a single offline window only triggers extraction once,
+# even if the user has multiple inferences finish back-to-back. Cleared
+# when the user reconnects (see WS connect path).
+_disconnect_extraction_done: set[str] = set()
+
+
+def _get_disconnect_extraction_lock(user_id: str) -> asyncio.Lock:
+    lock = _disconnect_extraction_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _disconnect_extraction_locks[user_id] = lock
+    return lock
+
+
+def _has_connections(user_id: str) -> bool:
+    """Indirection so tests can patch the connection check without
+    standing up the full WS manager."""
+    return get_manager().has_connections(user_id)
+
+
+def reset_disconnect_extraction_guard(user_id: str) -> None:
+    """Called from the WS connect path: a fresh connection means the
+    next offline window should be eligible for extraction again."""
+    _disconnect_extraction_done.discard(user_id)
+
+
 _DEFAULT_CONTEXT_WINDOW = 8192
 _IDLE_EXTRACTION_DELAY_SECONDS = 300  # 5 minutes
 
@@ -216,6 +247,34 @@ def _user_has_inflight(user_id: str) -> bool:
     fires only when the user is offline AND has no work pending.
     """
     return any(uid == user_id for uid, _sid in _inflight.values())
+
+
+async def maybe_trigger_disconnect_extraction(user_id: str) -> None:
+    """If the user has no connections and no inflight inferences,
+    trigger memory extraction for them.
+
+    Idempotent within an offline window via _disconnect_extraction_done:
+    once trigger_disconnect_extraction returns (regardless of whether
+    every internal submit succeeded — the function swallows submission
+    errors and falls back to the disconnect-retry buffer), this user is
+    marked done until they reconnect. The buffer's recovery loop is the
+    correct retry path for partial-failure scenarios.
+    """
+    lock = _get_disconnect_extraction_lock(user_id)
+    async with lock:
+        if user_id in _disconnect_extraction_done:
+            return
+        if _has_connections(user_id):
+            return
+        if _user_has_inflight(user_id):
+            return
+        try:
+            await trigger_disconnect_extraction(user_id)
+            _disconnect_extraction_done.add(user_id)
+        except Exception:
+            _log.error(
+                "disconnect_extraction_failed user=%s", user_id, exc_info=True,
+            )
 
 
 def _make_tool_executor(
@@ -973,6 +1032,13 @@ async def run_inference(
         await repo.update_session_state(session_id, "idle")
         _cancel_events.pop(correlation_id, None)
         _inflight.pop(correlation_id, None)
+        try:
+            await maybe_trigger_disconnect_extraction(user_id)
+        except Exception:
+            _log.warning(
+                "maybe_trigger_disconnect_extraction raised in run_inference finally for user=%s",
+                user_id, exc_info=True,
+            )
 
 
 async def emit_session_expired(user_id: str, session_id: str) -> None:

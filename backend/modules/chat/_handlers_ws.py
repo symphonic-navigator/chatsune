@@ -18,6 +18,7 @@ from backend.modules.chat._orchestrator import (
     _make_tool_executor,
     cancel_inflight_for_session,
     emit_session_expired,
+    maybe_trigger_disconnect_extraction,
     request_cancel,
     run_inference,
     track_extraction_trigger,
@@ -779,5 +780,12 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         finally:
             _cancel_events.pop(correlation_id, None)
             _inflight.pop(correlation_id, None)
+            try:
+                await maybe_trigger_disconnect_extraction(user_id)
+            except Exception:
+                _log.warning(
+                    "maybe_trigger_disconnect_extraction raised in handle_incognito_send finally for user=%s",
+                    user_id, exc_info=True,
+                )
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)

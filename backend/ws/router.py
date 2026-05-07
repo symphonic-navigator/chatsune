@@ -17,6 +17,8 @@ from backend.modules.chat import (
     handle_chat_retract,
     handle_chat_send,
     handle_incognito_send,
+    maybe_trigger_disconnect_extraction,
+    reset_disconnect_extraction_guard,
 )
 from backend.modules.tools import get_client_dispatcher, get_mcp_registry, set_mcp_registry, remove_mcp_registry, eager_discover_mcp
 from backend.modules.tools._mcp_discovery import register_local_tools
@@ -104,6 +106,28 @@ async def _run_disconnect_cleanup(
         )
     remove_mcp_registry(connection_id)
 
+    # Safety net: if the user disconnected and has no inflight inferences
+    # right now (so the inference-cleanup anchor will never fire), trigger
+    # extraction directly. Wait an additional 30 s after the 10 s grace so
+    # any inference that started just before disconnect has a chance to
+    # register itself in ``_inflight``.
+    safety_task = asyncio.create_task(_extraction_safety_net(user_id))
+    _background_tasks.add(safety_task)
+    safety_task.add_done_callback(_background_tasks.discard)
+
+
+async def _extraction_safety_net(user_id: str) -> None:
+    try:
+        await asyncio.sleep(30)
+        await maybe_trigger_disconnect_extraction(user_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        _log.warning(
+            "extraction safety net failed for user %s",
+            user_id, exc_info=True,
+        )
+
 
 ws_router = APIRouter()
 
@@ -135,6 +159,12 @@ async def websocket_endpoint(
     manager = get_manager()
     await ws.accept()
     connection_id = await manager.connect(user_id, role, ws)
+    # Fresh connection: clear any one-shot disconnect-extraction guard so the
+    # next offline window is eligible to trigger extraction again. Done after
+    # manager.connect so has_connections() already returns True — this avoids
+    # a narrow window where the safety-net task could observe no connections
+    # while the guard is already cleared, double-triggering extraction.
+    reset_disconnect_extraction_guard(user_id)
     try:
         await ws.send_json({"type": "ws.hello", "connection_id": connection_id})
     except Exception:
