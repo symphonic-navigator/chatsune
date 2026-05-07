@@ -33,7 +33,7 @@ async def test_handle_chat_send_passes_correlation_id_to_run_inference(repo, mon
 
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_event_bus", lambda: FakeBus())
     monkeypatch.setattr("backend.modules.chat._handlers_ws.run_inference", fake_run_inference)
-    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_all_for_user", AsyncMock(return_value=0))
+    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_inflight_for_session", AsyncMock(return_value=0))
     monkeypatch.setattr("backend.modules.chat._handlers_ws.track_extraction_trigger", AsyncMock())
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_db", lambda: get_db())
 
@@ -66,7 +66,7 @@ async def test_handle_chat_regenerate_passes_correlation_id_to_run_inference(rep
 
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_event_bus", lambda: FakeBus())
     monkeypatch.setattr("backend.modules.chat._handlers_ws.run_inference", fake_run_inference)
-    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_all_for_user", AsyncMock(return_value=0))
+    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_inflight_for_session", AsyncMock(return_value=0))
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_db", lambda: get_db())
 
     session = await repo.create_session("user1", "persona1")

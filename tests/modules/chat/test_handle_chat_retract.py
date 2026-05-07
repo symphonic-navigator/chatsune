@@ -79,12 +79,12 @@ async def test_retract_before_send_persistence_drops_late_send(repo, monkeypatch
             published.append((event_type, event, kwargs))
 
     run_inference = AsyncMock()
-    cancel_all = AsyncMock(return_value=0)
+    cancel_inflight = AsyncMock(return_value=0)
 
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_event_bus", lambda: FakeBus())
     monkeypatch.setattr("backend.modules.chat._handlers_ws.get_db", lambda: get_db())
     monkeypatch.setattr("backend.modules.chat._handlers_ws.run_inference", run_inference)
-    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_all_for_user", cancel_all)
+    monkeypatch.setattr("backend.modules.chat._handlers_ws.cancel_inflight_for_session", cancel_inflight)
     monkeypatch.setattr("backend.modules.chat._handlers_ws.track_extraction_trigger", AsyncMock())
 
     from backend.modules.chat._handlers_ws import (
@@ -109,7 +109,7 @@ async def test_retract_before_send_persistence_drops_late_send(repo, monkeypatch
     remaining = await get_db()["chat_messages"].find({"correlation_id": corr}).to_list(length=5)
     assert remaining == []
     run_inference.assert_not_awaited()
-    cancel_all.assert_not_awaited()
+    cancel_inflight.assert_not_awaited()
     assert any(
         event_type == "chat.message.deleted"
         and event.message_id == client_message_id

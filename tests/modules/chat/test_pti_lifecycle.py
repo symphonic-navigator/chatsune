@@ -42,9 +42,9 @@ async def test_pti_injection_persists_to_message(db, monkeypatch):
         "backend.modules.chat._handlers_ws.get_event_bus",
         lambda: AsyncMock(),
     )
-    # Stub cancel_all_for_user.
+    # Stub cancel_inflight_for_session.
     monkeypatch.setattr(
-        "backend.modules.chat._handlers_ws.cancel_all_for_user",
+        "backend.modules.chat._handlers_ws.cancel_inflight_for_session",
         AsyncMock(return_value=0),
     )
     # Stub track_extraction_trigger.
@@ -103,7 +103,7 @@ async def test_no_trigger_yields_no_knowledge_context(db, monkeypatch):
         lambda: AsyncMock(),
     )
     monkeypatch.setattr(
-        "backend.modules.chat._handlers_ws.cancel_all_for_user",
+        "backend.modules.chat._handlers_ws.cancel_inflight_for_session",
         AsyncMock(return_value=0),
     )
     monkeypatch.setattr(
