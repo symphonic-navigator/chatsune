@@ -146,3 +146,74 @@ def test_compute_markers_no_system_message() -> None:
 
 def test_block_size_is_eight() -> None:
     assert BLOCK_SIZE == 8
+
+
+from backend.modules.llm._adapters._anthropic_cache import (
+    extract_cache_metrics,
+)
+
+
+def test_extract_cache_metrics_anthropic_native() -> None:
+    usage = {
+        "cache_read_input_tokens": 1500,
+        "cache_creation_input_tokens": 200,
+        "prompt_tokens": 1700,
+    }
+    assert extract_cache_metrics(usage) == (1500, 200)
+
+
+def test_extract_cache_metrics_openrouter_nested() -> None:
+    # OR/OpenAI-compat schema: cache info under prompt_tokens_details.
+    # Real-world example captured 2026-05-08.
+    usage = {
+        "prompt_tokens": 3128,
+        "prompt_tokens_details": {
+            "cached_tokens": 2657,
+            "cache_write_tokens": 393,
+        },
+    }
+    assert extract_cache_metrics(usage) == (2657, 393)
+
+
+def test_extract_cache_metrics_anthropic_takes_priority() -> None:
+    # If both schemas are populated, the Anthropic-native top-level
+    # values take priority — that's the canonical format.
+    usage = {
+        "cache_read_input_tokens": 1000,
+        "cache_creation_input_tokens": 50,
+        "prompt_tokens_details": {
+            "cached_tokens": 999,
+            "cache_write_tokens": 99,
+        },
+    }
+    assert extract_cache_metrics(usage) == (1000, 50)
+
+
+def test_extract_cache_metrics_no_cache_returns_zero() -> None:
+    assert extract_cache_metrics({}) == (0, 0)
+    assert extract_cache_metrics({"prompt_tokens": 100}) == (0, 0)
+    assert extract_cache_metrics({"prompt_tokens_details": {}}) == (0, 0)
+
+
+def test_extract_cache_metrics_handles_none_values() -> None:
+    # Some upstreams emit null for absent fields. Tolerate.
+    usage = {
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+        "prompt_tokens_details": {
+            "cached_tokens": None,
+            "cache_write_tokens": None,
+        },
+    }
+    assert extract_cache_metrics(usage) == (0, 0)
+
+
+def test_extract_cache_metrics_nested_one_sided() -> None:
+    # First-turn write or read-only scenarios — only one of the two
+    # nested fields populated.
+    assert extract_cache_metrics({
+        "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 800},
+    }) == (0, 800)
+    assert extract_cache_metrics({
+        "prompt_tokens_details": {"cached_tokens": 1200, "cache_write_tokens": 0},
+    }) == (1200, 0)

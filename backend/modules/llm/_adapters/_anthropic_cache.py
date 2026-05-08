@@ -111,3 +111,32 @@ def compute_cache_markers(
             markers.append(CacheMarker(message_index=tail_index, ttl=ttl))
 
     return markers
+
+
+def extract_cache_metrics(usage: dict) -> tuple[int, int]:
+    """Pull (cache_read, cache_creation) tokens from a usage dict.
+
+    Two upstream schemas have been observed in the wild:
+
+    * **Anthropic-native** (direct API or some passthroughs):
+      top-level ``cache_read_input_tokens`` and
+      ``cache_creation_input_tokens``.
+    * **OpenRouter / OpenAI-compat**: nested under
+      ``prompt_tokens_details`` as ``cached_tokens`` (read) and
+      ``cache_write_tokens`` (creation).
+
+    Tries the Anthropic-native fields first; falls back to the nested
+    OR-style fields. Returns ``(0, 0)`` when neither schema is
+    populated. Returns ints — usage values are always integer token
+    counts in both schemas.
+    """
+    read = int(usage.get("cache_read_input_tokens") or 0)
+    creation = int(usage.get("cache_creation_input_tokens") or 0)
+    if read or creation:
+        return read, creation
+
+    details = usage.get("prompt_tokens_details") or {}
+    return (
+        int(details.get("cached_tokens") or 0),
+        int(details.get("cache_write_tokens") or 0),
+    )

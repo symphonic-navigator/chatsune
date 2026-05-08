@@ -41,7 +41,10 @@ from backend._retry import (
     parse_retry_after,
     should_retry_status,
 )
-from backend.modules.llm._adapters._anthropic_cache import is_anthropic_model
+from backend.modules.llm._adapters._anthropic_cache import (
+    extract_cache_metrics,
+    is_anthropic_model,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -373,13 +376,14 @@ def _log_anthropic_cache(
     """
     if not is_anthropic_model(request.model):
         return
+    cache_read, cache_creation = extract_cache_metrics(last_usage)
     _log.info(
         "anthropic_cache adapter=openrouter model=%s ttl=%s "
         "cache_read=%d cache_creation=%d input=%d",
         payload.get("model"),
         request.anthropic_cache_ttl,
-        last_usage.get("cache_read_input_tokens", 0),
-        last_usage.get("cache_creation_input_tokens", 0),
+        cache_read,
+        cache_creation,
         last_usage.get("prompt_tokens", 0),
     )
 
