@@ -23,8 +23,8 @@ export interface PersonaDto {
   // model is a Claude family member behind OR or nano-gpt. Frontend
   // hides the control unless the selected model passes
   // ``isAnthropicModel``. Default ``"off"`` keeps pre-existing
-  // persona documents readable.
-  anthropic_cache_ttl: 'off' | '5m' | '1h';
+  // persona documents readable without migration.
+  anthropic_cache_ttl?: 'off' | '5m' | '1h';
   soft_cot_enabled: boolean;
   vision_fallback_model: string | null;
   nsfw: boolean;
