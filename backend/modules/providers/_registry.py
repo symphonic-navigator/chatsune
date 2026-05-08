@@ -104,5 +104,20 @@ def _register_builtins() -> None:
         linked_integrations=[],
     ))
 
+    register(PremiumProviderDefinition(
+        id="novita",
+        display_name="Novita AI",
+        icon="novita",
+        base_url="https://api.novita.ai/openai/v1",
+        capabilities=[Capability.LLM],
+        config_fields=[_api_key_field("Novita AI API Key")],
+        # /openai/v1/models is unauthenticated, so it cannot validate the
+        # key. /openapi/v1/billing/balance/detail requires auth and 401s
+        # on a bad key — see spec §"Endpoints".
+        probe_url="https://api.novita.ai/openapi/v1/billing/balance/detail",
+        probe_method="GET",
+        linked_integrations=[],
+    ))
+
 
 _register_builtins()
