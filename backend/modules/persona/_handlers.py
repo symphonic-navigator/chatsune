@@ -362,12 +362,12 @@ async def update_persona(
     if "default_project_id" in body.model_fields_set:
         fields["default_project_id"] = body.default_project_id
     if "anthropic_cache_ttl" in body.model_fields_set:
-        # ``None`` is not a valid persisted value — clamp to "off".
-        # The DTO Optional only exists so omission is distinguishable
-        # from explicit set; clients should send "off" / "5m" / "1h",
-        # never null.
+        # ``None`` is not a valid persisted value — clamp to the
+        # default ``"5m"``. The DTO Optional only exists so omission
+        # is distinguishable from explicit set; clients should send
+        # "off" / "5m" / "1h", never null.
         if body.anthropic_cache_ttl is None:
-            fields["anthropic_cache_ttl"] = "off"
+            fields["anthropic_cache_ttl"] = "5m"
         else:
             fields["anthropic_cache_ttl"] = body.anthropic_cache_ttl
     if not fields:

@@ -61,7 +61,7 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
   const [anthropicCacheTtl, setAnthropicCacheTtl] = useState<'off' | '5m' | '1h'>(
-    persona.anthropic_cache_ttl ?? 'off',
+    persona.anthropic_cache_ttl ?? '5m',
   )
 
   const nameId = useId()
@@ -146,7 +146,7 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     nsfw !== persona.nsfw ||
     useMemory !== persona.use_memory ||
     modelUniqueId !== persona.model_unique_id ||
-    anthropicCacheTtl !== (persona.anthropic_cache_ttl ?? 'off')
+    anthropicCacheTtl !== (persona.anthropic_cache_ttl ?? '5m')
 
   const isDirty = isCreating || hasUnsavedChanges
 

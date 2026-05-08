@@ -15,9 +15,11 @@ class PersonaDocument(BaseModel):
     temperature: float
     reasoning_enabled: bool
     # Anthropic prompt-cache TTL — see shared.dtos.persona.PersonaDto.
-    # Default ``"off"`` keeps pre-existing persona documents readable
-    # (CLAUDE.md §Data-Model Migrations).
-    anthropic_cache_ttl: str = "off"
+    # Default ``"5m"`` is applied when a pre-feature persona document
+    # lacks the field (CLAUDE.md §Data-Model Migrations); personas
+    # created after the feature shipped always have an explicit value
+    # written by the repository.
+    anthropic_cache_ttl: str = "5m"
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool

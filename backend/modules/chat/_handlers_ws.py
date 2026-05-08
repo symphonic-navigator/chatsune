@@ -702,7 +702,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             supports_reasoning=supports_reasoning,
             tools=active_tools,
             cache_hint=session_id,
-            anthropic_cache_ttl=persona.get("anthropic_cache_ttl", "off"),
+            anthropic_cache_ttl=persona.get("anthropic_cache_ttl", "5m"),
         )
 
         correlation_id = data.get("correlation_id") or str(uuid4())

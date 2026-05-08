@@ -41,6 +41,8 @@ class CompletionRequest(BaseModel):
     # Anthropic prompt-cache TTL — only honoured by the OpenRouter and
     # nano-gpt adapters when the model is a Claude family member.
     # Other adapters and non-Anthropic routes ignore the field. Default
-    # ``"off"`` keeps existing call-sites and tests behaviourally
-    # unchanged. See devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md.
-    anthropic_cache_ttl: Literal["off", "5m", "1h"] = "off"
+    # ``"5m"`` matches the persona-level default; existing call-sites
+    # always pass an explicit value resolved from the persona, so this
+    # default is only the fallback for ad-hoc callers (e.g. the LLM test
+    # harness). See devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md.
+    anthropic_cache_ttl: Literal["off", "5m", "1h"] = "5m"

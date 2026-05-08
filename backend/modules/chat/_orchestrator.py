@@ -886,7 +886,7 @@ async def run_inference(
         tools=active_tools,
         cache_hint=session_id,
         anthropic_cache_ttl=(
-            persona.get("anthropic_cache_ttl", "off") if persona else "off"
+            persona.get("anthropic_cache_ttl", "5m") if persona else "5m"
         ),
     )
 
