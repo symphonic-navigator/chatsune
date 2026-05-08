@@ -17,6 +17,7 @@ from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._community import CommunityAdapter
 from backend.modules.llm._adapters._mistral_http import MistralHttpAdapter
 from backend.modules.llm._adapters._nano_gpt_http import NanoGptHttpAdapter
+from backend.modules.llm._adapters._novita_http import NovitaHttpAdapter
 from backend.modules.llm._adapters._ollama_http import OllamaHttpAdapter
 from backend.modules.llm._adapters._openrouter_http import OpenRouterHttpAdapter
 from backend.modules.llm._adapters._xai_http import XaiHttpAdapter
@@ -36,6 +37,7 @@ _PREMIUM_ONLY_ADAPTERS: dict[str, type[BaseAdapter]] = {
     "mistral_http": MistralHttpAdapter,
     "nano_gpt_http": NanoGptHttpAdapter,
     "openrouter_http": OpenRouterHttpAdapter,
+    "novita_http": NovitaHttpAdapter,
 }
 
 
