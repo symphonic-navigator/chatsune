@@ -29,7 +29,7 @@ from backend.modules.llm._adapters._events import (
     ToolCallEvent,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
-from shared.dtos.inference import CompletionRequest
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
@@ -150,7 +150,7 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
-def _translate_message(msg) -> dict:
+def _translate_message(msg: CompletionMessage) -> dict:
     """Translate our CompletionMessage into an OpenAI-compatible chat
     message. Plain text collapses to a string; images force the array
     form. No cache_control markers — Novita does not route to Anthropic."""

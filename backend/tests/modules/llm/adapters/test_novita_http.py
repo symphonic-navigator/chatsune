@@ -29,6 +29,7 @@ from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
     ContentPart,
+    ToolCallResult,
     ToolDefinition,
 )
 
@@ -250,7 +251,6 @@ def test_reasoning_field_omitted_when_unsupported():
 
 
 def test_translate_assistant_with_tool_calls():
-    from shared.dtos.inference import ToolCallResult
     msg = CompletionMessage(
         role="assistant",
         content=[ContentPart(type="text", text="")],
