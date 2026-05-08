@@ -256,11 +256,17 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
-def _translate_message(msg: CompletionMessage) -> dict:
+def _translate_message(
+    msg: CompletionMessage,
+    *,
+    cache_control: dict | None = None,
+) -> dict:
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    if not image_parts:
+    if cache_control is None and not image_parts:
+        # Plain string content — more cache-friendly for non-Anthropic
+        # routes that perform automatic prefix caching.
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
@@ -273,6 +279,11 @@ def _translate_message(msg: CompletionMessage) -> dict:
                     "url": f"data:{p.media_type};base64,{p.data}",
                 },
             })
+        if cache_control and content:
+            # Anthropic convention: cache_control on the LAST content
+            # block of the marked message — that block's index defines
+            # the prefix endpoint that gets cached.
+            content[-1]["cache_control"] = cache_control
 
     result: dict = {"role": msg.role, "content": content}
     if msg.tool_calls:
@@ -290,11 +301,29 @@ def _translate_message(msg: CompletionMessage) -> dict:
 
 
 def _build_chat_payload(request: CompletionRequest) -> dict:
+    from backend.modules.llm._adapters._anthropic_cache import (
+        compute_cache_markers,
+        is_anthropic_model,
+    )
+
+    cc_by_index: dict[int, dict] = {}
+    if (
+        request.anthropic_cache_ttl != "off"
+        and is_anthropic_model(request.model)
+    ):
+        for marker in compute_cache_markers(
+            request.messages, request.anthropic_cache_ttl,
+        ):
+            cc_by_index[marker.message_index] = _to_cache_control(marker.ttl)
+
     payload: dict = {
         "model": request.model,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "messages": [_translate_message(m) for m in request.messages],
+        "messages": [
+            _translate_message(m, cache_control=cc_by_index.get(i))
+            for i, m in enumerate(request.messages)
+        ],
     }
     if request.temperature is not None:
         payload["temperature"] = request.temperature
@@ -315,6 +344,14 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     if request.supports_reasoning and not request.reasoning_enabled:
         payload["reasoning"] = {"exclude": True}
     return payload
+
+
+def _to_cache_control(ttl: str) -> dict:
+    # OpenAI-compat → Anthropic translation: 5m is the implicit
+    # default when ``ttl`` is omitted; 1h must be set explicitly.
+    if ttl == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
 
 
 class OpenRouterHttpAdapter(BaseAdapter):
