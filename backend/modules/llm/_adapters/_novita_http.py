@@ -14,19 +14,32 @@ deferred to its own session — helpers stay cloned per adapter for now.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import time
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
 import httpx
 
+from backend._retry import (
+    MAX_RETRY_ATTEMPTS,
+    compute_retry_delay,
+    log_retry,
+    parse_retry_after,
+    should_retry_status,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
+    StreamAborted,
     StreamDone,
+    StreamError,
     StreamRefused,
+    StreamSlow,
     ThinkingDelta,
     ToolCallEvent,
 )
@@ -39,6 +52,13 @@ _log = logging.getLogger(__name__)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _PROBE_TIMEOUT = httpx.Timeout(10.0)
+
+GUTTER_SLOW_SECONDS: float = 30.0
+GUTTER_ABORT_SECONDS: float = float(
+    os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"),
+)
+_TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
 
@@ -330,5 +350,179 @@ class NovitaHttpAdapter(BaseAdapter):
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        raise NotImplementedError
-        yield  # pragma: no cover
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        payload = _build_chat_payload(request)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=novita-out url=%s payload=%s",
+                url, json.dumps(payload, default=str, sort_keys=True),
+            )
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                retry_delay: float | None = None
+                try:
+                    async with client.stream(
+                        "POST", f"{url}/chat/completions",
+                        json=payload, headers=headers,
+                    ) as resp:
+                        if (
+                            should_retry_status(resp.status_code)
+                            and attempt < MAX_RETRY_ATTEMPTS
+                        ):
+                            retry_delay = compute_retry_delay(
+                                attempt,
+                                parse_retry_after(resp.headers),
+                            )
+                            log_retry(
+                                _log,
+                                operation="novita_http",
+                                attempt=attempt,
+                                delay_seconds=retry_delay,
+                                status_code=resp.status_code,
+                                extra={"model": payload.get("model")},
+                            )
+                        elif resp.status_code in (401, 403):
+                            yield StreamError(
+                                error_code="invalid_api_key",
+                                message="Novita rejected the API key",
+                            )
+                            return
+                        elif should_retry_status(resp.status_code):
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=(
+                                    f"Novita returned {resp.status_code}; "
+                                    f"gave up after {MAX_RETRY_ATTEMPTS + 1} "
+                                    f"attempts"
+                                ),
+                            )
+                            return
+                        elif resp.status_code != 200:
+                            body = await resp.aread()
+                            detail = body.decode(
+                                "utf-8", errors="replace",
+                            )[:500]
+                            _log.error(
+                                "novita_http upstream %d: %s",
+                                resp.status_code, detail,
+                            )
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=(
+                                    f"Novita returned {resp.status_code}: "
+                                    f"{detail}"
+                                ),
+                            )
+                            return
+                        else:
+                            acc = _ToolCallAccumulator()
+                            seen_done = False
+                            last_usage: dict = {}
+                            pending_next: asyncio.Task | None = None
+                            try:
+                                stream_iter = resp.aiter_lines().__aiter__()
+                                line_start = time.monotonic()
+                                slow_fired = False
+
+                                while True:
+                                    elapsed = time.monotonic() - line_start
+                                    budget = (
+                                        GUTTER_ABORT_SECONDS - elapsed
+                                        if slow_fired
+                                        else GUTTER_SLOW_SECONDS - elapsed
+                                    )
+                                    if budget <= 0:
+                                        if not slow_fired:
+                                            _log.info(
+                                                "novita_http.gutter_slow "
+                                                "model=%s idle=%.1fs",
+                                                payload.get("model"),
+                                                elapsed,
+                                            )
+                                            yield StreamSlow()
+                                            slow_fired = True
+                                            continue
+                                        _log.warning(
+                                            "novita_http.gutter_abort "
+                                            "model=%s idle=%.1fs",
+                                            payload.get("model"), elapsed,
+                                        )
+                                        if pending_next is not None:
+                                            pending_next.cancel()
+                                        yield StreamAborted(
+                                            reason="gutter_timeout",
+                                        )
+                                        return
+                                    if pending_next is None:
+                                        pending_next = asyncio.ensure_future(
+                                            stream_iter.__anext__(),
+                                        )
+                                    done, _pending = await asyncio.wait(
+                                        {pending_next}, timeout=budget,
+                                    )
+                                    if not done:
+                                        continue
+                                    task = done.pop()
+                                    pending_next = None
+                                    try:
+                                        line = task.result()
+                                    except StopAsyncIteration:
+                                        break
+                                    line_start = time.monotonic()
+                                    slow_fired = False
+
+                                    parsed = _parse_sse_line(line)
+                                    if parsed is None:
+                                        continue
+                                    if parsed is _SSE_DONE:
+                                        break
+
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
+                                    for event in _chunk_to_events(parsed, acc):
+                                        if isinstance(event, StreamDone):
+                                            seen_done = True
+                                        yield event
+                                        if isinstance(event, (
+                                            StreamDone, StreamRefused,
+                                            StreamError,
+                                        )):
+                                            return
+                            except asyncio.CancelledError:
+                                if (
+                                    pending_next is not None
+                                    and not pending_next.done()
+                                ):
+                                    pending_next.cancel()
+                                raise
+                            if not seen_done:
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get(
+                                        "completion_tokens",
+                                    ),
+                                )
+                            return
+                except httpx.ConnectError:
+                    yield StreamError(
+                        error_code="provider_unavailable",
+                        message="Cannot connect to Novita",
+                    )
+                    return
+
+                # Retry path: a 429 with attempts remaining set retry_delay.
+                # Sleep with the stream context closed.
+                assert retry_delay is not None
+                await asyncio.sleep(retry_delay)

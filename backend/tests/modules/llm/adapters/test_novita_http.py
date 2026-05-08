@@ -5,6 +5,7 @@ Mirrors `test_openrouter_http.py`; coverage grows task by task.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from unittest.mock import patch
@@ -15,6 +16,7 @@ import pytest
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     StreamDone,
+    StreamError,
     StreamRefused,
     ThinkingDelta,
 )
@@ -626,3 +628,338 @@ async def test_fetch_models_returns_empty_on_malformed_json():
     ):
         models = await a.fetch_models(_resolved())
     assert models == []
+
+
+class _FakeStreamResponse:
+    def __init__(
+        self, lines: list[str], status_code: int = 200,
+        headers: dict[str, str] | None = None,
+    ):
+        self._lines = lines
+        self.status_code = status_code
+        self.headers = headers or {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            await asyncio.sleep(0)
+            yield line
+
+    async def aread(self):
+        return b""
+
+
+class _FakeStreamingClient:
+    def __init__(self, lines, status_code=200):
+        self._lines = lines
+        self._status = status_code
+        self.captured_headers = None
+
+    def __call__(self, *_, **__):  # used as ctor when patched
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+        self.captured_headers = headers
+        return _FakeStreamResponse(self._lines, self._status)
+
+
+class _FakeStreamingClientWithStatusSeq(_FakeStreamingClient):
+    """Returns one response per attempt, controlled by ``status_codes_seq``."""
+
+    def __init__(self, lines, status_codes_seq, response_headers=None):
+        super().__init__(lines)
+        self._status_seq = list(status_codes_seq)
+        self._response_headers = response_headers or {}
+        self.attempts = 0
+
+    def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+        self.captured_headers = headers
+        idx = min(self.attempts, len(self._status_seq) - 1)
+        status = self._status_seq[idx]
+        self.attempts += 1
+        return _FakeStreamResponse(
+            self._lines, status, headers=self._response_headers,
+        )
+
+
+async def _async_noop(*_a, **_k):
+    return None
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_content_then_done():
+    lines = [
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+        'data: {"choices":[{"delta":{"content":"lo"}}]}',
+        'data: {"choices":[{"finish_reason":"stop","delta":{}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClient(lines)
+
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="xiaomimimo/mimo-v2.5-pro",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="hi")],
+        )],
+    )
+
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_args, **_kw: fake,
+    ):
+        events = []
+        async for ev in a.stream_completion(_resolved(), req):
+            events.append(ev)
+
+    contents = [e for e in events if isinstance(e, ContentDelta)]
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    assert "".join(c.delta for c in contents) == "Hello"
+    assert len(dones) == 1
+    assert dones[0].input_tokens == 3
+    assert dones[0].output_tokens == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_sends_authorization_header():
+    lines = [
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClient(lines)
+
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_args, **_kw: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+
+    assert fake.captured_headers is not None
+    assert fake.captured_headers["Authorization"].startswith("Bearer ")
+    assert fake.captured_headers["Content-Type"] == "application/json"
+    # Novita has no app-attribution headers — must NOT send OR-style ones.
+    assert "HTTP-Referer" not in fake.captured_headers
+    assert "X-OpenRouter-Title" not in fake.captured_headers
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_401_yields_invalid_api_key():
+    fake = _FakeStreamingClient([], status_code=401)
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "invalid_api_key"
+    assert "Novita" in errs[0].message
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_retries_on_429_then_succeeds(monkeypatch):
+    lines = [
+        'data: {"choices":[{"delta":{"content":"OK"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+        "data: [DONE]",
+    ]
+    fake = _FakeStreamingClientWithStatusSeq(lines, status_codes_seq=[429, 200])
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._novita_http.asyncio.sleep",
+        _async_noop,
+    )
+
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+
+    contents = [e for e in events if isinstance(e, ContentDelta)]
+    dones = [e for e in events if isinstance(e, StreamDone)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert "".join(c.delta for c in contents) == "OK"
+    assert len(dones) == 1
+    assert errs == []
+    assert fake.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_429_yields_provider_unavailable_after_retries(monkeypatch):
+    fake = _FakeStreamingClient([], status_code=429)
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._novita_http.asyncio.sleep",
+        _async_noop,
+    )
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "provider_unavailable"
+    assert "429" in errs[0].message
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_5xx_yields_provider_unavailable():
+    fake = _FakeStreamingClient([], status_code=500)
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "provider_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_does_not_retry_on_5xx():
+    """500/502 are NOT retryable here — they signal a downstream model
+    error rather than a transient backoff signal. Surface immediately."""
+    fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[500])
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+    assert fake.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_does_not_retry_on_401():
+    fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[401])
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+    assert fake.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_429_honours_retry_after_header(monkeypatch):
+    captured: list[float] = []
+
+    async def capture_sleep(delay: float) -> None:
+        captured.append(delay)
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._novita_http.asyncio.sleep",
+        capture_sleep,
+    )
+
+    fake = _FakeStreamingClientWithStatusSeq(
+        ['data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+         "data: [DONE]"],
+        status_codes_seq=[429, 200],
+        response_headers={"Retry-After": "7"},
+    )
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        async for _ in a.stream_completion(_resolved(), req):
+            pass
+
+    backoff_sleeps = [s for s in captured if s > 0]
+    assert backoff_sleeps == [7.0]
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_connect_error_yields_provider_unavailable():
+    class _ConnectError(_FakeStreamingClient):
+        def stream(self, method, url, json=None, headers=None):  # noqa: ARG002
+            raise httpx.ConnectError("network down")
+
+    fake = _ConnectError([], 200)
+    a = NovitaHttpAdapter()
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        lambda *_a, **_k: fake,
+    ):
+        events = [e async for e in a.stream_completion(_resolved(), req)]
+    errs = [e for e in events if isinstance(e, StreamError)]
+    assert len(errs) == 1
+    assert errs[0].error_code == "provider_unavailable"
+    assert "Novita" in errs[0].message
