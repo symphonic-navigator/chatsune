@@ -5,7 +5,12 @@ Mirrors `test_openrouter_http.py`; coverage grows task by task.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from unittest.mock import patch
+
+import httpx
+import pytest
 
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -430,3 +435,194 @@ def test_entry_to_meta_supports_tool_calls_only_when_feature_present():
     )
     assert meta is not None
     assert meta.supports_tool_calls is False
+
+
+_MODELS_RESPONSE = {
+    "data": [
+        # Passing model — full pass.
+        {
+            "id": "xiaomimimo/mimo-v2.5-pro",
+            "display_name": "XiaomiMiMo/MiMo-V2.5-Pro",
+            "context_size": 1_048_576,
+            "model_type": "chat",
+            "status": 1,
+            "endpoints": ["completions", "chat/completions", "anthropic"],
+            "features": ["serverless", "function-calling",
+                         "structured-outputs", "reasoning"],
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+            "input_token_price_per_m": 20000,
+            "output_token_price_per_m": 60000,
+        },
+        # Image-output model — must be filtered.
+        {
+            "id": "stability/sdxl",
+            "display_name": "SDXL",
+            "context_size": 2048,
+            "model_type": "chat",
+            "status": 1,
+            "endpoints": ["chat/completions"],
+            "features": ["serverless"],
+            "input_modalities": ["text"],
+            "output_modalities": ["image"],
+            "input_token_price_per_m": 0,
+            "output_token_price_per_m": 0,
+        },
+        # Sub-80k context — must be filtered.
+        {
+            "id": "tiny/8k",
+            "display_name": "Tiny",
+            "context_size": 8192,
+            "model_type": "chat",
+            "status": 1,
+            "endpoints": ["chat/completions"],
+            "features": ["serverless"],
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+            "input_token_price_per_m": 0,
+            "output_token_price_per_m": 0,
+        },
+        # Free-tier passing model.
+        {
+            "id": "free/big",
+            "display_name": "Free Big",
+            "context_size": 200_000,
+            "model_type": "chat",
+            "status": 1,
+            "endpoints": ["chat/completions"],
+            "features": ["serverless", "reasoning"],
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+            "input_token_price_per_m": 0,
+            "output_token_price_per_m": 0,
+        },
+        # Missing id — must be silently dropped.
+        {
+            "display_name": "No ID",
+            "context_size": 200_000,
+            "model_type": "chat",
+            "status": 1,
+            "endpoints": ["chat/completions"],
+            "features": ["serverless"],
+            "input_modalities": ["text"],
+            "output_modalities": ["text"],
+        },
+    ],
+}
+
+
+class _FakeAsyncClient:
+    def __init__(self, *_, **__):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=200,
+            content=json.dumps(_MODELS_RESPONSE).encode(),
+            request=httpx.Request("GET", url),
+        )
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_only_passing_entries():
+    a = NovitaHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        _FakeAsyncClient,
+    ):
+        models = await a.fetch_models(_resolved())
+
+    by_id = {m.model_id: m for m in models}
+    assert set(by_id) == {"xiaomimimo/mimo-v2.5-pro", "free/big"}
+
+    pro = by_id["xiaomimimo/mimo-v2.5-pro"]
+    assert pro.billing_category == "pay_per_token"
+    assert pro.supports_reasoning is True
+    assert pro.supports_tool_calls is True
+
+    free = by_id["free/big"]
+    assert free.billing_category == "free"
+    assert free.supports_reasoning is True
+    assert free.supports_tool_calls is False
+
+
+class _FakeAsyncClient401(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=401,
+            content=b'{"error":"Bad key"}',
+            request=httpx.Request("GET", url),
+        )
+
+
+class _FakeAsyncClient500(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=500,
+            content=b"upstream blew up",
+            request=httpx.Request("GET", url),
+        )
+
+
+class _FakeAsyncClientTransport(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        raise httpx.ConnectError("network down")
+
+
+class _FakeAsyncClientMalformed(_FakeAsyncClient):
+    async def get(self, url, headers=None):  # noqa: ARG002
+        return httpx.Response(
+            status_code=200,
+            content=b"this is not json",
+            request=httpx.Request("GET", url),
+        )
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_401():
+    a = NovitaHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        _FakeAsyncClient401,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_5xx():
+    a = NovitaHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        _FakeAsyncClient500,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_transport_error():
+    a = NovitaHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        _FakeAsyncClientTransport,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_returns_empty_on_malformed_json():
+    a = NovitaHttpAdapter()
+    with patch(
+        "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
+        _FakeAsyncClientMalformed,
+    ):
+        models = await a.fetch_models(_resolved())
+    assert models == []

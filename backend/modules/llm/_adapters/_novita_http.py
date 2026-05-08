@@ -19,6 +19,8 @@ import logging
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
+import httpx
+
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -35,6 +37,8 @@ from shared.dtos.llm import ModelMetaDto
 _log = logging.getLogger(__name__)
 
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
+
+_PROBE_TIMEOUT = httpx.Timeout(10.0)
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
 
@@ -281,7 +285,47 @@ class NovitaHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        raise NotImplementedError
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        headers = {"Authorization": f"Bearer {api_key}"}
+        try:
+            async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+                resp = await client.get(f"{url}/models", headers=headers)
+        except httpx.HTTPError as exc:
+            _log.warning("novita_http.fetch_models transport: %s", exc)
+            return []
+
+        if resp.status_code in (401, 403):
+            _log.warning(
+                "novita_http.fetch_models auth failure: status=%d",
+                resp.status_code,
+            )
+            return []
+        if resp.status_code != 200:
+            _log.warning(
+                "novita_http.fetch_models upstream %d: %s",
+                resp.status_code, resp.text[:200],
+            )
+            return []
+
+        try:
+            data = resp.json()
+        except ValueError:
+            _log.warning("novita_http.fetch_models malformed JSON")
+            return []
+
+        entries = data.get("data") or []
+        if not isinstance(entries, list):
+            return []
+
+        metas: list[ModelMetaDto] = []
+        for entry in entries:
+            if not isinstance(entry, dict) or not entry.get("id"):
+                continue
+            meta = _entry_to_meta(entry, c)
+            if meta is not None:
+                metas.append(meta)
+        return metas
 
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
