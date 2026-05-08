@@ -356,6 +356,29 @@ def _to_cache_control(ttl: str) -> dict:
     return {"type": "ephemeral"}
 
 
+def _log_anthropic_cache(
+    request: CompletionRequest, upstream_slug: str, last_usage: dict,
+) -> None:
+    """Emit the ``anthropic_cache`` observability line for Claude completions.
+
+    Called on every successful end-of-stream path (both the
+    ``_chunk_to_events``-emitted ``StreamDone`` and the safety-net
+    ``StreamDone`` after the SSE loop). Gated on ``is_anthropic_model``
+    so non-Claude completions stay quiet.
+    """
+    if not is_anthropic_model(request.model):
+        return
+    _log.info(
+        "anthropic_cache adapter=nano-gpt model=%s ttl=%s "
+        "cache_read=%d cache_creation=%d input=%d",
+        upstream_slug,
+        request.anthropic_cache_ttl,
+        last_usage.get("cache_read_input_tokens", 0),
+        last_usage.get("cache_creation_input_tokens", 0),
+        last_usage.get("prompt_tokens", 0),
+    )
+
+
 def _resolve_call(
     pair: dict[str, str | None] | None,
     model_id: str,
@@ -550,6 +573,12 @@ class NanoGptHttpAdapter(BaseAdapter):
         }
 
         seen_done = False
+        # Track usage across chunks. Some upstreams that route Claude
+        # via OpenAI-compat send ``usage`` in the same chunk as
+        # ``finish_reason="stop"`` rather than the OpenAI-standard
+        # separate usage chunk; capturing on every chunk keeps token
+        # tracking and the ``anthropic_cache`` log line robust to that.
+        last_usage: dict = {}
         pending_next: asyncio.Task | None = None
 
         if _TRACE_PAYLOADS:
@@ -670,22 +699,18 @@ class NanoGptHttpAdapter(BaseAdapter):
                                     if parsed is _SSE_DONE:
                                         break
 
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
                                     for event in _chunk_to_events(parsed, acc):
                                         if isinstance(event, StreamDone):
                                             seen_done = True
-                                            if is_anthropic_model(request.model):
-                                                usage = parsed.get("usage") or {}
-                                                _log.info(
-                                                    "anthropic_cache adapter=nano-gpt "
-                                                    "model=%s ttl=%s "
-                                                    "cache_read=%d cache_creation=%d "
-                                                    "input=%d",
-                                                    upstream_slug,
-                                                    request.anthropic_cache_ttl,
-                                                    usage.get("cache_read_input_tokens", 0),
-                                                    usage.get("cache_creation_input_tokens", 0),
-                                                    usage.get("prompt_tokens", 0),
-                                                )
+                                            _log_anthropic_cache(
+                                                request, upstream_slug, last_usage,
+                                            )
                                         yield event
                                         if isinstance(event, (StreamDone,
                                                                StreamRefused,
@@ -696,7 +721,13 @@ class NanoGptHttpAdapter(BaseAdapter):
                                     pending_next.cancel()
                                 raise
                             if not seen_done:
-                                yield StreamDone()
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get("completion_tokens"),
+                                )
+                                _log_anthropic_cache(
+                                    request, upstream_slug, last_usage,
+                                )
                             return
                 except httpx.ConnectError:
                     yield StreamError(

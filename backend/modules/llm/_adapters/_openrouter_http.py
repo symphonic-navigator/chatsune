@@ -360,6 +360,30 @@ def _to_cache_control(ttl: str) -> dict:
     return {"type": "ephemeral"}
 
 
+def _log_anthropic_cache(
+    request: CompletionRequest, payload: dict, last_usage: dict,
+) -> None:
+    """Emit the ``anthropic_cache`` observability line for Claude completions.
+
+    Called on every successful end-of-stream path (both the
+    ``_chunk_to_events``-emitted ``StreamDone`` and the safety-net
+    ``StreamDone`` after the SSE loop). Gated on ``is_anthropic_model``
+    so non-Claude completions stay quiet — keeps ``grep anthropic_cache``
+    precise.
+    """
+    if not is_anthropic_model(request.model):
+        return
+    _log.info(
+        "anthropic_cache adapter=openrouter model=%s ttl=%s "
+        "cache_read=%d cache_creation=%d input=%d",
+        payload.get("model"),
+        request.anthropic_cache_ttl,
+        last_usage.get("cache_read_input_tokens", 0),
+        last_usage.get("cache_creation_input_tokens", 0),
+        last_usage.get("prompt_tokens", 0),
+    )
+
+
 class OpenRouterHttpAdapter(BaseAdapter):
     adapter_type = "openrouter_http"
     display_name = "OpenRouter"
@@ -502,6 +526,16 @@ class OpenRouterHttpAdapter(BaseAdapter):
                             # the user's UI).
                             acc = _ToolCallAccumulator()
                             seen_done = False
+                            # Track usage across chunks. OR-routed Anthropic
+                            # responses sometimes deliver ``usage`` in the
+                            # same chunk as ``finish_reason="stop"`` (rather
+                            # than the OpenAI-standard separate usage chunk),
+                            # which would otherwise hide it from
+                            # ``_chunk_to_events`` and from the
+                            # ``anthropic_cache`` log line. Capturing usage
+                            # whenever it appears, on any chunk, makes both
+                            # token tracking and the log robust to that.
+                            last_usage: dict = {}
                             pending_next: asyncio.Task | None = None
                             try:
                                 stream_iter = resp.aiter_lines().__aiter__()
@@ -557,22 +591,18 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                     if parsed is _SSE_DONE:
                                         break
 
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
                                     for event in _chunk_to_events(parsed, acc):
                                         if isinstance(event, StreamDone):
                                             seen_done = True
-                                            if is_anthropic_model(request.model):
-                                                usage = parsed.get("usage") or {}
-                                                _log.info(
-                                                    "anthropic_cache adapter=openrouter "
-                                                    "model=%s ttl=%s "
-                                                    "cache_read=%d cache_creation=%d "
-                                                    "input=%d",
-                                                    payload.get("model"),
-                                                    request.anthropic_cache_ttl,
-                                                    usage.get("cache_read_input_tokens", 0),
-                                                    usage.get("cache_creation_input_tokens", 0),
-                                                    usage.get("prompt_tokens", 0),
-                                                )
+                                            _log_anthropic_cache(
+                                                request, payload, last_usage,
+                                            )
                                         yield event
                                         if isinstance(event, (StreamDone,
                                                                StreamRefused,
@@ -583,7 +613,13 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                     pending_next.cancel()
                                 raise
                             if not seen_done:
-                                yield StreamDone()
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get("completion_tokens"),
+                                )
+                                _log_anthropic_cache(
+                                    request, payload, last_usage,
+                                )
                             return
                 except httpx.ConnectError:
                     yield StreamError(
