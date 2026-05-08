@@ -28,6 +28,8 @@ def test_is_anthropic_model_positive(model_id: str) -> None:
     "",
     "anthropic/",
     "claude",
+    "claude-haiku/",          # trailing slash — tail is empty; must NOT match
+    "anthropic/claude-haiku/", # trailing slash with prefix — same; must NOT match
 ])
 def test_is_anthropic_model_negative(model_id: str) -> None:
     assert not is_anthropic_model(model_id)

@@ -17,7 +17,11 @@ import re
 # sonnet / opus token at a word boundary. Older "claude-instant-*"
 # slugs deliberately do not match — they predate cache_control
 # support, so the negative case is correct behaviour.
-_CLAUDE_RE = re.compile(r"claude.*\b(haiku|sonnet|opus)\b", re.IGNORECASE)
+# ``[^/]*`` (not ``.*``) bounds the wildcard inside the slug tail.
+# ``rsplit("/", 1)[-1]`` already strips any path prefix, so the tail
+# cannot contain ``/`` — the bounded form keeps regex evaluation
+# linear regardless of slug length.
+_CLAUDE_RE = re.compile(r"claude[^/]*\b(haiku|sonnet|opus)\b", re.IGNORECASE)
 
 
 def is_anthropic_model(model_id: str) -> bool:
