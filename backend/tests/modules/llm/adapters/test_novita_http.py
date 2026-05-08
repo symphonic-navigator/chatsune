@@ -761,6 +761,7 @@ async def test_stream_completion_sends_authorization_header():
     # Novita has no app-attribution headers — must NOT send OR-style ones.
     assert "HTTP-Referer" not in fake.captured_headers
     assert "X-OpenRouter-Title" not in fake.captured_headers
+    assert "X-OpenRouter-Categories" not in fake.captured_headers
 
 
 @pytest.mark.asyncio

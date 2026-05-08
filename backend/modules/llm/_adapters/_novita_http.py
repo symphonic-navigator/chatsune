@@ -423,6 +423,10 @@ class NovitaHttpAdapter(BaseAdapter):
                             )
                             return
                         else:
+                            # 200 — process the SSE body. Once we begin
+                            # yielding stream events no further retry is
+                            # safe (partial tokens may already be in the
+                            # user's UI).
                             acc = _ToolCallAccumulator()
                             seen_done = False
                             last_usage: dict = {}
