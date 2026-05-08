@@ -5,6 +5,8 @@ Mirrors `test_openrouter_http.py`; coverage grows task by task.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     StreamDone,
@@ -13,13 +15,16 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._novita_http import (
     _SSE_DONE,
+    MIN_CONTEXT_TOKENS,
     NovitaHttpAdapter,
     _build_chat_payload,
     _chunk_to_events,
+    _entry_to_meta,
     _parse_sse_line,
     _ToolCallAccumulator,
     _translate_message,
 )
+from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     _PREMIUM_ONLY_ADAPTERS,
@@ -271,3 +276,157 @@ def test_translate_tool_message_carries_tool_call_id():
     )
     out = _translate_message(msg)
     assert out["tool_call_id"] == "c1"
+
+
+def _resolved() -> ResolvedConnection:
+    return ResolvedConnection(
+        id="premium:novita",
+        user_id="u1",
+        adapter_type="novita_http",
+        display_name="Novita AI",
+        slug="novita",
+        config={
+            "url": "https://api.novita.ai/openai/v1",
+            "api_key": "sk-novita-fake",
+        },
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+
+def _make_entry(**overrides) -> dict:
+    """Returns a Novita catalogue entry that PASSES every filter rule.
+    Override fields to drive specific failure cases."""
+    base = {
+        "id": "xiaomimimo/mimo-v2.5-pro",
+        "display_name": "XiaomiMiMo/MiMo-V2.5-Pro",
+        "context_size": 1_048_576,
+        "model_type": "chat",
+        "status": 1,
+        "endpoints": ["completions", "chat/completions", "anthropic"],
+        "features": ["serverless", "function-calling",
+                     "structured-outputs", "reasoning"],
+        "input_modalities": ["text"],
+        "output_modalities": ["text"],
+        "input_token_price_per_m": 20000,
+        "output_token_price_per_m": 60000,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_entry_to_meta_maps_all_fields_for_a_full_pass():
+    meta = _entry_to_meta(_make_entry(), _resolved())
+    assert meta is not None
+    assert meta.connection_id == "premium:novita"
+    assert meta.connection_slug == "novita"
+    assert meta.connection_display_name == "Novita AI"
+    assert meta.model_id == "xiaomimimo/mimo-v2.5-pro"
+    assert meta.display_name == "XiaomiMiMo/MiMo-V2.5-Pro"
+    assert meta.context_window == 1_048_576
+    assert meta.supports_reasoning is True
+    assert meta.supports_vision is False
+    assert meta.supports_tool_calls is True
+    assert meta.is_deprecated is False
+    assert meta.billing_category == "pay_per_token"
+    assert meta.is_moderated is None
+
+
+def test_entry_to_meta_falls_back_to_id_when_display_name_missing():
+    meta = _entry_to_meta(_make_entry(display_name=None), _resolved())
+    assert meta is not None
+    assert meta.display_name == "xiaomimimo/mimo-v2.5-pro"
+
+
+def test_entry_to_meta_filters_non_text_output():
+    assert _entry_to_meta(
+        _make_entry(output_modalities=["image"]), _resolved(),
+    ) is None
+    assert _entry_to_meta(
+        _make_entry(output_modalities=["text", "image"]), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_filters_below_min_context():
+    assert _entry_to_meta(
+        _make_entry(context_size=MIN_CONTEXT_TOKENS - 1), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_passes_at_min_context_threshold():
+    meta = _entry_to_meta(
+        _make_entry(context_size=MIN_CONTEXT_TOKENS), _resolved(),
+    )
+    assert meta is not None
+
+
+def test_entry_to_meta_filters_when_chat_endpoint_missing():
+    assert _entry_to_meta(
+        _make_entry(endpoints=["completions", "anthropic"]), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_filters_non_serverless():
+    assert _entry_to_meta(
+        _make_entry(features=["function-calling", "reasoning"]), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_filters_non_chat_model_type():
+    assert _entry_to_meta(
+        _make_entry(model_type="completion"), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_filters_inactive_status():
+    assert _entry_to_meta(
+        _make_entry(status=0), _resolved(),
+    ) is None
+
+
+def test_entry_to_meta_billing_free_when_both_prices_zero():
+    meta = _entry_to_meta(
+        _make_entry(input_token_price_per_m=0, output_token_price_per_m=0),
+        _resolved(),
+    )
+    assert meta is not None
+    assert meta.billing_category == "free"
+
+
+def test_entry_to_meta_billing_paid_when_either_price_nonzero():
+    only_in = _entry_to_meta(
+        _make_entry(input_token_price_per_m=1, output_token_price_per_m=0),
+        _resolved(),
+    )
+    only_out = _entry_to_meta(
+        _make_entry(input_token_price_per_m=0, output_token_price_per_m=1),
+        _resolved(),
+    )
+    assert only_in.billing_category == "pay_per_token"
+    assert only_out.billing_category == "pay_per_token"
+
+
+def test_entry_to_meta_supports_vision_when_image_in_input_modalities():
+    meta = _entry_to_meta(
+        _make_entry(input_modalities=["text", "image"]), _resolved(),
+    )
+    assert meta is not None
+    assert meta.supports_vision is True
+
+
+def test_entry_to_meta_supports_reasoning_only_when_feature_present():
+    meta = _entry_to_meta(
+        _make_entry(features=["serverless", "function-calling"]),
+        _resolved(),
+    )
+    assert meta is not None
+    assert meta.supports_reasoning is False
+
+
+def test_entry_to_meta_supports_tool_calls_only_when_feature_present():
+    meta = _entry_to_meta(
+        _make_entry(features=["serverless", "reasoning"]),
+        _resolved(),
+    )
+    assert meta is not None
+    assert meta.supports_tool_calls is False

@@ -150,6 +150,66 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
+# Mirrors nano-gpt / OpenRouter — sub-80k models leave no breathing
+# room once chat history and tool definitions stack up. Spec §"Filter
+# Rules".
+MIN_CONTEXT_TOKENS = 80_000
+
+
+def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
+    """Map one Novita catalogue entry to a ``ModelMetaDto`` or ``None``.
+
+    Filter rules — all must pass; see spec §"Model Filter Rules":
+    1. ``output_modalities == ["text"]``
+    2. ``context_size >= MIN_CONTEXT_TOKENS``
+    3. ``"chat/completions" in endpoints``
+    4. ``"serverless" in features``
+    5. ``model_type == "chat"``
+    6. ``status == 1``
+    """
+    output_mods = entry.get("output_modalities") or []
+    if output_mods != ["text"]:
+        return None
+
+    context_size = int(entry.get("context_size") or 0)
+    if context_size < MIN_CONTEXT_TOKENS:
+        return None
+
+    endpoints = entry.get("endpoints") or []
+    if "chat/completions" not in endpoints:
+        return None
+
+    features = entry.get("features") or []
+    if "serverless" not in features:
+        return None
+
+    if entry.get("model_type") != "chat":
+        return None
+
+    if entry.get("status") != 1:
+        return None
+
+    input_mods = entry.get("input_modalities") or []
+    in_price = entry.get("input_token_price_per_m") or 0
+    out_price = entry.get("output_token_price_per_m") or 0
+    billing = "free" if in_price == 0 and out_price == 0 else "pay_per_token"
+
+    return ModelMetaDto(
+        connection_id=c.id,
+        connection_slug=c.slug,
+        connection_display_name=c.display_name,
+        model_id=entry["id"],
+        display_name=entry.get("display_name") or entry["id"],
+        context_window=context_size,
+        supports_reasoning="reasoning" in features,
+        supports_vision="image" in input_mods,
+        supports_tool_calls="function-calling" in features,
+        is_deprecated=False,
+        billing_category=billing,
+        is_moderated=None,
+    )
+
+
 def _translate_message(msg: CompletionMessage) -> dict:
     """Translate our CompletionMessage into an OpenAI-compatible chat
     message. Plain text collapses to a string; images force the array
