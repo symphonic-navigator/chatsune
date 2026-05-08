@@ -54,6 +54,10 @@ from backend._retry import (
     parse_retry_after,
     should_retry_status,
 )
+from backend.modules.llm._adapters._anthropic_cache import (
+    extract_cache_metrics,
+    is_anthropic_model,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -244,13 +248,16 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
-def _translate_message(msg: CompletionMessage) -> dict:
+def _translate_message(
+    msg: CompletionMessage,
+    *,
+    cache_control: dict | None = None,
+) -> dict:
     """Translate our CompletionMessage into an OpenAI-compatible chat message."""
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    # When there are no images, a plain string is more cache-friendly.
-    if not image_parts:
+    if cache_control is None and not image_parts:
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
@@ -263,9 +270,10 @@ def _translate_message(msg: CompletionMessage) -> dict:
                     "url": f"data:{p.media_type};base64,{p.data}",
                 },
             })
+        if cache_control and content:
+            content[-1]["cache_control"] = cache_control
 
     result: dict = {"role": msg.role, "content": content}
-
     if msg.tool_calls:
         result["tool_calls"] = [
             {
@@ -275,10 +283,8 @@ def _translate_message(msg: CompletionMessage) -> dict:
             }
             for tc in msg.tool_calls
         ]
-
     if msg.tool_call_id is not None:
         result["tool_call_id"] = msg.tool_call_id
-
     return result
 
 
@@ -301,12 +307,32 @@ def _build_chat_payload(
 
     For slug-mode and none-mode dispatch, ``send_reasoning_flag`` is
     False and the body must not carry any reasoning-related field.
+
+    See module docstring for reasoning-mode / cache-control rules.
     """
+    from backend.modules.llm._adapters._anthropic_cache import (
+        compute_cache_markers,
+        is_anthropic_model,
+    )
+
+    cc_by_index: dict[int, dict] = {}
+    if (
+        request.anthropic_cache_ttl != "off"
+        and is_anthropic_model(request.model)
+    ):
+        for marker in compute_cache_markers(
+            request.messages, request.anthropic_cache_ttl,
+        ):
+            cc_by_index[marker.message_index] = _to_cache_control(marker.ttl)
+
     payload: dict = {
         "model": upstream_slug,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "messages": [_translate_message(m) for m in request.messages],
+        "messages": [
+            _translate_message(m, cache_control=cc_by_index.get(i))
+            for i, m in enumerate(request.messages)
+        ],
     }
     if send_reasoning_flag:
         payload["reasoning"] = {"enabled": reasoning_enabled}
@@ -325,6 +351,36 @@ def _build_chat_payload(
             for t in request.tools
         ]
     return payload
+
+
+def _to_cache_control(ttl: str) -> dict:
+    if ttl == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
+
+
+def _log_anthropic_cache(
+    request: CompletionRequest, upstream_slug: str, last_usage: dict,
+) -> None:
+    """Emit the ``anthropic_cache`` observability line for Claude completions.
+
+    Called on every successful end-of-stream path (both the
+    ``_chunk_to_events``-emitted ``StreamDone`` and the safety-net
+    ``StreamDone`` after the SSE loop). Gated on ``is_anthropic_model``
+    so non-Claude completions stay quiet.
+    """
+    if not is_anthropic_model(request.model):
+        return
+    cache_read, cache_creation = extract_cache_metrics(last_usage)
+    _log.info(
+        "anthropic_cache adapter=nano-gpt model=%s ttl=%s "
+        "cache_read=%d cache_creation=%d input=%d",
+        upstream_slug,
+        request.anthropic_cache_ttl,
+        cache_read,
+        cache_creation,
+        last_usage.get("prompt_tokens", 0),
+    )
 
 
 def _resolve_call(
@@ -521,6 +577,12 @@ class NanoGptHttpAdapter(BaseAdapter):
         }
 
         seen_done = False
+        # Track usage across chunks. Some upstreams that route Claude
+        # via OpenAI-compat send ``usage`` in the same chunk as
+        # ``finish_reason="stop"`` rather than the OpenAI-standard
+        # separate usage chunk; capturing on every chunk keeps token
+        # tracking and the ``anthropic_cache`` log line robust to that.
+        last_usage: dict = {}
         pending_next: asyncio.Task | None = None
 
         if _TRACE_PAYLOADS:
@@ -641,9 +703,18 @@ class NanoGptHttpAdapter(BaseAdapter):
                                     if parsed is _SSE_DONE:
                                         break
 
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
                                     for event in _chunk_to_events(parsed, acc):
                                         if isinstance(event, StreamDone):
                                             seen_done = True
+                                            _log_anthropic_cache(
+                                                request, upstream_slug, last_usage,
+                                            )
                                         yield event
                                         if isinstance(event, (StreamDone,
                                                                StreamRefused,
@@ -654,7 +725,13 @@ class NanoGptHttpAdapter(BaseAdapter):
                                     pending_next.cancel()
                                 raise
                             if not seen_done:
-                                yield StreamDone()
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get("completion_tokens"),
+                                )
+                                _log_anthropic_cache(
+                                    request, upstream_slug, last_usage,
+                                )
                             return
                 except httpx.ConnectError:
                     yield StreamError(

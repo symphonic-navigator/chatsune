@@ -6,9 +6,14 @@ Routes to OpenRouter's unified API which fans out to 50+ upstream
 providers; we apply ``output_modalities=text`` at the model-listing
 endpoint so only text-output models reach the Model Browser.
 
-Cache control: pass-through. OpenRouter performs automatic prefix
-caching for OpenAI / Gemini / DeepSeek; Anthropic-style explicit
-``cache_control`` markers are deferred — see INS-032 in INSIGHTS.md.
+Cache control: OpenRouter performs automatic prefix caching for
+OpenAI / Gemini / DeepSeek (transparent, no markers). For Anthropic
+(Claude) models, explicit ``cache_control`` markers are emitted by
+``_build_chat_payload`` when the persona has opted in via
+``anthropic_cache_ttl``. The marker placement strategy lives in
+``_anthropic_cache.py`` (system + block-boundary + rolling tail); see
+``devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md``.
+This reverses the Phase-1 pass-through decision recorded in INS-032.
 
 Structurally a Mistral clone. The OpenAI-compatible SSE parser,
 tool-call accumulator, and gutter-timer logic are intentionally copied
@@ -35,6 +40,10 @@ from backend._retry import (
     log_retry,
     parse_retry_after,
     should_retry_status,
+)
+from backend.modules.llm._adapters._anthropic_cache import (
+    extract_cache_metrics,
+    is_anthropic_model,
 )
 from backend.modules.llm._adapters._base import BaseAdapter
 from backend.modules.llm._adapters._events import (
@@ -256,11 +265,17 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
-def _translate_message(msg: CompletionMessage) -> dict:
+def _translate_message(
+    msg: CompletionMessage,
+    *,
+    cache_control: dict | None = None,
+) -> dict:
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    if not image_parts:
+    if cache_control is None and not image_parts:
+        # Plain string content — more cache-friendly for non-Anthropic
+        # routes that perform automatic prefix caching.
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
@@ -273,6 +288,11 @@ def _translate_message(msg: CompletionMessage) -> dict:
                     "url": f"data:{p.media_type};base64,{p.data}",
                 },
             })
+        if cache_control and content:
+            # Anthropic convention: cache_control on the LAST content
+            # block of the marked message — that block's index defines
+            # the prefix endpoint that gets cached.
+            content[-1]["cache_control"] = cache_control
 
     result: dict = {"role": msg.role, "content": content}
     if msg.tool_calls:
@@ -290,11 +310,29 @@ def _translate_message(msg: CompletionMessage) -> dict:
 
 
 def _build_chat_payload(request: CompletionRequest) -> dict:
+    from backend.modules.llm._adapters._anthropic_cache import (
+        compute_cache_markers,
+        is_anthropic_model,
+    )
+
+    cc_by_index: dict[int, dict] = {}
+    if (
+        request.anthropic_cache_ttl != "off"
+        and is_anthropic_model(request.model)
+    ):
+        for marker in compute_cache_markers(
+            request.messages, request.anthropic_cache_ttl,
+        ):
+            cc_by_index[marker.message_index] = _to_cache_control(marker.ttl)
+
     payload: dict = {
         "model": request.model,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "messages": [_translate_message(m) for m in request.messages],
+        "messages": [
+            _translate_message(m, cache_control=cc_by_index.get(i))
+            for i, m in enumerate(request.messages)
+        ],
     }
     if request.temperature is not None:
         payload["temperature"] = request.temperature
@@ -315,6 +353,39 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     if request.supports_reasoning and not request.reasoning_enabled:
         payload["reasoning"] = {"exclude": True}
     return payload
+
+
+def _to_cache_control(ttl: str) -> dict:
+    # OpenAI-compat → Anthropic translation: 5m is the implicit
+    # default when ``ttl`` is omitted; 1h must be set explicitly.
+    if ttl == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
+
+
+def _log_anthropic_cache(
+    request: CompletionRequest, payload: dict, last_usage: dict,
+) -> None:
+    """Emit the ``anthropic_cache`` observability line for Claude completions.
+
+    Called on every successful end-of-stream path (both the
+    ``_chunk_to_events``-emitted ``StreamDone`` and the safety-net
+    ``StreamDone`` after the SSE loop). Gated on ``is_anthropic_model``
+    so non-Claude completions stay quiet — keeps ``grep anthropic_cache``
+    precise.
+    """
+    if not is_anthropic_model(request.model):
+        return
+    cache_read, cache_creation = extract_cache_metrics(last_usage)
+    _log.info(
+        "anthropic_cache adapter=openrouter model=%s ttl=%s "
+        "cache_read=%d cache_creation=%d input=%d",
+        payload.get("model"),
+        request.anthropic_cache_ttl,
+        cache_read,
+        cache_creation,
+        last_usage.get("prompt_tokens", 0),
+    )
 
 
 class OpenRouterHttpAdapter(BaseAdapter):
@@ -459,6 +530,16 @@ class OpenRouterHttpAdapter(BaseAdapter):
                             # the user's UI).
                             acc = _ToolCallAccumulator()
                             seen_done = False
+                            # Track usage across chunks. OR-routed Anthropic
+                            # responses sometimes deliver ``usage`` in the
+                            # same chunk as ``finish_reason="stop"`` (rather
+                            # than the OpenAI-standard separate usage chunk),
+                            # which would otherwise hide it from
+                            # ``_chunk_to_events`` and from the
+                            # ``anthropic_cache`` log line. Capturing usage
+                            # whenever it appears, on any chunk, makes both
+                            # token tracking and the log robust to that.
+                            last_usage: dict = {}
                             pending_next: asyncio.Task | None = None
                             try:
                                 stream_iter = resp.aiter_lines().__aiter__()
@@ -514,9 +595,18 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                     if parsed is _SSE_DONE:
                                         break
 
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
                                     for event in _chunk_to_events(parsed, acc):
                                         if isinstance(event, StreamDone):
                                             seen_done = True
+                                            _log_anthropic_cache(
+                                                request, payload, last_usage,
+                                            )
                                         yield event
                                         if isinstance(event, (StreamDone,
                                                                StreamRefused,
@@ -527,7 +617,13 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                     pending_next.cancel()
                                 raise
                             if not seen_done:
-                                yield StreamDone()
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get("completion_tokens"),
+                                )
+                                _log_anthropic_cache(
+                                    request, payload, last_usage,
+                                )
                             return
                 except httpx.ConnectError:
                     yield StreamError(

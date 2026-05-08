@@ -1022,6 +1022,17 @@ Adding it would require either an OR-specific message translator
 parameter on the shared `CompletionMessage` model that every other
 adapter would ignore. Neither is justified before we have usage data.
 
+**Update 2026-05-08:** This Phase-1 decision is reversed for
+Anthropic models behind both OR and nano-gpt. Beta testers explicitly
+asked for cache savings on Claude; the routers became the canonical
+Claude path (BYOK + anonymisation). Per-persona TTL toggle
+(`Off / 5m / 1h`), strategy-lib in
+`backend/modules/llm/_adapters/_anthropic_cache.py`, three-marker
+layout (system 1h + block 1h every 8 messages + rolling tail at
+chosen TTL). Other adapters and non-Anthropic routes stay
+pass-through. Spec:
+`devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md`.
+
 ## INS-033 — Background completions: stream-end events must reach non-active sessions (2026-05-07)
 
 **Context:** With background completions, an inference for session A

@@ -63,6 +63,13 @@ class PersonaDto(BaseModel):
     system_prompt: str
     temperature: float = Field(ge=0.0, le=2.0)
     reasoning_enabled: bool
+    # Anthropic prompt-cache TTL — only meaningful when the persona's
+    # model is a Claude family member behind OpenRouter or nano-gpt.
+    # Other models silently ignore the value. Frontend hides the
+    # control unless the selected model passes ``isAnthropicModel``.
+    # Default ``"off"`` keeps existing persona documents readable
+    # (see CLAUDE.md §Data-Model Migrations).
+    anthropic_cache_ttl: Literal["off", "5m", "1h"] = "off"
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool
@@ -102,6 +109,7 @@ class CreatePersonaDto(BaseModel):
     system_prompt: str
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
     reasoning_enabled: bool = False
+    anthropic_cache_ttl: Literal["off", "5m", "1h"] = "off"
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool = False
@@ -125,6 +133,7 @@ class UpdatePersonaDto(BaseModel):
     system_prompt: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     reasoning_enabled: bool | None = None
+    anthropic_cache_ttl: Literal["off", "5m", "1h"] | None = None
     soft_cot_enabled: bool | None = None
     vision_fallback_model: str | None = None
     nsfw: bool | None = None

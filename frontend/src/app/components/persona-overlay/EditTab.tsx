@@ -10,6 +10,7 @@ import type { Connection } from '../../../core/types/llm'
 import type { PersonaDto } from '../../../core/types/persona'
 import { ModelSelectionModal } from '../model-browser/ModelSelectionModal'
 import { AvatarCropModal } from '../avatar-crop/AvatarCropModal'
+import { isAnthropicModel } from '../../../features/llm/anthropicCache'
 
 interface EditTabProps {
   persona: PersonaDto
@@ -59,12 +60,17 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
 
   const avatarSrc = useAvatarSrc(persona.id, !!persona.profile_image, persona.updated_at)
 
+  const [anthropicCacheTtl, setAnthropicCacheTtl] = useState<'off' | '5m' | '1h'>(
+    persona.anthropic_cache_ttl ?? 'off',
+  )
+
   const nameId = useId()
   const taglineId = useId()
   const modelId = useId()
   const colourId = useId()
   const systemPromptId = useId()
   const temperatureId = useId()
+  const cacheTtlId = useId()
 
   // Load all user connections once — used to resolve the display name
   // of the persona's current connection and to surface the "missing"
@@ -139,7 +145,8 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     visionFallbackModel !== persona.vision_fallback_model ||
     nsfw !== persona.nsfw ||
     useMemory !== persona.use_memory ||
-    modelUniqueId !== persona.model_unique_id
+    modelUniqueId !== persona.model_unique_id ||
+    anthropicCacheTtl !== (persona.anthropic_cache_ttl ?? 'off')
 
   const isDirty = isCreating || hasUnsavedChanges
 
@@ -181,6 +188,7 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
         temperature,
         reasoning_enabled: reasoningEnabled,
         soft_cot_enabled: softCotEnabled,
+        anthropic_cache_ttl: anthropicCacheTtl,
         vision_fallback_model: visionFallbackModel,
         nsfw,
         use_memory: useMemory,
@@ -425,6 +433,39 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
             onBlur={(e) => { e.currentTarget.style.borderColor = `${chakra.hex}26` }}
           />
         </label>
+
+        {/* Prompt cache (Anthropic models only) */}
+        {isAnthropicModel(modelUniqueId ?? '') && (
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor={cacheTtlId}
+              className="text-[11px] text-white/40 uppercase tracking-wider"
+            >
+              Prompt cache
+            </label>
+            <select
+              id={cacheTtlId}
+              value={anthropicCacheTtl}
+              onChange={(e) =>
+                setAnthropicCacheTtl(e.target.value as 'off' | '5m' | '1h')
+              }
+              className="bg-[#0f0d16] text-white/85 border border-white/10 rounded px-2 py-1 text-[13px]"
+            >
+              <option value="off" style={{ background: '#0f0d16', color: 'rgba(255,255,255,0.85)' }}>
+                Off
+              </option>
+              <option value="5m" style={{ background: '#0f0d16', color: 'rgba(255,255,255,0.85)' }}>
+                5 minutes
+              </option>
+              <option value="1h" style={{ background: '#0f0d16', color: 'rgba(255,255,255,0.85)' }}>
+                1 hour
+              </option>
+            </select>
+            <p className="text-[11px] text-white/40">
+              Reduces input cost on repeated context. Off by default.
+            </p>
+          </div>
+        )}
 
         {/* Temperature */}
         <div className="flex flex-col gap-2">

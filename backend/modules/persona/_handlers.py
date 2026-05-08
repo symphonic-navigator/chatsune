@@ -151,6 +151,7 @@ async def create_persona(
         soft_cot_enabled=body.soft_cot_enabled,
         vision_fallback_model=body.vision_fallback_model,
         use_memory=body.use_memory,
+        anthropic_cache_ttl=body.anthropic_cache_ttl,
     )
 
     user_id = user["sub"]
@@ -360,6 +361,15 @@ async def update_persona(
     # — same idiom as ``vision_fallback_model`` above.
     if "default_project_id" in body.model_fields_set:
         fields["default_project_id"] = body.default_project_id
+    if "anthropic_cache_ttl" in body.model_fields_set:
+        # ``None`` is not a valid persisted value — clamp to "off".
+        # The DTO Optional only exists so omission is distinguishable
+        # from explicit set; clients should send "off" / "5m" / "1h",
+        # never null.
+        if body.anthropic_cache_ttl is None:
+            fields["anthropic_cache_ttl"] = "off"
+        else:
+            fields["anthropic_cache_ttl"] = body.anthropic_cache_ttl
     if not fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 

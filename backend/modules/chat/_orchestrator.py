@@ -885,6 +885,9 @@ async def run_inference(
         supports_reasoning=supports_reasoning,
         tools=active_tools,
         cache_hint=session_id,
+        anthropic_cache_ttl=(
+            persona.get("anthropic_cache_ttl", "off") if persona else "off"
+        ),
     )
 
     # Set session state to streaming

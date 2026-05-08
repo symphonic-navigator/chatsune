@@ -42,6 +42,7 @@ class PersonaRepository:
         soft_cot_enabled: bool = False,
         vision_fallback_model: str | None = None,
         use_memory: bool = True,
+        anthropic_cache_ttl: str = "off",
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -62,6 +63,7 @@ class PersonaRepository:
             "monogram": "",
             "pinned": pinned,
             "profile_image": profile_image,
+            "anthropic_cache_ttl": anthropic_cache_ttl,
             "created_at": now,
             "updated_at": now,
         }
@@ -227,6 +229,7 @@ class PersonaRepository:
                 if doc.get("integrations_config") else None
             ),
             voice_config=VoiceConfigDto(**doc["voice_config"]) if doc.get("voice_config") else None,
+            anthropic_cache_ttl=doc.get("anthropic_cache_ttl", "off"),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
             last_used_at=doc.get("last_used_at"),

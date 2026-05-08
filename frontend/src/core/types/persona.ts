@@ -19,6 +19,12 @@ export interface PersonaDto {
   system_prompt: string;
   temperature: number;
   reasoning_enabled: boolean;
+  // Anthropic prompt-cache TTL — only meaningful when the persona's
+  // model is a Claude family member behind OR or nano-gpt. Frontend
+  // hides the control unless the selected model passes
+  // ``isAnthropicModel``. Default ``"off"`` keeps pre-existing
+  // persona documents readable without migration.
+  anthropic_cache_ttl?: 'off' | '5m' | '1h';
   soft_cot_enabled: boolean;
   vision_fallback_model: string | null;
   nsfw: boolean;
@@ -73,6 +79,7 @@ export interface CreatePersonaRequest {
   system_prompt: string;
   temperature?: number;
   reasoning_enabled?: boolean;
+  anthropic_cache_ttl?: 'off' | '5m' | '1h';
   soft_cot_enabled?: boolean;
   vision_fallback_model?: string | null;
   nsfw?: boolean;
@@ -90,6 +97,7 @@ export interface UpdatePersonaRequest {
   system_prompt?: string;
   temperature?: number;
   reasoning_enabled?: boolean;
+  anthropic_cache_ttl?: 'off' | '5m' | '1h';
   soft_cot_enabled?: boolean;
   vision_fallback_model?: string | null;
   nsfw?: boolean;
