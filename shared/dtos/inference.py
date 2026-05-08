@@ -38,3 +38,9 @@ class CompletionRequest(BaseModel):
     reasoning_enabled: bool = False
     supports_reasoning: bool = False  # model capability — adapter uses this to decide whether to send think param
     cache_hint: str | None = None     # provider-specific cache locality hint (e.g. session UUID for x-grok-conv-id)
+    # Anthropic prompt-cache TTL — only honoured by the OpenRouter and
+    # nano-gpt adapters when the model is a Claude family member.
+    # Other adapters and non-Anthropic routes ignore the field. Default
+    # ``"off"`` keeps existing call-sites and tests behaviourally
+    # unchanged. See devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md.
+    anthropic_cache_ttl: Literal["off", "5m", "1h"] = "off"
