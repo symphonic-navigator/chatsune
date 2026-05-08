@@ -244,13 +244,16 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
-def _translate_message(msg: CompletionMessage) -> dict:
+def _translate_message(
+    msg: CompletionMessage,
+    *,
+    cache_control: dict | None = None,
+) -> dict:
     """Translate our CompletionMessage into an OpenAI-compatible chat message."""
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    # When there are no images, a plain string is more cache-friendly.
-    if not image_parts:
+    if cache_control is None and not image_parts:
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
@@ -263,9 +266,10 @@ def _translate_message(msg: CompletionMessage) -> dict:
                     "url": f"data:{p.media_type};base64,{p.data}",
                 },
             })
+        if cache_control and content:
+            content[-1]["cache_control"] = cache_control
 
     result: dict = {"role": msg.role, "content": content}
-
     if msg.tool_calls:
         result["tool_calls"] = [
             {
@@ -275,10 +279,8 @@ def _translate_message(msg: CompletionMessage) -> dict:
             }
             for tc in msg.tool_calls
         ]
-
     if msg.tool_call_id is not None:
         result["tool_call_id"] = msg.tool_call_id
-
     return result
 
 
@@ -301,12 +303,32 @@ def _build_chat_payload(
 
     For slug-mode and none-mode dispatch, ``send_reasoning_flag`` is
     False and the body must not carry any reasoning-related field.
+
+    See module docstring for reasoning-mode / cache-control rules.
     """
+    from backend.modules.llm._adapters._anthropic_cache import (
+        compute_cache_markers,
+        is_anthropic_model,
+    )
+
+    cc_by_index: dict[int, dict] = {}
+    if (
+        request.anthropic_cache_ttl != "off"
+        and is_anthropic_model(request.model)
+    ):
+        for marker in compute_cache_markers(
+            request.messages, request.anthropic_cache_ttl,
+        ):
+            cc_by_index[marker.message_index] = _to_cache_control(marker.ttl)
+
     payload: dict = {
         "model": upstream_slug,
         "stream": True,
         "stream_options": {"include_usage": True},
-        "messages": [_translate_message(m) for m in request.messages],
+        "messages": [
+            _translate_message(m, cache_control=cc_by_index.get(i))
+            for i, m in enumerate(request.messages)
+        ],
     }
     if send_reasoning_flag:
         payload["reasoning"] = {"enabled": reasoning_enabled}
@@ -325,6 +347,12 @@ def _build_chat_payload(
             for t in request.tools
         ]
     return payload
+
+
+def _to_cache_control(ttl: str) -> dict:
+    if ttl == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return {"type": "ephemeral"}
 
 
 def _resolve_call(
