@@ -5,7 +5,19 @@ Mirrors `test_openrouter_http.py`; coverage grows task by task.
 
 from __future__ import annotations
 
-from backend.modules.llm._adapters._novita_http import NovitaHttpAdapter
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    StreamDone,
+    StreamRefused,
+    ThinkingDelta,
+)
+from backend.modules.llm._adapters._novita_http import (
+    _SSE_DONE,
+    NovitaHttpAdapter,
+    _chunk_to_events,
+    _parse_sse_line,
+    _ToolCallAccumulator,
+)
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     _PREMIUM_ONLY_ADAPTERS,
@@ -31,20 +43,6 @@ def test_adapter_is_premium_only_not_user_creatable():
 def test_adapter_registered_in_premium_only_map():
     assert "novita_http" in _PREMIUM_ONLY_ADAPTERS
     assert _PREMIUM_ONLY_ADAPTERS["novita_http"] is NovitaHttpAdapter
-
-
-from backend.modules.llm._adapters._events import (
-    ContentDelta,
-    StreamDone,
-    StreamRefused,
-    ThinkingDelta,
-)
-from backend.modules.llm._adapters._novita_http import (
-    _SSE_DONE,
-    _chunk_to_events,
-    _parse_sse_line,
-    _ToolCallAccumulator,
-)
 
 
 def test_parse_sse_line_returns_dict_for_data_line():
