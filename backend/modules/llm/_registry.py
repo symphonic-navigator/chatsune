@@ -4,9 +4,9 @@
 ``adapter_type`` values a user may pick when creating a Connection.
 
 ``get_adapter_class`` additionally resolves Premium-only adapter types
-(currently ``xai_http``) that are reachable via the Premium Provider
-resolver but must not be selectable as a regular user Connection —
-see :mod:`backend.modules.llm._resolver`.
+that are reachable via the Premium Provider resolver but must not be
+selectable as a regular user Connection — see
+:mod:`backend.modules.llm._resolver`.
 """
 
 import inspect
