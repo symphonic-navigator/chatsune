@@ -6,9 +6,14 @@ Routes to OpenRouter's unified API which fans out to 50+ upstream
 providers; we apply ``output_modalities=text`` at the model-listing
 endpoint so only text-output models reach the Model Browser.
 
-Cache control: pass-through. OpenRouter performs automatic prefix
-caching for OpenAI / Gemini / DeepSeek; Anthropic-style explicit
-``cache_control`` markers are deferred — see INS-032 in INSIGHTS.md.
+Cache control: OpenRouter performs automatic prefix caching for
+OpenAI / Gemini / DeepSeek (transparent, no markers). For Anthropic
+(Claude) models, explicit ``cache_control`` markers are emitted by
+``_build_chat_payload`` when the persona has opted in via
+``anthropic_cache_ttl``. The marker placement strategy lives in
+``_anthropic_cache.py`` (system + block-boundary + rolling tail); see
+``devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md``.
+This reverses the Phase-1 pass-through decision recorded in INS-032.
 
 Structurally a Mistral clone. The OpenAI-compatible SSE parser,
 tool-call accumulator, and gutter-timer logic are intentionally copied
