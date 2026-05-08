@@ -14,6 +14,8 @@ build/
 .xai-test-key
 .nano-test-key
 .mistral-test-key
+.gmi-test-key
+.novita-test-key
 
 # Docker
 docker-compose.override.yml
