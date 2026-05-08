@@ -14,6 +14,10 @@ class PersonaDocument(BaseModel):
     system_prompt: str
     temperature: float
     reasoning_enabled: bool
+    # Anthropic prompt-cache TTL — see shared.dtos.persona.PersonaDto.
+    # Default ``"off"`` keeps pre-existing persona documents readable
+    # (CLAUDE.md §Data-Model Migrations).
+    anthropic_cache_ttl: str = "off"
     soft_cot_enabled: bool = False
     vision_fallback_model: str | None = None
     nsfw: bool
