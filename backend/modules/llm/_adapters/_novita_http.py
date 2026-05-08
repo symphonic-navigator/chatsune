@@ -150,6 +150,68 @@ def _parse_sse_line(line: str) -> dict | object | None:
         return None
 
 
+def _translate_message(msg) -> dict:
+    """Translate our CompletionMessage into an OpenAI-compatible chat
+    message. Plain text collapses to a string; images force the array
+    form. No cache_control markers — Novita does not route to Anthropic."""
+    text_parts = [p for p in msg.content if p.type == "text" and p.text]
+    image_parts = [p for p in msg.content if p.type == "image" and p.data]
+
+    if not image_parts:
+        content: str | list[dict] = "".join(p.text or "" for p in text_parts)
+    else:
+        content = []
+        for p in text_parts:
+            content.append({"type": "text", "text": p.text or ""})
+        for p in image_parts:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{p.media_type};base64,{p.data}"},
+            })
+
+    result: dict = {"role": msg.role, "content": content}
+    if msg.tool_calls:
+        result["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+    if msg.tool_call_id is not None:
+        result["tool_call_id"] = msg.tool_call_id
+    return result
+
+
+def _build_chat_payload(request: CompletionRequest) -> dict:
+    payload: dict = {
+        "model": request.model,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "messages": [_translate_message(m) for m in request.messages],
+    }
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    if request.tools:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name, "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in request.tools
+        ]
+    # Reasoning toggle: ``exclude: true`` only when the user wants
+    # thinking hidden on a reasoning-capable model. Built-in reasoners
+    # ignore the field; non-reasoners shouldn't see it at all.
+    if request.supports_reasoning and not request.reasoning_enabled:
+        payload["reasoning"] = {"exclude": True}
+    return payload
+
+
 class NovitaHttpAdapter(BaseAdapter):
     adapter_type = "novita_http"
     display_name = "Novita AI"

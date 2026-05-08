@@ -14,14 +14,22 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._adapters._novita_http import (
     _SSE_DONE,
     NovitaHttpAdapter,
+    _build_chat_payload,
     _chunk_to_events,
     _parse_sse_line,
     _ToolCallAccumulator,
+    _translate_message,
 )
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     _PREMIUM_ONLY_ADAPTERS,
     get_adapter_class,
+)
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ToolDefinition,
 )
 
 
@@ -130,3 +138,136 @@ def test_accumulator_finalised_is_idempotent():
     second = acc.finalised()
     assert len(first) == 1
     assert second == []
+
+
+def test_translate_text_only_user_message():
+    msg = CompletionMessage(role="user",
+                            content=[ContentPart(type="text", text="hi")])
+    assert _translate_message(msg) == {"role": "user", "content": "hi"}
+
+
+def test_translate_image_message_uses_openai_image_url_format():
+    msg = CompletionMessage(role="user", content=[
+        ContentPart(type="text", text="describe"),
+        ContentPart(type="image", data="aGVsbG8=", media_type="image/png"),
+    ])
+    out = _translate_message(msg)
+    assert out["role"] == "user"
+    assert isinstance(out["content"], list)
+    assert out["content"][0] == {"type": "text", "text": "describe"}
+    assert out["content"][1] == {
+        "type": "image_url",
+        "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+    }
+
+
+def test_build_payload_passes_model_through():
+    req = CompletionRequest(
+        model="xiaomimimo/mimo-v2.5-pro",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="hi")],
+        )],
+    )
+    payload = _build_chat_payload(req)
+    assert payload["model"] == "xiaomimimo/mimo-v2.5-pro"
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+
+
+def test_build_payload_includes_temperature_when_set():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        temperature=0.4,
+    )
+    assert _build_chat_payload(req)["temperature"] == 0.4
+
+
+def test_build_payload_omits_temperature_when_none():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+    )
+    assert "temperature" not in _build_chat_payload(req)
+
+
+def test_build_payload_translates_tools():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        tools=[ToolDefinition(
+            name="lookup", description="d", parameters={"type": "object"},
+        )],
+    )
+    payload = _build_chat_payload(req)
+    assert payload["tools"] == [{
+        "type": "function",
+        "function": {
+            "name": "lookup", "description": "d",
+            "parameters": {"type": "object"},
+        },
+    }]
+
+
+def test_reasoning_field_omitted_when_enabled_and_supported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=True, reasoning_enabled=True,
+    )
+    assert "reasoning" not in _build_chat_payload(req)
+
+
+def test_reasoning_field_set_to_exclude_when_disabled_and_supported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=True, reasoning_enabled=False,
+    )
+    payload = _build_chat_payload(req)
+    assert payload["reasoning"] == {"exclude": True}
+
+
+def test_reasoning_field_omitted_when_unsupported():
+    req = CompletionRequest(
+        model="m",
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text="x")],
+        )],
+        supports_reasoning=False, reasoning_enabled=True,
+    )
+    assert "reasoning" not in _build_chat_payload(req)
+
+
+def test_translate_assistant_with_tool_calls():
+    from shared.dtos.inference import ToolCallResult
+    msg = CompletionMessage(
+        role="assistant",
+        content=[ContentPart(type="text", text="")],
+        tool_calls=[ToolCallResult(id="c1", name="lookup", arguments='{"q":1}')],
+    )
+    out = _translate_message(msg)
+    assert out["tool_calls"] == [{
+        "id": "c1", "type": "function",
+        "function": {"name": "lookup", "arguments": '{"q":1}'},
+    }]
+
+
+def test_translate_tool_message_carries_tool_call_id():
+    msg = CompletionMessage(
+        role="tool",
+        content=[ContentPart(type="text", text="42")],
+        tool_call_id="c1",
+    )
+    out = _translate_message(msg)
+    assert out["tool_call_id"] == "c1"
