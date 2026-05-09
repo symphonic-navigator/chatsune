@@ -21,7 +21,9 @@ from backend.jobs.handlers._budget_helpers import (
 )
 from backend.modules.llm import ContentDelta, StreamDone, StreamError
 from backend.modules.settings import get_admin_system_message
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 from shared.events.memory import (
     MemoryEntriesDiscardedEvent,
     MemoryEntryCreatedEvent,
@@ -166,8 +168,13 @@ async def handle_memory_extraction(
                 ),
             ],
             temperature=0.3,
-            reasoning_enabled=False,
-            supports_reasoning=supports_reasoning,
+            reasoning=ReasoningCapability(kind="optional"),
+            tools_capability=ToolCapability(supported=False),
+            extras=ChatSessionExtras(
+                tools_enabled=False,
+                reasoning_mode="off",
+                reasoning_effort=None,
+            ),
         )
 
         # Reserve daily-budget headroom before spending tokens.

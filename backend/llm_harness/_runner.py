@@ -30,6 +30,7 @@ _ADAPTERS = {
     "ollama_http": (OllamaHttpAdapter, "https://ollama.com"),
     "xai_http": (XaiHttpAdapter, "https://api.x.ai/v1"),
 }
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -37,6 +38,7 @@ from shared.dtos.inference import (
     ToolCallResult,
     ToolDefinition,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 class HarnessRunner:
@@ -124,12 +126,18 @@ class HarnessRunner:
         if tools:
             tool_defs = [ToolDefinition(**t) for t in tools]
 
+        tools_present = bool(tool_defs)
         return CompletionRequest(
             model=model,
             messages=messages,
             temperature=temperature,
-            reasoning_enabled=reasoning,
-            supports_reasoning=supports_reasoning,
+            reasoning=ReasoningCapability(kind="optional"),
+            tools_capability=ToolCapability(supported=tools_present),
+            extras=ChatSessionExtras(
+                tools_enabled=tools_present,
+                reasoning_mode="on" if reasoning else "off",
+                reasoning_effort=None,
+            ),
             tools=tool_defs,
         )
 
