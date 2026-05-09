@@ -1,10 +1,7 @@
 """Verify cache_control marker emission in the OpenRouter payload builder."""
 from __future__ import annotations
 
-from backend.modules.llm._adapters._openrouter_http import (
-    _ANTHROPIC_REASONING_BUDGET,
-    build_request_body,
-)
+from backend.modules.llm._adapters._openrouter_http import build_request_body
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -118,68 +115,15 @@ def test_marker_attaches_to_last_content_block_with_image() -> None:
     assert tail_blocks[-1].get("cache_control") == {"type": "ephemeral"}
 
 
-# --- OR-bug workaround: cache_control suppressed when explicit effort dialled ---
+# --- INS-037: cache_control stays put even when reasoning is on ---
+# We deliberately accept that the user can't dial in a reasoning effort
+# bucket on Anthropic-via-router; the trade-off is worth keeping cache.
 
 
-def _request_with_extras(
-    model: str,
-    messages: list[CompletionMessage],
-    ttl: str,
-    *,
-    reasoning_mode: str,
-    reasoning_effort: str | None,
-) -> CompletionRequest:
-    from shared.dtos.chat import ChatSessionExtras
-    from shared.dtos.llm import ReasoningEffortSpec
-    return CompletionRequest(
-        model=model,
-        messages=messages,
-        anthropic_cache_ttl=ttl,
-        reasoning=ReasoningCapability(
-            kind="optional",
-            effort=ReasoningEffortSpec(
-                buckets=["low", "medium", "high"], default_bucket="medium",
-            ),
-        ),
-        tools_capability=ToolCapability(supported=True),
-        extras=ChatSessionExtras(
-            tools_enabled=True,
-            reasoning_mode=reasoning_mode,
-            reasoning_effort=reasoning_effort,
-        ),
-    )
-
-
-def test_cache_markers_suppressed_when_explicit_effort_set() -> None:
-    """OpenRouter's translator silently discards reasoning.max_tokens when
-    cache_control markers are present in the same body. The user's
-    explicit effort choice wins: drop cache markers so the budget
-    actually enforces."""
-    msgs = [_msg("system")] + [_msg("user")] * 21
-    payload = build_request_body(
-        _request_with_extras(
-            "anthropic/claude-sonnet-4.6", msgs, "5m",
-            reasoning_mode="on", reasoning_effort="low",
-        ),
-    )
-    for m in payload["messages"]:
-        if isinstance(m["content"], list):
-            for block in m["content"]:
-                assert "cache_control" not in block, (
-                    "cache_control must be stripped when explicit reasoning "
-                    "effort is set, otherwise OR ignores reasoning.max_tokens"
-                )
-    # The reasoning budget itself MUST be present — that's the whole point.
-    assert payload["reasoning"] == {
-        "max_tokens": _ANTHROPIC_REASONING_BUDGET["low"],
-    }
-
-
-def test_cache_markers_kept_when_no_explicit_effort() -> None:
-    """When the user hasn't dialled in a specific effort, cache markers
-    stay on — the bug only fires when both fields collide. We pay the
-    cache savings on every turn except those where the user explicitly
-    dialled an effort bucket."""
+def test_cache_markers_kept_when_reasoning_on_for_anthropic() -> None:
+    """Per INS-037: we don't expose effort on Anthropic-via-router, and
+    the body carries only ``{enabled: true}`` — no max_tokens, no
+    collision with cache_control. Cache markers stay on every turn."""
     from shared.dtos.chat import ChatSessionExtras
     msgs = [_msg("system")] + [_msg("user")] * 21
     req = CompletionRequest(
@@ -189,32 +133,7 @@ def test_cache_markers_kept_when_no_explicit_effort() -> None:
         reasoning=ReasoningCapability(kind="optional"),
         tools_capability=ToolCapability(supported=True),
         extras=ChatSessionExtras(
-            tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
-        ),
-    )
-    payload = build_request_body(req)
-    # At least one message should still carry cache_control.
-    found_cc = any(
-        isinstance(m.get("content"), list)
-        and any(b.get("cache_control") for b in m["content"])
-        for m in payload["messages"]
-    )
-    assert found_cc, "cache markers should remain when effort is unset"
-
-
-def test_cache_markers_kept_when_reasoning_off_even_with_effort() -> None:
-    """Effort is dialled but reasoning is OFF — body sends enabled:false,
-    no max_tokens collision possible, so cache markers stay on."""
-    from shared.dtos.chat import ChatSessionExtras
-    msgs = [_msg("system")] + [_msg("user")] * 21
-    req = CompletionRequest(
-        model="anthropic/claude-sonnet-4.6",
-        messages=msgs,
-        anthropic_cache_ttl="5m",
-        reasoning=ReasoningCapability(kind="optional"),
-        tools_capability=ToolCapability(supported=True),
-        extras=ChatSessionExtras(
-            tools_enabled=True, reasoning_mode="off", reasoning_effort="low",
+            tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
         ),
     )
     payload = build_request_body(req)
@@ -223,4 +142,6 @@ def test_cache_markers_kept_when_reasoning_off_even_with_effort() -> None:
         and any(b.get("cache_control") for b in m["content"])
         for m in payload["messages"]
     )
-    assert found_cc, "cache markers should remain when reasoning is off"
+    assert found_cc, "cache markers must remain even with reasoning on"
+    # Sanity: effort dropped from the wire body.
+    assert payload["reasoning"] == {"enabled": True}

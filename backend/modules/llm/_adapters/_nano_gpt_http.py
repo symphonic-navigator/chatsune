@@ -288,18 +288,6 @@ def _translate_message(
     return result
 
 
-# Bucket-to-token-budget translation for Anthropic models routed via
-# nano-gpt. Mirrors openrouter_http._ANTHROPIC_REASONING_BUDGET so both
-# routers behave identically. Calibration note: ``low`` set to 128 for
-# field-test observation — see openrouter_http for the rationale.
-_ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
-    "minimal":   128,
-    "low":       128,
-    "medium":   8192,
-    "high":    16384,
-}
-
-
 def _build_chat_payload(
     request: CompletionRequest,
     upstream_slug: str,
@@ -334,20 +322,10 @@ def _build_chat_payload(
         is_anthropic_model,
     )
 
-    # Same OR-bug workaround as openrouter_http (router translator silently
-    # discards reasoning.max_tokens when cache_control markers are present).
-    # nano-gpt mirrors OR's universal reasoning object so the bug repeats.
-    user_chose_explicit_effort = (
-        is_anthropic_model(request.model)
-        and request.reasoning.kind == "optional"
-        and request.extras.reasoning_mode == "on"
-        and bool(request.extras.reasoning_effort)
-    )
     cc_by_index: dict[int, dict] = {}
     if (
         request.anthropic_cache_ttl != "off"
         and is_anthropic_model(request.model)
-        and not user_chose_explicit_effort
     ):
         for marker in compute_cache_markers(
             request.messages, request.anthropic_cache_ttl,
@@ -364,23 +342,13 @@ def _build_chat_payload(
         ],
     }
     if send_reasoning_flag:
-        # Mirror the openrouter_http logic: for Anthropic models, send
-        # ONLY max_tokens (which auto-enables reasoning per OR docs) and
-        # never mix with ``enabled: true``. The combination appears to
-        # leave the router using upstream defaults instead of honouring
-        # our budget.
-        if is_anthropic_model(request.model) and reasoning_enabled:
-            bucket = reasoning_effort or "medium"
-            payload["reasoning"] = {
-                "max_tokens": _ANTHROPIC_REASONING_BUDGET.get(
-                    bucket, _ANTHROPIC_REASONING_BUDGET["medium"],
-                ),
-            }
-        else:
-            reasoning_obj: dict = {"enabled": reasoning_enabled}
-            if reasoning_enabled and reasoning_effort:
-                reasoning_obj["effort"] = reasoning_effort
-            payload["reasoning"] = reasoning_obj
+        reasoning_obj: dict = {"enabled": reasoning_enabled}
+        # Effort buckets are NOT sent for Anthropic models — see INS-037.
+        # Mirrors openrouter_http: cache survival beats effort control on
+        # router-mediated paths. Other vendors keep effort as before.
+        if reasoning_enabled and reasoning_effort and not is_anthropic_model(request.model):
+            reasoning_obj["effort"] = reasoning_effort
+        payload["reasoning"] = reasoning_obj
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools and request.extras.tools_enabled:

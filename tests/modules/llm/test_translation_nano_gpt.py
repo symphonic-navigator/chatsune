@@ -224,24 +224,18 @@ def test_nano_gpt_no_reasoning_kind_omits_reasoning_field():
     assert "reasoning" not in body
 
 
-def test_nano_gpt_anthropic_model_uses_explicit_max_tokens():
-    """For Anthropic models, body carries ONLY max_tokens (no
-    ``enabled: true``, no ``effort``) — see openrouter_http for the
-    field-test rationale."""
+def test_nano_gpt_anthropic_model_drops_effort_keeps_enabled():
+    """For Anthropic models, effort is NOT sent (see INS-037).
+    Body carries just ``{enabled: true}`` — cache_control stays viable."""
     req = _req(
         "claude-sonnet-4-6",
         ChatSessionExtras(
             tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
         ),
-        ReasoningCapability(
-            kind="optional",
-            effort=ReasoningEffortSpec(
-                buckets=["low", "medium", "high"], default_bucket="medium",
-            ),
-        ),
+        ReasoningCapability(kind="optional"),
     )
     body, _slug = build_request_body(req)
-    assert body["reasoning"] == {"max_tokens": 128}
+    assert body["reasoning"] == {"enabled": True}
 
 
 def test_nano_gpt_non_anthropic_keeps_effort_string():

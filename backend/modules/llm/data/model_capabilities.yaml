@@ -4,11 +4,18 @@
 
 models:
   # Anthropic Claude family via OpenRouter
+  #
+  # NOTE (2026-05-09): Effort buckets deliberately omitted for Claude
+  # via OpenRouter / nano-gpt — see INS-037. Router translators clobber
+  # reasoning.max_tokens when cache_control markers are present, and
+  # cache_control is too valuable to drop on every reasoning turn.
+  # Reasoning stays as a simple on/off toggle; Sonnet's adaptive
+  # default-effort handles the depth choice intelligently. Will revisit
+  # once a native Anthropic adapter ships (separate spec).
   - adapter: openrouter
     pattern: "anthropic/claude-sonnet-4.6*"
     reasoning:
       kind: optional
-      effort: { buckets: [low, medium, high], default_bucket: medium }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
@@ -16,7 +23,6 @@ models:
     pattern: "anthropic/claude-opus-4-7*"
     reasoning:
       kind: optional
-      effort: { buckets: [low, medium, high], default_bucket: medium }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
@@ -25,7 +31,6 @@ models:
     pattern: "claude-sonnet-4-6*"
     reasoning:
       kind: optional
-      effort: { buckets: [low, medium, high], default_bucket: medium }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
@@ -33,7 +38,6 @@ models:
     pattern: "claude-opus-4-7*"
     reasoning:
       kind: optional
-      effort: { buckets: [low, medium, high], default_bucket: medium }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 

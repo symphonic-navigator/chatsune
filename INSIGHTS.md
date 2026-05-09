@@ -1337,3 +1337,68 @@ collide on the wire, write a curl reproduction with each one
 isolated. The "everything looks right in the trace" case is exactly
 where two fields are interacting upstream in a way you can't see
 without bisecting them.
+
+---
+
+## INS-037 — Reasoning effort dropped for Anthropic-via-router; cache wins (2026-05-09)
+
+**Decision:** For Claude models routed through OpenRouter or nano-gpt,
+``ChatSessionExtras.reasoning_effort`` is **ignored**. The wire body
+carries only ``reasoning: {enabled: true|false}`` — no ``effort`` field,
+no ``max_tokens`` field. Sonnet's adaptive default-effort decides
+reasoning depth on its own. The capability YAML for these models
+omits the ``effort:`` block entirely, so the cockpit's ThinkingButton
+falls back to a simple on/off toggle (no pop-out).
+
+**Context:** INS-035 found that OR's universal ``effort`` shorthand
+becomes a percentage of response max_tokens for Anthropic, making
+``low`` yield ~12k thinking tokens. INS-036 found that switching to
+``reasoning.max_tokens`` works in isolation but is silently dropped
+when ``cache_control`` markers are present in the same body. We
+spent a session bisecting workarounds (suppress cache_control when
+effort is set, calibrate budgets, swap field shapes) before stepping
+back to weigh the trade-off.
+
+**The trade-off:**
+- Cache_control on long Anthropic conversations is **massive** value:
+  a 4000-token system prompt cached at 5m TTL on a 10-turn session
+  saves ~36000 prompt-tokens × 90% discount = effectively the system
+  prompt cost on 9 of 10 turns. For Chatsune's persona-driven sessions
+  (long instruction prompts, multi-turn dialogue) this dominates.
+- Effort control is **nice to have** but rarely used: Claude's
+  internal adaptive reasoning already scales depth with problem
+  difficulty. Power-users who want manual tuning are an edge case.
+- Routers don't let us have both. We pick cache.
+
+**What stays first-class:** Claude Sonnet 4.6 + Opus 4.7 via
+OpenRouter and nano-gpt remain ★ first-class in the model browser.
+The "first-class" badge means "we have curated this end-to-end" —
+the curation now reads "we deliberately disabled effort for these
+models in favour of cache survival, and that is documented behaviour".
+Other vendors (OpenAI o-series, DeepSeek V4) keep their effort
+buckets — the bug is Anthropic-via-router specific.
+
+**What this looks like in the code:**
+- ``model_capabilities.yaml``: Claude entries omit ``effort:``.
+- ``_openrouter_http.py`` / ``_nano_gpt_http.py``: when building
+  the reasoning object, ``if not is_anthropic_model(...)``
+  guards the ``effort`` field. Anthropic on → ``{enabled: true}``,
+  off → ``{enabled: false}``.
+- No more ``_ANTHROPIC_REASONING_BUDGET`` table, no more
+  ``user_chose_explicit_effort`` cache_control suppression.
+  The previous workarounds (commits before this one) are reverted.
+
+**When this stops mattering:** when a native Anthropic adapter
+ships (deferred per design §9), it can use ``thinking.budget_tokens``
+and ``cache_control`` together because both go direct to Anthropic
+without router translation. We expect to expose effort buckets there
+at the same time. The "Provider Integration Policy" Anthropic is
+working towards may also resolve this on the OR side without code
+change on our end — worth re-checking the OR-Anthropic wire format
+periodically.
+
+**Generalisable rule:** when a workaround stack grows past two layers
+for the same root cause (here: bucket calibration → field-shape swap
+→ cache_control suppression), step back and ask whether the feature is
+worth keeping in this routing path at all. Sometimes the cleanest fix
+is to remove the parameter from the user-visible surface.

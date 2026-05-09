@@ -16,9 +16,11 @@ class _StubAdapter:
 
 
 def test_yaml_match_returns_first_class():
+    """Use a YAML entry that still has effort buckets (GPT-5) — Claude
+    entries dropped effort per INS-037."""
     res = resolve_capabilities(
         adapter_type="openrouter",
-        model_id="anthropic/claude-opus-4-7",
+        model_id="openai/gpt-5",
         adapter=_StubAdapter(),
     )
     assert isinstance(res, ResolvedCapabilities)
@@ -26,6 +28,19 @@ def test_yaml_match_returns_first_class():
     assert res.reasoning.kind == "optional"
     assert res.reasoning.effort.default_bucket == "medium"
     assert res.tools.supported is True
+
+
+def test_yaml_match_anthropic_has_no_effort_per_INS037():
+    """Claude entries deliberately omit effort buckets — see INS-037.
+    Anthropic-via-router uses on/off only so cache_control survives."""
+    res = resolve_capabilities(
+        adapter_type="openrouter",
+        model_id="anthropic/claude-opus-4-7",
+        adapter=_StubAdapter(),
+    )
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "optional"
+    assert res.reasoning.effort is None
 
 
 def test_adapter_hint_used_when_no_yaml_match():

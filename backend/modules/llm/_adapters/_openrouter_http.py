@@ -369,26 +369,10 @@ def build_request_body(request: CompletionRequest) -> dict:
         is_anthropic_model,
     )
 
-    # OR-bug workaround (2026-05-09, see INS-035 follow-up): when an
-    # Anthropic-routed request contains BOTH ``cache_control`` markers AND
-    # an explicit ``reasoning.max_tokens``, OR's translator silently drops
-    # our reasoning budget — we observed ~16k thinking tokens on a request
-    # with ``reasoning.max_tokens=128``. Field-test confirmed: the same
-    # body without ``cache_control`` honours the budget verbatim. We
-    # therefore suppress cache_control whenever the user has dialled in a
-    # specific reasoning effort. The user implicitly chose "I care about
-    # how long Claude thinks" over "I want cache savings on this turn".
-    user_chose_explicit_effort = (
-        is_anthropic_model(request.model)
-        and request.reasoning.kind == "optional"
-        and request.extras.reasoning_mode == "on"
-        and bool(request.extras.reasoning_effort)
-    )
     cc_by_index: dict[int, dict] = {}
     if (
         request.anthropic_cache_ttl != "off"
         and is_anthropic_model(request.model)
-        and not user_chose_explicit_effort
     ):
         for marker in compute_cache_markers(
             request.messages, request.anthropic_cache_ttl,
@@ -419,49 +403,17 @@ def build_request_body(request: CompletionRequest) -> dict:
         ]
     if request.reasoning.kind == "optional":
         reasoning_on = request.extras.reasoning_mode == "on"
-        # For Anthropic models routed via OpenRouter (typically through
-        # Google Vertex), the universal ``effort`` shorthand is interpreted
-        # as a percentage of response max_tokens — so ``low`` becomes ~12k
-        # thinking tokens. Per OR docs, ``reasoning.max_tokens`` is the
-        # numeric override Anthropic-style models prefer. Critically, OR's
-        # docs say "setting max_tokens automatically enables reasoning",
-        # and field-testing suggests that ``enabled: true`` AND
-        # ``max_tokens`` together can leave OR using upstream defaults
-        # rather than honouring the explicit budget. So for Anthropic we
-        # send ONLY max_tokens when on, and ONLY ``enabled: false`` when
-        # off — never mixed.
-        if is_anthropic_model(request.model) and reasoning_on:
-            bucket = request.extras.reasoning_effort or "medium"
-            payload["reasoning"] = {
-                "max_tokens": _ANTHROPIC_REASONING_BUDGET.get(
-                    bucket, _ANTHROPIC_REASONING_BUDGET["medium"],
-                ),
-            }
-        else:
-            reasoning_obj: dict = {"enabled": reasoning_on}
-            if reasoning_on and request.extras.reasoning_effort:
-                reasoning_obj["effort"] = request.extras.reasoning_effort
-            payload["reasoning"] = reasoning_obj
+        reasoning_obj: dict = {"enabled": reasoning_on}
+        # Effort buckets are NOT sent for Anthropic models — see INS-037.
+        # Router translators (OR / nano-gpt) clobber reasoning.max_tokens
+        # when cache_control markers are present, and cache is too valuable
+        # to drop on every reasoning turn. Sonnet's adaptive default-effort
+        # handles depth choice intelligently; we only toggle on/off here.
+        # Other vendors (OpenAI o-series, DeepSeek, etc.) keep effort.
+        if reasoning_on and request.extras.reasoning_effort and not is_anthropic_model(request.model):
+            reasoning_obj["effort"] = request.extras.reasoning_effort
+        payload["reasoning"] = reasoning_obj
     return payload
-
-
-# Bucket-to-token-budget translation for Anthropic models routed via
-# OpenRouter (spec §6.4). The raw thinking budget that Anthropic sees,
-# NOT a percentage. ``minimal`` is included for symmetry with the GPT-5
-# bucket vocabulary; for Anthropic's effort spec we expect only
-# low/medium/high in practice.
-#
-# Calibration note (2026-05-09): ``low`` deliberately set to 128 for
-# field-test observation — well below Anthropic's documented thinking
-# minimum (~1024), so we expect the upstream to either reject, clamp,
-# or skip reasoning entirely. Keep an eye on real responses; raise
-# back to 1024–2048 once the behaviour at the floor is understood.
-_ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
-    "minimal":   128,
-    "low":       128,
-    "medium":   8192,
-    "high":    16384,
-}
 
 
 def _to_cache_control(ttl: str) -> dict:

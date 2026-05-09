@@ -104,57 +104,27 @@ def test_openrouter_does_not_use_exclude_for_visibility_hide():
     assert body.get("reasoning", {}).get("exclude") is None
 
 
-def test_openrouter_anthropic_on_sends_only_max_tokens_no_enabled():
-    """For Anthropic models with reasoning ON, body carries ONLY
-    ``max_tokens`` — no ``enabled: true`` (mixing the two leaves OR
-    using upstream defaults instead of honouring the budget per
-    field-test observation 2026-05-09)."""
+def test_openrouter_anthropic_on_sends_only_enabled_no_effort():
+    """For Anthropic models, effort is NOT sent (see INS-037).
+    Cache_control survives, Sonnet's adaptive default-effort decides
+    depth. Body is just ``{enabled: true}`` regardless of effort bucket."""
     req = _req(
         ChatSessionExtras(
             tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
         ),
-        ReasoningCapability(
-            kind="optional",
-            effort=ReasoningEffortSpec(
-                buckets=["low", "medium", "high"], default_bucket="medium",
-            ),
-        ),
+        ReasoningCapability(kind="optional"),
         model="anthropic/claude-sonnet-4.6",
     )
     body = build_request_body(req)
-    assert body["reasoning"] == {"max_tokens": 128}
-
-
-def test_openrouter_anthropic_medium_uses_medium_budget():
-    req = _req(
-        ChatSessionExtras(
-            tools_enabled=False, reasoning_mode="on", reasoning_effort="medium",
-        ),
-        ReasoningCapability(
-            kind="optional",
-            effort=ReasoningEffortSpec(
-                buckets=["low", "medium", "high"], default_bucket="medium",
-            ),
-        ),
-        model="anthropic/claude-opus-4-7",
-    )
-    body = build_request_body(req)
-    assert body["reasoning"] == {"max_tokens": 8192}
+    assert body["reasoning"] == {"enabled": True}
 
 
 def test_openrouter_anthropic_off_sends_only_enabled_false():
-    """For Anthropic with reasoning OFF, body carries ``enabled: false``
-    (no max_tokens, no effort) — explicit-off pattern unchanged."""
     req = _req(
         ChatSessionExtras(
             tools_enabled=True, reasoning_mode="off", reasoning_effort=None,
         ),
-        ReasoningCapability(
-            kind="optional",
-            effort=ReasoningEffortSpec(
-                buckets=["low", "medium", "high"], default_bucket="medium",
-            ),
-        ),
+        ReasoningCapability(kind="optional"),
         model="anthropic/claude-sonnet-4.6",
     )
     body = build_request_body(req)
