@@ -9,6 +9,7 @@ from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
     ChatSessionDto,
+    ChatSessionExtras,
     KnowledgeContextItem,
     TimelineEntryArtefact,
     TimelineEntryImage,
@@ -429,6 +430,24 @@ class ChatRepository:
             {"$set": {"title": title, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
+
+    async def update_session_extras(
+        self, session_id: str, user_id: str, extras: ChatSessionExtras,
+    ) -> dict | None:
+        """Persist the per-session reasoning/tools preference (``extras``).
+
+        Filtered by both ``_id`` and ``user_id`` so a stray cross-user
+        update can never land — the cockpit write path goes through this
+        method and only the owner may mutate the session's extras.
+        """
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id},
+            {"$set": {"extras": extras.model_dump(), "updated_at": now}},
+        )
+        return await self._sessions.find_one(
+            {"_id": session_id, "user_id": user_id},
+        )
 
     async def update_session_pinned(self, session_id: str, pinned: bool) -> dict | None:
         """Toggle the pinned status of a chat session."""
