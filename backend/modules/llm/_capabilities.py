@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import fnmatch
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
 
@@ -40,8 +39,14 @@ class _AdapterCapabilityProvider(Protocol):
 _YAML_PATH = Path(__file__).parent / "data" / "model_capabilities.yaml"
 
 
-@lru_cache(maxsize=1)
 def _load_yaml() -> list[dict]:
+    """Read and parse the YAML on every call.
+
+    Re-reading on every call (microseconds for ~75 lines) is cheaper than
+    a stale cache. Editing the YAML during a dev session takes effect on
+    the next request — no backend restart required. ``lru_cache`` was a
+    correct optimisation in principle and a usability footgun in practice.
+    """
     if not _YAML_PATH.exists():
         return []
     with _YAML_PATH.open() as f:

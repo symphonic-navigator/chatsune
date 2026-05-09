@@ -18,7 +18,7 @@ class _StubAdapter:
 def test_yaml_match_returns_first_class():
     res = resolve_capabilities(
         adapter_type="openrouter",
-        model_id="anthropic/claude-sonnet-4-6",
+        model_id="anthropic/claude-opus-4-7",
         adapter=_StubAdapter(),
     )
     assert isinstance(res, ResolvedCapabilities)
@@ -59,7 +59,7 @@ def test_universal_fallback_when_nothing_matches():
 def test_wildcard_pattern_matches():
     res = resolve_capabilities(
         adapter_type="openrouter",
-        model_id="anthropic/claude-sonnet-4-6:beta",
+        model_id="anthropic/claude-opus-4-7:beta",
         adapter=_StubAdapter(),
     )
     assert res.first_class_support is True

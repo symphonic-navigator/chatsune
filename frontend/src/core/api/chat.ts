@@ -47,6 +47,16 @@ interface ChatSessionDto {
    * ``shared/dtos/chat.py``.
    */
   project_id: string | null
+  /**
+   * Per-session capability-aware reasoning/tools settings. ``null`` for
+   * sessions that haven't been touched since the migration; the cockpit
+   * computes initial defaults from the current model capability in that
+   * case (see ``defaultExtrasForCapability`` in ``cockpitDefaults.ts``)
+   * and PATCHes them back on the first user interaction. Optional in the
+   * type so existing test fixtures and intermediate session-construction
+   * call sites do not need to specify it; runtime treats undefined as null.
+   */
+  extras?: ChatSessionExtras | null
   created_at: string
   updated_at: string
 }

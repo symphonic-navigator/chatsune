@@ -925,6 +925,8 @@ class ChatRepository:
 
     @staticmethod
     def session_to_dto(doc: dict) -> ChatSessionDto:
+        raw_extras = doc.get("extras")
+        extras = ChatSessionExtras.model_validate(raw_extras) if raw_extras else None
         return ChatSessionDto(
             id=doc["_id"],
             user_id=doc["user_id"],
@@ -945,6 +947,7 @@ class ChatRepository:
             context_max_tokens=int(doc.get("context_max_tokens", 0)),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            extras=extras,
         )
 
     async def update_session_context_metrics(

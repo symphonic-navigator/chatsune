@@ -51,6 +51,11 @@ class ChatSessionDto(BaseModel):
     context_max_tokens: int = 0
     created_at: datetime
     updated_at: datetime
+    # Per-session capability-aware reasoning/tools settings. ``None`` for
+    # legacy sessions that haven't been touched since the migration; the
+    # frontend computes initial defaults from the current model capability
+    # in that case (and PATCHes them back on first user interaction).
+    extras: "ChatSessionExtras | None" = None
 
 
 class ChatSessionExtras(BaseModel):

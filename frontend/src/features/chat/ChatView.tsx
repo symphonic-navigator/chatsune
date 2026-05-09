@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
-import { chatApi, type ChatMessageDto, type ToolGroupDto } from '../../core/api/chat'
+import { chatApi, type ChatMessageDto, type ChatSessionExtras, type ToolGroupDto } from '../../core/api/chat'
 import type { ResolvedCapabilities } from '../../core/types/llm'
+import { defaultExtrasForCapability } from './cockpit/cockpitDefaults'
 import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
 import { sendMessage } from '../../core/websocket/connection'
@@ -115,6 +116,13 @@ export function ChatView({ persona }: ChatViewProps) {
   // the enriched-models hub is still loading; the cockpit treats that as
   // "no support" (both buttons disabled) until a real value arrives.
   const [modelCapability, setModelCapability] = useState<ResolvedCapabilities | null>(null)
+  // Captures the session's stored extras at load time. ``undefined`` = not
+  // yet loaded. ``null`` = loaded with no stored extras (legacy session or
+  // never-toggled new session); a follow-up effect computes defaults from
+  // the model capability when both arrive and PATCHes back to persist.
+  const [pendingSessionExtras, setPendingSessionExtras] = useState<
+    ChatSessionExtras | null | undefined
+  >(undefined)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
   const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -389,6 +397,29 @@ export function ChatView({ persona }: ChatViewProps) {
   }, [findModelByUniqueId, modelsLoading])
   // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
+  // Once the session AND its model capability are both resolved, finalise
+  // the cockpit's extras. If the session had no stored extras (legacy or
+  // never-toggled), compute defaults from capability and PATCH them back
+  // so the persisted state matches the displayed state. Subsequent loads
+  // and other tabs see the correct value via the broadcast.
+  useEffect(() => {
+    if (!effectiveSessionId) return
+    if (pendingSessionExtras === undefined) return  // session not yet loaded
+    if (pendingSessionExtras !== null) return  // already had stored extras
+    if (!modelCapability) return  // capability not yet resolved
+    const computed: ChatSessionExtras = defaultExtrasForCapability(modelCapability)
+    useCockpitStore.getState().hydrateExtras(effectiveSessionId, computed)
+    void chatApi
+      .updateSessionExtras(effectiveSessionId, computed)
+      .catch((err) => {
+        // Non-fatal: the cockpit still shows the right state locally.
+        // Next interaction will retry the PATCH.
+        console.warn('Failed to persist computed extras defaults', err)
+      })
+    // Clear the pending marker so we do not loop on this effect.
+    setPendingSessionExtras(undefined)
+  }, [effectiveSessionId, pendingSessionExtras, modelCapability])
+
   useChatStream(effectiveSessionId ?? null)
   useMemoryEvents(persona?.id ?? null)
   useArtefactEvents(effectiveSessionId ?? null)
@@ -474,18 +505,21 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
         useChatStore.getState().setActiveProjectId(session.project_id ?? null)
-        // Hydrate cockpit from the legacy session DTO fields. The session
-        // doesn't yet expose ``extras`` directly, so we synthesise it from
-        // ``reasoning_override`` (``true`` → on, anything else → off) and
-        // ``tools_enabled``. ``reasoning_effort`` defaults to ``null`` until
-        // the session DTO carries the new field. This shim is fine for now
-        // because the cockpit immediately PATCHes ``extras`` whenever the
-        // user toggles, and the WS ``chat.session.extras.updated`` event
-        // keeps other tabs in sync.
+        // Capture the session's stored extras so a follow-up effect can
+        // hydrate the cockpit once the model capability is also resolved.
+        // - If session.extras is non-null → hydrate as-is (covers user-
+        //   toggled state).
+        // - If session.extras is null → wait for capability and compute
+        //   defaults via ``defaultExtrasForCapability``, then PATCH back
+        //   so the persisted state matches what the user sees.
+        setPendingSessionExtras(session.extras ?? null)
+        // Hydrate autoRead immediately — independent of the extras flow.
+        // The cockpit shows a placeholder for extras until the follow-up
+        // effect resolves; this avoids a flash of legacy state.
         useCockpitStore.getState().hydrateFromServer(session.id, {
-          extras: {
-            tools_enabled: session.tools_enabled ?? false,
-            reasoning_mode: session.reasoning_override === true ? 'on' : 'off',
+          extras: session.extras ?? {
+            tools_enabled: false,
+            reasoning_mode: 'off',
             reasoning_effort: null,
           },
           autoRead: session.auto_read ?? false,

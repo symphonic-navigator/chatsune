@@ -5,7 +5,7 @@
 models:
   # Anthropic Claude family via OpenRouter
   - adapter: openrouter
-    pattern: "anthropic/claude-sonnet-4-6*"
+    pattern: "anthropic/claude-sonnet-4.6*"
     reasoning:
       kind: optional
       effort: { buckets: [low, medium, high], default_bucket: medium }
