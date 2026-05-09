@@ -690,6 +690,16 @@ async def run_inference(
         # interaction via PATCH /sessions/{id}/extras, not at every
         # inference. This avoids hot-path DB writes for sessions the
         # user has not yet customised.
+    elif meta is None:
+        # We don't actually know the model's capability (resolution failed
+        # — likely a transient cache miss or a deleted connection). Trust
+        # the stored extras as-is rather than running them through the
+        # ``no_reasoning`` fallback, which would silently overwrite the
+        # user's reasoning_mode + reasoning_effort with off/null and
+        # broadcast the destruction to every connected tab. Inference may
+        # still fail at the adapter layer, but with a clearer error than
+        # corrupted state.
+        extras = ChatSessionExtras.model_validate(raw_extras)
     else:
         stored_extras = ChatSessionExtras.model_validate(raw_extras)
         # Spec §6.5 lazy self-healing: if the stored extras are no
