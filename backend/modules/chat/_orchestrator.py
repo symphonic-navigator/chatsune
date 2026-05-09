@@ -39,7 +39,10 @@ from backend.modules.llm import (
     LlmInvalidModelUniqueIdError,
     normalise_for_llm,
 )
-from backend.modules.chat._extras_remap import default_extras_for_capability
+from backend.modules.chat._extras_remap import (
+    default_extras_for_capability,
+    remap_extras_for_capability,
+)
 from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.llm import ReasoningCapability, ToolCapability
 from backend.modules.persona import get_persona
@@ -54,6 +57,7 @@ from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
 from shared.events.chat import (
+    ChatSessionExtrasUpdatedEvent,
     ChatStreamEndedEvent,
     ChatStreamErrorEvent,
     ChatVisionDescriptionEvent,
@@ -682,8 +686,37 @@ async def run_inference(
     raw_extras = session.get("extras")
     if raw_extras is None:
         extras = default_extras_for_capability(reasoning_cap, tools_cap)
+        # No persist here — defaults get written on the first cockpit
+        # interaction via PATCH /sessions/{id}/extras, not at every
+        # inference. This avoids hot-path DB writes for sessions the
+        # user has not yet customised.
     else:
-        extras = ChatSessionExtras.model_validate(raw_extras)
+        stored_extras = ChatSessionExtras.model_validate(raw_extras)
+        # Spec §6.5 lazy self-healing: if the stored extras are no
+        # longer valid against the current model's capability (e.g.
+        # the persona was edited to point at a no_reasoning model
+        # since the user last touched the cockpit), remap them now,
+        # persist the corrected version, and broadcast so other
+        # tabs/devices stay in sync. Cheap pure-function call when
+        # already consistent (the equality check below short-circuits
+        # the DB write).
+        extras = remap_extras_for_capability(stored_extras, reasoning_cap, tools_cap)
+        if extras != stored_extras:
+            await repo.update_session_extras(session_id, user_id, extras)
+            remap_correlation_id = str(uuid4())
+            now = datetime.now(timezone.utc)
+            await get_event_bus().publish(
+                Topics.CHAT_SESSION_EXTRAS_UPDATED,
+                ChatSessionExtrasUpdatedEvent(
+                    session_id=session_id,
+                    extras=extras,
+                    correlation_id=remap_correlation_id,
+                    timestamp=now,
+                ),
+                scope=f"session:{session_id}",
+                target_user_ids=[user_id],
+                correlation_id=remap_correlation_id,
+            )
 
     # ``reasoning_override`` is the live-chat hook (e.g. continuous voice
     # forces reasoning off so the user is not waiting on hidden thinking
