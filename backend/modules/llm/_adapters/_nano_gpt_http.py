@@ -288,6 +288,17 @@ def _translate_message(
     return result
 
 
+# Bucket-to-token-budget translation for Anthropic models routed via
+# nano-gpt (mirrors openrouter_http._ANTHROPIC_REASONING_BUDGET — same
+# spec §6.4 starting values). Refine after observing real cost/quality.
+_ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
+    "minimal": 1024,
+    "low":     2048,
+    "medium":  8192,
+    "high":   16384,
+}
+
+
 def _build_chat_payload(
     request: CompletionRequest,
     upstream_slug: str,
@@ -344,7 +355,18 @@ def _build_chat_payload(
     if send_reasoning_flag:
         reasoning_obj: dict = {"enabled": reasoning_enabled}
         if reasoning_effort:
-            reasoning_obj["effort"] = reasoning_effort
+            # Same Anthropic-via-router caveat as openrouter_http: routers
+            # interpret ``effort`` as a percentage of response max_tokens
+            # (default ~64k), so ``low`` still yields ~12k thinking tokens.
+            # For Anthropic models we send explicit ``max_tokens`` from the
+            # spec §6.4 budget table; everyone else gets the effort string.
+            if is_anthropic_model(request.model):
+                reasoning_obj["max_tokens"] = _ANTHROPIC_REASONING_BUDGET.get(
+                    reasoning_effort,
+                    _ANTHROPIC_REASONING_BUDGET["medium"],
+                )
+            else:
+                reasoning_obj["effort"] = reasoning_effort
         payload["reasoning"] = reasoning_obj
     if request.temperature is not None:
         payload["temperature"] = request.temperature

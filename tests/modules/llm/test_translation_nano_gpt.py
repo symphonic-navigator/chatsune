@@ -220,3 +220,43 @@ def test_nano_gpt_no_reasoning_kind_omits_reasoning_field():
     )
     body, _slug = build_request_body(req)
     assert "reasoning" not in body
+
+
+def test_nano_gpt_anthropic_model_uses_explicit_max_tokens():
+    """For Anthropic models, nano-gpt (like OpenRouter) interprets the
+    universal ``effort`` string as a percentage of response max_tokens.
+    Send explicit max_tokens from the spec §6.4 budget table instead."""
+    req = _req(
+        "claude-sonnet-4-6",
+        ChatSessionExtras(
+            tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["low", "medium", "high"], default_bucket="medium",
+            ),
+        ),
+    )
+    body, _slug = build_request_body(req)
+    assert body["reasoning"]["max_tokens"] == 2048
+    assert "effort" not in body["reasoning"]
+
+
+def test_nano_gpt_non_anthropic_keeps_effort_string():
+    req = _req(
+        "gpt-5",
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort="medium",
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["minimal", "low", "medium", "high"],
+                default_bucket="medium",
+            ),
+        ),
+    )
+    body, _slug = build_request_body(req)
+    assert body["reasoning"]["effort"] == "medium"
+    assert "max_tokens" not in body["reasoning"]
