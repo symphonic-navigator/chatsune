@@ -15,14 +15,13 @@ export type CockpitSessionState = {
 
 /**
  * Read-side view returned by ``useCockpitSession``. Exposes the canonical
- * ``extras`` shape plus two flat aliases (``tools``, ``autoRead``) so that
- * legacy consumers (CockpitBar, ImageButton, VoiceButton, LiveButton, the
- * pre-migration ToolsButton) keep compiling. Tasks 20-21 migrate those
- * consumers to read ``extras.tools_enabled`` / ``extras.reasoning_mode``
- * directly; the aliases can be dropped after the last consumer is updated.
+ * ``extras`` shape plus a flat ``tools`` alias used by readers (ImageButton,
+ * CockpitBar's MobileInfoModal, IntegrationsButton derivations) that only
+ * care whether tools are on, not about the rest of the extras. Writes go
+ * through ``updateExtras`` — there is no shim writer.
  */
 export type CockpitSessionView = CockpitSessionState & {
-  /** Alias for ``extras.tools_enabled`` — legacy reader compatibility. */
+  /** Convenience alias for ``extras.tools_enabled``. Read-only. */
   tools: boolean
 }
 
@@ -56,20 +55,6 @@ type CockpitStoreShape = {
   setAutoRead: (sessionId: string, value: boolean) => Promise<void>
   requestAutoRead: (messageId: string) => void
   clearAutoReadRequest: () => void
-  /**
-   * LEGACY adapter — translates the old per-session ``thinking`` toggle
-   * into the new ``extras.reasoning_mode`` write path. Kept so the build
-   * stays green between Task 19 (this store rewrite) and Tasks 20-21
-   * (button rewrites). Remove once ThinkingButton calls ``updateExtras``
-   * directly.
-   */
-  setThinking: (sessionId: string, value: boolean) => Promise<void>
-  /**
-   * LEGACY adapter — translates the old per-session ``tools`` toggle into
-   * the new ``extras.tools_enabled`` write path. Same removal trigger as
-   * ``setThinking`` (Tasks 20-21).
-   */
-  setTools: (sessionId: string, value: boolean) => Promise<void>
 }
 
 export const useCockpitStore = create<CockpitStoreShape>((set, get) => ({
@@ -133,14 +118,6 @@ export const useCockpitStore = create<CockpitStoreShape>((set, get) => ({
       }))
       throw e
     }
-  },
-
-  // LEGACY — see field docs on the shape above.
-  setThinking: async (sessionId, value) => {
-    await get().updateExtras(sessionId, { reasoning_mode: value ? 'on' : 'off' })
-  },
-  setTools: async (sessionId, value) => {
-    await get().updateExtras(sessionId, { tools_enabled: value })
   },
 }))
 

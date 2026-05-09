@@ -52,7 +52,7 @@ function humanModelLabel(active: ActiveImageConfigDto): string {
 export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
   const { available, active, loadConfig } = useImagesStore()
   const cockpit = useCockpitSession(sessionId)
-  const setTools = useCockpitStore((s) => s.setTools)
+  const updateExtras = useCockpitStore((s) => s.updateExtras)
 
   const [panelOpen, setPanelOpen] = useState(false)
   const buttonRef = useRef<HTMLDivElement | null>(null)
@@ -189,7 +189,12 @@ export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
                 type="button"
                 className="rounded border border-[#a855f7]/40 bg-[#a855f7]/15 px-2 py-1 text-[#c084fc] hover:bg-[#a855f7]/25"
                 onClick={() => {
-                  void setTools(sessionId, true)
+                  // Image generation needs Tools on. The mutex with reasoning
+                  // (when applicable) is handled by ``ReasoningToolsCluster``
+                  // — here we just toggle the bare ``tools_enabled`` field.
+                  // If a mutex model has reasoning on, the backend will
+                  // reject the patch and the optimistic update rolls back.
+                  void updateExtras(sessionId, { tools_enabled: true })
                 }}
               >
                 Enable Tools

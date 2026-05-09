@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom'
 import { chatApi, type ChatMessageDto, type ToolGroupDto } from '../../core/api/chat'
+import type { ResolvedCapabilities } from '../../core/types/llm'
 import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
 import { sendMessage } from '../../core/websocket/connection'
@@ -109,7 +110,11 @@ export function ChatView({ persona }: ChatViewProps) {
   // remount that drops the imperative focus call's effect.
   const [pendingFocus, setPendingFocus] = useState(false)
   const [showUploadBrowser, setShowUploadBrowser] = useState(false)
-  const [modelSupportsReasoning, setModelSupportsReasoning] = useState(true)
+  // Resolved capabilities for the active model — feeds the cockpit's
+  // capability-aware ThinkingButton / ToolsButton cluster. ``null`` while
+  // the enriched-models hub is still loading; the cockpit treats that as
+  // "no support" (both buttons disabled) until a real value arrives.
+  const [modelCapability, setModelCapability] = useState<ResolvedCapabilities | null>(null)
   const [isResolvingSession, setIsResolvingSession] = useState(false)
   const [showIncognitoNotice, setShowIncognitoNotice] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -367,16 +372,20 @@ export function ChatView({ persona }: ChatViewProps) {
     // unique_id format: "<connection_id>:<model_slug>" (see INSIGHTS.md INS-004).
     const model = findModelByUniqueId(uid)
     if (model) {
-      setModelSupportsReasoning(model.supports_reasoning)
+      setModelCapability({
+        reasoning: model.reasoning,
+        tools: model.tools,
+        first_class_support: model.first_class_support,
+      })
       return
     }
     // No match. If the hub is still loading, hold off until it repopulates —
     // the useEffect that calls us is subscribed to ``applyModelCapabilities``
     // in its dep list, so a fresh run will pick up the answer. If it has
-    // finished loading and still returned null, fall back to the pre-existing
-    // behaviour (permissive on tools so the UI does not hide them).
+    // finished loading and still returned null, fall back to the cockpit's
+    // own "loading" capability (both buttons render disabled).
     if (modelsLoading) return
-    setModelSupportsReasoning(false)
+    setModelCapability(null)
   }, [findModelByUniqueId, modelsLoading])
   // TODO Phase 8: capabilities should ideally come from PersonaDto / SessionDto so we can drop the listConnectionModels call entirely.
 
@@ -1637,8 +1646,7 @@ export function ChatView({ persona }: ChatViewProps) {
             toolBar={effectiveSessionId ? (
               <CockpitBar
                 sessionId={effectiveSessionId}
-                modelSupportsReasoning={modelSupportsReasoning}
-                personaReasoningDefault={Boolean(persona?.reasoning_enabled)}
+                capability={modelCapability}
                 availableToolGroups={availableToolGroups}
                 activePersonaIntegrationIds={activePersonaIntegrationIds}
                 personaHasVoice={personaHasVoice}

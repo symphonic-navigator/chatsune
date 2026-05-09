@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { useViewport } from '@/core/hooks/useViewport'
 import { BargingToggleButton } from './buttons/BargingToggleButton'
 import { useConversationModeStore } from '@/features/voice/stores/conversationModeStore'
-import { ThinkingButton } from './buttons/ThinkingButton'
-import { ToolsButton } from './buttons/ToolsButton'
+import { ReasoningToolsCluster } from './ReasoningToolsCluster'
 import type { ToolGroup } from './buttons/ToolsButton'
 import { IntegrationsButton } from './buttons/IntegrationsButton'
 import { VoiceButton } from './buttons/VoiceButton'
@@ -15,7 +14,8 @@ import { CockpitButton } from './CockpitButton'
 import { CockpitGroupButton } from './CockpitGroupButton'
 import { useCockpitSession, useCockpitStore } from './cockpitStore'
 import { useEmojiPickerStore } from '../emojiPickerStore'
-import type { ReasoningCapability } from '@/core/types/llm'
+import type { ResolvedCapabilities } from '@/core/types/llm'
+import type { ChatSessionExtras } from '@/core/api/chat'
 
 type VoiceSummary = {
   ttsProvider: string
@@ -28,8 +28,14 @@ type VoiceSummary = {
 
 type Props = {
   sessionId: string
-  modelSupportsReasoning: boolean
-  personaReasoningDefault: boolean
+  /**
+   * Resolved per-model capability (reasoning kind, effort buckets, tool
+   * support, mutex flag). Drives the ThinkingButton / ToolsButton render
+   * states inside ``ReasoningToolsCluster``. ``null`` while the model
+   * meta is still loading — the cluster renders a no-op placeholder so
+   * the row layout stays stable.
+   */
+  capability: ResolvedCapabilities | null
   availableToolGroups: ToolGroup[]
   activePersonaIntegrationIds: string[]
   personaHasVoice: boolean
@@ -56,12 +62,22 @@ function Sep() {
   return <span className="px-1 text-white/20">│</span>
 }
 
+// Permissive fallback used while ``capability`` is still loading. Keeps the
+// row layout stable without claiming any specific feature support — both
+// buttons render in their disabled states until the real capability arrives.
+const LOADING_CAPABILITY: ResolvedCapabilities = {
+  reasoning: { kind: 'no_reasoning', effort: null, default_on: false },
+  tools: { supported: false, exclusive_with_reasoning: false },
+  first_class_support: false,
+}
+
 export function CockpitBar(props: Props) {
   const { isMobile } = useViewport()
   const liveActive = useConversationModeStore((s) => s.active)
   const [infoOpen, setInfoOpen] = useState(false)
   const cockpit = useCockpitSession(props.sessionId)
   const isPickerOpen = useEmojiPickerStore((s) => s.isOpen)
+  const updateExtras = useCockpitStore((s) => s.updateExtras)
 
   const cameraDisabled = props.canSendImages === false
   const attachGroupChildren = (
@@ -81,26 +97,43 @@ export function CockpitBar(props: Props) {
   // state) without forcing every consumer to wire it up immediately.
   const openLlmProviders = props.handlers.openLlmProviderSettings ?? (() => {})
 
-  const toolsGroupChildren = (
-    <>
-      <ToolsButton
-        sessionId={props.sessionId}
-        availableGroups={props.availableToolGroups}
-      />
-      <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
-      <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
-    </>
+  const capability = props.capability ?? LOADING_CAPABILITY
+  // Permissive default extras while the session is still hydrating — keeps
+  // the buttons in their "off" state without throwing. Once ``cockpit``
+  // resolves the cluster re-renders with the real values.
+  const extras: ChatSessionExtras = cockpit?.extras ?? {
+    tools_enabled: false,
+    reasoning_mode: 'off',
+    reasoning_effort: null,
+  }
+
+  const handleClusterUpdate = async (patch: Partial<ChatSessionExtras>) => {
+    await updateExtras(props.sessionId, patch)
+  }
+
+  const cluster = (
+    <ReasoningToolsCluster
+      capability={capability}
+      extras={extras}
+      availableGroups={props.availableToolGroups}
+      onUpdate={handleClusterUpdate}
+    />
   )
 
   const toolsActive = Boolean(cockpit?.tools) || props.activePersonaIntegrationIds.length > 0
 
-  // Task 20 bridge — synthesise a ``ReasoningCapability`` from the
-  // pre-existing boolean prop until Task 21 (and the ChatView caller) feeds
-  // the real ``ResolvedCapabilities`` through. Effort buckets are not
-  // surfaced yet; the pop-out only appears once the new prop lands.
-  const derivedReasoning: ReasoningCapability = props.modelSupportsReasoning
-    ? { kind: 'optional', effort: null, default_on: props.personaReasoningDefault }
-    : { kind: 'no_reasoning', effort: null, default_on: false }
+  // On mobile the Tools button is folded into a group with Image and
+  // Integrations. The cluster's two buttons render side-by-side, so we
+  // split them visually by extracting just the ToolsButton portion via
+  // ``ReasoningToolsCluster`` and putting the Thinking button outside the
+  // group. Easiest implementation: render the whole cluster on the row
+  // and let the group's icon visualise the group state independently.
+  const toolsGroupChildren = (
+    <>
+      <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
+      <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
+    </>
+  )
 
   return (
     <div className={`flex flex-wrap items-center py-2 bg-[#0f0d16] rounded-lg ${isMobile ? 'gap-1 px-2' : 'gap-1.5 px-3'}`}>
@@ -115,31 +148,17 @@ export function CockpitBar(props: Props) {
           <Sep />
         </>
       )}
-      <ThinkingButton
-        reasoning={derivedReasoning}
-        mode={cockpit?.extras.reasoning_mode ?? (props.personaReasoningDefault ? 'on' : 'off')}
-        effort={cockpit?.extras.reasoning_effort ?? null}
-        onChange={async (mode) => {
-          // Task 20 wires through the legacy ``setThinking`` shim — Task 21
-          // replaces this with a direct ``updateExtras`` call that also
-          // coordinates the tools mutex.
-          await useCockpitStore.getState().setThinking(props.sessionId, mode === 'on')
-        }}
-      />
+      {cluster}
       {isMobile ? (
         <CockpitGroupButton
           icon="🔧"
-          label="Tools and integrations"
+          label="Image and integrations"
           hasActiveChild={toolsActive}
         >
           {toolsGroupChildren}
         </CockpitGroupButton>
       ) : (
         <>
-          <ToolsButton
-            sessionId={props.sessionId}
-            availableGroups={props.availableToolGroups}
-          />
           <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
           <Sep />
           <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
@@ -196,8 +215,8 @@ export function CockpitBar(props: Props) {
               id: 'thinking',
               icon: '💡',
               title: 'Thinking',
-              statusLine: 'off',
-              active: false,
+              statusLine: extras.reasoning_mode === 'on' ? 'on' : 'off',
+              active: extras.reasoning_mode === 'on',
               body: (
                 <p>
                   The model thinks before answering. Good for complex questions.
