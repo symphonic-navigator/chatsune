@@ -1,6 +1,9 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 class ContentPart(BaseModel):
@@ -35,8 +38,15 @@ class CompletionRequest(BaseModel):
     messages: list[CompletionMessage]
     temperature: float | None = None
     tools: list[ToolDefinition] | None = None
-    reasoning_enabled: bool = False
-    supports_reasoning: bool = False  # model capability — adapter uses this to decide whether to send think param
+    # Capability + extras model — replaces reasoning_enabled and supports_reasoning.
+    # Adapter reads (reasoning, extras) and translates to provider-specific request shapes.
+    reasoning: ReasoningCapability
+    tools_capability: ToolCapability
+    extras: ChatSessionExtras = Field(
+        default_factory=lambda: ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None
+        )
+    )
     cache_hint: str | None = None     # provider-specific cache locality hint (e.g. session UUID for x-grok-conv-id)
     # Anthropic prompt-cache TTL — only honoured by the OpenRouter and
     # nano-gpt adapters when the model is a Claude family member.
