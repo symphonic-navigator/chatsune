@@ -465,9 +465,20 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
         useChatStore.getState().setActiveProjectId(session.project_id ?? null)
+        // Hydrate cockpit from the legacy session DTO fields. The session
+        // doesn't yet expose ``extras`` directly, so we synthesise it from
+        // ``reasoning_override`` (``true`` → on, anything else → off) and
+        // ``tools_enabled``. ``reasoning_effort`` defaults to ``null`` until
+        // the session DTO carries the new field. This shim is fine for now
+        // because the cockpit immediately PATCHes ``extras`` whenever the
+        // user toggles, and the WS ``chat.session.extras.updated`` event
+        // keeps other tabs in sync.
         useCockpitStore.getState().hydrateFromServer(session.id, {
-          thinking: session.reasoning_override === true,
-          tools: session.tools_enabled ?? false,
+          extras: {
+            tools_enabled: session.tools_enabled ?? false,
+            reasoning_mode: session.reasoning_override === true ? 'on' : 'off',
+            reasoning_effort: null,
+          },
           autoRead: session.auto_read ?? false,
         })
         // Reconcile a stale streaming slot: if the backend reports the

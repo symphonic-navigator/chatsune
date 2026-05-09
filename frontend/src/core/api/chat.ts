@@ -18,6 +18,18 @@ export interface PtiOverflow {
   dropped_titles: string[]
 }
 
+/**
+ * Per-session reasoning/tools settings. Mirrors
+ * ``shared/dtos/chat.py::ChatSessionExtras``. Persisted on the session and
+ * merged into the LLM ``CompletionRequest``. The cockpit owns this state in
+ * the frontend; PATCH ``/api/chat/sessions/{id}/extras`` is the only writer.
+ */
+export interface ChatSessionExtras {
+  tools_enabled: boolean
+  reasoning_mode: 'off' | 'on'
+  reasoning_effort: string | null
+}
+
 interface ChatSessionDto {
   id: string
   user_id: string
@@ -249,6 +261,27 @@ export const chatApi = {
     patch: { tools_enabled?: boolean; auto_read?: boolean },
   ) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/toggles`, patch),
+
+  /**
+   * Persist per-session capability-aware extras (tools/reasoning).
+   * Replaces the legacy ``updateSessionReasoning`` and the ``tools_enabled``
+   * branch of ``updateSessionToggles``. The backend validates the body
+   * against the resolved model capability and rejects invalid combinations
+   * (e.g. reasoning on for a ``no_reasoning`` model).
+   *
+   * The endpoint returns ``{ extras: ChatSessionExtras }``; we unwrap to the
+   * inner DTO for callers.
+   */
+  updateSessionExtras: (
+    sessionId: string,
+    extras: ChatSessionExtras,
+  ): Promise<ChatSessionExtras> =>
+    api
+      .patch<{ extras: ChatSessionExtras }>(
+        `/api/chat/sessions/${sessionId}/extras`,
+        extras,
+      )
+      .then((r) => r.extras),
 
   updateSessionPinned: (sessionId: string, pinned: boolean) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),
