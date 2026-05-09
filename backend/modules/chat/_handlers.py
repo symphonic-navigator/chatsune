@@ -20,6 +20,7 @@ from backend.modules.tools import get_all_groups
 from shared.events.chat import (
     ChatSessionCreatedEvent,
     ChatSessionDeletedEvent,
+    ChatSessionExtrasUpdatedEvent,
     ChatSessionPinnedUpdatedEvent,
     ChatSessionProjectUpdatedEvent,
     ChatSessionRestoredEvent,
@@ -603,9 +604,9 @@ async def patch_session_extras(
     must still be rejected. The model is read from the session's persona
     (the persona owns the model selection in this phase).
 
-    On success the new extras are persisted; the WebSocket broadcast of
-    ``ChatSessionExtrasUpdatedEvent`` for multi-device sync is wired in
-    Task 18.
+    On success the new extras are persisted and a
+    ``ChatSessionExtrasUpdatedEvent`` is broadcast on the session scope so
+    other tabs/devices hydrate without a follow-up REST call (spec §7.2).
     """
     repo = _chat_repo()
     session = await repo.get_session(session_id, user["sub"])
@@ -658,9 +659,24 @@ async def patch_session_extras(
 
     await repo.update_session_extras(session_id, user["sub"], extras)
 
-    # TODO Task 18: broadcast ChatSessionExtrasUpdatedEvent for multi-device
-    # sync. Helper ``_broadcast_extras_updated(session_id, extras, user_id)``
-    # will be added there and called from this point.
+    # Broadcast for multi-device sync — other tabs hydrate from the event
+    # without a follow-up REST call (spec §7.2). Mirrors the toggles-updated
+    # broadcast just above.
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_EXTRAS_UPDATED,
+        ChatSessionExtrasUpdatedEvent(
+            session_id=session_id,
+            extras=extras,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
 
     return {"extras": extras.model_dump()}
 
