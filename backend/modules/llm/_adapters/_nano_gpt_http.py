@@ -334,10 +334,20 @@ def _build_chat_payload(
         is_anthropic_model,
     )
 
+    # Same OR-bug workaround as openrouter_http (router translator silently
+    # discards reasoning.max_tokens when cache_control markers are present).
+    # nano-gpt mirrors OR's universal reasoning object so the bug repeats.
+    user_chose_explicit_effort = (
+        is_anthropic_model(request.model)
+        and request.reasoning.kind == "optional"
+        and request.extras.reasoning_mode == "on"
+        and bool(request.extras.reasoning_effort)
+    )
     cc_by_index: dict[int, dict] = {}
     if (
         request.anthropic_cache_ttl != "off"
         and is_anthropic_model(request.model)
+        and not user_chose_explicit_effort
     ):
         for marker in compute_cache_markers(
             request.messages, request.anthropic_cache_ttl,

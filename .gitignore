@@ -16,6 +16,7 @@ build/
 .mistral-test-key
 .gmi-test-key
 .novita-test-key
+.or-test-key
 
 # Docker
 docker-compose.override.yml
