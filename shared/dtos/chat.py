@@ -53,6 +53,18 @@ class ChatSessionDto(BaseModel):
     updated_at: datetime
 
 
+class ChatSessionExtras(BaseModel):
+    """On-the-wire shape for per-session reasoning/tools settings.
+
+    Carries the user's per-session toggles for tool execution and
+    reasoning behaviour. Consumed by the chat module (storage), the LLM
+    module (CompletionRequest), and the frontend cockpit.
+    """
+    tools_enabled: bool
+    reasoning_mode: Literal["off", "on"]
+    reasoning_effort: str | None = None
+
+
 class WebSearchContextItemDto(BaseModel):
     title: str
     url: str
