@@ -1204,3 +1204,70 @@ most of the family.
 
 **Spec:** `devdocs/specs/2026-05-09-llm-reasoning-tools-capabilities-design.md`
 **Plan:** `devdocs/plans/2026-05-09-llm-reasoning-tools-capabilities.md`
+
+---
+
+## INS-035 — Router ``effort`` for Anthropic models is a percentage, not a budget (2026-05-09)
+
+**Symptom:** Beta tester set Claude Sonnet 4.6 reasoning effort to ``low``
+expecting a short reasoning trace; got pages and pages of thinking
+content. The selector wasn't broken — the wire payload carried
+``reasoning: {effort: "low"}`` correctly, the router accepted it, and
+the model still produced ~12k thinking tokens.
+
+**Root cause:** OpenRouter's universal ``reasoning`` object documents
+``effort`` as a vendor-agnostic shorthand. For OpenAI o-series it
+passes through directly to the upstream's ``reasoning_effort``
+parameter. **For Anthropic models it gets translated to
+``thinking.budget_tokens`` as a percentage of the response
+``max_tokens``**, which defaults to the model's full output budget
+(~64k for Sonnet 4.x). The mapping (per OR docs at the time of this
+commit) is approximately:
+
+- ``effort=low``     ≈ 20% of max_tokens → ~12k thinking tokens
+- ``effort=medium``  ≈ 50% of max_tokens → ~32k thinking tokens
+- ``effort=high``    ≈ 80% of max_tokens → ~50k thinking tokens
+
+So even ``low`` allows a deeply meandering trace. The user's mental
+model ("low = a few hundred tokens of quick reasoning") doesn't match
+the wire reality.
+
+Anthropic now has a native ``output_config.effort`` field on the
+direct Messages API (claude.com/docs/en/build-with-claude/effort) that
+*does* behave like an explicit budget. As of this commit, OpenRouter's
+translator hasn't been updated to use it — the percentage-of-max_tokens
+mapping is still in effect. nano-gpt mirrors OpenRouter's universal
+reasoning object and inherits the same behaviour.
+
+**Fix:** for Anthropic models routed via OpenRouter or nano-gpt, send
+explicit ``reasoning: {max_tokens: <budget>}`` instead of
+``reasoning: {effort: <bucket>}``. The router accepts ``max_tokens``
+as a precise override and forwards it to Anthropic's
+``thinking.budget_tokens``. Per spec §6.4 starting values:
+
+- low     → 2048 tokens
+- medium  → 8192 tokens
+- high    → 16384 tokens
+- minimal → 1024 tokens (for symmetry with GPT-5; Anthropic doesn't
+  expose a ``minimal`` bucket, so this only fires if the user picks
+  it from a model that does)
+
+Other vendors (OpenAI, DeepSeek, etc.) keep the effort string — they
+handle it correctly. The discrimination is via the existing
+``is_anthropic_model(request.model)`` helper from
+``backend/modules/llm/_adapters/_anthropic_cache.py``. The budget
+table lives in both ``_openrouter_http.py`` and ``_nano_gpt_http.py``
+as ``_ANTHROPIC_REASONING_BUDGET`` — keep them in sync when calibrating.
+
+**When this stops mattering:** when we ship a native Anthropic
+adapter (separate future spec per design §9), it can use
+``output_config.effort`` directly and the model can decide what
+``low`` means in budget terms — likely tighter and smarter than our
+hand-picked numbers. Until then, the explicit-max_tokens shim is the
+predictable user experience.
+
+**Generalisable rule:** when a router/proxy advertises a "vendor-
+agnostic" parameter, verify what it actually sends downstream for
+each upstream you care about. Identical names don't mean identical
+semantics — the percentage-vs-tokens trap repeats across the
+ecosystem (rate limits, max-output, temperature scales, etc.).
