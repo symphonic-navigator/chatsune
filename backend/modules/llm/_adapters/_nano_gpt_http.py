@@ -289,13 +289,14 @@ def _translate_message(
 
 
 # Bucket-to-token-budget translation for Anthropic models routed via
-# nano-gpt (mirrors openrouter_http._ANTHROPIC_REASONING_BUDGET — same
-# spec §6.4 starting values). Refine after observing real cost/quality.
+# nano-gpt. Mirrors openrouter_http._ANTHROPIC_REASONING_BUDGET so both
+# routers behave identically. Calibration note: ``low`` set to 128 for
+# field-test observation — see openrouter_http for the rationale.
 _ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
-    "minimal": 1024,
-    "low":     2048,
-    "medium":  8192,
-    "high":   16384,
+    "minimal":   128,
+    "low":       128,
+    "medium":   8192,
+    "high":    16384,
 }
 
 

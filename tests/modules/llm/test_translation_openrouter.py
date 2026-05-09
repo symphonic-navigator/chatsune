@@ -124,7 +124,7 @@ def test_openrouter_anthropic_model_sends_explicit_max_tokens_not_effort():
     )
     body = build_request_body(req)
     assert "effort" not in body["reasoning"]
-    assert body["reasoning"]["max_tokens"] == 2048
+    assert body["reasoning"]["max_tokens"] == 128
 
 
 def test_openrouter_anthropic_medium_uses_medium_budget():

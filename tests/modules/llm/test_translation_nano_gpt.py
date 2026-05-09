@@ -239,7 +239,7 @@ def test_nano_gpt_anthropic_model_uses_explicit_max_tokens():
         ),
     )
     body, _slug = build_request_body(req)
-    assert body["reasoning"]["max_tokens"] == 2048
+    assert body["reasoning"]["max_tokens"] == 128
     assert "effort" not in body["reasoning"]
 
 

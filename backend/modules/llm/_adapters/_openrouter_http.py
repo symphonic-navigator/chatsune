@@ -429,16 +429,21 @@ def build_request_body(request: CompletionRequest) -> dict:
 
 
 # Bucket-to-token-budget translation for Anthropic models routed via
-# OpenRouter (spec §6.4). Starting values; refine after observing real
-# cost/quality on each provider. The raw thinking budget that Anthropic
-# sees, NOT a percentage. ``minimal`` is included for symmetry with the
-# GPT-5 bucket vocabulary; for Anthropic's effort spec we expect only
+# OpenRouter (spec §6.4). The raw thinking budget that Anthropic sees,
+# NOT a percentage. ``minimal`` is included for symmetry with the GPT-5
+# bucket vocabulary; for Anthropic's effort spec we expect only
 # low/medium/high in practice.
+#
+# Calibration note (2026-05-09): ``low`` deliberately set to 128 for
+# field-test observation — well below Anthropic's documented thinking
+# minimum (~1024), so we expect the upstream to either reject, clamp,
+# or skip reasoning entirely. Keep an eye on real responses; raise
+# back to 1024–2048 once the behaviour at the floor is understood.
 _ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
-    "minimal": 1024,
-    "low":     2048,
-    "medium":  8192,
-    "high":   16384,
+    "minimal":   128,
+    "low":       128,
+    "medium":   8192,
+    "high":    16384,
 }
 
 
