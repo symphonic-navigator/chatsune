@@ -24,12 +24,12 @@ from backend.modules.llm._adapters._novita_http import (
     _SSE_DONE,
     MIN_CONTEXT_TOKENS,
     NovitaHttpAdapter,
-    _build_chat_payload,
     _chunk_to_events,
     _entry_to_meta,
     _parse_sse_line,
     _ToolCallAccumulator,
     _translate_message,
+    build_request_body,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._registry import (
@@ -37,6 +37,7 @@ from backend.modules.llm._registry import (
     _PREMIUM_ONLY_ADAPTERS,
     get_adapter_class,
 )
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -44,6 +45,40 @@ from shared.dtos.inference import (
     ToolCallResult,
     ToolDefinition,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
+
+
+def _make_request(
+    *,
+    model: str = "m",
+    text: str = "x",
+    temperature: float | None = None,
+    tools: list[ToolDefinition] | None = None,
+    reasoning: ReasoningCapability | None = None,
+    tools_enabled: bool = False,
+    reasoning_mode: str = "off",
+    reasoning_effort: str | None = None,
+) -> CompletionRequest:
+    """Build a CompletionRequest under the new capability-based contract.
+
+    Defaults match the most common test shape: a plain user prompt with
+    no reasoning toggle and no temperature override.
+    """
+    return CompletionRequest(
+        model=model,
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text=text)],
+        )],
+        temperature=temperature,
+        tools=tools,
+        reasoning=reasoning or ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=tools_enabled,
+            reasoning_mode=reasoning_mode,
+            reasoning_effort=reasoning_effort,
+        ),
+    )
 
 
 def test_adapter_identity():
@@ -175,50 +210,31 @@ def test_translate_image_message_uses_openai_image_url_format():
 
 
 def test_build_payload_passes_model_through():
-    req = CompletionRequest(
-        model="xiaomimimo/mimo-v2.5-pro",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="hi")],
-        )],
-    )
-    payload = _build_chat_payload(req)
+    req = _make_request(model="xiaomimimo/mimo-v2.5-pro", text="hi")
+    payload = build_request_body(req)
     assert payload["model"] == "xiaomimimo/mimo-v2.5-pro"
     assert payload["stream"] is True
     assert payload["stream_options"] == {"include_usage": True}
 
 
 def test_build_payload_includes_temperature_when_set():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        temperature=0.4,
-    )
-    assert _build_chat_payload(req)["temperature"] == 0.4
+    req = _make_request(temperature=0.4)
+    assert build_request_body(req)["temperature"] == 0.4
 
 
 def test_build_payload_omits_temperature_when_none():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
-    assert "temperature" not in _build_chat_payload(req)
+    req = _make_request()
+    assert "temperature" not in build_request_body(req)
 
 
 def test_build_payload_translates_tools():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
+    req = _make_request(
         tools=[ToolDefinition(
             name="lookup", description="d", parameters={"type": "object"},
         )],
+        tools_enabled=True,
     )
-    payload = _build_chat_payload(req)
+    payload = build_request_body(req)
     assert payload["tools"] == [{
         "type": "function",
         "function": {
@@ -228,38 +244,52 @@ def test_build_payload_translates_tools():
     }]
 
 
-def test_reasoning_field_omitted_when_enabled_and_supported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
+def test_build_payload_omits_tools_when_session_disabled():
+    """Tool gating: ``request.tools`` are only included when both the
+    request carries them AND the session has tools enabled."""
+    req = _make_request(
+        tools=[ToolDefinition(
+            name="lookup", description="d", parameters={"type": "object"},
         )],
-        supports_reasoning=True, reasoning_enabled=True,
+        tools_enabled=False,
     )
-    assert "reasoning" not in _build_chat_payload(req)
+    assert "tools" not in build_request_body(req)
 
 
-def test_reasoning_field_set_to_exclude_when_disabled_and_supported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        supports_reasoning=True, reasoning_enabled=False,
+def test_reasoning_field_carries_enabled_true_for_optional_on():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="optional"),
+        reasoning_mode="on",
     )
-    payload = _build_chat_payload(req)
-    assert payload["reasoning"] == {"exclude": True}
+    payload = build_request_body(req)
+    assert payload["reasoning"] == {"enabled": True}
 
 
-def test_reasoning_field_omitted_when_unsupported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        supports_reasoning=False, reasoning_enabled=True,
+def test_reasoning_field_carries_enabled_false_for_optional_off():
+    """Per spec §6.3 the off-state is ``{"enabled": false}`` — explicit
+    flag, not the legacy ``{"exclude": true}`` shape."""
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="optional"),
+        reasoning_mode="off",
     )
-    assert "reasoning" not in _build_chat_payload(req)
+    payload = build_request_body(req)
+    assert payload["reasoning"] == {"enabled": False}
+
+
+def test_reasoning_field_omitted_when_no_reasoning_kind():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        reasoning_mode="on",
+    )
+    assert "reasoning" not in build_request_body(req)
+
+
+def test_reasoning_field_omitted_when_always_on_kind():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="always_on"),
+        reasoning_mode="on",
+    )
+    assert "reasoning" not in build_request_body(req)
 
 
 def test_translate_assistant_with_tool_calls():
@@ -323,7 +353,7 @@ def _make_entry(**overrides) -> dict:
 
 
 def test_entry_to_meta_maps_all_fields_for_a_full_pass():
-    meta = _entry_to_meta(_make_entry(), _resolved())
+    meta = _entry_to_meta(_make_entry(), _resolved(), adapter=NovitaHttpAdapter())
     assert meta is not None
     assert meta.connection_id == "premium:novita"
     assert meta.connection_slug == "novita"
@@ -331,7 +361,13 @@ def test_entry_to_meta_maps_all_fields_for_a_full_pass():
     assert meta.model_id == "xiaomimimo/mimo-v2.5-pro"
     assert meta.display_name == "XiaomiMiMo/MiMo-V2.5-Pro"
     assert meta.context_window == 1_048_576
+    # New capability shape: ``reasoning`` feature in the catalogue maps
+    # to ``ReasoningCapability(kind="optional")``; the legacy
+    # ``supports_reasoning`` computed field still surfaces True.
+    assert meta.reasoning.kind == "optional"
     assert meta.supports_reasoning is True
+    assert meta.tools.supported is True
+    assert meta.first_class_support is False
     assert meta.supports_vision is False
     assert meta.supports_tool_calls is True
     assert meta.is_deprecated is False
@@ -340,7 +376,9 @@ def test_entry_to_meta_maps_all_fields_for_a_full_pass():
 
 
 def test_entry_to_meta_falls_back_to_id_when_display_name_missing():
-    meta = _entry_to_meta(_make_entry(display_name=None), _resolved())
+    meta = _entry_to_meta(
+        _make_entry(display_name=None), _resolved(), adapter=NovitaHttpAdapter(),
+    )
     assert meta is not None
     assert meta.display_name == "xiaomimimo/mimo-v2.5-pro"
 
@@ -348,21 +386,25 @@ def test_entry_to_meta_falls_back_to_id_when_display_name_missing():
 def test_entry_to_meta_filters_non_text_output():
     assert _entry_to_meta(
         _make_entry(output_modalities=["image"]), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
     assert _entry_to_meta(
         _make_entry(output_modalities=["text", "image"]), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
 
 
 def test_entry_to_meta_filters_below_min_context():
     assert _entry_to_meta(
         _make_entry(context_size=MIN_CONTEXT_TOKENS - 1), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
 
 
 def test_entry_to_meta_passes_at_min_context_threshold():
     meta = _entry_to_meta(
         _make_entry(context_size=MIN_CONTEXT_TOKENS), _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
 
@@ -370,24 +412,27 @@ def test_entry_to_meta_passes_at_min_context_threshold():
 def test_entry_to_meta_filters_when_chat_endpoint_missing():
     assert _entry_to_meta(
         _make_entry(endpoints=["completions", "anthropic"]), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
 
 
 def test_entry_to_meta_filters_non_serverless():
     assert _entry_to_meta(
         _make_entry(features=["function-calling", "reasoning"]), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
 
 
 def test_entry_to_meta_filters_non_chat_model_type():
     assert _entry_to_meta(
         _make_entry(model_type="completion"), _resolved(),
+        adapter=NovitaHttpAdapter(),
     ) is None
 
 
 def test_entry_to_meta_filters_inactive_status():
     assert _entry_to_meta(
-        _make_entry(status=0), _resolved(),
+        _make_entry(status=0), _resolved(), adapter=NovitaHttpAdapter(),
     ) is None
 
 
@@ -395,6 +440,7 @@ def test_entry_to_meta_billing_free_when_both_prices_zero():
     meta = _entry_to_meta(
         _make_entry(input_token_price_per_m=0, output_token_price_per_m=0),
         _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
     assert meta.billing_category == "free"
@@ -404,10 +450,12 @@ def test_entry_to_meta_billing_paid_when_either_price_nonzero():
     only_in = _entry_to_meta(
         _make_entry(input_token_price_per_m=1, output_token_price_per_m=0),
         _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     only_out = _entry_to_meta(
         _make_entry(input_token_price_per_m=0, output_token_price_per_m=1),
         _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert only_in.billing_category == "pay_per_token"
     assert only_out.billing_category == "pay_per_token"
@@ -416,6 +464,7 @@ def test_entry_to_meta_billing_paid_when_either_price_nonzero():
 def test_entry_to_meta_supports_vision_when_image_in_input_modalities():
     meta = _entry_to_meta(
         _make_entry(input_modalities=["text", "image"]), _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
     assert meta.supports_vision is True
@@ -425,8 +474,10 @@ def test_entry_to_meta_supports_reasoning_only_when_feature_present():
     meta = _entry_to_meta(
         _make_entry(features=["serverless", "function-calling"]),
         _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
+    assert meta.reasoning.kind == "no_reasoning"
     assert meta.supports_reasoning is False
 
 
@@ -434,6 +485,7 @@ def test_entry_to_meta_supports_tool_calls_only_when_feature_present():
     meta = _entry_to_meta(
         _make_entry(features=["serverless", "reasoning"]),
         _resolved(),
+        adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
     assert meta.supports_tool_calls is False
@@ -709,12 +761,7 @@ async def test_stream_completion_emits_content_then_done():
     fake = _FakeStreamingClient(lines)
 
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="xiaomimimo/mimo-v2.5-pro",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="hi")],
-        )],
-    )
+    req = _make_request(model="xiaomimimo/mimo-v2.5-pro", text="hi")
 
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
@@ -741,12 +788,7 @@ async def test_stream_completion_sends_authorization_header():
     fake = _FakeStreamingClient(lines)
 
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
 
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
@@ -768,12 +810,7 @@ async def test_stream_completion_sends_authorization_header():
 async def test_stream_completion_401_yields_invalid_api_key():
     fake = _FakeStreamingClient([], status_code=401)
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -799,12 +836,7 @@ async def test_stream_completion_retries_on_429_then_succeeds(monkeypatch):
     )
 
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -828,12 +860,7 @@ async def test_stream_completion_429_yields_provider_unavailable_after_retries(m
         _async_noop,
     )
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -849,12 +876,7 @@ async def test_stream_completion_429_yields_provider_unavailable_after_retries(m
 async def test_stream_completion_5xx_yields_provider_unavailable():
     fake = _FakeStreamingClient([], status_code=500)
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -871,12 +893,7 @@ async def test_stream_completion_does_not_retry_on_5xx():
     error rather than a transient backoff signal. Surface immediately."""
     fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[500])
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -890,12 +907,7 @@ async def test_stream_completion_does_not_retry_on_5xx():
 async def test_stream_completion_does_not_retry_on_401():
     fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[401])
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -924,12 +936,7 @@ async def test_stream_completion_429_honours_retry_after_header(monkeypatch):
         response_headers={"Retry-After": "7"},
     )
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -949,12 +956,7 @@ async def test_stream_completion_connect_error_yields_provider_unavailable():
 
     fake = _ConnectError([], 200)
     a = NovitaHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._novita_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
