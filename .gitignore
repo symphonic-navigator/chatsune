@@ -67,3 +67,4 @@ frontend/vendor/vosk-model.tar.gz
 # Evidence for bugs
 *.mp4
 
+.claude/
