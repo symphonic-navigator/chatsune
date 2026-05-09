@@ -5,7 +5,7 @@ import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import type { EnrichedModelDto } from '../../../core/types/llm'
 import { applyModelFilters, slugWithoutConnection, sortModels, type BillingFilter, type ModelFilters } from './modelFilters'
 import { ModelConfigModal } from './ModelConfigModal'
-import { useCollapsedGroups } from './modelBrowserStore'
+import { useCollapsedGroups, useModelBrowserFilters } from './modelBrowserStore'
 
 export interface LockedFilters {
   capTools?: true
@@ -38,15 +38,18 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
   const [providerFilter, setProviderFilter] = useState<string>('')
   const [billingFilter, setBillingFilter] = useState<BillingFilter>('all')
   const [configModel, setConfigModel] = useState<EnrichedModelDto | null>(null)
+  const firstClassOnly = useModelBrowserFilters((s) => s.firstClassOnly)
+  const setFirstClassOnly = useModelBrowserFilters((s) => s.setFirstClassOnly)
 
   const effectiveFilters = useMemo<ModelFilters>(() => ({
     ...filters,
     search,
     billing: billingFilter,
+    firstClassOnly,
     capTools: filters.capTools || !!lockedFilters?.capTools,
     capVision: filters.capVision || !!lockedFilters?.capVision,
     capReason: filters.capReason || !!lockedFilters?.capReason,
-  }), [filters, search, billingFilter, lockedFilters])
+  }), [filters, search, billingFilter, firstClassOnly, lockedFilters])
 
   const filteredGroups = useMemo(() => {
     return groups
@@ -169,6 +172,16 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
         >
           Show hidden
         </Chip>
+        <label className="flex items-center gap-1.5 text-[11px] text-white/65 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={firstClassOnly}
+            onChange={(e) => setFirstClassOnly(e.target.checked)}
+            className="cursor-pointer"
+            aria-label="First-class only"
+          />
+          <span>First-class only</span>
+        </label>
       </div>
 
       {/* Grouped list */}
@@ -377,6 +390,16 @@ function ModelRow({ model, isCurrent, onSelect, onEdit, onToggleFavourite }: Mod
               aria-label="Deprecated model"
             >
               deprecated
+            </span>
+          )}
+          {model.first_class_support && (
+            <span
+              data-testid={`first-class-badge-${model.unique_id}`}
+              className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-300"
+              title="Fully curated capabilities — reasoning, tools, and effort properly wired"
+              aria-label="First-class model"
+            >
+              ★ first-class
             </span>
           )}
         </div>

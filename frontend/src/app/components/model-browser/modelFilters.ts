@@ -15,6 +15,12 @@ export interface ModelFilters {
   capReason?: boolean
   showHidden?: boolean
   billing?: BillingFilter
+  /**
+   * When true, drop models whose adapter only has best-effort (heuristic)
+   * capability knowledge — keep only models the adapter has explicitly
+   * curated (``first_class_support === true``).
+   */
+  firstClassOnly?: boolean
 }
 
 export type SortField = 'name' | 'context' | 'params'
@@ -50,6 +56,7 @@ export function applyModelFilters(
     if (filters.capTools && !m.supports_tool_calls) return false
     if (filters.capVision && !m.supports_vision) return false
     if (filters.capReason && !m.supports_reasoning) return false
+    if (filters.firstClassOnly && !m.first_class_support) return false
     if (filters.billing && filters.billing !== 'all') {
       const cat = m.billing_category ?? null
       if (cat === null) return false
