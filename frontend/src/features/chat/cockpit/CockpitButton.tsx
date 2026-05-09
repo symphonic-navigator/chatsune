@@ -12,7 +12,7 @@ export type CockpitButtonState =
 type Props = {
   icon: ReactNode
   state: CockpitButtonState
-  accent?: 'gold' | 'blue' | 'purple' | 'green' | 'neutral'
+  accent?: 'gold' | 'blue' | 'purple' | 'green' | 'neutral' | 'silver'
   label: string
   panel?: ReactNode
   onClick?: () => void
@@ -20,6 +20,20 @@ type Props = {
   /** Optional ref forwarded to the inner <button>. Used for low-frequency
    *  imperative DOM updates (e.g. CSS transform driven by an external RAF). */
   buttonRef?: Ref<HTMLButtonElement>
+  /**
+   * Optional ``data-state`` value mirrored onto the inner <button>. Lets
+   * callers expose a stable hook for tests / styling without depending on
+   * the visual-state palette mapping above (which collapses several distinct
+   * concepts into one of five visual states). Pass e.g. ``'active'`` /
+   * ``'inactive'`` / ``'mutex-disabled'`` to disambiguate.
+   */
+  dataState?: string
+  /**
+   * Optional badge text rendered in the bottom-right corner of the button —
+   * a 1-2 char marker for state that needs to be glanceable without opening
+   * the panel (e.g. reasoning effort bucket: "L" / "M" / "H").
+   */
+  badge?: string
 }
 
 const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
@@ -28,10 +42,11 @@ const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
   purple: 'text-[#c084fc] border-[#a855f7]/35 bg-[#a855f7]/15',
   green:  'text-[#4ade80] border-[#22c55e]/35 bg-[#22c55e]/15',
   neutral:'text-white/85 border-white/20 bg-white/10',
+  silver: 'text-[#cbd5e1] border-white/30 bg-white/10',
 }
 
 export function CockpitButton({
-  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel, buttonRef,
+  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel, buttonRef, dataState, badge,
 }: Props) {
   const { isMobile } = useViewport()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -90,10 +105,19 @@ export function CockpitButton({
         disabled={!actionable}
         aria-label={ariaLabel ?? label}
         title={label}
+        data-state={dataState}
         className={classes}
         onClick={onClick}
       >
         {icon}
+        {badge && (
+          <span
+            aria-hidden="true"
+            className="absolute bottom-0.5 right-0.5 text-[9px] font-semibold leading-none tracking-tight opacity-90 pointer-events-none"
+          >
+            {badge}
+          </span>
+        )}
       </button>
       {panelEnabled && panelOpen && (
         <div

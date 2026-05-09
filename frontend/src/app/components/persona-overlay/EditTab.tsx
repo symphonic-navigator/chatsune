@@ -30,7 +30,10 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
   const [colourScheme, setColourScheme] = useState<ChakraColour>(persona.colour_scheme)
   const [systemPrompt, setSystemPrompt] = useState(persona.system_prompt)
   const [temperature, setTemperature] = useState(persona.temperature)
-  const [reasoningEnabled, setReasoningEnabled] = useState(persona.reasoning_enabled)
+  // Per-persona reasoning toggle removed in 2026-05-09 capabilities work
+  // — reasoning now lives on the chat session. The persona document still
+  // carries ``reasoning_enabled`` for backwards compat (lazy-read), but
+  // it is no longer surfaced or written from this editor.
   const [softCotEnabled, setSoftCotEnabled] = useState(persona.soft_cot_enabled)
   const [visionFallbackModel, setVisionFallbackModel] = useState<string | null>(persona.vision_fallback_model)
   const [nsfw, setNsfw] = useState(persona.nsfw)
@@ -43,7 +46,6 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
   const [modelConnectionId, setModelConnectionId] = useState(
     persona.model_unique_id ? persona.model_unique_id.split(':')[0] : ''
   )
-  const [canReason, setCanReason] = useState(false)
   const [canUseTools, setCanUseTools] = useState(true)
   const [canSeeImages, setCanSeeImages] = useState(true)
   const [connections, setConnections] = useState<Connection[]>([])
@@ -100,14 +102,9 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     if (modelsLoading) return
     const model = findByUniqueId(persona.model_unique_id)
     if (model) {
-      setCanReason(model.supports_reasoning)
       setCanUseTools(model.supports_tool_calls)
       setCanSeeImages(model.supports_vision)
-      if (!model.supports_reasoning) {
-        setReasoningEnabled(false)
-      }
     } else {
-      setCanReason(false)
       setCanUseTools(true)
       setCanSeeImages(false)
     }
@@ -124,9 +121,10 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     visionModel?.display_name
     ?? (persona.vision_fallback_model?.split(':').slice(1).join(':') ?? null)
 
-  // Soft-CoT is available whenever the persona has opted in and Hard-CoT
-  // is not currently active. The toggle is greyed while Hard-CoT takes over.
-  const softCotDisabled = canReason && reasoningEnabled
+  // Soft-CoT is always available from the persona editor — native
+  // reasoning lives on the chat session now, so there is no per-persona
+  // hard-CoT state to mutually exclude against. The Toggle below keeps
+  // its ``disabled`` prop in case a future per-persona override returns.
 
   // ``hasUnsavedChanges`` reflects whether the form differs from the
   // persisted persona. The create-mode prefix in ``isDirty`` (below) is
@@ -140,7 +138,6 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     colourScheme !== persona.colour_scheme ||
     systemPrompt !== persona.system_prompt ||
     temperature !== persona.temperature ||
-    reasoningEnabled !== persona.reasoning_enabled ||
     softCotEnabled !== persona.soft_cot_enabled ||
     visionFallbackModel !== persona.vision_fallback_model ||
     nsfw !== persona.nsfw ||
@@ -186,7 +183,6 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
         colour_scheme: colourScheme,
         system_prompt: systemPrompt,
         temperature,
-        reasoning_enabled: reasoningEnabled,
         soft_cot_enabled: softCotEnabled,
         anthropic_cache_ttl: anthropicCacheTtl,
         vision_fallback_model: visionFallbackModel,
@@ -218,12 +214,8 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
     // modelResolved is derived from the enriched-models hub; no manual
     // override needed — the hub will pick up the new unique_id on its next
     // settled state (it already contains every model the picker showed).
-    setCanReason(model.supports_reasoning)
     setCanUseTools(model.supports_tool_calls)
     setCanSeeImages(model.supports_vision ?? false)
-    if (!model.supports_reasoning) {
-      setReasoningEnabled(false)
-    }
     setModelModalOpen(false)
   }
 
@@ -493,24 +485,11 @@ export function EditTab({ persona, chakra, onSave, isCreating, onDirtyChange }: 
         {/* Toggles */}
         <div className="flex flex-col gap-3">
           <Toggle
-            label="Reasoning"
-            description={canReason ? "Enable extended thinking for complex tasks" : "Model does not support reasoning"}
-            value={reasoningEnabled}
-            onChange={setReasoningEnabled}
-            chakraHex={chakra.hex}
-            disabled={!canReason}
-          />
-          <Toggle
             label="Soft Chain-of-Thought"
-            description={
-              softCotDisabled
-                ? "Disabled while native reasoning is active"
-                : "Ask the model to reason inside <think>...</think> blocks"
-            }
+            description="Ask the model to reason inside <think>...</think> blocks"
             value={softCotEnabled}
             onChange={setSoftCotEnabled}
             chakraHex={chakra.hex}
-            disabled={softCotDisabled}
           />
           {!canSeeImages && (
             <div className="flex flex-col gap-1.5">

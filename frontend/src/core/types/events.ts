@@ -77,6 +77,10 @@ export const Topics = {
   CHAT_WEB_SEARCH_CONTEXT: "chat.web_search.context",
   CHAT_SESSION_TOOLS_UPDATED: "chat.session.tools_updated",
   CHAT_SESSION_TOGGLES_UPDATED: "chat.session.toggles_updated",
+  // Capability-aware per-session reasoning/tools settings; broadcast by the
+  // PATCH /sessions/{id}/extras endpoint. Subscribed by cockpitStore for
+  // multi-tab/device sync. Mirrors shared/topics.py CHAT_SESSION_EXTRAS_UPDATED.
+  CHAT_SESSION_EXTRAS_UPDATED: "chat.session.extras.updated",
   CHAT_SESSION_PINNED_UPDATED: "chat.session.pinned_updated",
   CHAT_SESSION_PROJECT_UPDATED: "chat.session.project.updated",
   PROJECT_CREATED: "project.created",

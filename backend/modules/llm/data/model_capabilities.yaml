@@ -1,0 +1,78 @@
+# Capability overrides per (adapter_type, model_id pattern).
+# Matched in order; first match wins. Patterns use fnmatch semantics.
+# Adapter heuristics are consulted only when no entry matches.
+
+models:
+  # Anthropic Claude family via OpenRouter
+  #
+  # NOTE (2026-05-09): Effort buckets deliberately omitted for Claude
+  # via OpenRouter / nano-gpt — see INS-037. Router translators clobber
+  # reasoning.max_tokens when cache_control markers are present, and
+  # cache_control is too valuable to drop on every reasoning turn.
+  # Reasoning stays as a simple on/off toggle; Sonnet's adaptive
+  # default-effort handles the depth choice intelligently. Will revisit
+  # once a native Anthropic adapter ships (separate spec).
+  - adapter: openrouter
+    pattern: "anthropic/claude-sonnet-4.6*"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: openrouter
+    pattern: "anthropic/claude-opus-4-7*"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # Same family via nano-gpt
+  - adapter: nano_gpt
+    pattern: "claude-sonnet-4-6*"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: nano_gpt
+    pattern: "claude-opus-4-7*"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # OpenAI GPT-5 via OpenRouter
+  - adapter: openrouter
+    pattern: "openai/gpt-5*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # GPT-5 via nano-gpt
+  - adapter: nano_gpt
+    pattern: "gpt-5*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # DeepSeek V4 via OpenRouter
+  - adapter: openrouter
+    pattern: "deepseek/deepseek-v4*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # DeepSeek V4 via nano-gpt
+  - adapter: nano_gpt
+    pattern: "deepseek-v4*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }

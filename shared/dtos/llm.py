@@ -9,6 +9,31 @@ from pydantic import BaseModel, Field, computed_field, field_validator
 _SLUG_RE = _re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 
 
+class ReasoningEffortSpec(BaseModel):
+    """When non-None on a ReasoningCapability, the model has an effort selector."""
+    buckets: list[str]
+    default_bucket: str
+
+    @field_validator("default_bucket")
+    @classmethod
+    def _default_in_buckets(cls, v: str, info) -> str:
+        buckets = info.data.get("buckets") or []
+        if buckets and v not in buckets:
+            raise ValueError(f"default_bucket {v!r} not in buckets {buckets!r}")
+        return v
+
+
+class ReasoningCapability(BaseModel):
+    kind: Literal["no_reasoning", "optional", "always_on"]
+    effort: ReasoningEffortSpec | None = None
+    default_on: bool = True
+
+
+class ToolCapability(BaseModel):
+    supported: bool
+    exclusive_with_reasoning: bool = False
+
+
 class ModelMetaDto(BaseModel):
     connection_id: str
     connection_slug: str = ""  # populated by adapters once Task 2 lands
@@ -16,9 +41,11 @@ class ModelMetaDto(BaseModel):
     model_id: str
     display_name: str
     context_window: int
-    supports_reasoning: bool
+    reasoning: ReasoningCapability
     supports_vision: bool
-    supports_tool_calls: bool
+    supports_tool_calls: bool   # legacy field, kept for callers; tools.supported is canonical
+    tools: ToolCapability
+    first_class_support: bool = False
     parameter_count: str | None = None
     raw_parameter_count: int | None = None
     quantisation_level: str | None = None
@@ -45,6 +72,11 @@ class ModelMetaDto(BaseModel):
     # pre-existing cached documents readable — see CLAUDE.md
     # §Data-Model Migrations.
     remarks: str | None = None
+
+    @computed_field
+    @property
+    def supports_reasoning(self) -> bool:
+        return self.reasoning.kind != "no_reasoning"
 
     @computed_field
     @property

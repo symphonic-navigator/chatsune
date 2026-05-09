@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.integrations._models import IntegrationDefinition
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import ToolDefinition
 
 
@@ -80,7 +81,10 @@ async def _run_assemble(
             user_id="u-1",
             persona_id="p-1",
             model_unique_id="conn:model",
-            tools_enabled=tools_enabled,
+            extras=ChatSessionExtras(
+                tools_enabled=tools_enabled,
+                reasoning_mode="off",
+            ),
         )
 
 

@@ -1,8 +1,14 @@
 import logging
 
 from backend.modules.chat._prompt_sanitiser import sanitise
+from shared.dtos.chat import ChatSessionExtras
 
 _log = logging.getLogger(__name__)
+
+
+_DEFAULT_EXTRAS = ChatSessionExtras(
+    tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+)
 
 
 async def _get_admin_prompt() -> str | None:
@@ -75,21 +81,25 @@ async def assemble(
     *,
     project_id: str | None = None,
     supports_reasoning: bool = False,
-    reasoning_enabled_for_call: bool = False,
-    tools_enabled: bool = False,
+    extras: ChatSessionExtras | None = None,
 ) -> str:
     """Assemble the full XML system prompt for LLM consumption.
 
     ``project_id`` enables the project Custom Instructions layer, inserted
     between model-instructions and persona; ``None`` skips the layer entirely.
-    ``supports_reasoning`` and ``reasoning_enabled_for_call`` drive the
-    Soft-CoT visibility decision. ``tools_enabled`` gates only the
+    ``supports_reasoning`` together with ``extras.reasoning_mode`` drives the
+    Soft-CoT visibility decision. ``extras.tools_enabled`` gates only the
     prompt extensions of integrations that provide tools — those
     instructions are misleading when no tools are callable. Tool-less
     integrations (e.g. voice providers, screen effects) inject their
-    extensions regardless. Defaults preserve legacy behaviour for
-    callers that don't know about these layers (preview, scripts).
+    extensions regardless. The default ``extras`` (tools off, reasoning off)
+    preserves legacy behaviour for callers that don't know about per-session
+    state (preview, scripts).
     """
+    if extras is None:
+        extras = _DEFAULT_EXTRAS
+    tools_enabled = extras.tools_enabled
+
     from backend.modules.chat._soft_cot import (
         SOFT_COT_INSTRUCTIONS,
         is_soft_cot_active,
@@ -140,7 +150,7 @@ async def assemble(
     # model instructions. Injected only when the persona has opted in and
     # native Hard-CoT is not taking over this inference call.
     soft_cot_enabled = bool(persona_doc and persona_doc.get("soft_cot_enabled"))
-    if is_soft_cot_active(soft_cot_enabled, supports_reasoning, reasoning_enabled_for_call):
+    if is_soft_cot_active(soft_cot_enabled, supports_reasoning, extras):
         parts.append(SOFT_COT_INSTRUCTIONS)
 
     # Layer: User memory (if available, and the persona opts in to injection).

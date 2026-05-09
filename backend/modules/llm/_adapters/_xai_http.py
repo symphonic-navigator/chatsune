@@ -57,7 +57,7 @@ from shared.dtos.images import (
     XaiImagineConfig,
 )
 from shared.dtos.inference import CompletionMessage, CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
 
@@ -325,7 +325,7 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
         entry = _XAI_MODELS_BY_ID["grok-4.1-fast"]
 
     model_slug = (
-        entry.reasoning_slug if request.reasoning_enabled
+        entry.reasoning_slug if request.extras.reasoning_mode == "on"
         else entry.non_reasoning_slug
     )
     payload: dict = {
@@ -398,6 +398,11 @@ class XaiHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
+        # All Grok entries currently in ``_XAI_MODELS`` expose a reasoning
+        # toggle via the slug-pair table (see ``_build_chat_payload``), so
+        # ``reasoning.kind == "optional"`` for every entry. The follow-up
+        # premium-handling spec will revisit ``first_class_support`` and
+        # any per-model nuance — for now we emit conservative defaults.
         return [
             ModelMetaDto(
                 connection_id=c.id,
@@ -406,7 +411,13 @@ class XaiHttpAdapter(BaseAdapter):
                 model_id=entry.model_id,
                 display_name=entry.display_name,
                 context_window=entry.context_window,
-                supports_reasoning=True,
+                reasoning=ReasoningCapability(
+                    kind="optional", default_on=True,
+                ),
+                tools=ToolCapability(
+                    supported=True, exclusive_with_reasoning=False,
+                ),
+                first_class_support=False,
                 supports_vision=True,
                 supports_tool_calls=True,
                 billing_category="pay_per_token",

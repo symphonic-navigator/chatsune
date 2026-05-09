@@ -1,12 +1,13 @@
 """Verify cache_control marker emission in the OpenRouter payload builder."""
 from __future__ import annotations
 
-from backend.modules.llm._adapters._openrouter_http import _build_chat_payload
+from backend.modules.llm._adapters._openrouter_http import build_request_body
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
     ContentPart,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 def _msg(role: str, text: str = "x") -> CompletionMessage:
@@ -18,14 +19,21 @@ def _msg(role: str, text: str = "x") -> CompletionMessage:
 def _request(
     model: str, messages: list[CompletionMessage], ttl: str,
 ) -> CompletionRequest:
+    # Cache-emission tests are concerned with messages-shaping, not
+    # reasoning/tools — pass conservative defaults for the now-required
+    # capability fields.
     return CompletionRequest(
-        model=model, messages=messages, anthropic_cache_ttl=ttl,
+        model=model,
+        messages=messages,
+        anthropic_cache_ttl=ttl,
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=False),
     )
 
 
 def test_no_markers_when_ttl_off() -> None:
     msgs = [_msg("system"), _msg("user")] + [_msg("user")] * 20
-    payload = _build_chat_payload(
+    payload = build_request_body(
         _request("anthropic/claude-sonnet-4.5", msgs, "off"),
     )
     for m in payload["messages"]:
@@ -36,7 +44,7 @@ def test_no_markers_when_ttl_off() -> None:
 
 def test_no_markers_for_non_anthropic_model() -> None:
     msgs = [_msg("system")] + [_msg("user")] * 21
-    payload = _build_chat_payload(
+    payload = build_request_body(
         _request("openai/gpt-4o", msgs, "5m"),
     )
     for m in payload["messages"]:
@@ -48,7 +56,7 @@ def test_no_markers_for_non_anthropic_model() -> None:
 def test_5m_emission_on_long_anthropic_conversation() -> None:
     # 22 messages → System(0, 1h) + Block(15, 1h) + Tail(20, 5m).
     msgs = [_msg("system")] + [_msg("user")] * 21
-    payload = _build_chat_payload(
+    payload = build_request_body(
         _request("anthropic/claude-sonnet-4.5", msgs, "5m"),
     )
     expected = {
@@ -71,7 +79,7 @@ def test_5m_emission_on_long_anthropic_conversation() -> None:
 
 def test_1h_emission_makes_tail_1h() -> None:
     msgs = [_msg("system")] + [_msg("user")] * 21
-    payload = _build_chat_payload(
+    payload = build_request_body(
         _request("anthropic/claude-sonnet-4.5", msgs, "1h"),
     )
     tail = payload["messages"][20]
@@ -99,9 +107,41 @@ def test_marker_attaches_to_last_content_block_with_image() -> None:
     )
     msgs.insert(20, image_msg)  # tail_index becomes 20
     assert len(msgs) == 22
-    payload = _build_chat_payload(
+    payload = build_request_body(
         _request("anthropic/claude-sonnet-4.5", msgs, "5m"),
     )
     tail_blocks = payload["messages"][20]["content"]
     assert tail_blocks[-1]["type"] == "image_url"
     assert tail_blocks[-1].get("cache_control") == {"type": "ephemeral"}
+
+
+# --- INS-037: cache_control stays put even when reasoning is on ---
+# We deliberately accept that the user can't dial in a reasoning effort
+# bucket on Anthropic-via-router; the trade-off is worth keeping cache.
+
+
+def test_cache_markers_kept_when_reasoning_on_for_anthropic() -> None:
+    """Per INS-037: we don't expose effort on Anthropic-via-router, and
+    the body carries only ``{enabled: true}`` — no max_tokens, no
+    collision with cache_control. Cache markers stay on every turn."""
+    from shared.dtos.chat import ChatSessionExtras
+    msgs = [_msg("system")] + [_msg("user")] * 21
+    req = CompletionRequest(
+        model="anthropic/claude-sonnet-4.6",
+        messages=msgs,
+        anthropic_cache_ttl="5m",
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
+        ),
+    )
+    payload = build_request_body(req)
+    found_cc = any(
+        isinstance(m.get("content"), list)
+        and any(b.get("cache_control") for b in m["content"])
+        for m in payload["messages"]
+    )
+    assert found_cc, "cache markers must remain even with reasoning on"
+    # Sanity: effort dropped from the wire body.
+    assert payload["reasoning"] == {"enabled": True}

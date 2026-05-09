@@ -45,7 +45,11 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import CompletionMessage, CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import (
+    ModelMetaDto,
+    ReasoningCapability,
+    ToolCapability,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -180,7 +184,9 @@ def _parse_sse_line(line: str) -> dict | object | None:
 MIN_CONTEXT_TOKENS = 80_000
 
 
-def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
+def _entry_to_meta(
+    entry: dict, c: ResolvedConnection, *, adapter: BaseAdapter,
+) -> ModelMetaDto | None:
     """Map one Novita catalogue entry to a ``ModelMetaDto`` or ``None``.
 
     Filter rules — all must pass; see spec §"Model Filter Rules":
@@ -190,7 +196,14 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
     4. ``"serverless" in features``
     5. ``model_type == "chat"``
     6. ``status == 1``
+
+    The reasoning/tools capabilities go through ``resolve_capabilities``
+    (YAML override → adapter heuristic → universal default). The adapter
+    heuristic lives in ``NovitaHttpAdapter.capability_hint`` and consults
+    the catalogue ``features`` list for this entry — see that method.
     """
+    from backend.modules.llm._capabilities import resolve_capabilities
+
     output_mods = entry.get("output_modalities") or []
     if output_mods != ["text"]:
         return None
@@ -218,6 +231,17 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
     out_price = entry.get("output_token_price_per_m") or 0
     billing = "free" if in_price == 0 and out_price == 0 else "pay_per_token"
 
+    # Stash the catalogue-derived feature list on the adapter so
+    # ``capability_hint`` can consult it without re-running the
+    # catalogue. ``resolve_capabilities`` calls ``capability_hint``
+    # exactly once per model_id below.
+    adapter._features_by_model_id[entry["id"]] = list(features)
+    resolved = resolve_capabilities(
+        adapter_type="novita",
+        model_id=entry["id"],
+        adapter=adapter,
+    )
+
     return ModelMetaDto(
         connection_id=c.id,
         connection_slug=c.slug,
@@ -225,7 +249,9 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
         model_id=entry["id"],
         display_name=entry.get("display_name") or entry["id"],
         context_window=context_size,
-        supports_reasoning="reasoning" in features,
+        reasoning=resolved.reasoning,
+        tools=resolved.tools,
+        first_class_support=resolved.first_class_support,
         supports_vision="image" in input_mods,
         supports_tool_calls="function-calling" in features,
         is_deprecated=False,
@@ -268,7 +294,27 @@ def _translate_message(msg: CompletionMessage) -> dict:
     return result
 
 
-def _build_chat_payload(request: CompletionRequest) -> dict:
+def build_request_body(request: CompletionRequest) -> dict:
+    """Translate a CompletionRequest into the Novita ``/chat/completions`` body.
+
+    Translation rules — read together with spec §6.3:
+
+    * ``model``, ``messages``, ``stream=True``, and ``stream_options``
+      (for usage piggybacking) are always present.
+    * ``temperature`` only when explicitly set on the request.
+    * ``tools`` only when the request carries them AND the session has
+      tools enabled. The session toggle is the ground truth — adapters
+      never second-guess it.
+    * ``reasoning`` block only when ``request.reasoning.kind ==
+      "optional"``. The body carries the OpenRouter unified shape
+      ``{"enabled": <bool>}`` plus ``"effort"`` when
+      ``request.extras.reasoning_effort`` is set. Always written
+      explicitly (true or false) — Novita's default direction is
+      per-model so omitting it would surrender control of the toggle.
+      For ``no_reasoning`` and ``always_on`` kinds the field is
+      omitted entirely. Per spec §6.3 we do NOT use the legacy
+      ``reasoning: {exclude: true}`` shape to fake an off-state.
+    """
     payload: dict = {
         "model": request.model,
         "stream": True,
@@ -277,7 +323,7 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     }
     if request.temperature is not None:
         payload["temperature"] = request.temperature
-    if request.tools:
+    if request.tools and request.extras.tools_enabled:
         payload["tools"] = [
             {
                 "type": "function",
@@ -288,11 +334,13 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
             }
             for t in request.tools
         ]
-    # Reasoning toggle: ``exclude: true`` only when the user wants
-    # thinking hidden on a reasoning-capable model. Built-in reasoners
-    # ignore the field; non-reasoners shouldn't see it at all.
-    if request.supports_reasoning and not request.reasoning_enabled:
-        payload["reasoning"] = {"exclude": True}
+    if request.reasoning.kind == "optional":
+        reasoning_obj: dict = {
+            "enabled": request.extras.reasoning_mode == "on",
+        }
+        if request.extras.reasoning_effort:
+            reasoning_obj["effort"] = request.extras.reasoning_effort
+        payload["reasoning"] = reasoning_obj
     return payload
 
 
@@ -301,6 +349,42 @@ class NovitaHttpAdapter(BaseAdapter):
     display_name = "Novita AI"
     view_id = "novita_http"
     secret_fields = frozenset({"api_key"})
+
+    def __init__(self) -> None:
+        # Populated by ``_entry_to_meta`` per call. Consulted by
+        # ``capability_hint`` when ``resolve_capabilities`` falls
+        # through past the YAML overrides. Per-instance state — and
+        # the adapter is constructed fresh per request, so there is
+        # no cross-request contamination.
+        self._features_by_model_id: dict[str, list[str]] = {}
+
+    def capability_hint(self, model_id: str):
+        """Best-effort capability hint based on the catalogue ``features``
+        list for this model.
+
+        The hint is heuristic — Novita's ``"reasoning"`` feature flag
+        signals the model has a reasoning toggle, but Novita does not
+        publish per-model effort buckets, so we emit ``optional``
+        without an ``effort`` spec. Returns ``None`` (resolver falls
+        through to the universal default) when the catalogue did not
+        populate features for this model_id, e.g. when ``capability_hint``
+        is invoked outside ``fetch_models``.
+        """
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        features = self._features_by_model_id.get(model_id)
+        if features is None:
+            return None
+        if "reasoning" in features:
+            reasoning = ReasoningCapability(kind="optional")
+        else:
+            reasoning = ReasoningCapability(kind="no_reasoning")
+        tools = ToolCapability(supported="function-calling" in features)
+        return CapabilityHint(
+            reasoning=reasoning,
+            tools=tools,
+            first_class_support=False,
+        )
 
     async def fetch_models(
         self, c: ResolvedConnection,
@@ -342,7 +426,7 @@ class NovitaHttpAdapter(BaseAdapter):
         for entry in entries:
             if not isinstance(entry, dict) or not entry.get("id"):
                 continue
-            meta = _entry_to_meta(entry, c)
+            meta = _entry_to_meta(entry, c, adapter=self)
             if meta is not None:
                 metas.append(meta)
         return metas
@@ -352,7 +436,7 @@ class NovitaHttpAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or ""
-        payload = _build_chat_payload(request)
+        payload = build_request_body(request)
 
         headers = {
             "Content-Type": "application/json",

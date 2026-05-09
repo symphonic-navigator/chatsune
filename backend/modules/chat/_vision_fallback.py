@@ -20,7 +20,9 @@ from backend.modules.llm import (
     stream_completion as llm_stream_completion,
 )
 from backend.modules.settings import get_admin_system_message
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,11 @@ async def describe_image(
     admin = await get_admin_system_message()
     prefix_messages = [admin.message] if admin else []
 
+    # Vision fallback never enables reasoning — the model is being asked
+    # for a literal description of an image, not to think about it. Use the
+    # most conservative capability shape (no reasoning, no tools) so adapters
+    # do not try to send a thinking-mode request to a vision endpoint that
+    # may not support it.
     request = CompletionRequest(
         model=model_slug,
         messages=prefix_messages + [
@@ -79,8 +86,11 @@ async def describe_image(
             ),
         ],
         temperature=0.2,
-        reasoning_enabled=False,
-        supports_reasoning=False,
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=False),
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
     )
 
     last_error: Exception | None = None

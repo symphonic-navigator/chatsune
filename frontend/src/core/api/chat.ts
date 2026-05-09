@@ -18,6 +18,18 @@ export interface PtiOverflow {
   dropped_titles: string[]
 }
 
+/**
+ * Per-session reasoning/tools settings. Mirrors
+ * ``shared/dtos/chat.py::ChatSessionExtras``. Persisted on the session and
+ * merged into the LLM ``CompletionRequest``. The cockpit owns this state in
+ * the frontend; PATCH ``/api/chat/sessions/{id}/extras`` is the only writer.
+ */
+export interface ChatSessionExtras {
+  tools_enabled: boolean
+  reasoning_mode: 'off' | 'on'
+  reasoning_effort: string | null
+}
+
 interface ChatSessionDto {
   id: string
   user_id: string
@@ -35,6 +47,16 @@ interface ChatSessionDto {
    * ``shared/dtos/chat.py``.
    */
   project_id: string | null
+  /**
+   * Per-session capability-aware reasoning/tools settings. ``null`` for
+   * sessions that haven't been touched since the migration; the cockpit
+   * computes initial defaults from the current model capability in that
+   * case (see ``defaultExtrasForCapability`` in ``cockpitDefaults.ts``)
+   * and PATCHes them back on the first user interaction. Optional in the
+   * type so existing test fixtures and intermediate session-construction
+   * call sites do not need to specify it; runtime treats undefined as null.
+   */
+  extras?: ChatSessionExtras | null
   created_at: string
   updated_at: string
 }
@@ -249,6 +271,27 @@ export const chatApi = {
     patch: { tools_enabled?: boolean; auto_read?: boolean },
   ) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/toggles`, patch),
+
+  /**
+   * Persist per-session capability-aware extras (tools/reasoning).
+   * Replaces the legacy ``updateSessionReasoning`` and the ``tools_enabled``
+   * branch of ``updateSessionToggles``. The backend validates the body
+   * against the resolved model capability and rejects invalid combinations
+   * (e.g. reasoning on for a ``no_reasoning`` model).
+   *
+   * The endpoint returns ``{ extras: ChatSessionExtras }``; we unwrap to the
+   * inner DTO for callers.
+   */
+  updateSessionExtras: (
+    sessionId: string,
+    extras: ChatSessionExtras,
+  ): Promise<ChatSessionExtras> =>
+    api
+      .patch<{ extras: ChatSessionExtras }>(
+        `/api/chat/sessions/${sessionId}/extras`,
+        extras,
+      )
+      .then((r) => r.extras),
 
   updateSessionPinned: (sessionId: string, pinned: boolean) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),

@@ -144,14 +144,28 @@ def _translate_message(msg: CompletionMessage) -> dict:
     return result
 
 
-def _build_chat_payload(request: CompletionRequest) -> dict:
+def build_request_body(request: CompletionRequest) -> dict:
+    """Translate a CompletionRequest into the Ollama ``/api/chat`` body.
+
+    Translation rules:
+
+    - ``model``, ``messages``, and ``stream=True`` are always present.
+    - ``options.temperature`` is included only when the caller passed an
+      explicit temperature.
+    - ``tools`` is included only when the model supports tools AND the
+      session has tools enabled.
+    - ``think`` is included only for models with ``reasoning.kind ==
+      "optional"``. For those models we ALWAYS write the field
+      explicitly (``True``/``False``) — never rely on Ollama's default.
+      Models with ``no_reasoning`` or ``always_on`` omit the field.
+    """
     messages = [_translate_message(m) for m in request.messages]
     payload: dict = {"model": request.model, "messages": messages, "stream": True}
-    if request.supports_reasoning:
-        payload["think"] = request.reasoning_enabled
+    if request.reasoning.kind == "optional":
+        payload["think"] = request.extras.reasoning_mode == "on"
     if request.temperature is not None:
         payload["options"] = {"temperature": request.temperature}
-    if request.tools:
+    if request.tools and request.extras.tools_enabled:
         payload["tools"] = [
             {
                 "type": t.type,
@@ -177,7 +191,10 @@ def _map_to_dto(
     model_name: str, detail: dict,
     *,
     billing: Literal["free", "subscription"],
+    adapter: BaseAdapter,
 ) -> ModelMetaDto:
+    from backend.modules.llm._capabilities import resolve_capabilities
+
     capabilities = detail.get("capabilities", [])
     model_info = detail.get("model_info", {})
     details = detail.get("details", {})
@@ -197,6 +214,11 @@ def _map_to_dto(
                 raw_params = int(raw_params)
             except (ValueError, TypeError):
                 raw_params = None
+    resolved = resolve_capabilities(
+        adapter_type="ollama_http",
+        model_id=model_name,
+        adapter=adapter,
+    )
     return ModelMetaDto(
         connection_id=connection_id,
         connection_display_name=connection_display_name,
@@ -204,7 +226,9 @@ def _map_to_dto(
         model_id=model_name,
         display_name=_build_display_name(model_name),
         context_window=context_window,
-        supports_reasoning="thinking" in capabilities,
+        reasoning=resolved.reasoning,
+        tools=resolved.tools,
+        first_class_support=resolved.first_class_support,
         supports_vision="vision" in capabilities,
         supports_tool_calls="tools" in capabilities,
         parameter_count=_format_parameter_count(raw_params),
@@ -312,7 +336,7 @@ class OllamaHttpAdapter(BaseAdapter):
         billing = _billing_category_for_url(c.config["url"])
         metas = [
             _map_to_dto(c.id, c.display_name, c.slug, name, detail,
-                        billing=billing)
+                        billing=billing, adapter=self)
             for name, detail in results if detail is not None
         ]
         return _filter_unusable(metas)
@@ -322,7 +346,7 @@ class OllamaHttpAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
-        payload = _build_chat_payload(request)
+        payload = build_request_body(request)
         if _TRACE_PAYLOADS:
             _log.info(
                 "LLM_TRACE path=direct url=%s payload=%s",

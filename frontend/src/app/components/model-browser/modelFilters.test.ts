@@ -16,6 +16,11 @@ function makeModel(
     supports_reasoning: false,
     supports_vision: false,
     supports_tool_calls: false,
+    // Structured capabilities mirror the backend defaults — the existing
+    // tests don't exercise them so a "no reasoning, no tools" stub is fine.
+    reasoning: { kind: 'no_reasoning', effort: null, default_on: false },
+    tools: { supported: false, exclusive_with_reasoning: false },
+    first_class_support: false,
     parameter_count: null,
     raw_parameter_count: null,
     quantisation_level: null,

@@ -30,9 +30,12 @@ from backend.database import get_db
 from backend.modules.bookmark import delete_bookmarks_for_message
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
-    get_model_supports_reasoning,
+    get_model_metadata,
     LlmConnectionNotFoundError,
 )
+from backend.modules.chat._extras_remap import default_extras_for_capability
+from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 from backend.modules.persona import get_persona
 from backend.modules.tools import get_active_definitions
 from backend.modules.user import UserService
@@ -658,25 +661,46 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
 
         _, model_slug = model_unique_id.split(":", 1)
 
-        supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
-        reasoning_enabled_for_call = persona.get("reasoning_enabled", False)
+        # Resolve the model capability so extras and the CompletionRequest
+        # carry consistent reasoning/tools shapes — same pattern as the
+        # main orchestrator (run_inference). Conservative fallback when
+        # the model can no longer be resolved.
+        meta = await get_model_metadata(user_id, model_unique_id)
+        if meta is not None:
+            reasoning_cap = meta.reasoning
+            tools_cap = meta.tools
+            supports_reasoning = meta.supports_reasoning
+        else:
+            reasoning_cap = ReasoningCapability(kind="no_reasoning")
+            tools_cap = ToolCapability(supported=False)
+            supports_reasoning = False
 
-        # Respect session-level tool toggle (BD-038). Reading this before the
-        # prompt assembly so integration prompt extensions can be gated on it.
+        # Respect session-level extras (or capability defaults if the
+        # session predates the extras field). Reading this before the
+        # prompt assembly so integration prompt extensions can be gated
+        # on it.
         db = get_db()
         repo = ChatRepository(db)
         session = await repo.get_session(session_id, user_id)
-        tools_enabled = session.get("tools_enabled", False) if session else False
-        active_tools = await get_active_definitions([], user_id=user_id) if tools_enabled else None
+        raw_extras = session.get("extras") if session else None
+        if raw_extras is None:
+            extras = default_extras_for_capability(reasoning_cap, tools_cap)
+        else:
+            extras = ChatSessionExtras.model_validate(raw_extras)
 
-        # Assemble system prompt (integration prompt extensions follow tools_enabled)
+        active_tools = (
+            await get_active_definitions([], user_id=user_id)
+            if extras.tools_enabled else None
+        )
+
+        # Assemble system prompt — extras carries the tool/reasoning
+        # state for prompt-level gating.
         system_prompt = await assemble(
             user_id=user_id,
             persona_id=persona_id,
             model_unique_id=model_unique_id,
             supports_reasoning=supports_reasoning,
-            reasoning_enabled_for_call=reasoning_enabled_for_call,
-            tools_enabled=tools_enabled,
+            extras=extras,
         )
 
         # Build CompletionMessage list
@@ -698,8 +722,9 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
             model=model_slug,
             messages=messages,
             temperature=persona.get("temperature"),
-            reasoning_enabled=persona.get("reasoning_enabled", False),
-            supports_reasoning=supports_reasoning,
+            reasoning=reasoning_cap,
+            tools_capability=tools_cap,
+            extras=extras,
             tools=active_tools,
             cache_hint=session_id,
             anthropic_cache_ttl=persona.get("anthropic_cache_ttl", "5m"),

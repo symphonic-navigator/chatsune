@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from shared.dtos.chat import ChatSessionExtras
+
 
 class ChatSessionDocument(BaseModel):
     """Internal MongoDB document model for chat sessions. Never expose outside chat module."""
@@ -16,6 +18,10 @@ class ChatSessionDocument(BaseModel):
     # the legacy / unassigned state — sessions created before Mindspace
     # have no field at all and deserialise as ``None``.
     project_id: str | None = None
+    # Per-session reasoning/tools preference. ``None`` means "compute
+    # from model capability on first cockpit interaction" — legacy
+    # sessions created before this field deserialise that way too.
+    extras: ChatSessionExtras | None = None
     created_at: datetime
     updated_at: datetime
 

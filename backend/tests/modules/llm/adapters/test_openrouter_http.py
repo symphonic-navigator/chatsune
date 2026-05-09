@@ -29,23 +29,58 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._adapters._openrouter_http import (
     _SSE_DONE,
     OpenRouterHttpAdapter,
-    _build_chat_payload,
     _chunk_to_events,
     _parse_sse_line,
     _ToolCallAccumulator,
     _translate_message,
+    build_request_body,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     get_adapter_class,
 )
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
     ContentPart,
     ToolDefinition,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
+
+
+def _make_request(
+    *,
+    model: str = "m",
+    text: str = "x",
+    temperature: float | None = None,
+    tools: list[ToolDefinition] | None = None,
+    reasoning: ReasoningCapability | None = None,
+    tools_enabled: bool = False,
+    reasoning_mode: str = "off",
+    reasoning_effort: str | None = None,
+) -> CompletionRequest:
+    """Build a CompletionRequest under the new capability-based contract.
+
+    Defaults match the most common test shape: a plain user prompt with
+    no reasoning toggle and no temperature override.
+    """
+    return CompletionRequest(
+        model=model,
+        messages=[CompletionMessage(
+            role="user", content=[ContentPart(type="text", text=text)],
+        )],
+        temperature=temperature,
+        tools=tools,
+        reasoning=reasoning or ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=tools_enabled,
+            reasoning_mode=reasoning_mode,
+            reasoning_effort=reasoning_effort,
+        ),
+    )
 
 
 def test_adapter_identity():
@@ -421,50 +456,31 @@ def test_translate_image_message_uses_openai_image_url_format():
 
 
 def test_build_payload_passes_model_through():
-    req = CompletionRequest(
-        model="openai/gpt-4o",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="hi")],
-        )],
-    )
-    payload = _build_chat_payload(req)
+    req = _make_request(model="openai/gpt-4o", text="hi")
+    payload = build_request_body(req)
     assert payload["model"] == "openai/gpt-4o"
     assert payload["stream"] is True
     assert payload["stream_options"] == {"include_usage": True}
 
 
 def test_build_payload_includes_temperature_when_set():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        temperature=0.4,
-    )
-    assert _build_chat_payload(req)["temperature"] == 0.4
+    req = _make_request(temperature=0.4)
+    assert build_request_body(req)["temperature"] == 0.4
 
 
 def test_build_payload_omits_temperature_when_none():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
-    assert "temperature" not in _build_chat_payload(req)
+    req = _make_request()
+    assert "temperature" not in build_request_body(req)
 
 
 def test_build_payload_translates_tools():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
+    req = _make_request(
         tools=[ToolDefinition(
             name="lookup", description="d", parameters={"type": "object"},
         )],
+        tools_enabled=True,
     )
-    payload = _build_chat_payload(req)
+    payload = build_request_body(req)
     assert payload["tools"] == [{
         "type": "function",
         "function": {
@@ -474,38 +490,52 @@ def test_build_payload_translates_tools():
     }]
 
 
-def test_reasoning_field_omitted_when_enabled_and_supported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
+def test_build_payload_omits_tools_when_session_disabled():
+    """Tool gating: ``request.tools`` are only included when both the
+    request carries them AND the session has tools enabled."""
+    req = _make_request(
+        tools=[ToolDefinition(
+            name="lookup", description="d", parameters={"type": "object"},
         )],
-        supports_reasoning=True, reasoning_enabled=True,
+        tools_enabled=False,
     )
-    assert "reasoning" not in _build_chat_payload(req)
+    assert "tools" not in build_request_body(req)
 
 
-def test_reasoning_field_set_to_exclude_when_disabled_and_supported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        supports_reasoning=True, reasoning_enabled=False,
+def test_reasoning_field_carries_enabled_true_for_optional_on():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="optional"),
+        reasoning_mode="on",
     )
-    payload = _build_chat_payload(req)
-    assert payload["reasoning"] == {"exclude": True}
+    payload = build_request_body(req)
+    assert payload["reasoning"] == {"enabled": True}
 
 
-def test_reasoning_field_omitted_when_unsupported():
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-        supports_reasoning=False, reasoning_enabled=True,
+def test_reasoning_field_carries_enabled_false_for_optional_off():
+    """Per spec §6.3 the off-state is ``{"enabled": false}`` — explicit
+    flag, not the legacy ``{"exclude": true}`` shape."""
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="optional"),
+        reasoning_mode="off",
     )
-    assert "reasoning" not in _build_chat_payload(req)
+    payload = build_request_body(req)
+    assert payload["reasoning"] == {"enabled": False}
+
+
+def test_reasoning_field_omitted_when_no_reasoning_kind():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        reasoning_mode="on",
+    )
+    assert "reasoning" not in build_request_body(req)
+
+
+def test_reasoning_field_omitted_when_always_on_kind():
+    req = _make_request(
+        reasoning=ReasoningCapability(kind="always_on"),
+        reasoning_mode="on",
+    )
+    assert "reasoning" not in build_request_body(req)
 
 
 class _FakeStreamResponse:
@@ -568,12 +598,7 @@ async def test_stream_completion_emits_content_then_done():
     fake = _FakeStreamingClient(lines)
 
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="openai/gpt-4o",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="hi")],
-        )],
-    )
+    req = _make_request(model="openai/gpt-4o", text="hi")
 
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
@@ -601,12 +626,7 @@ async def test_stream_completion_sends_attribution_headers():
     fake = _FakeStreamingClient(lines)
 
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
 
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
@@ -630,12 +650,7 @@ async def test_stream_completion_sends_attribution_headers():
 async def test_stream_completion_401_yields_invalid_api_key():
     fake = _FakeStreamingClient([], status_code=401)
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -687,12 +702,7 @@ async def test_stream_completion_retries_on_429_then_succeeds(monkeypatch):
     )
 
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -717,12 +727,7 @@ async def test_stream_completion_429_yields_provider_unavailable(monkeypatch):
         _async_noop,
     )
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -739,12 +744,7 @@ async def test_stream_completion_429_yields_provider_unavailable(monkeypatch):
 async def test_stream_completion_5xx_yields_provider_unavailable():
     fake = _FakeStreamingClient([], status_code=500)
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -762,12 +762,7 @@ async def test_stream_completion_does_not_retry_on_5xx():
     silent stall."""
     fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[500])
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -782,12 +777,7 @@ async def test_stream_completion_does_not_retry_on_401():
     """Auth failures are not transient — never retry."""
     fake = _FakeStreamingClientWithStatusSeq([], status_codes_seq=[401])
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,
@@ -818,12 +808,7 @@ async def test_stream_completion_429_honours_retry_after_header(monkeypatch):
         response_headers={"Retry-After": "7"},
     )
     a = OpenRouterHttpAdapter()
-    req = CompletionRequest(
-        model="m",
-        messages=[CompletionMessage(
-            role="user", content=[ContentPart(type="text", text="x")],
-        )],
-    )
+    req = _make_request()
     with patch(
         "backend.modules.llm._adapters._openrouter_http.httpx.AsyncClient",
         lambda *_a, **_k: fake,

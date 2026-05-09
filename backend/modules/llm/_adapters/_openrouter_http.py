@@ -9,7 +9,7 @@ endpoint so only text-output models reach the Model Browser.
 Cache control: OpenRouter performs automatic prefix caching for
 OpenAI / Gemini / DeepSeek (transparent, no markers). For Anthropic
 (Claude) models, explicit ``cache_control`` markers are emitted by
-``_build_chat_payload`` when the persona has opted in via
+``build_request_body`` when the persona has opted in via
 ``anthropic_cache_ttl``. The marker placement strategy lives in
 ``_anthropic_cache.py`` (system + block-boundary + rolling tail); see
 ``devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md``.
@@ -59,7 +59,11 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import CompletionMessage, CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import (
+    ModelMetaDto,
+    ReasoningCapability,
+    ToolCapability,
+)
 
 _log = logging.getLogger(__name__)
 _PROBE_TIMEOUT = httpx.Timeout(10.0)
@@ -102,7 +106,19 @@ def _billing_category(pricing: dict) -> str:
     return "pay_per_token"
 
 
-def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
+def _entry_to_meta(
+    entry: dict, c: ResolvedConnection, *, adapter: BaseAdapter,
+) -> ModelMetaDto | None:
+    """Map one OpenRouter catalogue entry to a ``ModelMetaDto`` or ``None``.
+
+    The reasoning/tools capabilities go through ``resolve_capabilities``
+    (YAML override → adapter heuristic → universal default). The adapter
+    heuristic lives in ``OpenRouterHttpAdapter.capability_hint`` and
+    consults the catalogue ``supported_parameters`` list for this entry —
+    see that method.
+    """
+    from backend.modules.llm._capabilities import resolve_capabilities
+
     arch = entry.get("architecture") or {}
     output_mods = arch.get("output_modalities")
     # Strict: exactly ["text"]. Image-only, audio-only, and mixed
@@ -128,6 +144,17 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
     else:
         is_moderated = None
 
+    # Stash the catalogue-derived parameter list on the adapter so
+    # ``capability_hint`` can consult it without re-running the
+    # catalogue. ``resolve_capabilities`` calls ``capability_hint``
+    # exactly once per model_id below.
+    adapter._params_by_model_id[entry["id"]] = list(params)
+    resolved = resolve_capabilities(
+        adapter_type="openrouter",
+        model_id=entry["id"],
+        adapter=adapter,
+    )
+
     return ModelMetaDto(
         connection_id=c.id,
         connection_slug=c.slug,
@@ -135,7 +162,9 @@ def _entry_to_meta(entry: dict, c: ResolvedConnection) -> ModelMetaDto | None:
         model_id=entry["id"],
         display_name=entry.get("name") or entry["id"],
         context_window=context_length,
-        supports_reasoning=_supports(params, "reasoning", "include_reasoning"),
+        reasoning=resolved.reasoning,
+        tools=resolved.tools,
+        first_class_support=resolved.first_class_support,
         supports_vision="image" in input_mods,
         supports_tool_calls=_supports(params, "tools"),
         is_deprecated=entry.get("expiration_date") is not None,
@@ -309,7 +338,32 @@ def _translate_message(
     return result
 
 
-def _build_chat_payload(request: CompletionRequest) -> dict:
+def build_request_body(request: CompletionRequest) -> dict:
+    """Translate a CompletionRequest into the OpenRouter ``/chat/completions`` body.
+
+    Translation rules — read together with spec §6.3:
+
+    * ``model``, ``messages``, ``stream=True``, and ``stream_options``
+      (for usage piggybacking) are always present.
+    * ``temperature`` only when explicitly set on the request.
+    * ``tools`` only when the request carries them AND the session has
+      tools enabled. The session toggle is the ground truth — adapters
+      never second-guess it.
+    * ``reasoning`` block only when ``request.reasoning.kind ==
+      "optional"``. The body carries OpenRouter's unified shape
+      ``{"enabled": <bool>}`` plus ``"effort"`` when
+      ``request.extras.reasoning_effort`` is set. Always written
+      explicitly (true or false) — vendors disagree on the default
+      direction (gpt-5 default OFF, claude-sonnet default ON), so
+      omitting it would surrender control of the toggle. For
+      ``no_reasoning`` and ``always_on`` kinds the field is omitted
+      entirely. Per spec §2 non-goals we do NOT use the legacy
+      ``reasoning: {exclude: true}`` shape to fake an off-state —
+      ``exclude`` controls visibility, not whether the model reasons.
+    * Anthropic ``cache_control`` markers are applied to messages when
+      ``anthropic_cache_ttl != "off"`` and the model is in the Anthropic
+      family. See ``_anthropic_cache.py`` for the placement strategy.
+    """
     from backend.modules.llm._adapters._anthropic_cache import (
         compute_cache_markers,
         is_anthropic_model,
@@ -336,7 +390,7 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     }
     if request.temperature is not None:
         payload["temperature"] = request.temperature
-    if request.tools:
+    if request.tools and request.extras.tools_enabled:
         payload["tools"] = [
             {
                 "type": "function",
@@ -347,11 +401,18 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
             }
             for t in request.tools
         ]
-    # Reasoning: only emit when meaningful. We do not expose effort
-    # levels in this iteration. ``exclude: true`` controls visibility,
-    # not whether the model reasons; built-in reasoners ignore it.
-    if request.supports_reasoning and not request.reasoning_enabled:
-        payload["reasoning"] = {"exclude": True}
+    if request.reasoning.kind == "optional":
+        reasoning_on = request.extras.reasoning_mode == "on"
+        reasoning_obj: dict = {"enabled": reasoning_on}
+        # Effort buckets are NOT sent for Anthropic models — see INS-037.
+        # Router translators (OR / nano-gpt) clobber reasoning.max_tokens
+        # when cache_control markers are present, and cache is too valuable
+        # to drop on every reasoning turn. Sonnet's adaptive default-effort
+        # handles depth choice intelligently; we only toggle on/off here.
+        # Other vendors (OpenAI o-series, DeepSeek, etc.) keep effort.
+        if reasoning_on and request.extras.reasoning_effort and not is_anthropic_model(request.model):
+            reasoning_obj["effort"] = request.extras.reasoning_effort
+        payload["reasoning"] = reasoning_obj
     return payload
 
 
@@ -393,6 +454,46 @@ class OpenRouterHttpAdapter(BaseAdapter):
     display_name = "OpenRouter"
     view_id = "openrouter_http"
     secret_fields = frozenset({"api_key"})
+
+    def __init__(self) -> None:
+        # Populated by ``_entry_to_meta`` per call. Consulted by
+        # ``capability_hint`` when ``resolve_capabilities`` falls
+        # through past the YAML overrides. Per-instance state — and
+        # the adapter is constructed fresh per request, so there is
+        # no cross-request contamination.
+        self._params_by_model_id: dict[str, list[str]] = {}
+
+    def capability_hint(self, model_id: str):
+        """Best-effort capability hint based on the catalogue
+        ``supported_parameters`` list for this model.
+
+        OpenRouter normalises the heterogeneous reasoning surface across
+        50+ upstream providers via the unified ``reasoning`` parameter.
+        Presence of either ``"reasoning"`` or ``"include_reasoning"`` in
+        ``supported_parameters`` indicates the model accepts the
+        reasoning toggle. We emit ``optional`` reasoning without an
+        ``effort`` spec — OpenRouter does not publish per-model effort
+        buckets in the catalogue, so we fall through to YAML overrides
+        for first-class effort support. Returns ``None`` (resolver falls
+        through to the universal default) when the catalogue did not
+        populate parameters for this model_id, e.g. when
+        ``capability_hint`` is invoked outside ``fetch_models``.
+        """
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        params = self._params_by_model_id.get(model_id)
+        if params is None:
+            return None
+        if _supports(params, "reasoning", "include_reasoning"):
+            reasoning = ReasoningCapability(kind="optional")
+        else:
+            reasoning = ReasoningCapability(kind="no_reasoning")
+        tools = ToolCapability(supported=_supports(params, "tools"))
+        return CapabilityHint(
+            reasoning=reasoning,
+            tools=tools,
+            first_class_support=False,
+        )
 
     @classmethod
     def router(cls) -> APIRouter:
@@ -441,7 +542,7 @@ class OpenRouterHttpAdapter(BaseAdapter):
         for entry in entries:
             if not isinstance(entry, dict) or not entry.get("id"):
                 continue
-            meta = _entry_to_meta(entry, c)
+            meta = _entry_to_meta(entry, c, adapter=self)
             if meta is not None:
                 metas.append(meta)
         return metas
@@ -451,7 +552,7 @@ class OpenRouterHttpAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or ""
-        payload = _build_chat_payload(request)
+        payload = build_request_body(request)
 
         headers = {
             "Content-Type": "application/json",

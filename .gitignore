@@ -16,6 +16,7 @@ build/
 .mistral-test-key
 .gmi-test-key
 .novita-test-key
+.or-test-key
 
 # Docker
 docker-compose.override.yml
@@ -48,6 +49,9 @@ obsidian/.obsidian/graph.json
 # Data
 data/
 data/models/
+# Exception: capability overrides are configuration, not runtime data.
+!backend/modules/llm/data/
+!backend/modules/llm/data/**
 docker-compose.worktree.yml
 
 # Runtime log files
@@ -64,3 +68,4 @@ frontend/vendor/vosk-model.tar.gz
 # Evidence for bugs
 *.mp4
 
+.claude/

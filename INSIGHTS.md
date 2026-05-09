@@ -1084,3 +1084,321 @@ component lifetimes (background completions, long-running jobs,
 deferred ops), audit every per-component event handler for gates
 that drop events meant for the orphaned state. The gate is usually
 correct for UI side effects and wrong for state mutations.
+
+---
+
+## INS-034 — LLM reasoning/tools capabilities: orthogonal axes, not one bool (2026-05-09)
+
+**Context:** Until this point `ModelMetaDto` carried a single
+`supports_reasoning: bool` and `CompletionRequest` carried matching
+`reasoning_enabled: bool` / `supports_reasoning: bool`. That collapsed
+several independent dimensions into one bit, with three painful
+consequences in the field:
+
+1. The cockpit could not tell the user what was actually possible —
+   a model with effort buckets, a model with a boolean toggle, and a
+   model that always reasons all looked identical.
+2. The "tools XOR reasoning" mutex case was invisible. Some models
+   silently degrade or fail when both are sent in one request
+   (DeepSeek R1 raw, QwQ, Magistral in some configurations).
+3. Effort (low/medium/high, plus GPT-5's `minimal`) was not modelled
+   at all.
+
+**Decision:** Replace the bool with three orthogonal capability axes
+on `ModelMetaDto`, plus an optional effort spec:
+
+```python
+class ReasoningCapability(BaseModel):
+    kind: Literal["no_reasoning", "optional", "always_on"]
+    effort: ReasoningEffortSpec | None = None  # buckets + default
+    default_on: bool = True
+
+class ToolCapability(BaseModel):
+    supported: bool
+    exclusive_with_reasoning: bool = False  # the XOR axis
+```
+
+Plus a new `first_class_support: bool` flag, true only when the model
+has been curated end-to-end (YAML override or adapter-internal claim).
+The user sees a ★ badge in the model browser; a filter hides
+best-effort rows.
+
+**Why not a discriminated union:** an earlier draft modelled this as
+a `ReasoningCapability` sum-type (`AlwaysOn | EffortBuckets |
+TokenBudget | ...`). It crammed effort into the type system and made
+common queries — "does this model support reasoning at all?" — read
+through a discriminator. Splitting `kind` and `effort` into two
+orthogonal fields kept the type lean and let the cockpit's render
+logic stay flat (one switch per axis, not nested).
+
+**Capability resolution hierarchy** (in
+`backend/modules/llm/_capabilities.py::resolve_capabilities`):
+
+1. **YAML override** — `backend/modules/llm/data/model_capabilities.yaml`,
+   keyed on `(adapter_type, model_id pattern)` with `fnmatch` semantics.
+   Sets `first_class_support=True`.
+2. **Adapter heuristic** — each adapter implements an optional
+   `capability_hint(model_id) -> CapabilityHint | None`. OpenRouter
+   inspects `top_provider.supported_parameters`, Novita reads
+   `features`, nano-gpt consults `_pair_map.py`. Heuristic guidance,
+   `first_class_support=False`.
+3. **Universal fallback** — `kind="optional", effort=None,
+   tools.supported=true, tools.exclusive_with_reasoning=false`. Mirrors
+   pre-existing behaviour for unknown models.
+
+**Why YAML over inline adapter code:** adapter-internal heuristics
+were already there and stayed there as fallback. The YAML overlays a
+hand-curated truth on top, separate from adapter implementation
+detail. A new model gets first-class status by adding a YAML row
+(reviewable, no code change). A new adapter quirk gets handled where
+it belongs (in the adapter).
+
+**Why `(adapter, model_id)`, not `model_id` alone:** the same logical
+model can have different capabilities depending on which upstream
+serves it. Grok 4.3 via the xAI direct adapter exposes a simulated
+reasoning toggle (slug-pair table maps `mode=on/off` to a slug swap).
+Grok 4.3 via OpenRouter has no equivalent mechanism on the router
+side, so the capability is honestly `always_on`. The cockpit must
+reflect this — same model name, different controls.
+
+**Translation layer per adapter — "always explicit":** when the
+model is `optional`, the adapter sends an explicit value for both
+`mode=on` and `mode=off`, regardless of whether the provider's
+default would have produced the same outcome. This prevents drift
+when providers change defaults silently. `mode=off` for OpenRouter /
+Novita / nano-gpt-flag-mode is `reasoning: {enabled: false}`, never
+`reasoning: {exclude: true}` — `exclude` only hides thinking from the
+stream while the model continues to think (cost + latency unchanged).
+Per spec §2 we do not use `exclude` to fake an off-state; the user
+deserves the truth.
+
+**Cockpit UX rule:** never hide a button. `no_reasoning`,
+`always_on`, and `tools.supported=false` all render as
+disabled-with-tooltip. Effort-capable models open a pop-out that
+includes "Off" as a first-class choice — so the visual state of the
+button (white = off, accent = on) is the same regardless of whether
+the model is boolean-toggle or effort-graded. Mental model:
+*the way you get there changes, the visual result is constant.*
+
+**Self-healing model-switch:** a session's effective model can change
+when the user edits the persona's `model_unique_id`. Rather than
+hooking every model-change endpoint, the orchestrator does a lazy
+remap on every inference: parse the stored `extras`, run
+`remap_extras_for_capability(extras, current.reasoning,
+current.tools)`, and only persist + broadcast if the result differs.
+Equality short-circuit means the common (already-consistent) case
+costs one pure-function call and zero DB writes.
+
+**The "tools win on conflict" rule:** when remap produces a state
+that violates the new model's mutex (tools=on AND reasoning=on on a
+mutex model), tools win. Web search is too useful to silently lose;
+losing reasoning is more recoverable from the user's perspective.
+
+**Out of this iteration (deferred to follow-up specs):** the xAI and
+Mistral adapters got conservative-default treatment only — they emit
+the new `ModelMetaDto` shape with `first_class_support=false` so the
+system works uniformly, but their premium per-model handling will be
+its own spec each. xAI converges on roughly one model post-cleanup;
+Mistral on 2–3, since Magistral and Mistral Medium 3.5 absorbed
+most of the family.
+
+**Spec:** `devdocs/specs/2026-05-09-llm-reasoning-tools-capabilities-design.md`
+**Plan:** `devdocs/plans/2026-05-09-llm-reasoning-tools-capabilities.md`
+
+---
+
+## INS-035 — Router ``effort`` for Anthropic models is a percentage, not a budget (2026-05-09)
+
+**Symptom:** Beta tester set Claude Sonnet 4.6 reasoning effort to ``low``
+expecting a short reasoning trace; got pages and pages of thinking
+content. The selector wasn't broken — the wire payload carried
+``reasoning: {effort: "low"}`` correctly, the router accepted it, and
+the model still produced ~12k thinking tokens.
+
+**Root cause:** OpenRouter's universal ``reasoning`` object documents
+``effort`` as a vendor-agnostic shorthand. For OpenAI o-series it
+passes through directly to the upstream's ``reasoning_effort``
+parameter. **For Anthropic models it gets translated to
+``thinking.budget_tokens`` as a percentage of the response
+``max_tokens``**, which defaults to the model's full output budget
+(~64k for Sonnet 4.x). The mapping (per OR docs at the time of this
+commit) is approximately:
+
+- ``effort=low``     ≈ 20% of max_tokens → ~12k thinking tokens
+- ``effort=medium``  ≈ 50% of max_tokens → ~32k thinking tokens
+- ``effort=high``    ≈ 80% of max_tokens → ~50k thinking tokens
+
+So even ``low`` allows a deeply meandering trace. The user's mental
+model ("low = a few hundred tokens of quick reasoning") doesn't match
+the wire reality.
+
+Anthropic now has a native ``output_config.effort`` field on the
+direct Messages API (claude.com/docs/en/build-with-claude/effort) that
+*does* behave like an explicit budget. As of this commit, OpenRouter's
+translator hasn't been updated to use it — the percentage-of-max_tokens
+mapping is still in effect. nano-gpt mirrors OpenRouter's universal
+reasoning object and inherits the same behaviour.
+
+**Fix:** for Anthropic models routed via OpenRouter or nano-gpt, send
+explicit ``reasoning: {max_tokens: <budget>}`` instead of
+``reasoning: {effort: <bucket>}``. The router accepts ``max_tokens``
+as a precise override and forwards it to Anthropic's
+``thinking.budget_tokens``. Per spec §6.4 starting values:
+
+- low     → 2048 tokens
+- medium  → 8192 tokens
+- high    → 16384 tokens
+- minimal → 1024 tokens (for symmetry with GPT-5; Anthropic doesn't
+  expose a ``minimal`` bucket, so this only fires if the user picks
+  it from a model that does)
+
+Other vendors (OpenAI, DeepSeek, etc.) keep the effort string — they
+handle it correctly. The discrimination is via the existing
+``is_anthropic_model(request.model)`` helper from
+``backend/modules/llm/_adapters/_anthropic_cache.py``. The budget
+table lives in both ``_openrouter_http.py`` and ``_nano_gpt_http.py``
+as ``_ANTHROPIC_REASONING_BUDGET`` — keep them in sync when calibrating.
+
+**When this stops mattering:** when we ship a native Anthropic
+adapter (separate future spec per design §9), it can use
+``output_config.effort`` directly and the model can decide what
+``low`` means in budget terms — likely tighter and smarter than our
+hand-picked numbers. Until then, the explicit-max_tokens shim is the
+predictable user experience.
+
+**Generalisable rule:** when a router/proxy advertises a "vendor-
+agnostic" parameter, verify what it actually sends downstream for
+each upstream you care about. Identical names don't mean identical
+semantics — the percentage-vs-tokens trap repeats across the
+ecosystem (rate limits, max-output, temperature scales, etc.).
+
+---
+
+## INS-036 — OpenRouter silently drops reasoning.max_tokens when cache_control is present (2026-05-09)
+
+**Symptom:** Beta tester set Claude Sonnet 4.6 to ``low`` effort
+expecting a 128-token reasoning budget. The wire payload was correct
+(``reasoning: {max_tokens: 128}`` confirmed via LLM_TRACE log).
+Anthropic still produced 1500+ reasoning tokens. Out-of-band curl
+test against the same model with the same payload but **no
+``cache_control`` markers** honoured the budget verbatim
+(~100 reasoning tokens). The only difference between live and
+isolated tests was the cache markers attached to the system message.
+
+**Reproduction (curl, 2026-05-09):**
+```jsonc
+// Body A — cache_control + reasoning.max_tokens=128
+// Result: 15945 reasoning tokens, completion hit max
+{
+  "model": "anthropic/claude-sonnet-4.6",
+  "messages": [
+    {"role": "system",
+     "content": [{"type":"text","text":"...",
+                  "cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+    {"role": "user", "content": "<long puzzle>"}
+  ],
+  "reasoning": {"max_tokens": 128}
+}
+
+// Body B — same prompt, NO cache_control
+// Result: ~100 reasoning tokens, budget honoured
+```
+
+**Hypothesis:** OpenRouter's translator inspects the body for
+Anthropic-specific markup (``cache_control`` is the giveaway) and
+switches to a "pass through to Anthropic native" code path. On that
+path the ``reasoning`` object isn't translated to
+``thinking.budget_tokens`` — it's silently dropped. Anthropic then
+runs at its default thinking budget, which for Sonnet 4.x is
+effectively unbounded relative to a 128-token request.
+
+**Fix:** when the user has dialled in a specific reasoning effort
+bucket (``extras.reasoning_effort`` set, ``reasoning_mode == "on"``,
+Anthropic model), strip ``cache_control`` from the outgoing payload.
+The user implicitly chose "I care about how long Claude thinks" over
+"I want cache savings on this turn". Cache markers stay on for every
+other case (no effort dialled, or effort dialled but reasoning off).
+Both router adapters (openrouter and nano-gpt) carry the same
+workaround. Tests cover all three branches: suppressed-when-effort,
+kept-when-no-effort, kept-when-reasoning-off.
+
+**When this stops mattering:** when a native Anthropic adapter
+ships, both ``thinking.budget_tokens`` and ``cache_control`` go
+direct to Anthropic and the trade-off disappears. Until then, the
+router is the bottleneck.
+
+**OR-side bug-report TODO:** worth filing with OpenRouter — the
+percentage-vs-budget translation (INS-035) is a defensible design
+choice; silently dropping a documented field when another field is
+present is not. Reproduction body above is self-contained.
+
+**Generalisable rule:** when two seemingly-orthogonal parameters
+collide on the wire, write a curl reproduction with each one
+isolated. The "everything looks right in the trace" case is exactly
+where two fields are interacting upstream in a way you can't see
+without bisecting them.
+
+---
+
+## INS-037 — Reasoning effort dropped for Anthropic-via-router; cache wins (2026-05-09)
+
+**Decision:** For Claude models routed through OpenRouter or nano-gpt,
+``ChatSessionExtras.reasoning_effort`` is **ignored**. The wire body
+carries only ``reasoning: {enabled: true|false}`` — no ``effort`` field,
+no ``max_tokens`` field. Sonnet's adaptive default-effort decides
+reasoning depth on its own. The capability YAML for these models
+omits the ``effort:`` block entirely, so the cockpit's ThinkingButton
+falls back to a simple on/off toggle (no pop-out).
+
+**Context:** INS-035 found that OR's universal ``effort`` shorthand
+becomes a percentage of response max_tokens for Anthropic, making
+``low`` yield ~12k thinking tokens. INS-036 found that switching to
+``reasoning.max_tokens`` works in isolation but is silently dropped
+when ``cache_control`` markers are present in the same body. We
+spent a session bisecting workarounds (suppress cache_control when
+effort is set, calibrate budgets, swap field shapes) before stepping
+back to weigh the trade-off.
+
+**The trade-off:**
+- Cache_control on long Anthropic conversations is **massive** value:
+  a 4000-token system prompt cached at 5m TTL on a 10-turn session
+  saves ~36000 prompt-tokens × 90% discount = effectively the system
+  prompt cost on 9 of 10 turns. For Chatsune's persona-driven sessions
+  (long instruction prompts, multi-turn dialogue) this dominates.
+- Effort control is **nice to have** but rarely used: Claude's
+  internal adaptive reasoning already scales depth with problem
+  difficulty. Power-users who want manual tuning are an edge case.
+- Routers don't let us have both. We pick cache.
+
+**What stays first-class:** Claude Sonnet 4.6 + Opus 4.7 via
+OpenRouter and nano-gpt remain ★ first-class in the model browser.
+The "first-class" badge means "we have curated this end-to-end" —
+the curation now reads "we deliberately disabled effort for these
+models in favour of cache survival, and that is documented behaviour".
+Other vendors (OpenAI o-series, DeepSeek V4) keep their effort
+buckets — the bug is Anthropic-via-router specific.
+
+**What this looks like in the code:**
+- ``model_capabilities.yaml``: Claude entries omit ``effort:``.
+- ``_openrouter_http.py`` / ``_nano_gpt_http.py``: when building
+  the reasoning object, ``if not is_anthropic_model(...)``
+  guards the ``effort`` field. Anthropic on → ``{enabled: true}``,
+  off → ``{enabled: false}``.
+- No more ``_ANTHROPIC_REASONING_BUDGET`` table, no more
+  ``user_chose_explicit_effort`` cache_control suppression.
+  The previous workarounds (commits before this one) are reverted.
+
+**When this stops mattering:** when a native Anthropic adapter
+ships (deferred per design §9), it can use ``thinking.budget_tokens``
+and ``cache_control`` together because both go direct to Anthropic
+without router translation. We expect to expose effort buckets there
+at the same time. The "Provider Integration Policy" Anthropic is
+working towards may also resolve this on the OR side without code
+change on our end — worth re-checking the OR-Anthropic wire format
+periodically.
+
+**Generalisable rule:** when a workaround stack grows past two layers
+for the same root cause (here: bucket calibration → field-shape swap
+→ cache_control suppression), step back and ask whether the feature is
+worth keeping in this routing path at all. Sometimes the cleanest fix
+is to remove the parameter from the user-visible surface.

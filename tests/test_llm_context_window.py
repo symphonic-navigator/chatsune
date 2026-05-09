@@ -1,40 +1,42 @@
-import pytest
-from unittest.mock import AsyncMock, patch
-from shared.dtos.llm import ModelMetaDto
+from unittest.mock import patch
+
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 
-def _make_model(provider_id: str, model_id: str, context_window: int) -> ModelMetaDto:
+def _make_model(connection_slug: str, model_id: str, context_window: int) -> ModelMetaDto:
     return ModelMetaDto(
-        provider_id=provider_id,
+        connection_id=f"{connection_slug}-conn-id",
+        connection_slug=connection_slug,
+        connection_display_name=connection_slug,
         model_id=model_id,
         display_name=model_id,
         context_window=context_window,
-        supports_reasoning=False,
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        tools=ToolCapability(supported=False),
         supports_vision=False,
         supports_tool_calls=False,
     )
 
 
 async def test_get_model_context_window_found():
-    models = [
-        _make_model("ollama_cloud", "llama3.2", 131072),
-        _make_model("ollama_cloud", "mistral", 32768),
-    ]
+    model = _make_model("ollama_cloud", "llama3.2", 131072)
 
-    with patch("backend.modules.llm.get_models", return_value=models), \
-         patch("backend.modules.llm.get_db"), \
-         patch("backend.modules.llm.get_redis"):
+    async def _stub_metadata(user_id, model_unique_id):
+        if model_unique_id == "ollama_cloud:llama3.2":
+            return model
+        return None
+
+    with patch("backend.modules.llm.get_model_metadata", side_effect=_stub_metadata):
         from backend.modules.llm import get_model_context_window
-        result = await get_model_context_window("ollama_cloud", "llama3.2")
+        result = await get_model_context_window("user-1", "ollama_cloud:llama3.2")
         assert result == 131072
 
 
 async def test_get_model_context_window_not_found():
-    models = [_make_model("ollama_cloud", "mistral", 32768)]
+    async def _stub_metadata(user_id, model_unique_id):
+        return None
 
-    with patch("backend.modules.llm.get_models", return_value=models), \
-         patch("backend.modules.llm.get_db"), \
-         patch("backend.modules.llm.get_redis"):
+    with patch("backend.modules.llm.get_model_metadata", side_effect=_stub_metadata):
         from backend.modules.llm import get_model_context_window
-        result = await get_model_context_window("ollama_cloud", "nonexistent")
+        result = await get_model_context_window("user-1", "ollama_cloud:nonexistent")
         assert result is None

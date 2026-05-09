@@ -18,7 +18,13 @@ export interface PersonaDto {
   model_unique_id: string | null;
   system_prompt: string;
   temperature: number;
-  reasoning_enabled: boolean;
+  /**
+   * @deprecated 2026-05-09 — replaced by per-session ChatSessionExtras.
+   * Field still present on legacy persona documents for lazy-read
+   * compatibility; it is no longer surfaced in the persona editor and
+   * new updates do not write it.
+   */
+  reasoning_enabled?: boolean;
   // Anthropic prompt-cache TTL — only meaningful when the persona's
   // model is a Claude family member behind OR or nano-gpt. Frontend
   // hides the control unless the selected model passes

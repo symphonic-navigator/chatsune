@@ -236,6 +236,7 @@ def _completion_request(model_slug: str = "llama3.2:8b"):
         CompletionRequest,
         ContentPart,
     )
+    from shared.dtos.llm import ReasoningCapability, ToolCapability
 
     return CompletionRequest(
         model=model_slug,
@@ -245,6 +246,8 @@ def _completion_request(model_slug: str = "llama3.2:8b"):
                 content=[ContentPart(type="text", text="hi")],
             ),
         ],
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=True),
     )
 
 

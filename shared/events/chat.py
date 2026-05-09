@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from shared.dtos.chat import ArtefactRefDto
+from shared.dtos.chat import ArtefactRefDto, ChatSessionExtras
 from shared.dtos.images import ImageRefDto
 
 
@@ -210,6 +210,19 @@ class ChatSessionTogglesUpdatedEvent(BaseModel):
     tools_enabled: bool
     auto_read: bool
     reasoning_override: bool | None
+    correlation_id: str
+    timestamp: datetime
+
+
+class ChatSessionExtrasUpdatedEvent(BaseModel):
+    """Broadcast when a session's extras (per-session reasoning/tools
+    settings) change. Frontends subscribe for multi-device sync — when
+    the user updates a setting on one tab, other tabs hydrate from this
+    event without a follow-up REST call.
+    """
+    type: str = "chat.session.extras.updated"
+    session_id: str
+    extras: ChatSessionExtras
     correlation_id: str
     timestamp: datetime
 

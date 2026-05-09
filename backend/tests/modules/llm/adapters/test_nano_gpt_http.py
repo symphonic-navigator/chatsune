@@ -408,17 +408,32 @@ def test_resolve_call_unknown_model_returns_passthrough():
 # ---------------------------------------------------------------------------
 
 from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import CompletionRequest
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 def _make_request(model_id: str, *, reasoning_enabled: bool = False) -> CompletionRequest:
+    """Build a CompletionRequest under the new capability-based contract.
+
+    The legacy ``reasoning_enabled`` boolean kwarg is preserved on this
+    helper to keep existing test sites concise; it is translated into
+    ``extras.reasoning_mode`` and ``reasoning.kind=optional`` so the
+    adapter sees a model whose user toggled reasoning on/off.
+    """
     return CompletionRequest(
         model=model_id,
         messages=[CompletionMessage(
             role="user",
             content=[ContentPart(type="text", text="hi")],
         )],
-        reasoning_enabled=reasoning_enabled,
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=False,
+            reasoning_mode="on" if reasoning_enabled else "off",
+            reasoning_effort=None,
+        ),
     )
 
 
@@ -641,6 +656,11 @@ def _basic_request(model: str = "m1") -> CompletionRequest:
             role="user",
             content=[ContentPart(type="text", text="hi")],
         )],
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
     )
 
 

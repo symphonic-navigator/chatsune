@@ -68,6 +68,47 @@ export interface UpdateConnectionRequest {
   config?: Record<string, unknown>
 }
 
+/**
+ * Discrete reasoning-effort buckets exposed by a model (e.g. "low", "medium",
+ * "high"). Mirrors ``shared/dtos/llm.py::ReasoningEffortSpec``.
+ */
+export interface ReasoningEffortSpec {
+  buckets: string[]
+  default_bucket: string
+}
+
+/**
+ * How a model supports reasoning. ``no_reasoning`` = the model cannot reason;
+ * ``optional`` = caller decides per-request; ``always_on`` = the model always
+ * reasons (no off switch).
+ */
+export interface ReasoningCapability {
+  kind: 'no_reasoning' | 'optional' | 'always_on'
+  effort: ReasoningEffortSpec | null
+  default_on: boolean
+}
+
+/**
+ * Tool-calling capability of a model. ``exclusive_with_reasoning`` = the
+ * provider rejects requests that combine tools and reasoning, so the cockpit
+ * must keep them mutually exclusive.
+ */
+export interface ToolCapability {
+  supported: boolean
+  exclusive_with_reasoning: boolean
+}
+
+/**
+ * Resolved per-model capabilities — what the cockpit needs to know to render
+ * the right controls. ``first_class_support`` is set by the adapter when it
+ * has explicit knowledge of the model (vs a best-effort fallback).
+ */
+export interface ResolvedCapabilities {
+  reasoning: ReasoningCapability
+  tools: ToolCapability
+  first_class_support: boolean
+}
+
 export interface ModelMetaDto {
   connection_id: string
   connection_slug: string
@@ -75,9 +116,24 @@ export interface ModelMetaDto {
   model_id: string
   display_name: string
   context_window: number
+  /**
+   * Computed on the backend from ``reasoning.kind != "no_reasoning"``. Kept
+   * here for legacy consumers that haven't migrated to the structured
+   * ``reasoning`` capability yet.
+   */
   supports_reasoning: boolean
   supports_vision: boolean
   supports_tool_calls: boolean
+  /** Structured reasoning capability — preferred over ``supports_reasoning``. */
+  reasoning: ReasoningCapability
+  /** Structured tool capability — preferred over ``supports_tool_calls``. */
+  tools: ToolCapability
+  /**
+   * True when the adapter has first-class knowledge of this model (curated
+   * capability rules). False = best-effort defaults; the cockpit may want
+   * to dim the indicator or surface a "limited info" hint.
+   */
+  first_class_support: boolean
   parameter_count: string | null
   raw_parameter_count: number | null
   quantisation_level: string | null

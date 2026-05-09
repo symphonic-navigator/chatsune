@@ -7,6 +7,8 @@ analytical step-by-step reasoning and relational/empathic reasoning. It is
 maintained centrally; per-persona overrides are out of scope.
 """
 
+from shared.dtos.chat import ChatSessionExtras
+
 # Stable marker substring used by tests to assert the block was injected
 # without coupling them to the full prose. Do not change without updating
 # the test assertions.
@@ -39,14 +41,15 @@ question demands.
 def is_soft_cot_active(
     soft_cot_enabled: bool,
     supports_reasoning: bool,
-    reasoning_enabled: bool,
+    extras: ChatSessionExtras,
 ) -> bool:
     """Decide whether the Soft-CoT block should be injected for an inference call.
 
     Active if:
       - the user has opted in via the persona toggle, AND
       - either the model has no native reasoning capability,
-        or the model has it but the user has turned Hard-CoT off for this call.
+        or the model has it but the per-session extras have Hard-CoT
+        switched off (``reasoning_mode == "off"``).
 
     The persona's ``soft_cot_enabled`` flag is never silently mutated by this
     helper; visibility is recomputed at every inference call.
@@ -55,4 +58,4 @@ def is_soft_cot_active(
         return False
     if not supports_reasoning:
         return True
-    return not reasoning_enabled
+    return extras.reasoning_mode == "off"

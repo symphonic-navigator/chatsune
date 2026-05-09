@@ -126,6 +126,8 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.STORAGE_QUOTA_WARNING: ([], True),
     # Session toggles (tools_enabled, auto_read, reasoning_override)
     Topics.CHAT_SESSION_TOGGLES_UPDATED: ([], True),
+    # Per-session capability-aware reasoning/tools settings
+    Topics.CHAT_SESSION_EXTRAS_UPDATED: ([], True),
     # Background jobs — target user only
     Topics.JOB_STARTED: ([], True),
     Topics.JOB_COMPLETED: ([], True),

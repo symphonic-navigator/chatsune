@@ -149,7 +149,7 @@ async def test_list_models_returns_adapter_output(
 ):
     """Happy path: configure xAI, call GET .../models, get the adapter's list."""
     from backend.modules.llm._adapters import _xai_http
-    from shared.dtos.llm import ModelMetaDto
+    from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
     captured: dict = {}
 
@@ -165,7 +165,8 @@ async def test_list_models_returns_adapter_output(
                 model_id="grok-4.1-fast",
                 display_name="Grok 4.1 Fast",
                 context_window=200_000,
-                supports_reasoning=True,
+                reasoning=ReasoningCapability(kind="optional"),
+                tools=ToolCapability(supported=True),
                 supports_vision=True,
                 supports_tool_calls=True,
             ),
@@ -223,7 +224,7 @@ async def test_list_models_serves_from_cache_on_second_call(
     client: AsyncClient, auth_headers, monkeypatch,
 ):
     from backend.modules.llm._adapters import _xai_http
-    from shared.dtos.llm import ModelMetaDto
+    from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
     call_count = {"n": 0}
 
@@ -237,7 +238,8 @@ async def test_list_models_serves_from_cache_on_second_call(
                 model_id="grok-4.1-fast",
                 display_name="Grok 4.1 Fast",
                 context_window=200_000,
-                supports_reasoning=True,
+                reasoning=ReasoningCapability(kind="optional"),
+                tools=ToolCapability(supported=True),
                 supports_vision=True,
                 supports_tool_calls=True,
             ),
@@ -282,7 +284,7 @@ async def test_refresh_drops_cache_and_returns_202(
     client: AsyncClient, auth_headers, monkeypatch,
 ):
     from backend.modules.llm._adapters import _xai_http
-    from shared.dtos.llm import ModelMetaDto
+    from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
     call_count = {"n": 0}
 
@@ -296,7 +298,8 @@ async def test_refresh_drops_cache_and_returns_202(
                 model_id="grok-4.1-fast",
                 display_name="Grok 4.1 Fast",
                 context_window=200_000,
-                supports_reasoning=True,
+                reasoning=ReasoningCapability(kind="optional"),
+                tools=ToolCapability(supported=True),
                 supports_vision=True,
                 supports_tool_calls=True,
             ),

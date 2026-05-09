@@ -20,6 +20,7 @@ from backend.modules.llm import stream_completion
 from backend.modules.llm._adapters._events import StreamError
 from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 @pytest_asyncio.fixture
@@ -86,6 +87,8 @@ async def test_stream_completion_passes_redis_to_nano_gpt_adapter(
                 content=[ContentPart(type="text", text="hi")],
             ),
         ],
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=False),
     )
     events = [
         ev async for ev in stream_completion("u1", "s:does/not/exist", request)

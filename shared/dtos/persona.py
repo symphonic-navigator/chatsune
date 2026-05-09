@@ -62,7 +62,11 @@ class PersonaDto(BaseModel):
     model_unique_id: str | None = None
     system_prompt: str
     temperature: float = Field(ge=0.0, le=2.0)
-    reasoning_enabled: bool
+    # DEPRECATED 2026-05-09: per-persona reasoning_enabled removed in favour of
+    # per-session ChatSessionExtras. Field kept for backwards-compatible reads
+    # of existing persona documents (CLAUDE.md §Data-Model Migrations); no
+    # new writes from the editor or backend code paths.
+    reasoning_enabled: bool = False  # was previously required; default added for legacy reads
     # Anthropic prompt-cache TTL — only meaningful when the persona's
     # model is a Claude family member behind OpenRouter or nano-gpt.
     # Other models silently ignore the value. Frontend hides the
@@ -109,6 +113,10 @@ class CreatePersonaDto(BaseModel):
     model_unique_id: str
     system_prompt: str
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    # DEPRECATED 2026-05-09: per-persona reasoning_enabled removed in favour of
+    # per-session ChatSessionExtras. Field kept for backwards-compatible reads
+    # of existing persona documents (CLAUDE.md §Data-Model Migrations); no
+    # new writes from the editor or backend code paths.
     reasoning_enabled: bool = False
     anthropic_cache_ttl: Literal["off", "5m", "1h"] = "5m"
     soft_cot_enabled: bool = False
@@ -133,6 +141,10 @@ class UpdatePersonaDto(BaseModel):
     model_unique_id: str | None = None
     system_prompt: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    # DEPRECATED 2026-05-09: per-persona reasoning_enabled removed in favour of
+    # per-session ChatSessionExtras. Field kept for backwards-compatible reads
+    # of existing persona documents (CLAUDE.md §Data-Model Migrations); no
+    # new writes from the editor or backend code paths.
     reasoning_enabled: bool | None = None
     anthropic_cache_ttl: Literal["off", "5m", "1h"] | None = None
     soft_cot_enabled: bool | None = None

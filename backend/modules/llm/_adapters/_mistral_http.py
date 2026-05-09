@@ -41,7 +41,7 @@ from backend.modules.llm._adapters._events import (
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import CompletionMessage, CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
 
@@ -314,6 +314,14 @@ def _dedup_models(
         caps = source.get("capabilities") or {}
         context_window = source.get("max_context_length") or 0
         deprecation = source.get("deprecation")
+        # Conservative-default capability mapping — the follow-up premium
+        # spec will refine this. ``function_calling`` defaults to ``True``
+        # when the upstream omits it, mirroring the universal default.
+        reasoning_kind = "optional" if caps.get("reasoning") else "no_reasoning"
+        function_calling = caps.get("function_calling")
+        tools_supported = (
+            True if function_calling is None else bool(function_calling)
+        )
         metas.append(ModelMetaDto(
             connection_id=c.id,
             connection_display_name=c.display_name,
@@ -321,7 +329,14 @@ def _dedup_models(
             model_id=preferred_id,
             display_name=preferred_id,
             context_window=context_window if isinstance(context_window, int) else 0,
-            supports_reasoning=bool(caps.get("reasoning")),
+            reasoning=ReasoningCapability(
+                kind=reasoning_kind, default_on=True,
+            ),
+            tools=ToolCapability(
+                supported=tools_supported,
+                exclusive_with_reasoning=False,
+            ),
+            first_class_support=False,
             supports_vision=bool(caps.get("vision")),
             supports_tool_calls=bool(caps.get("function_calling")),
             is_deprecated=deprecation is not None,

@@ -9,6 +9,7 @@ from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
     ChatSessionDto,
+    ChatSessionExtras,
     KnowledgeContextItem,
     TimelineEntryArtefact,
     TimelineEntryImage,
@@ -429,6 +430,24 @@ class ChatRepository:
             {"$set": {"title": title, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
+
+    async def update_session_extras(
+        self, session_id: str, user_id: str, extras: ChatSessionExtras,
+    ) -> dict | None:
+        """Persist the per-session reasoning/tools preference (``extras``).
+
+        Filtered by both ``_id`` and ``user_id`` so a stray cross-user
+        update can never land — the cockpit write path goes through this
+        method and only the owner may mutate the session's extras.
+        """
+        now = datetime.now(UTC)
+        await self._sessions.update_one(
+            {"_id": session_id, "user_id": user_id},
+            {"$set": {"extras": extras.model_dump(), "updated_at": now}},
+        )
+        return await self._sessions.find_one(
+            {"_id": session_id, "user_id": user_id},
+        )
 
     async def update_session_pinned(self, session_id: str, pinned: bool) -> dict | None:
         """Toggle the pinned status of a chat session."""
@@ -906,6 +925,8 @@ class ChatRepository:
 
     @staticmethod
     def session_to_dto(doc: dict) -> ChatSessionDto:
+        raw_extras = doc.get("extras")
+        extras = ChatSessionExtras.model_validate(raw_extras) if raw_extras else None
         return ChatSessionDto(
             id=doc["_id"],
             user_id=doc["user_id"],
@@ -926,6 +947,7 @@ class ChatRepository:
             context_max_tokens=int(doc.get("context_max_tokens", 0)),
             created_at=doc["created_at"],
             updated_at=doc["updated_at"],
+            extras=extras,
         )
 
     async def update_session_context_metrics(

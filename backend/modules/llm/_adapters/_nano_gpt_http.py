@@ -78,7 +78,7 @@ from backend.modules.llm._adapters._types import (
     ResolvedConnection,
 )
 from shared.dtos.inference import CompletionMessage, CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _DEFAULT_BASE_URL = "https://nano-gpt.com/api/v1"
 _TIMEOUT = 30.0
@@ -294,12 +294,14 @@ def _build_chat_payload(
     *,
     send_reasoning_flag: bool,
     reasoning_enabled: bool,
+    reasoning_effort: str | None = None,
 ) -> dict:
     """Build an OpenAI-compatible chat-completions request body.
 
     When ``send_reasoning_flag`` is True (flag-mode dispatch), the body
     carries ``{"reasoning": {"enabled": reasoning_enabled}}`` — the
-    OpenRouter unified reasoning object. The flag is always sent for
+    OpenRouter unified reasoning object — plus ``"effort"`` when
+    ``reasoning_effort`` is provided. The flag is always sent for
     flag-mode requests, including with ``enabled: false``: vendors
     disagree on the default direction (gpt-5 default OFF, claude-sonnet
     default ON, mimo default ON), so omitting the flag would surrender
@@ -307,6 +309,11 @@ def _build_chat_payload(
 
     For slug-mode and none-mode dispatch, ``send_reasoning_flag`` is
     False and the body must not carry any reasoning-related field.
+
+    Tool gating: ``request.tools`` are only included when both the
+    request carries them AND the session has tools enabled (via
+    ``request.extras.tools_enabled``). The session toggle is the
+    ground truth — adapters never second-guess it.
 
     See module docstring for reasoning-mode / cache-control rules.
     """
@@ -335,10 +342,16 @@ def _build_chat_payload(
         ],
     }
     if send_reasoning_flag:
-        payload["reasoning"] = {"enabled": reasoning_enabled}
+        reasoning_obj: dict = {"enabled": reasoning_enabled}
+        # Effort buckets are NOT sent for Anthropic models — see INS-037.
+        # Mirrors openrouter_http: cache survival beats effort control on
+        # router-mediated paths. Other vendors keep effort as before.
+        if reasoning_enabled and reasoning_effort and not is_anthropic_model(request.model):
+            reasoning_obj["effort"] = reasoning_effort
+        payload["reasoning"] = reasoning_obj
     if request.temperature is not None:
         payload["temperature"] = request.temperature
-    if request.tools:
+    if request.tools and request.extras.tools_enabled:
         payload["tools"] = [
             {
                 "type": "function",
@@ -351,6 +364,71 @@ def _build_chat_payload(
             for t in request.tools
         ]
     return payload
+
+
+def build_request_body(
+    request: CompletionRequest,
+    pair: dict[str, str | None] | None = None,
+) -> tuple[dict, str]:
+    """Translate a CompletionRequest into the nano-gpt request body.
+
+    Returns ``(body, dispatched_slug)``. Caller uses the slug to log /
+    trace which upstream variant was dispatched; for slug-mode pairs
+    this differs from ``request.model``. For flag-mode and none-mode
+    (and the no-pair default), the slug equals ``request.model``.
+
+    Translation rules — read together with the module docstring:
+
+    * ``pair`` carries ``switching_mode`` ∈ {``slug``, ``flag``,
+      ``none``}. The dispatch mode determines how reasoning is
+      surfaced upstream.
+    * ``slug`` mode: pick the slug variant from the pair; the body
+      must NOT carry ``reasoning`` (an extra body flag would
+      empirically invert the user's intent).
+    * ``flag`` mode: same slug; the body carries
+      ``{"reasoning": {"enabled": <bool>}}`` plus ``"effort"`` when
+      ``request.extras.reasoning_effort`` is set. Always present —
+      vendors disagree on the default direction.
+    * ``none`` mode: same slug; no reasoning field on the body — even
+      if the user toggles reasoning ON via the UI (capability-gated
+      fallback for plain singletons).
+    * Without an explicit pair (``pair=None``) we treat the model as
+      flag-mode when ``request.reasoning.kind == "optional"``, and
+      none-mode otherwise. This keeps the public translation function
+      stand-alone for tests and callers without a Redis pair_map.
+    """
+    reasoning_mode_on = request.extras.reasoning_mode == "on"
+    reasoning_effort = request.extras.reasoning_effort
+    slug = request.model
+    send_reasoning_flag = False
+    reasoning_enabled = reasoning_mode_on
+
+    if pair is None:
+        # No upstream pair info: behave as flag-mode for optional
+        # reasoning, none-mode otherwise.
+        send_reasoning_flag = request.reasoning.kind == "optional"
+    else:
+        mode = pair.get("switching_mode", "none")
+        if mode == "slug":
+            slug = (
+                pair["thinking_slug"]
+                if reasoning_mode_on and pair.get("thinking_slug")
+                else pair["non_thinking_slug"]
+            )
+        elif mode == "flag":
+            slug = pair.get("non_thinking_slug") or request.model
+            send_reasoning_flag = True
+        else:  # "none" or unknown
+            slug = pair.get("non_thinking_slug") or request.model
+
+    body = _build_chat_payload(
+        request,
+        slug,
+        send_reasoning_flag=send_reasoning_flag,
+        reasoning_enabled=reasoning_enabled,
+        reasoning_effort=reasoning_effort if send_reasoning_flag else None,
+    )
+    return body, slug
 
 
 def _to_cache_control(ttl: str) -> dict:
@@ -449,6 +527,12 @@ class NanoGptHttpAdapter(BaseAdapter):
 
     def __init__(self, *, redis: Redis | None = None) -> None:
         self._redis = redis
+        # Populated by ``fetch_models`` per call. Consulted by
+        # ``capability_hint`` when ``resolve_capabilities`` falls
+        # through past the YAML overrides. Per-instance state — and
+        # the adapter is constructed fresh per request, so there is
+        # no cross-request contamination.
+        self._dispatch_mode_by_model_id: dict[str, str] = {}
 
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
@@ -494,6 +578,8 @@ class NanoGptHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
+        from backend.modules.llm._capabilities import resolve_capabilities
+
         if self._redis is None:
             raise RuntimeError(
                 "NanoGptHttpAdapter requires a Redis client for pair-map "
@@ -507,11 +593,24 @@ class NanoGptHttpAdapter(BaseAdapter):
 
         # ``build_catalogue`` returns adapter-internal "block" dicts, not
         # ``ModelMetaDto`` instances — the adapter rehydrates them into
-        # DTOs and overlays the connection fields. ``billing_category``
-        # is set by ``to_model_meta`` and passed through via ``_block``,
-        # so no derivation happens here.
+        # DTOs, overlays the connection fields, and resolves
+        # reasoning/tools capabilities (YAML override → adapter hint →
+        # universal default). ``billing_category`` is set by
+        # ``to_model_meta`` and passed through via ``_block``.
         dtos: list[ModelMetaDto] = []
         for block in result.canonical:
+            # Stash the catalogue-derived dispatch mode on the adapter
+            # so ``capability_hint`` can consult it without re-running
+            # the catalogue. The hint is consulted exactly once per
+            # model_id during ``resolve_capabilities`` below.
+            self._dispatch_mode_by_model_id[block["model_id"]] = (
+                block["switching_mode"]
+            )
+            resolved = resolve_capabilities(
+                adapter_type="nano_gpt",
+                model_id=block["model_id"],
+                adapter=self,
+            )
             dtos.append(
                 ModelMetaDto(
                     connection_id=connection.id,
@@ -520,7 +619,9 @@ class NanoGptHttpAdapter(BaseAdapter):
                     model_id=block["model_id"],
                     display_name=block["display_name"],
                     context_window=block["context_window"],
-                    supports_reasoning=block["supports_reasoning"],
+                    reasoning=resolved.reasoning,
+                    tools=resolved.tools,
+                    first_class_support=resolved.first_class_support,
                     supports_vision=block["supports_vision"],
                     supports_tool_calls=block["supports_tool_calls"],
                     billing_category=block["billing_category"],
@@ -533,6 +634,39 @@ class NanoGptHttpAdapter(BaseAdapter):
             pair_map=result.pair_map,
         )
         return dtos
+
+    def capability_hint(self, model_id: str):
+        """Best-effort capability hint based on the dispatch mode the
+        catalogue derived for this model.
+
+        Slug- or flag-mode means the catalogue saw evidence the model
+        supports a reasoning toggle (paired upstream slug or
+        ``capabilities.reasoning=True``). We emit ``optional`` reasoning
+        with ``first_class_support=False`` — heuristic guidance, not
+        curated. None-mode means no reasoning toggle was detected.
+
+        ``ToolCapability(supported=True)`` mirrors the universal
+        default — nano-gpt's ``capabilities.tool_calling`` is consulted
+        separately for the legacy ``supports_tool_calls`` field.
+        """
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        mode = self._dispatch_mode_by_model_id.get(model_id)
+        if mode in ("slug", "flag"):
+            return CapabilityHint(
+                reasoning=ReasoningCapability(kind="optional"),
+                tools=ToolCapability(supported=True),
+                first_class_support=False,
+            )
+        if mode == "none":
+            return CapabilityHint(
+                reasoning=ReasoningCapability(kind="no_reasoning"),
+                tools=ToolCapability(supported=True),
+                first_class_support=False,
+            )
+        # Mode unknown (capability_hint called outside fetch_models): defer
+        # to the universal default.
+        return None
 
     async def stream_completion(
         self, connection: ResolvedConnection, request: CompletionRequest,
@@ -564,13 +698,7 @@ class NanoGptHttpAdapter(BaseAdapter):
             )
             return
 
-        call = _resolve_call(pair, request.model, request.reasoning_enabled)
-        upstream_slug = call["slug"]
-        payload = _build_chat_payload(
-            request, upstream_slug,
-            send_reasoning_flag=call["send_reasoning_flag"],
-            reasoning_enabled=request.reasoning_enabled,
-        )
+        payload, upstream_slug = build_request_body(request, pair)
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
