@@ -679,6 +679,18 @@ async def run_inference(
         tools_cap = meta.tools
         supports_reasoning = meta.supports_reasoning
     else:
+        # Diagnostic: a None here means the resolver couldn't locate the
+        # model under the user's connections (deleted connection, slug
+        # drift, transient cache miss). Log so we can spot extras-clobber
+        # incidents in the field — the elif branch below preserves the
+        # stored extras to make this safe, but the inference itself will
+        # likely fail at the adapter layer.
+        _log.warning(
+            "extras-resolve: get_model_metadata returned None "
+            "(user=%s session=%s model_unique_id=%s) — capability fallback in effect, "
+            "stored extras preserved verbatim",
+            user_id, session_id, model_unique_id,
+        )
         reasoning_cap = ReasoningCapability(kind="no_reasoning")
         tools_cap = ToolCapability(supported=False)
         supports_reasoning = False
