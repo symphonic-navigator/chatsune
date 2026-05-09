@@ -6,12 +6,13 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
-from shared.dtos.chat import ChatMessagesBundleDto, SessionProjectUpdateDto
+from shared.dtos.chat import ChatMessagesBundleDto, ChatSessionExtras, SessionProjectUpdateDto
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
 from backend.modules.chat._toggle_defaults import compute_persona_toggle_defaults
 from backend.modules.knowledge import verify_libraries_owned
+from backend.modules.llm import get_model_metadata
 from backend.modules.persona import get_persona as get_persona_fn
 from backend.modules.persona import bump_last_used as bump_persona_last_used
 from backend.ws.event_bus import get_event_bus
@@ -586,6 +587,82 @@ async def update_session_toggles(
 
     doc = await repo.get_session(session_id, user["sub"])
     return ChatRepository.session_to_dto(doc)
+
+
+@router.patch("/sessions/{session_id}/extras")
+async def patch_session_extras(
+    session_id: str,
+    extras: ChatSessionExtras,
+    user: dict = Depends(require_active_session),
+):
+    """Persist a per-session reasoning/tools preference (spec §6.1, §6.2).
+
+    Validates the requested ``extras`` against the current model's
+    capability as defence-in-depth — the cockpit UI should already make
+    invalid states unreachable, but a stale tab or a hand-crafted request
+    must still be rejected. The model is read from the session's persona
+    (the persona owns the model selection in this phase).
+
+    On success the new extras are persisted; the WebSocket broadcast of
+    ``ChatSessionExtrasUpdatedEvent`` for multi-device sync is wired in
+    Task 18.
+    """
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    persona = await get_persona_fn(session["persona_id"], user["sub"])
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+
+    model_unique_id = persona.get("model_unique_id") or ""
+    if ":" not in model_unique_id:
+        raise HTTPException(
+            status_code=400, detail="Persona has no model configured",
+        )
+
+    meta = await get_model_metadata(user["sub"], model_unique_id)
+    if meta is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Model metadata unavailable; cannot validate extras",
+        )
+
+    # §6.2 validation — defence-in-depth.
+    if extras.reasoning_mode == "on" and meta.reasoning.kind == "no_reasoning":
+        raise HTTPException(
+            status_code=400, detail="Model does not support reasoning",
+        )
+    if extras.tools_enabled and not meta.tools.supported:
+        raise HTTPException(
+            status_code=400, detail="Model does not support tools",
+        )
+    if (
+        extras.tools_enabled
+        and extras.reasoning_mode == "on"
+        and meta.tools.exclusive_with_reasoning
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Tools and reasoning are mutually exclusive for this model",
+        )
+    if (
+        extras.reasoning_effort is not None
+        and meta.reasoning.effort is not None
+        and extras.reasoning_effort not in meta.reasoning.effort.buckets
+    ):
+        raise HTTPException(
+            status_code=400, detail="Invalid reasoning_effort bucket",
+        )
+
+    await repo.update_session_extras(session_id, user["sub"], extras)
+
+    # TODO Task 18: broadcast ChatSessionExtrasUpdatedEvent for multi-device
+    # sync. Helper ``_broadcast_extras_updated(session_id, extras, user_id)``
+    # will be added there and called from this point.
+
+    return {"extras": extras.model_dump()}
 
 
 @router.get("/tools")
