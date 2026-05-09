@@ -33,6 +33,7 @@ class StreamDone(BaseModel):
 
     input_tokens: int | None = None
     output_tokens: int | None = None
+    reasoning_tokens: int | None = None
 
 
 class StreamError(BaseModel):

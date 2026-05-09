@@ -160,9 +160,11 @@ def _chunk_to_events(
 
     # Terminal usage-only chunk: emit StreamDone with token counts.
     if usage and not choices:
+        details = usage.get("completion_tokens_details") or {}
         events.append(StreamDone(
             input_tokens=usage.get("prompt_tokens"),
             output_tokens=usage.get("completion_tokens"),
+            reasoning_tokens=details.get("reasoning_tokens"),
         ))
         return events
 

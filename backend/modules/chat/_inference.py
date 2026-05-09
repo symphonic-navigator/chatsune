@@ -216,6 +216,7 @@ class InferenceRunner:
                 iter_thinking = ""
                 iter_refusal_text: str | None = None
                 iter_tool_calls: list[ToolCallEvent] = []
+                iter_reasoning_tokens: int | None = None
                 cancelled = False
                 stream_end_reason: str = "unknown"
 
@@ -277,6 +278,9 @@ class InferenceRunner:
                                     usage["input_tokens"] = done.input_tokens
                                 if done.output_tokens is not None:
                                     usage["output_tokens"] = done.output_tokens
+                                if done.reasoning_tokens is not None:
+                                    usage["reasoning_tokens"] = done.reasoning_tokens
+                                iter_reasoning_tokens = done.reasoning_tokens
                                 stream_end_reason = "done"
 
                             case StreamError() as err:
@@ -346,9 +350,11 @@ class InferenceRunner:
                 if settings.inference_logging:
                     _log.info(
                         "inference.stream.end session=%s correlation_id=%s iteration=%d "
-                        "reason=%s tool_calls=%d content_chars=%d thinking_chars=%d",
+                        "reason=%s tool_calls=%d content_chars=%d thinking_chars=%d "
+                        "reasoning_tokens=%s",
                         session_id, correlation_id, iteration, stream_end_reason,
                         len(iter_tool_calls), len(iter_content), len(iter_thinking),
+                        iter_reasoning_tokens if iter_reasoning_tokens is not None else "n/a",
                     )
 
                 if cancelled or status in ("error", "aborted", "refused"):
