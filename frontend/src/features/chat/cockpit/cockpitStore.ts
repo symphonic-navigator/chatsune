@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import { chatApi, type ChatSessionExtras } from '@/core/api/chat'
 import { eventBus } from '@/core/websocket/eventBus'
@@ -125,20 +126,27 @@ export const useCockpitStore = create<CockpitStoreShape>((set, get) => ({
  * Hook accessor returning a session's cockpit state plus the legacy flat
  * aliases. Returns ``null`` for unknown sessions so callers can render an
  * "unhydrated" placeholder.
+ *
+ * Subscribes to the entry reference directly (reference-stable across
+ * unrelated store updates) and derives the view object via ``useMemo``.
+ * Returning a freshly-constructed object from the selector itself triggers
+ * useSyncExternalStore's "getSnapshot should be cached" infinite-loop
+ * guard, so we keep the selector cheap and stable.
  */
 export function useCockpitSession(
   sessionId: string | null,
 ): CockpitSessionView | null {
-  return useCockpitStore((s) => {
-    if (!sessionId) return null
-    const entry = s.bySession[sessionId]
+  const entry = useCockpitStore((s) =>
+    sessionId ? s.bySession[sessionId] ?? null : null,
+  )
+  return useMemo(() => {
     if (!entry) return null
     return {
       extras: entry.extras,
       autoRead: entry.autoRead,
       tools: entry.extras.tools_enabled,
     }
-  })
+  }, [entry])
 }
 
 // Multi-tab/device sync — when another tab PATCHes the session extras the
