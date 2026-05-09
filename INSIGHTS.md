@@ -1481,3 +1481,54 @@ token-count are not interchangeable observability axes —
 char-count tracks *what reached the user*, token-count tracks
 *what the provider charged for*. For reasoning, those diverge by
 design. Log both.
+
+---
+
+## INS-039 — Recommended context window: deferred until ≥3 providers stagger pricing (2026-05-09)
+
+**Observation:** Some upstream providers price the same model in
+*tiers* based on used context window — most concretely, xAI doubles
+the per-token rate above 200K. Naively letting a chat run up to the
+model's hard ``context_window`` ceiling can therefore double the bill
+silently, and on at least one provider (Grok) also degrades response
+quality in the upper context range.
+
+**Proposed shape (for later pickup):**
+
+- Add ``recommended_context_window: int | None = None`` to
+  ``ModelMetaDto`` (parallel to the existing capability fields).
+- Resolution rule: use the explicit value when set; otherwise fall
+  back to ``min(262144, context_window)``. The 262K floor is our own
+  defence against pathological context blow-ups, independent of
+  pricing.
+- UI: the persona's context-window slider would default to this
+  recommended value. Pulling it past the recommendation crosses a
+  red threshold and shows a textual warning ("above this, this
+  provider charges more / quality may drop").
+- Drivers (per the planned driver layer) set the field for each
+  ``(model, router)`` pair where the upstream's pricing or behaviour
+  is known to staircase.
+- Compatible with the upcoming compact-and-continue feature: a hard
+  recommendation lets compact-and-continue trigger predictably at a
+  defensible threshold, instead of right at the model ceiling.
+
+**Why deferred (Pareto check):** the only state-confirmed instance
+today is xAI. DeepSeek V4 has no staircase pricing across any
+observed router; Anthropic / OpenAI / Mistral / Ollama-Cloud
+pricing-tier behaviour at long context wasn't checked yet. Building
+a full slider-with-warning UI for a feature that benefits one
+provider would be wish-driven generalisation. The capability field
+is cheap and worth landing eventually; the UI is only worth it once
+3+ providers exhibit the pattern.
+
+**Before picking this up:** survey the major providers/routers we
+support for context-tiered pricing or known quality degradation at
+long context. If ≥3 confirmed, build the full UI. If still ≤2, ship
+the field with hardcoded values for the affected models and skip
+the slider warning.
+
+**Generalisable rule:** when "we should add a feature for X" is
+backed by one observation, write the design down (so it isn't lost),
+ship the cheap part (here: the data field), and gate the expensive
+part (here: the UI) on a state threshold (here: third confirmed
+provider). Don't generalise UI ahead of state.
