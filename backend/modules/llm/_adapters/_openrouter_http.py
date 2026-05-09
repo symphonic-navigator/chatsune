@@ -406,9 +406,40 @@ def build_request_body(request: CompletionRequest) -> dict:
             "enabled": request.extras.reasoning_mode == "on",
         }
         if request.extras.reasoning_effort:
-            reasoning_obj["effort"] = request.extras.reasoning_effort
+            # OpenRouter's ``effort`` is interpreted differently per upstream:
+            # OpenAI o-series receives it directly; for Anthropic models it
+            # gets translated into a *percentage* of the response
+            # ``max_tokens`` (default ~64k for Sonnet 4.x), so
+            # ``effort=low`` still yields ~12k thinking tokens — the user
+            # sees what looks like an unbounded reasoning trace.
+            #
+            # For Anthropic models we therefore send an explicit
+            # ``max_tokens`` derived from our internal bucket (spec §6.4
+            # starting values) so the budget is precise. For everyone
+            # else we keep ``effort``.
+            if is_anthropic_model(request.model):
+                reasoning_obj["max_tokens"] = _ANTHROPIC_REASONING_BUDGET.get(
+                    request.extras.reasoning_effort,
+                    _ANTHROPIC_REASONING_BUDGET["medium"],
+                )
+            else:
+                reasoning_obj["effort"] = request.extras.reasoning_effort
         payload["reasoning"] = reasoning_obj
     return payload
+
+
+# Bucket-to-token-budget translation for Anthropic models routed via
+# OpenRouter (spec §6.4). Starting values; refine after observing real
+# cost/quality on each provider. The raw thinking budget that Anthropic
+# sees, NOT a percentage. ``minimal`` is included for symmetry with the
+# GPT-5 bucket vocabulary; for Anthropic's effort spec we expect only
+# low/medium/high in practice.
+_ANTHROPIC_REASONING_BUDGET: dict[str, int] = {
+    "minimal": 1024,
+    "low":     2048,
+    "medium":  8192,
+    "high":   16384,
+}
 
 
 def _to_cache_control(ttl: str) -> dict:
