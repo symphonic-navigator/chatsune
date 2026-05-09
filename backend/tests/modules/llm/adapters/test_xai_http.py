@@ -156,18 +156,37 @@ def test_translate_tool_role_message():
     }
 
 
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import CompletionRequest, ToolDefinition
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 from backend.modules.llm._adapters._xai_http import _build_chat_payload
 
 
 def _simple_request(**kwargs) -> CompletionRequest:
+    """Build a CompletionRequest under the new contract.
+
+    Legacy ``reasoning_enabled=`` and ``supports_reasoning=`` kwargs are
+    translated here so the existing call sites remain ergonomic.
+    """
+    reasoning_enabled = bool(kwargs.pop("reasoning_enabled", False))
+    # ``supports_reasoning`` from old call sites is treated as a hint that
+    # the model is reasoning-capable — i.e. ``reasoning.kind == "optional"``.
+    # Tests that don't pass it default to ``optional`` because every Grok
+    # entry currently exposes a reasoning toggle.
+    kwargs.pop("supports_reasoning", None)
     base = {
         "model": "grok-4.1-fast",
         "messages": [
             CompletionMessage(role="user",
                               content=[ContentPart(type="text", text="hi")]),
         ],
-        "supports_reasoning": True,
+        "reasoning": ReasoningCapability(kind="optional"),
+        "tools_capability": ToolCapability(supported=True),
+        "extras": ChatSessionExtras(
+            tools_enabled=False,
+            reasoning_mode="on" if reasoning_enabled else "off",
+            reasoning_effort=None,
+        ),
     }
     base.update(kwargs)
     return CompletionRequest(**base)
@@ -386,13 +405,7 @@ async def test_stream_completion_yields_content_and_done(monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-        supports_reasoning=True,
-        reasoning_enabled=False,
-    )
+    req = _simple_request(reasoning_enabled=False)
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     deltas = [e for e in events if isinstance(e, ContentDelta)]
     assert [d.delta for d in deltas] == ["he", "llo"]
@@ -418,12 +431,7 @@ async def test_stream_completion_forwards_cache_hint_header(monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-        cache_hint="session-abc-123",
-    )
+    req = _simple_request(cache_hint="session-abc-123")
     await _collect(adapter.stream_completion(_resolved_conn(), req))
     assert seen_headers.get("x-grok-conv-id") == "session-abc-123"
     assert seen_body["stream_options"] == {"include_usage": True}
@@ -441,13 +449,7 @@ async def test_stream_completion_emits_thinking_delta_for_reasoning_content(monk
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-        supports_reasoning=True,
-        reasoning_enabled=True,
-    )
+    req = _simple_request(reasoning_enabled=True)
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     thinking = [e for e in events if isinstance(e, ThinkingDelta)]
     content = [e for e in events if isinstance(e, ContentDelta)]
@@ -473,11 +475,7 @@ async def test_stream_completion_accumulates_tool_call_fragments(monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-    )
+    req = _simple_request()
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
     assert len(tool_calls) == 1
@@ -502,11 +500,7 @@ async def test_stream_completion_emits_safety_net_done_without_usage(monkeypatch
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-    )
+    req = _simple_request()
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     dones = [e for e in events if isinstance(e, StreamDone)]
     assert len(dones) == 1
@@ -521,11 +515,7 @@ async def test_stream_completion_returns_invalid_api_key_on_401(monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-    )
+    req = _simple_request()
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     assert len(events) == 1
     assert isinstance(events[0], StreamError)
@@ -539,11 +529,7 @@ async def test_stream_completion_returns_provider_unavailable_on_500(monkeypatch
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-    )
+    req = _simple_request()
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     assert len(events) == 1
     assert isinstance(events[0], StreamError)
@@ -566,11 +552,7 @@ async def test_stream_completion_emits_refusal_on_content_filter(monkeypatch):
 
     _install_mock_transport(monkeypatch, handler)
     adapter = XaiHttpAdapter()
-    req = CompletionRequest(
-        model="grok-4.1-fast",
-        messages=[CompletionMessage(role="user",
-                                     content=[ContentPart(type="text", text="hi")])],
-    )
+    req = _simple_request()
     events = await _collect(adapter.stream_completion(_resolved_conn(), req))
     refusals = [e for e in events if isinstance(e, StreamRefused)]
     assert len(refusals) == 1

@@ -25,6 +25,7 @@ from backend.modules.llm._adapters._mistral_http import (
     _translate_message,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
+from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
     CompletionRequest,
@@ -32,6 +33,7 @@ from shared.dtos.inference import (
     ToolCallResult,
     ToolDefinition,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 def _resolved_conn(api_key: str = "mistral-test-key") -> ResolvedConnection:
@@ -454,12 +456,27 @@ def test_translate_tool_role_message():
 
 
 def _simple_request(**kwargs) -> CompletionRequest:
+    """Build a CompletionRequest under the new contract.
+
+    Legacy ``reasoning_enabled=`` and ``supports_reasoning=`` kwargs are
+    translated into the new ``extras.reasoning_mode`` / ``reasoning``
+    capability shape so existing call sites remain ergonomic.
+    """
+    reasoning_enabled = bool(kwargs.pop("reasoning_enabled", False))
+    kwargs.pop("supports_reasoning", None)
     base = {
         "model": "mistral-medium-latest",
         "messages": [
             CompletionMessage(role="user",
                               content=[ContentPart(type="text", text="hi")]),
         ],
+        "reasoning": ReasoningCapability(kind="optional"),
+        "tools_capability": ToolCapability(supported=True),
+        "extras": ChatSessionExtras(
+            tools_enabled=False,
+            reasoning_mode="on" if reasoning_enabled else "off",
+            reasoning_effort=None,
+        ),
     }
     base.update(kwargs)
     return CompletionRequest(**base)
