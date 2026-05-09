@@ -27,6 +27,7 @@ dependencies = [
     "transformers>=4.47",
     "grapheme>=0.6",
     "prometheus-client>=0.21",
+    "pyyaml>=6.0",
 ]
 
 [tool.pytest.ini_options]
