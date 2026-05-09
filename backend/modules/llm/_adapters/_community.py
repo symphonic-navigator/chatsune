@@ -425,7 +425,10 @@ class CommunityAdapter(BaseAdapter):
             "messages": messages,
             "parameters": params,
             "options": {
-                "reasoning": bool(request.reasoning_enabled and request.supports_reasoning),
+                "reasoning": (
+                    request.reasoning.kind == "optional"
+                    and request.extras.reasoning_mode == "on"
+                ),
             },
         }
         if tools_payload is not None:
