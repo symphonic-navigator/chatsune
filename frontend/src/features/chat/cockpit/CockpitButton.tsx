@@ -28,6 +28,12 @@ type Props = {
    * ``'inactive'`` / ``'mutex-disabled'`` to disambiguate.
    */
   dataState?: string
+  /**
+   * Optional badge text rendered in the bottom-right corner of the button —
+   * a 1-2 char marker for state that needs to be glanceable without opening
+   * the panel (e.g. reasoning effort bucket: "L" / "M" / "H").
+   */
+  badge?: string
 }
 
 const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
@@ -40,7 +46,7 @@ const ACCENT_CLASSES: Record<NonNullable<Props['accent']>, string> = {
 }
 
 export function CockpitButton({
-  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel, buttonRef, dataState,
+  icon, state, accent = 'neutral', label, panel, onClick, ariaLabel, buttonRef, dataState, badge,
 }: Props) {
   const { isMobile } = useViewport()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -104,6 +110,14 @@ export function CockpitButton({
         onClick={onClick}
       >
         {icon}
+        {badge && (
+          <span
+            aria-hidden="true"
+            className="absolute bottom-0.5 right-0.5 text-[9px] font-semibold leading-none tracking-tight opacity-90 pointer-events-none"
+          >
+            {badge}
+          </span>
+        )}
       </button>
       {panelEnabled && panelOpen && (
         <div

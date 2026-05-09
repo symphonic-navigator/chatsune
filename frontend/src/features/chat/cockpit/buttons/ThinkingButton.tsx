@@ -89,13 +89,15 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
     void onChange(m, e)
   }
 
-  // Effort initial used as a compact pill — full word would crowd the row.
-  const pillLabel =
-    active && hasEffort && effort
-      ? `Thinking · ${effort[0].toUpperCase()}`
-      : active
-        ? 'Thinking · on'
-        : 'Thinking · off'
+  // Effort initial shown as a small badge in the bottom-right of the button
+  // — only when reasoning is on AND a bucket is selected. ``label`` keeps
+  // the full word for hover-tooltip + screen readers.
+  const effortBadge = active && hasEffort && effort ? effort[0].toUpperCase() : undefined
+  const label = active
+    ? hasEffort && effort
+      ? `Thinking · ${effort.charAt(0).toUpperCase() + effort.slice(1)}`
+      : 'Thinking · on'
+    : 'Thinking · off'
 
   return (
     <div ref={containerRef} className="relative">
@@ -103,7 +105,8 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
         icon="💡"
         state={active ? 'active' : 'idle'}
         accent="gold"
-        label={pillLabel}
+        label={label}
+        badge={effortBadge}
         onClick={handleClick}
         dataState={active ? 'active' : 'inactive'}
       />
