@@ -1402,3 +1402,82 @@ for the same root cause (here: bucket calibration → field-shape swap
 → cache_control suppression), step back and ask whether the feature is
 worth keeping in this routing path at all. Sometimes the cleanest fix
 is to remove the parameter from the user-visible surface.
+
+---
+
+## INS-038 — `thinking_chars=0` is ambiguous; reasoning_tokens is the truth signal (2026-05-09)
+
+**Symptom:** Beta tester ran a logic-puzzle prompt against
+``openai/gpt-5.5`` via OpenRouter with ``reasoning: {effort: "high",
+enabled: true}``. The ``inference.stream.end`` log line showed
+``thinking_chars=0`` and the chat UI had no thinking pill. The natural
+read — "reasoning didn't run" — was wrong. Reasoning had run; it was
+just invisible.
+
+**Root cause — provider policy, not a Chatsune bug:** OpenAI's
+reasoning family (o-series, GPT-5, GPT-5.5) does **not** return raw
+reasoning content over the API by design. What you get is a token
+count under ``usage.completion_tokens_details.reasoning_tokens`` and
+optionally an encrypted/redacted block for multi-turn consistency,
+never the prose. OpenRouter passes this through faithfully — the
+``reasoning`` field in delta chunks stays empty for OpenAI upstreams,
+so our stream parser (which reads both ``delta.reasoning_content`` and
+``delta.reasoning``) accumulates zero characters and reports
+``thinking_chars=0``. Compare with Anthropic, DeepSeek, xAI, Mistral
+Magistral — those stream the prose and we see chars > 0.
+
+So ``thinking_chars`` collapses two distinct states into the same
+number:
+
+1. *Reasoning is genuinely off* (no_reasoning model, or optional model
+   with toggle off, or always_on model that produced no thinking
+   tokens this turn).
+2. *Reasoning ran, the provider refused to ship the prose.*
+
+For OpenAI models, state 2 is the steady state. For Claude / DeepSeek
+/ Grok, state 2 essentially never happens — chars > 0 reliably tracks
+"reasoning ran".
+
+**Fix — observability, not behaviour:** plumb the
+``reasoning_tokens`` count through ``StreamDone`` and emit it
+alongside ``thinking_chars`` in the stream-end log. The log line is
+now ``... content_chars=N thinking_chars=N reasoning_tokens=N|n/a``,
+where ``n/a`` means the upstream did not report the field at all
+(distinct from ``0``, which means "reported and zero").
+
+Wired in five OpenAI-compat adapters: ``_openrouter_http.py``,
+``_nano_gpt_http.py``, ``_novita_http.py``, ``_xai_http.py``,
+``_mistral_http.py``. Ollama and the community stub were skipped —
+neither has reasoning_tokens semantics.
+
+**Diagnostic rule:** when a beta report says "reasoning isn't working
+for model X", the correctness check is now:
+
+| ``thinking_chars`` | ``reasoning_tokens`` | Conclusion |
+|---|---|---|
+| > 0 | > 0 | Reasoning ran, prose visible. Working as expected. |
+| 0 | > 0 | Reasoning ran, prose hidden by provider policy. Expected for OpenAI; unexpected for Claude/DeepSeek/Grok (then look at the stream parser). |
+| > 0 | 0 / n/a | Provider streams thinking tokens but doesn't account them. Possible for Ollama / community adapters; investigate billing path. |
+| 0 | 0 | Reasoning genuinely did not run. Verify the wire payload (LLM_TRACE) and the model's capability shape. |
+| 0 | n/a | Non-reasoning model or older response shape; expected. |
+
+Do **not** equate ``thinking_chars=0`` with "reasoning is off" without
+checking the right-hand column.
+
+**Why not also surface this in events to the frontend:** out of scope
+for this iteration. The cockpit already shows reasoning state via the
+toggle button (per INS-034); the frontend doesn't currently need to
+distinguish "ran but hidden" from "didn't run" because the user
+chose the toggle. If a future feature wants to show "thinking happened
+silently for N tokens" as a UI affordance (cost transparency, trust
+calibration), the data is now in ``StreamDone.reasoning_tokens`` and
+the chat persistence path can pick it up without further adapter
+changes.
+
+**Generalisable rule:** when an observability metric appears to
+collapse two states into one, check whether the underlying API
+exposes a second metric that disambiguates. Char-count and
+token-count are not interchangeable observability axes —
+char-count tracks *what reached the user*, token-count tracks
+*what the provider charged for*. For reasoning, those diverge by
+design. Log both.
