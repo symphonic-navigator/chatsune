@@ -1,4 +1,27 @@
-from shared.dtos.inference import ContentPart, CompletionMessage, ToolDefinition, CompletionRequest
+from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ToolDefinition,
+)
+from shared.dtos.llm import ReasoningCapability, ToolCapability
+
+
+def _default_reasoning() -> ReasoningCapability:
+    return ReasoningCapability(kind="optional")
+
+
+def _default_tools() -> ToolCapability:
+    return ToolCapability(supported=False)
+
+
+def _default_extras(reasoning_on: bool = False, tools_enabled: bool = False) -> ChatSessionExtras:
+    return ChatSessionExtras(
+        tools_enabled=tools_enabled,
+        reasoning_mode="on" if reasoning_on else "off",
+        reasoning_effort=None,
+    )
 
 
 def test_text_content_part():
@@ -51,11 +74,14 @@ def test_completion_request_minimal():
         messages=[
             CompletionMessage(role="user", content=[ContentPart(type="text", text="hi")])
         ],
+        reasoning=_default_reasoning(),
+        tools_capability=_default_tools(),
+        extras=_default_extras(reasoning_on=False),
     )
     assert req.model == "qwen3:32b"
     assert req.temperature is None
     assert req.tools is None
-    assert req.reasoning_enabled is False
+    assert req.extras.reasoning_mode == "off"
 
 
 def test_completion_request_full():
@@ -69,17 +95,22 @@ def test_completion_request_full():
         tools=[
             ToolDefinition(name="search", description="Search", parameters={"type": "object", "properties": {}}),
         ],
-        reasoning_enabled=True,
+        reasoning=_default_reasoning(),
+        tools_capability=ToolCapability(supported=True),
+        extras=_default_extras(reasoning_on=True, tools_enabled=True),
     )
     assert req.temperature == 0.7
     assert len(req.tools) == 1
-    assert req.reasoning_enabled is True
+    assert req.extras.reasoning_mode == "on"
 
 
 def test_cache_hint_defaults_to_none():
     req = CompletionRequest(
         model="m",
         messages=[CompletionMessage(role="user", content=[ContentPart(type="text", text="hi")])],
+        reasoning=_default_reasoning(),
+        tools_capability=_default_tools(),
+        extras=_default_extras(),
     )
     assert req.cache_hint is None
 
@@ -89,5 +120,8 @@ def test_cache_hint_accepts_string():
         model="m",
         messages=[CompletionMessage(role="user", content=[ContentPart(type="text", text="hi")])],
         cache_hint="sess-abc",
+        reasoning=_default_reasoning(),
+        tools_capability=_default_tools(),
+        extras=_default_extras(),
     )
     assert req.cache_hint == "sess-abc"

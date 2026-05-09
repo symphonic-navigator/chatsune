@@ -113,16 +113,20 @@ class _FakeAdapter:
 
     async def fetch_models(self, connection):
         type(self).last_connection = connection
-        from shared.dtos.llm import ModelMetaDto
+        from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
         return [
             ModelMetaDto(
+                connection_id=connection.id,
+                connection_slug=connection.slug,
+                connection_display_name=connection.display_name,
                 model_id="grok-3",
                 display_name="Grok 3",
                 context_window=131072,
                 supports_vision=False,
-                supports_reasoning=False,
-                supports_tools=True,
+                supports_tool_calls=True,
+                reasoning=ReasoningCapability(kind="no_reasoning"),
+                tools=ToolCapability(supported=True),
             ),
         ]
 
@@ -144,7 +148,9 @@ async def test_stream_completion_routes_premium_xai(
     """
     from backend.modules.llm import stream_completion
     from backend.modules.llm import _registry as registry_mod
+    from shared.dtos.chat import ChatSessionExtras
     from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+    from shared.dtos.llm import ReasoningCapability, ToolCapability
 
     # Stub the adapter lookup so we never go near an HTTP client.
     _FakeAdapter.last_connection = None
@@ -159,8 +165,13 @@ async def test_stream_completion_routes_premium_xai(
                 content=[ContentPart(type="text", text="hi")],
             ),
         ],
-        reasoning_enabled=False,
-        supports_reasoning=False,
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=False),
+        extras=ChatSessionExtras(
+            tools_enabled=False,
+            reasoning_mode="off",
+            reasoning_effort=None,
+        ),
     )
 
     events = []
@@ -193,7 +204,9 @@ async def test_stream_completion_calls_resolve_for_model(
     """
     from backend.modules.llm import stream_completion
     from backend.modules.llm import _registry as registry_mod
+    from shared.dtos.chat import ChatSessionExtras
     from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+    from shared.dtos.llm import ReasoningCapability, ToolCapability
 
     monkeypatch.setitem(registry_mod.ADAPTER_REGISTRY, "xai_http", _FakeAdapter)
 
@@ -219,8 +232,13 @@ async def test_stream_completion_calls_resolve_for_model(
                 content=[ContentPart(type="text", text="hi")],
             ),
         ],
-        reasoning_enabled=False,
-        supports_reasoning=False,
+        reasoning=ReasoningCapability(kind="optional"),
+        tools_capability=ToolCapability(supported=False),
+        extras=ChatSessionExtras(
+            tools_enabled=False,
+            reasoning_mode="off",
+            reasoning_effort=None,
+        ),
     )
 
     async for _ in stream_completion(

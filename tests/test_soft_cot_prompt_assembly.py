@@ -2,6 +2,14 @@ import pytest
 
 from backend.modules.chat._soft_cot import SOFT_COT_MARKER
 from backend.modules.chat._prompt_assembler import assemble
+from shared.dtos.chat import ChatSessionExtras
+
+
+def _extras(reasoning_on: bool, tools_enabled: bool = False) -> ChatSessionExtras:
+    return ChatSessionExtras(
+        tools_enabled=tools_enabled,
+        reasoning_mode="on" if reasoning_on else "off",
+    )
 
 
 def _async_return(value):
@@ -54,7 +62,7 @@ async def test_block_appended_when_non_reasoning_model_with_soft_cot_on(monkeypa
         persona_id="p1",
         model_unique_id="provider:slug",
         supports_reasoning=False,
-        reasoning_enabled_for_call=False,
+        extras=_extras(reasoning_on=False),
     )
     assert SOFT_COT_MARKER in result
 
@@ -70,7 +78,7 @@ async def test_block_not_appended_when_hard_cot_active(monkeypatch):
         persona_id="p1",
         model_unique_id="provider:slug",
         supports_reasoning=True,
-        reasoning_enabled_for_call=True,
+        extras=_extras(reasoning_on=True),
     )
     assert SOFT_COT_MARKER not in result
 
@@ -86,7 +94,7 @@ async def test_block_appended_when_reasoning_capable_but_hard_cot_off(monkeypatc
         persona_id="p1",
         model_unique_id="provider:slug",
         supports_reasoning=True,
-        reasoning_enabled_for_call=False,
+        extras=_extras(reasoning_on=False),
     )
     assert SOFT_COT_MARKER in result
 
@@ -102,6 +110,6 @@ async def test_block_not_appended_when_soft_cot_off(monkeypatch):
         persona_id="p1",
         model_unique_id="provider:slug",
         supports_reasoning=False,
-        reasoning_enabled_for_call=False,
+        extras=_extras(reasoning_on=False),
     )
     assert SOFT_COT_MARKER not in result

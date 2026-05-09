@@ -19,7 +19,7 @@ from backend.modules.llm._metadata import (
     get_premium_models,
     refresh_premium_models,
 )
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 
 def _synthetic_conn(user_id: str = "user-1") -> ResolvedConnection:
@@ -44,7 +44,8 @@ def _meta(c: ResolvedConnection, model_id: str = "grok-4.1-fast") -> ModelMetaDt
         model_id=model_id,
         display_name=model_id,
         context_window=200_000,
-        supports_reasoning=True,
+        reasoning=ReasoningCapability(kind="optional"),
+        tools=ToolCapability(supported=True),
         supports_vision=True,
         supports_tool_calls=True,
     )
