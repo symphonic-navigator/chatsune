@@ -1084,3 +1084,123 @@ component lifetimes (background completions, long-running jobs,
 deferred ops), audit every per-component event handler for gates
 that drop events meant for the orphaned state. The gate is usually
 correct for UI side effects and wrong for state mutations.
+
+---
+
+## INS-034 — LLM reasoning/tools capabilities: orthogonal axes, not one bool (2026-05-09)
+
+**Context:** Until this point `ModelMetaDto` carried a single
+`supports_reasoning: bool` and `CompletionRequest` carried matching
+`reasoning_enabled: bool` / `supports_reasoning: bool`. That collapsed
+several independent dimensions into one bit, with three painful
+consequences in the field:
+
+1. The cockpit could not tell the user what was actually possible —
+   a model with effort buckets, a model with a boolean toggle, and a
+   model that always reasons all looked identical.
+2. The "tools XOR reasoning" mutex case was invisible. Some models
+   silently degrade or fail when both are sent in one request
+   (DeepSeek R1 raw, QwQ, Magistral in some configurations).
+3. Effort (low/medium/high, plus GPT-5's `minimal`) was not modelled
+   at all.
+
+**Decision:** Replace the bool with three orthogonal capability axes
+on `ModelMetaDto`, plus an optional effort spec:
+
+```python
+class ReasoningCapability(BaseModel):
+    kind: Literal["no_reasoning", "optional", "always_on"]
+    effort: ReasoningEffortSpec | None = None  # buckets + default
+    default_on: bool = True
+
+class ToolCapability(BaseModel):
+    supported: bool
+    exclusive_with_reasoning: bool = False  # the XOR axis
+```
+
+Plus a new `first_class_support: bool` flag, true only when the model
+has been curated end-to-end (YAML override or adapter-internal claim).
+The user sees a ★ badge in the model browser; a filter hides
+best-effort rows.
+
+**Why not a discriminated union:** an earlier draft modelled this as
+a `ReasoningCapability` sum-type (`AlwaysOn | EffortBuckets |
+TokenBudget | ...`). It crammed effort into the type system and made
+common queries — "does this model support reasoning at all?" — read
+through a discriminator. Splitting `kind` and `effort` into two
+orthogonal fields kept the type lean and let the cockpit's render
+logic stay flat (one switch per axis, not nested).
+
+**Capability resolution hierarchy** (in
+`backend/modules/llm/_capabilities.py::resolve_capabilities`):
+
+1. **YAML override** — `backend/modules/llm/data/model_capabilities.yaml`,
+   keyed on `(adapter_type, model_id pattern)` with `fnmatch` semantics.
+   Sets `first_class_support=True`.
+2. **Adapter heuristic** — each adapter implements an optional
+   `capability_hint(model_id) -> CapabilityHint | None`. OpenRouter
+   inspects `top_provider.supported_parameters`, Novita reads
+   `features`, nano-gpt consults `_pair_map.py`. Heuristic guidance,
+   `first_class_support=False`.
+3. **Universal fallback** — `kind="optional", effort=None,
+   tools.supported=true, tools.exclusive_with_reasoning=false`. Mirrors
+   pre-existing behaviour for unknown models.
+
+**Why YAML over inline adapter code:** adapter-internal heuristics
+were already there and stayed there as fallback. The YAML overlays a
+hand-curated truth on top, separate from adapter implementation
+detail. A new model gets first-class status by adding a YAML row
+(reviewable, no code change). A new adapter quirk gets handled where
+it belongs (in the adapter).
+
+**Why `(adapter, model_id)`, not `model_id` alone:** the same logical
+model can have different capabilities depending on which upstream
+serves it. Grok 4.3 via the xAI direct adapter exposes a simulated
+reasoning toggle (slug-pair table maps `mode=on/off` to a slug swap).
+Grok 4.3 via OpenRouter has no equivalent mechanism on the router
+side, so the capability is honestly `always_on`. The cockpit must
+reflect this — same model name, different controls.
+
+**Translation layer per adapter — "always explicit":** when the
+model is `optional`, the adapter sends an explicit value for both
+`mode=on` and `mode=off`, regardless of whether the provider's
+default would have produced the same outcome. This prevents drift
+when providers change defaults silently. `mode=off` for OpenRouter /
+Novita / nano-gpt-flag-mode is `reasoning: {enabled: false}`, never
+`reasoning: {exclude: true}` — `exclude` only hides thinking from the
+stream while the model continues to think (cost + latency unchanged).
+Per spec §2 we do not use `exclude` to fake an off-state; the user
+deserves the truth.
+
+**Cockpit UX rule:** never hide a button. `no_reasoning`,
+`always_on`, and `tools.supported=false` all render as
+disabled-with-tooltip. Effort-capable models open a pop-out that
+includes "Off" as a first-class choice — so the visual state of the
+button (white = off, accent = on) is the same regardless of whether
+the model is boolean-toggle or effort-graded. Mental model:
+*the way you get there changes, the visual result is constant.*
+
+**Self-healing model-switch:** a session's effective model can change
+when the user edits the persona's `model_unique_id`. Rather than
+hooking every model-change endpoint, the orchestrator does a lazy
+remap on every inference: parse the stored `extras`, run
+`remap_extras_for_capability(extras, current.reasoning,
+current.tools)`, and only persist + broadcast if the result differs.
+Equality short-circuit means the common (already-consistent) case
+costs one pure-function call and zero DB writes.
+
+**The "tools win on conflict" rule:** when remap produces a state
+that violates the new model's mutex (tools=on AND reasoning=on on a
+mutex model), tools win. Web search is too useful to silently lose;
+losing reasoning is more recoverable from the user's perspective.
+
+**Out of this iteration (deferred to follow-up specs):** the xAI and
+Mistral adapters got conservative-default treatment only — they emit
+the new `ModelMetaDto` shape with `first_class_support=false` so the
+system works uniformly, but their premium per-model handling will be
+its own spec each. xAI converges on roughly one model post-cleanup;
+Mistral on 2–3, since Magistral and Mistral Medium 3.5 absorbed
+most of the family.
+
+**Spec:** `devdocs/specs/2026-05-09-llm-reasoning-tools-capabilities-design.md`
+**Plan:** `devdocs/plans/2026-05-09-llm-reasoning-tools-capabilities.md`
