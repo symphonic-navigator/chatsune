@@ -31,14 +31,17 @@ from backend.database import get_db, get_redis
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
     get_effective_context_window,
+    get_model_metadata,
     get_model_supports_vision,
-    get_model_supports_reasoning,
     resolve_for_model,
     ImageNormalisationError,
     LlmConnectionNotFoundError,
     LlmInvalidModelUniqueIdError,
     normalise_for_llm,
 )
+from backend.modules.chat._extras_remap import default_extras_for_capability
+from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 from backend.modules.persona import get_persona
 from backend.modules.storage import (
     get_files_by_ids,
@@ -656,23 +659,55 @@ async def run_inference(
     adapter_type = (
         resolved_connection.adapter_type if resolved_connection is not None else "unknown"
     )
+    # Resolve the model's capability so we can:
+    #   - synthesise default extras for legacy sessions that have no
+    #     ``extras`` field yet (spec §4.5);
+    #   - hand the capability down into ``CompletionRequest`` so the
+    #     adapter knows how to translate ``extras.reasoning_mode`` /
+    #     ``extras.reasoning_effort`` for the upstream provider.
+    # If the model is no longer reachable (e.g. the connection was
+    # deleted between persona save and inference), fall back to the most
+    # conservative capability shape — inference will likely fail at the
+    # adapter layer with a clearer error than a missing-field crash.
+    meta = await get_model_metadata(user_id, model_unique_id)
+    if meta is not None:
+        reasoning_cap = meta.reasoning
+        tools_cap = meta.tools
+        supports_reasoning = meta.supports_reasoning
+    else:
+        reasoning_cap = ReasoningCapability(kind="no_reasoning")
+        tools_cap = ToolCapability(supported=False)
+        supports_reasoning = False
+
+    raw_extras = session.get("extras")
+    if raw_extras is None:
+        extras = default_extras_for_capability(reasoning_cap, tools_cap)
+    else:
+        extras = ChatSessionExtras.model_validate(raw_extras)
+
+    # ``reasoning_override`` is the live-chat hook (e.g. continuous voice
+    # forces reasoning off so the user is not waiting on hidden thinking
+    # tokens). It overrides the per-session ``extras.reasoning_mode`` for
+    # this single inference call only — never persisted, never echoed
+    # back into the stored extras.
     reasoning_override = session.get("reasoning_override")
     if reasoning_override is not None:
-        reasoning_enabled = reasoning_override
-    else:
-        reasoning_enabled = persona.get("reasoning_enabled", False) if persona else False
-    supports_reasoning = await get_model_supports_reasoning(user_id, model_unique_id)
+        new_mode = "on" if reasoning_override else "off"
+        new_effort = extras.reasoning_effort if new_mode == "on" else None
+        extras = extras.model_copy(
+            update={"reasoning_mode": new_mode, "reasoning_effort": new_effort},
+        )
 
-    # Assemble system prompt
-    tools_enabled_flag = session.get("tools_enabled", False)
+    # Assemble system prompt — ``extras`` carries both the tools/reasoning
+    # modes that the prompt assembler needs (Soft-CoT visibility +
+    # tool-availability gating).
     system_prompt = await assemble(
         user_id=user_id,
         persona_id=persona_id,
         model_unique_id=model_unique_id,
         project_id=session.get("project_id"),
         supports_reasoning=supports_reasoning,
-        reasoning_enabled_for_call=reasoning_enabled,
-        tools_enabled=tools_enabled_flag,
+        extras=extras,
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
@@ -819,8 +854,12 @@ async def run_inference(
                 )
         messages.append(CompletionMessage(role=last_msg["role"], content=last_msg_parts))
 
-    # Resolve active tool definitions based on session toggle state
-    tools_enabled = session.get("tools_enabled", False)
+    # Resolve active tool definitions based on the session-level extras.
+    # Note: the legacy ``session.tools_enabled`` field is no longer consulted
+    # here — ``extras.tools_enabled`` is the single source of truth, and the
+    # capability defaults already flowed into ``extras`` for legacy sessions
+    # at the top of this function.
+    tools_enabled = extras.tools_enabled
 
     if not tools_enabled:
         active_tools = None
@@ -881,8 +920,9 @@ async def run_inference(
         model=model_slug,
         messages=messages,
         temperature=persona.get("temperature") if persona else None,
-        reasoning_enabled=reasoning_enabled,
-        supports_reasoning=supports_reasoning,
+        reasoning=reasoning_cap,
+        tools_capability=tools_cap,
+        extras=extras,
         tools=active_tools,
         cache_hint=session_id,
         anthropic_cache_ttl=(

@@ -9,7 +9,10 @@ from shared.dtos.llm import (
     ToolCapability,
 )
 
-from backend.modules.chat._extras_remap import remap_extras_for_capability
+from backend.modules.chat._extras_remap import (
+    default_extras_for_capability,
+    remap_extras_for_capability,
+)
 
 
 def _cap(kind, effort_buckets=None, tool_supported=True, mutex=False):
@@ -82,3 +85,80 @@ def test_remap_tools_win_when_mutex_violated():
     out = remap_extras_for_capability(old, new_r, new_t)
     assert out.tools_enabled is True
     assert out.reasoning_mode == "off"  # tools win on conflict
+
+
+# ---------------------------------------------------------------------------
+# default_extras_for_capability — spec §4.5
+# ---------------------------------------------------------------------------
+
+
+def test_defaults_optional_no_mutex_both_on():
+    r = ReasoningCapability(
+        kind="optional",
+        effort=ReasoningEffortSpec(
+            buckets=["low", "medium", "high"], default_bucket="medium",
+        ),
+    )
+    t = ToolCapability(supported=True)
+    e = default_extras_for_capability(r, t)
+    assert e.tools_enabled is True
+    assert e.reasoning_mode == "on"
+    assert e.reasoning_effort == "medium"
+
+
+def test_defaults_optional_with_mutex_tools_on_reasoning_off():
+    r = ReasoningCapability(kind="optional")
+    t = ToolCapability(supported=True, exclusive_with_reasoning=True)
+    e = default_extras_for_capability(r, t)
+    assert e.tools_enabled is True
+    assert e.reasoning_mode == "off"
+    assert e.reasoning_effort is None
+
+
+def test_defaults_always_on_no_mutex():
+    r = ReasoningCapability(kind="always_on")
+    t = ToolCapability(supported=True)
+    e = default_extras_for_capability(r, t)
+    assert e.reasoning_mode == "on"
+    assert e.tools_enabled is True
+
+
+def test_defaults_always_on_with_mutex_tools_off():
+    r = ReasoningCapability(
+        kind="always_on",
+        effort=ReasoningEffortSpec(
+            buckets=["low", "high"], default_bucket="high",
+        ),
+    )
+    t = ToolCapability(supported=True, exclusive_with_reasoning=True)
+    e = default_extras_for_capability(r, t)
+    assert e.reasoning_mode == "on"
+    # mutex forces tools off so reasoning can stay on for always_on models
+    assert e.tools_enabled is False
+    assert e.reasoning_effort == "high"
+
+
+def test_defaults_no_reasoning_tools_on_when_supported():
+    r = ReasoningCapability(kind="no_reasoning")
+    t = ToolCapability(supported=True)
+    e = default_extras_for_capability(r, t)
+    assert e.reasoning_mode == "off"
+    assert e.tools_enabled is True
+    assert e.reasoning_effort is None
+
+
+def test_defaults_no_reasoning_tools_off_when_unsupported():
+    r = ReasoningCapability(kind="no_reasoning")
+    t = ToolCapability(supported=False)
+    e = default_extras_for_capability(r, t)
+    assert e.tools_enabled is False
+    assert e.reasoning_mode == "off"
+
+
+def test_defaults_optional_no_effort_spec_returns_none():
+    r = ReasoningCapability(kind="optional")  # no effort spec
+    t = ToolCapability(supported=False)
+    e = default_extras_for_capability(r, t)
+    assert e.reasoning_mode == "on"
+    assert e.reasoning_effort is None
+    assert e.tools_enabled is False

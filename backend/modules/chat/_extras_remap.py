@@ -1,9 +1,13 @@
-"""Spec §6.5 model-switch mapping for ChatSessionExtras.
+"""Spec §6.5 model-switch mapping for ChatSessionExtras and §4.5 defaults.
 
 Pure logic: given the existing extras and the capability of the new
 model, compute the remapped extras. Preserve where possible, force
 where the new capability demands it, and let tools win on a mutex
 conflict (Chris's rule from §6.5).
+
+Also exposes :func:`default_extras_for_capability` — the capability-driven
+initial defaults used both for fresh chat sessions and as a fallback when
+a legacy session document carries no ``extras`` field at all.
 
 Used both by the PATCH ``/sessions/{id}/extras`` endpoint (validation
 shape mirrors the remap rules) and by the model-switch wiring (Task 24).
@@ -60,5 +64,57 @@ def remap_extras_for_capability(
     return ChatSessionExtras(
         tools_enabled=tools_enabled,
         reasoning_mode=mode,
+        reasoning_effort=effort,
+    )
+
+
+def default_extras_for_capability(
+    reasoning: ReasoningCapability,
+    tools: ToolCapability,
+) -> ChatSessionExtras:
+    """Spec §4.5 — initial defaults for a fresh chat session given the model's capability.
+
+    Rules:
+      - ``no_reasoning``  → reasoning off; tools follow ``tools.supported``.
+      - ``always_on``     → reasoning on (effort = default bucket if present);
+        tools on iff supported AND the capability has no tools/reasoning mutex.
+      - ``optional``      → if a mutex applies, default to tools-on /
+        reasoning-off (tools win the conflict, mirroring §6.5). Without a
+        mutex: both on (reasoning at default bucket if present).
+
+    Effort always falls back to ``None`` when reasoning is off or the
+    capability does not declare an effort spec.
+    """
+    has_mutex = tools.exclusive_with_reasoning
+    tools_supported = tools.supported
+    kind = reasoning.kind
+
+    if kind == "no_reasoning":
+        return ChatSessionExtras(
+            tools_enabled=tools_supported,
+            reasoning_mode="off",
+            reasoning_effort=None,
+        )
+
+    if kind == "always_on":
+        effort = reasoning.effort.default_bucket if reasoning.effort else None
+        return ChatSessionExtras(
+            tools_enabled=tools_supported and not has_mutex,
+            reasoning_mode="on",
+            reasoning_effort=effort,
+        )
+
+    # optional
+    if has_mutex:
+        return ChatSessionExtras(
+            tools_enabled=tools_supported,
+            reasoning_mode="off",
+            reasoning_effort=None,
+        )
+
+    effort = reasoning.effort.default_bucket if reasoning.effort else None
+    return ChatSessionExtras(
+        tools_enabled=tools_supported,
+        reasoning_mode="on",
         reasoning_effort=effort,
     )
