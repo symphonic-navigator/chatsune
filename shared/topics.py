@@ -91,6 +91,9 @@ class Topics:
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
     # Session toggles (tools_enabled, auto_read, reasoning_override)
     CHAT_SESSION_TOGGLES_UPDATED = "chat.session.toggles_updated"
+    # Session extras (tools_enabled, reasoning_mode, reasoning_effort) — broadcast
+    # for multi-device sync of the cockpit's per-session settings
+    CHAT_SESSION_EXTRAS_UPDATED = "chat.session.extras.updated"
     CHAT_SESSION_PINNED_UPDATED = "chat.session.pinned_updated"
     # MCP gateways
     MCP_TOOLS_REGISTER = "mcp.tools.register"
