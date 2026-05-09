@@ -28,7 +28,7 @@ from backend.modules.llm._homelab_semaphores import (
     get_homelab_semaphore_registry,
 )
 from shared.dtos.inference import CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
 
@@ -132,6 +132,8 @@ def _model_meta_to_dto(
 ) -> ModelMetaDto:
     caps = set(raw.get("capabilities") or [])
     raw_params = raw.get("parameter_count")
+    has_reasoning = "reasoning" in caps or "thinking" in caps
+    has_tools = "tools" in caps or "tool_calling" in caps
     return ModelMetaDto(
         connection_id=connection.id,
         connection_slug=connection.slug,
@@ -139,9 +141,14 @@ def _model_meta_to_dto(
         model_id=raw["slug"],
         display_name=raw.get("display_name") or raw["slug"],
         context_window=int(raw["context_length"]),
-        supports_reasoning="reasoning" in caps or "thinking" in caps,
+        reasoning=ReasoningCapability(
+            kind="optional" if has_reasoning else "no_reasoning",
+            default_on=True,
+        ),
         supports_vision="vision" in caps,
-        supports_tool_calls="tools" in caps or "tool_calling" in caps,
+        supports_tool_calls=has_tools,
+        tools=ToolCapability(supported=has_tools, exclusive_with_reasoning=False),
+        first_class_support=False,
         parameter_count=None,
         raw_parameter_count=(
             int(raw_params) if isinstance(raw_params, int) else None
