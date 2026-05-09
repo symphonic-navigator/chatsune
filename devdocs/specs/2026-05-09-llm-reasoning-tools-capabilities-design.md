@@ -53,8 +53,32 @@ reasoning belongs to the chat session, not the persona.
   (`reasoning_mode`, `reasoning_effort`) into provider-specific
   request shapes, sending an explicit value whenever the model is
   `optional` (no reliance on provider defaults).
+- A user-visible **first-class support flag** on each model, signalling
+  "we have curated this model end-to-end — capabilities, translation,
+  defaults are all properly set". Surfaces in the model browser as a
+  badge and as a filter criterion.
 - Backwards-compatible storage: no MongoDB wipe, lazy reads with
   sensible defaults (per CLAUDE.md §Data-Model Migrations).
+
+**Scope of adapter changes (this iteration)**
+
+The translation-layer rework and capability resolution apply to
+**four adapters**:
+
+- `ollama_http` (covers self-hosted Ollama, Ollama Cloud, custom
+  Ollama-compatible upstreams)
+- `nano_gpt_http`
+- `novita_http`
+- `openrouter_http`
+
+The xAI and Mistral adapters are **out of scope for this spec**. They
+will get their own follow-up specs that take a more bespoke,
+"premium" approach — model-specific handling per surviving model
+(xAI converges on a single model; Mistral on 2–3, since Mistral
+Medium 3.5 is a merged super-model). Those adapters keep their
+current shape until then; their `ModelMetaDto` will use the new
+fields with conservative defaults so the rest of the system works
+uniformly.
 
 **Non-goals**
 - Adding new providers. The capability model is designed to be
@@ -73,6 +97,8 @@ reasoning belongs to the chat session, not the persona.
 - Migration scripts for legacy persona/session documents. Lazy reads
   cover everything (per CLAUDE.md and the "no Rube-Goldberg for
   legacy data" principle).
+- Premium per-model handling for xAI and Mistral. Those follow-up
+  specs are the right place for that work.
 
 ## 3. Capability Model
 
@@ -103,6 +129,12 @@ class ModelMetaDto(BaseModel):
     # ... existing fields ...
     reasoning: ReasoningCapability
     tools: ToolCapability
+    # True when this model has been curated end-to-end: either a YAML
+    # entry covers it, or the adapter's hand-rolled handling explicitly
+    # claims it. False = "we serve it on best-effort heuristics, but
+    # we have not vouched for the experience". User-facing badge and
+    # filter criterion in the model browser.
+    first_class_support: bool = False
 
     # Backwards-compat: keep the boolean as a computed field so
     # existing consumers (model browser filters, etc.) continue to work.
@@ -267,19 +299,49 @@ priority first:
 ```python
 # backend/modules/llm/_capabilities.py (new)
 
+@dataclass
+class ResolvedCapabilities:
+    reasoning: ReasoningCapability
+    tools: ToolCapability
+    first_class_support: bool
+
 def resolve_capabilities(
-    adapter_type: str, model_id: str
-) -> ModelCapabilities:
+    adapter_type: str, model_id: str, adapter: BaseAdapter
+) -> ResolvedCapabilities:
     if entry := _yaml_lookup(adapter_type, model_id):
-        return entry
-    if hint := _adapter_hint(adapter_type, model_id):
-        return hint
-    return _DEFAULT_CAPABILITIES
+        return ResolvedCapabilities(
+            reasoning=entry.reasoning,
+            tools=entry.tools,
+            first_class_support=True,           # YAML entry implies curation
+        )
+    if hint := adapter.capability_hint(model_id):
+        return ResolvedCapabilities(
+            reasoning=hint.reasoning,
+            tools=hint.tools,
+            # adapters that hand-curate specific models (xAI slug-pair
+            # table, Mistral baked-in variants in the future specs) set
+            # the flag in the hint itself; generic heuristics return False
+            first_class_support=hint.first_class_support,
+        )
+    return ResolvedCapabilities(
+        reasoning=_DEFAULT_REASONING,
+        tools=_DEFAULT_TOOLS,
+        first_class_support=False,
+    )
 ```
 
 Adapters call `resolve_capabilities(...)` when assembling
 `ModelMetaDto` for the model browser. The hierarchy is implemented
 once, not repeated per adapter.
+
+**Two paths to first-class status:**
+1. A matching YAML entry (the curator wrote down what the model can do).
+2. An adapter-level claim — the adapter's `capability_hint` returns
+   a `CapabilityHint` with `first_class_support=True`. Reserved for
+   adapters that do model-specific work in code (xAI's slug-pair
+   table, future Mistral handling). For the four adapters in this
+   spec's scope, no in-code first-class claims; the YAML is the only
+   path.
 
 ### 5.2 YAML format
 
@@ -329,9 +391,29 @@ order; broader entries should appear after more specific ones.
 We do not need YAML coverage for every model on day one. Models
 without YAML entries fall through to adapter heuristics, then to the
 universal default. The user experience for those models matches
-today's behaviour. YAML coverage will grow as we curate the most-used
-models — Chris flagged that high-quality coverage is a quality goal,
-not a launch blocker.
+today's behaviour, and they will not show the first-class badge.
+
+**Day-1 YAML coverage** (the templates Chris will use as patterns
+when curating more):
+
+- Anthropic Claude family (Sonnet 4.6, Opus 4.7) via OpenRouter and
+  via nano-gpt
+- OpenAI GPT-5 via OpenRouter and via nano-gpt
+- DeepSeek V4 via OpenRouter and via nano-gpt
+
+Three logical models × two routers = six entries minimum. These are
+the templates; the rest grow organically from tester feedback and
+usage. Coverage growth is a quality goal, not a launch blocker.
+
+### 5.4 Model browser surface for first-class
+
+- A small badge (e.g. "★ first-class" or a coloured pill) on
+  first-class rows in the model browser.
+- A filter toggle "Only first-class models" that hides best-effort
+  rows. Off by default.
+- Persisted as part of `UserModelConfigDto` filter preferences if
+  the user wants the filter sticky — but that is an extension; for
+  this iteration the filter is in-memory per browser session.
 
 ## 6. Translation Layer & Request Pipeline
 
@@ -541,11 +623,19 @@ behaves as expected. Save scenarios under
 
 ## 9. Open Questions / Out of Scope
 
+- **xAI and Mistral adapters.** Out of scope for this spec; follow-up
+  specs will rework them with model-specific premium handling. They
+  remain on the new `ModelMetaDto` shape with conservative defaults
+  (likely `kind="optional"`, `first_class_support=false`) until then,
+  so the rest of the system is unaffected.
 - **Anthropic-direct adapter.** Translation table includes Anthropic
   for completeness, but no native Anthropic adapter exists yet.
   Anthropic models are routed via OpenRouter / nano-gpt today;
   translation runs through the router's `reasoning` object. A native
   adapter is a separate future spec.
+- **Sticky first-class filter.** §5.4 keeps the filter in-memory per
+  browser session for v1. Persisting it as a user preference is a
+  small extension; revisit if testers ask.
 - **Effort defaults per model class.** We use `medium` as the universal
   `default_bucket`. Some models may benefit from a lower or higher
   default after empirical use; refine in YAML when needed.
