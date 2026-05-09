@@ -112,6 +112,17 @@ class BaseAdapter(ABC):
             f"Adapter {self.adapter_type!r} does not implement image generation"
         )
 
+    def capability_hint(self, model_id: str):
+        """Adapter-specific capability override.
+
+        Default returns None — the resolver falls through to the universal
+        default. Adapters that hand-curate model handling override this to
+        return a CapabilityHint with first_class_support=True. Adapters using
+        only generic heuristics may return a CapabilityHint with
+        first_class_support=False — heuristic guidance, not curated.
+        """
+        return None
+
     @abstractmethod
     async def fetch_models(
         self, connection: ResolvedConnection,
