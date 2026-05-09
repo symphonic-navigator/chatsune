@@ -13,8 +13,9 @@ import { ImageButton } from '@/features/images/cockpit/ImageButton'
 import { MobileInfoModal } from './MobileInfoModal'
 import { CockpitButton } from './CockpitButton'
 import { CockpitGroupButton } from './CockpitGroupButton'
-import { useCockpitSession } from './cockpitStore'
+import { useCockpitSession, useCockpitStore } from './cockpitStore'
 import { useEmojiPickerStore } from '../emojiPickerStore'
+import type { ReasoningCapability } from '@/core/types/llm'
 
 type VoiceSummary = {
   ttsProvider: string
@@ -93,6 +94,14 @@ export function CockpitBar(props: Props) {
 
   const toolsActive = Boolean(cockpit?.tools) || props.activePersonaIntegrationIds.length > 0
 
+  // Task 20 bridge — synthesise a ``ReasoningCapability`` from the
+  // pre-existing boolean prop until Task 21 (and the ChatView caller) feeds
+  // the real ``ResolvedCapabilities`` through. Effort buckets are not
+  // surfaced yet; the pop-out only appears once the new prop lands.
+  const derivedReasoning: ReasoningCapability = props.modelSupportsReasoning
+    ? { kind: 'optional', effort: null, default_on: props.personaReasoningDefault }
+    : { kind: 'no_reasoning', effort: null, default_on: false }
+
   return (
     <div className={`flex flex-wrap items-center py-2 bg-[#0f0d16] rounded-lg ${isMobile ? 'gap-1 px-2' : 'gap-1.5 px-3'}`}>
       {isMobile ? (
@@ -107,9 +116,15 @@ export function CockpitBar(props: Props) {
         </>
       )}
       <ThinkingButton
-        sessionId={props.sessionId}
-        modelSupportsReasoning={props.modelSupportsReasoning}
-        personaReasoningDefault={props.personaReasoningDefault}
+        reasoning={derivedReasoning}
+        mode={cockpit?.extras.reasoning_mode ?? (props.personaReasoningDefault ? 'on' : 'off')}
+        effort={cockpit?.extras.reasoning_effort ?? null}
+        onChange={async (mode) => {
+          // Task 20 wires through the legacy ``setThinking`` shim — Task 21
+          // replaces this with a direct ``updateExtras`` call that also
+          // coordinates the tools mutex.
+          await useCockpitStore.getState().setThinking(props.sessionId, mode === 'on')
+        }}
       />
       {isMobile ? (
         <CockpitGroupButton

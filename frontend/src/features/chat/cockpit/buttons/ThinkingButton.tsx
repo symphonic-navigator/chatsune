@@ -1,71 +1,144 @@
+import { useState, useRef, useEffect } from 'react'
+import type { ReasoningCapability } from '@/core/types/llm'
 import { CockpitButton } from '../CockpitButton'
-import { useChatStore } from '@/core/store/chatStore'
-import { chatApi } from '@/core/api/chat'
 
 type Props = {
-  sessionId: string
-  modelSupportsReasoning: boolean
-  personaReasoningDefault: boolean
+  reasoning: ReasoningCapability
+  mode: 'off' | 'on'
+  effort: string | null
+  onChange: (mode: 'off' | 'on', effort: string | null) => Promise<void> | void
 }
 
 /**
- * Thinking toggle. Source of truth is `chatStore.reasoningOverride` because
- * the conversation-mode hook writes there when entering live chat (forcing
- * reasoning off) and restoring on exit; the cockpit has to see the same
- * value. `null` in the override means "use persona default".
+ * Capability-aware Thinking toggle. Pure presentational + local pop-out
+ * state — the parent (CockpitBar / ReasoningToolsCluster) owns the source
+ * of truth and persists changes via ``onChange``.
+ *
+ * Five render states, gated by ``reasoning.kind`` and ``reasoning.effort``:
+ *   - ``no_reasoning``                          → disabled, "n/a" label
+ *   - ``always_on``  (no effort buckets)        → disabled, "always on"
+ *   - ``always_on``  (with effort buckets)      → pop-out (Off greyed)
+ *   - ``optional``   (no effort buckets)        → simple click toggle
+ *   - ``optional``   (with effort buckets)      → pop-out (Off + buckets)
+ *
+ * Mutex with tools (``exclusive_with_reasoning``) is coordinated one level
+ * up — this button just reports its desired mode/effort to ``onChange``.
  */
-export function ThinkingButton({ sessionId, modelSupportsReasoning, personaReasoningDefault }: Props) {
-  const reasoningOverride = useChatStore((s) => s.reasoningOverride)
-  const setReasoningOverride = useChatStore((s) => s.setReasoningOverride)
+export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
+  const [popOpen, setPopOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
-  if (!modelSupportsReasoning) {
+  // Close pop-out on outside click / Escape so a stray click anywhere on the
+  // page dismisses it without leaving the menu floating over the chat.
+  useEffect(() => {
+    if (!popOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      if (!containerRef.current) return
+      if (containerRef.current.contains(e.target as Node)) return
+      setPopOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPopOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [popOpen])
+
+  if (reasoning.kind === 'no_reasoning') {
     return (
       <CockpitButton
         icon="💡"
         state="disabled"
         accent="gold"
-        label="Thinking disabled"
-        panel={<p className="text-white/70">This model does not support reasoning.</p>}
+        label="Thinking · n/a"
+        dataState="inactive"
       />
     )
   }
 
-  const on = reasoningOverride !== null ? reasoningOverride : personaReasoningDefault
-
-  const toggle = async () => {
-    const next = !on
-    // Optimistic update so the UI feels instant; revert on API error.
-    const prev = reasoningOverride
-    setReasoningOverride(next)
-    try {
-      await chatApi.updateSessionReasoning(sessionId, next)
-    } catch (e) {
-      setReasoningOverride(prev)
-      throw e
-    }
+  // ``always_on`` without effort: nothing for the user to choose.
+  if (reasoning.kind === 'always_on' && !reasoning.effort) {
+    return (
+      <CockpitButton
+        icon="💡"
+        state="disabled"
+        accent="gold"
+        label="Thinking · always on"
+        dataState="active"
+      />
+    )
   }
 
+  const hasEffort = reasoning.effort !== null
+  const active = mode === 'on'
+
+  const handleClick = () => {
+    if (!hasEffort) {
+      void onChange(active ? 'off' : 'on', null)
+      return
+    }
+    setPopOpen((v) => !v)
+  }
+
+  const handleSelect = (m: 'off' | 'on', e: string | null) => {
+    setPopOpen(false)
+    void onChange(m, e)
+  }
+
+  // Effort initial used as a compact pill — full word would crowd the row.
+  const pillLabel =
+    active && hasEffort && effort
+      ? `Thinking · ${effort[0].toUpperCase()}`
+      : active
+        ? 'Thinking · on'
+        : 'Thinking · off'
+
   return (
-    <CockpitButton
-      icon="💡"
-      state={on ? 'active' : 'idle'}
-      accent="gold"
-      label={on ? 'Thinking · on' : 'Thinking · off'}
-      onClick={() => { void toggle() }}
-      panel={
-        <div className="text-white/80">
-          <div className="font-semibold text-[#d4af37] mb-1">
-            Reasoning · {on ? 'on' : 'off'}
-          </div>
-          <p className="text-xs leading-relaxed">
-            The model thinks before it answers. Good for complex questions.
-            Some models ignore this when tools are also on.
-          </p>
-          <div className="mt-2 text-[10px] uppercase tracking-wider text-white/40">
-            Session: remembered for this chat.
-          </div>
-        </div>
-      }
-    />
+    <div ref={containerRef} className="relative">
+      <CockpitButton
+        icon="💡"
+        state={active ? 'active' : 'idle'}
+        accent="gold"
+        label={pillLabel}
+        onClick={handleClick}
+        dataState={active ? 'active' : 'inactive'}
+      />
+      {popOpen && hasEffort && (
+        <ul
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-40 min-w-[140px] rounded-md border border-white/10 bg-[#0f0d16] py-1 shadow-lg"
+        >
+          <li>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={!active}
+              disabled={reasoning.kind === 'always_on'}
+              onClick={() => handleSelect('off', null)}
+              className="w-full px-3 py-1.5 text-left text-sm text-white/80 hover:bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Off
+            </button>
+          </li>
+          {reasoning.effort!.buckets.map((b) => (
+            <li key={b}>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={active && effort === b}
+                onClick={() => handleSelect('on', b)}
+                className="w-full px-3 py-1.5 text-left text-sm text-white/80 hover:bg-white/5"
+              >
+                {b[0].toUpperCase() + b.slice(1)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
