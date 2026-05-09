@@ -166,9 +166,11 @@ def _chunk_to_events(
 
     # Terminal usage-only chunk: emit StreamDone with token counts.
     if usage and not choices:
+        details = usage.get("completion_tokens_details") or {}
         events.append(StreamDone(
             input_tokens=usage.get("prompt_tokens"),
             output_tokens=usage.get("completion_tokens"),
+            reasoning_tokens=details.get("reasoning_tokens"),
         ))
         return events
 
@@ -853,9 +855,14 @@ class NanoGptHttpAdapter(BaseAdapter):
                                     pending_next.cancel()
                                 raise
                             if not seen_done:
+                                _details = (
+                                    last_usage.get("completion_tokens_details")
+                                    or {}
+                                )
                                 yield StreamDone(
                                     input_tokens=last_usage.get("prompt_tokens"),
                                     output_tokens=last_usage.get("completion_tokens"),
+                                    reasoning_tokens=_details.get("reasoning_tokens"),
                                 )
                                 _log_anthropic_cache(
                                     request, upstream_slug, last_usage,
