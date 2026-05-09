@@ -41,9 +41,11 @@ class ModelMetaDto(BaseModel):
     model_id: str
     display_name: str
     context_window: int
-    supports_reasoning: bool
+    reasoning: ReasoningCapability
     supports_vision: bool
-    supports_tool_calls: bool
+    supports_tool_calls: bool   # legacy field, kept for callers; tools.supported is canonical
+    tools: ToolCapability
+    first_class_support: bool = False
     parameter_count: str | None = None
     raw_parameter_count: int | None = None
     quantisation_level: str | None = None
@@ -70,6 +72,11 @@ class ModelMetaDto(BaseModel):
     # pre-existing cached documents readable — see CLAUDE.md
     # §Data-Model Migrations.
     remarks: str | None = None
+
+    @computed_field
+    @property
+    def supports_reasoning(self) -> bool:
+        return self.reasoning.kind != "no_reasoning"
 
     @computed_field
     @property

@@ -1,6 +1,6 @@
 """Schema test for the is_moderated field on ModelMetaDto."""
 
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 
 def _base() -> dict:
@@ -11,9 +11,10 @@ def _base() -> dict:
         "model_id": "openai/gpt-4o",
         "display_name": "GPT-4o",
         "context_window": 128_000,
-        "supports_reasoning": False,
+        "reasoning": ReasoningCapability(kind="no_reasoning"),
         "supports_vision": True,
         "supports_tool_calls": True,
+        "tools": ToolCapability(supported=True),
     }
 
 

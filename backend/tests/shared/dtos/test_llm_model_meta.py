@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 
 def _base_kwargs() -> dict:
@@ -10,9 +10,10 @@ def _base_kwargs() -> dict:
         "model_id": "m1",
         "display_name": "M 1",
         "context_window": 128000,
-        "supports_reasoning": False,
+        "reasoning": ReasoningCapability(kind="no_reasoning"),
         "supports_vision": False,
         "supports_tool_calls": False,
+        "tools": ToolCapability(supported=False),
     }
 
 
