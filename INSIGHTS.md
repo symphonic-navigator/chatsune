@@ -1271,3 +1271,69 @@ agnostic" parameter, verify what it actually sends downstream for
 each upstream you care about. Identical names don't mean identical
 semantics — the percentage-vs-tokens trap repeats across the
 ecosystem (rate limits, max-output, temperature scales, etc.).
+
+---
+
+## INS-036 — OpenRouter silently drops reasoning.max_tokens when cache_control is present (2026-05-09)
+
+**Symptom:** Beta tester set Claude Sonnet 4.6 to ``low`` effort
+expecting a 128-token reasoning budget. The wire payload was correct
+(``reasoning: {max_tokens: 128}`` confirmed via LLM_TRACE log).
+Anthropic still produced 1500+ reasoning tokens. Out-of-band curl
+test against the same model with the same payload but **no
+``cache_control`` markers** honoured the budget verbatim
+(~100 reasoning tokens). The only difference between live and
+isolated tests was the cache markers attached to the system message.
+
+**Reproduction (curl, 2026-05-09):**
+```jsonc
+// Body A — cache_control + reasoning.max_tokens=128
+// Result: 15945 reasoning tokens, completion hit max
+{
+  "model": "anthropic/claude-sonnet-4.6",
+  "messages": [
+    {"role": "system",
+     "content": [{"type":"text","text":"...",
+                  "cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+    {"role": "user", "content": "<long puzzle>"}
+  ],
+  "reasoning": {"max_tokens": 128}
+}
+
+// Body B — same prompt, NO cache_control
+// Result: ~100 reasoning tokens, budget honoured
+```
+
+**Hypothesis:** OpenRouter's translator inspects the body for
+Anthropic-specific markup (``cache_control`` is the giveaway) and
+switches to a "pass through to Anthropic native" code path. On that
+path the ``reasoning`` object isn't translated to
+``thinking.budget_tokens`` — it's silently dropped. Anthropic then
+runs at its default thinking budget, which for Sonnet 4.x is
+effectively unbounded relative to a 128-token request.
+
+**Fix:** when the user has dialled in a specific reasoning effort
+bucket (``extras.reasoning_effort`` set, ``reasoning_mode == "on"``,
+Anthropic model), strip ``cache_control`` from the outgoing payload.
+The user implicitly chose "I care about how long Claude thinks" over
+"I want cache savings on this turn". Cache markers stay on for every
+other case (no effort dialled, or effort dialled but reasoning off).
+Both router adapters (openrouter and nano-gpt) carry the same
+workaround. Tests cover all three branches: suppressed-when-effort,
+kept-when-no-effort, kept-when-reasoning-off.
+
+**When this stops mattering:** when a native Anthropic adapter
+ships, both ``thinking.budget_tokens`` and ``cache_control`` go
+direct to Anthropic and the trade-off disappears. Until then, the
+router is the bottleneck.
+
+**OR-side bug-report TODO:** worth filing with OpenRouter — the
+percentage-vs-budget translation (INS-035) is a defensible design
+choice; silently dropping a documented field when another field is
+present is not. Reproduction body above is self-contained.
+
+**Generalisable rule:** when two seemingly-orthogonal parameters
+collide on the wire, write a curl reproduction with each one
+isolated. The "everything looks right in the trace" case is exactly
+where two fields are interacting upstream in a way you can't see
+without bisecting them.
