@@ -9,7 +9,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import (
+    ModelMetaDto,
+    ReasoningCapability,
+    ToolCapability,
+)
 
 MIN_CONTEXT = 80000
 
@@ -226,14 +230,28 @@ def to_model_meta(
         non_thinking_slug = entry["id"]
         switching_mode = "none"
 
+    # ``reasoning`` and ``tools`` here are catalogue-derived defaults
+    # produced from raw upstream evidence (pair presence /
+    # capabilities.reasoning / capabilities.tool_calling). The adapter
+    # overlays YAML overrides via ``resolve_capabilities`` when
+    # building the final per-connection DTOs, so consumers reading the
+    # adapter's output get the curated values; this default is only
+    # surfaced when ``to_model_meta`` is consumed directly (notably
+    # the catalogue test suite).
+    tool_calling = bool(caps.get("tool_calling"))
+    reasoning_capability = ReasoningCapability(
+        kind="optional" if supports_reasoning else "no_reasoning",
+    )
+    tool_capability = ToolCapability(supported=tool_calling)
     meta = ModelMetaDto(
         connection_id="",
         model_id=model_id,
         display_name=name,
         context_window=entry["context_length"],
-        supports_reasoning=supports_reasoning,
+        reasoning=reasoning_capability,
+        tools=tool_capability,
         supports_vision=bool(caps.get("vision")),
-        supports_tool_calls=bool(caps.get("tool_calling")),
+        supports_tool_calls=tool_calling,
         billing_category=billing_category,
     )
     extras = {

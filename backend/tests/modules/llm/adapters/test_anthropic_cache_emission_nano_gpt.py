@@ -7,6 +7,7 @@ from shared.dtos.inference import (
     CompletionRequest,
     ContentPart,
 )
+from shared.dtos.llm import ReasoningCapability, ToolCapability
 
 
 def _msg(role: str, text: str = "x") -> CompletionMessage:
@@ -18,8 +19,15 @@ def _msg(role: str, text: str = "x") -> CompletionMessage:
 def _request(
     model: str, messages: list[CompletionMessage], ttl: str,
 ) -> CompletionRequest:
+    # Cache-emission tests are concerned with messages-shaping, not
+    # reasoning/tools — pass conservative defaults for the now-required
+    # capability fields.
     return CompletionRequest(
-        model=model, messages=messages, anthropic_cache_ttl=ttl,
+        model=model,
+        messages=messages,
+        anthropic_cache_ttl=ttl,
+        reasoning=ReasoningCapability(kind="no_reasoning"),
+        tools_capability=ToolCapability(supported=False),
     )
 
 
