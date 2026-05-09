@@ -402,29 +402,30 @@ def build_request_body(request: CompletionRequest) -> dict:
             for t in request.tools
         ]
     if request.reasoning.kind == "optional":
-        reasoning_obj: dict = {
-            "enabled": request.extras.reasoning_mode == "on",
-        }
-        if request.extras.reasoning_effort:
-            # OpenRouter's ``effort`` is interpreted differently per upstream:
-            # OpenAI o-series receives it directly; for Anthropic models it
-            # gets translated into a *percentage* of the response
-            # ``max_tokens`` (default ~64k for Sonnet 4.x), so
-            # ``effort=low`` still yields ~12k thinking tokens — the user
-            # sees what looks like an unbounded reasoning trace.
-            #
-            # For Anthropic models we therefore send an explicit
-            # ``max_tokens`` derived from our internal bucket (spec §6.4
-            # starting values) so the budget is precise. For everyone
-            # else we keep ``effort``.
-            if is_anthropic_model(request.model):
-                reasoning_obj["max_tokens"] = _ANTHROPIC_REASONING_BUDGET.get(
-                    request.extras.reasoning_effort,
-                    _ANTHROPIC_REASONING_BUDGET["medium"],
-                )
-            else:
+        reasoning_on = request.extras.reasoning_mode == "on"
+        # For Anthropic models routed via OpenRouter (typically through
+        # Google Vertex), the universal ``effort`` shorthand is interpreted
+        # as a percentage of response max_tokens — so ``low`` becomes ~12k
+        # thinking tokens. Per OR docs, ``reasoning.max_tokens`` is the
+        # numeric override Anthropic-style models prefer. Critically, OR's
+        # docs say "setting max_tokens automatically enables reasoning",
+        # and field-testing suggests that ``enabled: true`` AND
+        # ``max_tokens`` together can leave OR using upstream defaults
+        # rather than honouring the explicit budget. So for Anthropic we
+        # send ONLY max_tokens when on, and ONLY ``enabled: false`` when
+        # off — never mixed.
+        if is_anthropic_model(request.model) and reasoning_on:
+            bucket = request.extras.reasoning_effort or "medium"
+            payload["reasoning"] = {
+                "max_tokens": _ANTHROPIC_REASONING_BUDGET.get(
+                    bucket, _ANTHROPIC_REASONING_BUDGET["medium"],
+                ),
+            }
+        else:
+            reasoning_obj: dict = {"enabled": reasoning_on}
+            if reasoning_on and request.extras.reasoning_effort:
                 reasoning_obj["effort"] = request.extras.reasoning_effort
-        payload["reasoning"] = reasoning_obj
+            payload["reasoning"] = reasoning_obj
     return payload
 
 

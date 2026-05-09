@@ -354,21 +354,23 @@ def _build_chat_payload(
         ],
     }
     if send_reasoning_flag:
-        reasoning_obj: dict = {"enabled": reasoning_enabled}
-        if reasoning_effort:
-            # Same Anthropic-via-router caveat as openrouter_http: routers
-            # interpret ``effort`` as a percentage of response max_tokens
-            # (default ~64k), so ``low`` still yields ~12k thinking tokens.
-            # For Anthropic models we send explicit ``max_tokens`` from the
-            # spec §6.4 budget table; everyone else gets the effort string.
-            if is_anthropic_model(request.model):
-                reasoning_obj["max_tokens"] = _ANTHROPIC_REASONING_BUDGET.get(
-                    reasoning_effort,
-                    _ANTHROPIC_REASONING_BUDGET["medium"],
-                )
-            else:
+        # Mirror the openrouter_http logic: for Anthropic models, send
+        # ONLY max_tokens (which auto-enables reasoning per OR docs) and
+        # never mix with ``enabled: true``. The combination appears to
+        # leave the router using upstream defaults instead of honouring
+        # our budget.
+        if is_anthropic_model(request.model) and reasoning_enabled:
+            bucket = reasoning_effort or "medium"
+            payload["reasoning"] = {
+                "max_tokens": _ANTHROPIC_REASONING_BUDGET.get(
+                    bucket, _ANTHROPIC_REASONING_BUDGET["medium"],
+                ),
+            }
+        else:
+            reasoning_obj: dict = {"enabled": reasoning_enabled}
+            if reasoning_enabled and reasoning_effort:
                 reasoning_obj["effort"] = reasoning_effort
-        payload["reasoning"] = reasoning_obj
+            payload["reasoning"] = reasoning_obj
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools and request.extras.tools_enabled:

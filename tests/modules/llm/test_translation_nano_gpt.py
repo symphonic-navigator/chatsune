@@ -59,8 +59,10 @@ def _req(
 
 
 def test_nano_gpt_flag_mode_reasoning_on_sends_enabled_true():
+    # Use a non-Anthropic model — Anthropic gets the special max_tokens-only
+    # body shape (covered separately below).
     req = _req(
-        "claude-sonnet-4-6",
+        "openai/gpt-5",
         ChatSessionExtras(
             tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
         ),
@@ -223,9 +225,9 @@ def test_nano_gpt_no_reasoning_kind_omits_reasoning_field():
 
 
 def test_nano_gpt_anthropic_model_uses_explicit_max_tokens():
-    """For Anthropic models, nano-gpt (like OpenRouter) interprets the
-    universal ``effort`` string as a percentage of response max_tokens.
-    Send explicit max_tokens from the spec §6.4 budget table instead."""
+    """For Anthropic models, body carries ONLY max_tokens (no
+    ``enabled: true``, no ``effort``) — see openrouter_http for the
+    field-test rationale."""
     req = _req(
         "claude-sonnet-4-6",
         ChatSessionExtras(
@@ -239,8 +241,7 @@ def test_nano_gpt_anthropic_model_uses_explicit_max_tokens():
         ),
     )
     body, _slug = build_request_body(req)
-    assert body["reasoning"]["max_tokens"] == 128
-    assert "effort" not in body["reasoning"]
+    assert body["reasoning"] == {"max_tokens": 128}
 
 
 def test_nano_gpt_non_anthropic_keeps_effort_string():

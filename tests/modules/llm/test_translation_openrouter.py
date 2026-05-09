@@ -104,12 +104,11 @@ def test_openrouter_does_not_use_exclude_for_visibility_hide():
     assert body.get("reasoning", {}).get("exclude") is None
 
 
-def test_openrouter_anthropic_model_sends_explicit_max_tokens_not_effort():
-    """For Anthropic models, OpenRouter interprets ``effort`` as a percentage
-    of response ``max_tokens`` (default ~64k), so ``low`` still yields ~12k
-    thinking tokens — not the precise small budget the user intends. We
-    therefore send an explicit ``max_tokens`` derived from our internal
-    bucket-to-budget table (spec §6.4)."""
+def test_openrouter_anthropic_on_sends_only_max_tokens_no_enabled():
+    """For Anthropic models with reasoning ON, body carries ONLY
+    ``max_tokens`` — no ``enabled: true`` (mixing the two leaves OR
+    using upstream defaults instead of honouring the budget per
+    field-test observation 2026-05-09)."""
     req = _req(
         ChatSessionExtras(
             tools_enabled=True, reasoning_mode="on", reasoning_effort="low",
@@ -123,8 +122,7 @@ def test_openrouter_anthropic_model_sends_explicit_max_tokens_not_effort():
         model="anthropic/claude-sonnet-4.6",
     )
     body = build_request_body(req)
-    assert "effort" not in body["reasoning"]
-    assert body["reasoning"]["max_tokens"] == 128
+    assert body["reasoning"] == {"max_tokens": 128}
 
 
 def test_openrouter_anthropic_medium_uses_medium_budget():
@@ -141,7 +139,26 @@ def test_openrouter_anthropic_medium_uses_medium_budget():
         model="anthropic/claude-opus-4-7",
     )
     body = build_request_body(req)
-    assert body["reasoning"]["max_tokens"] == 8192
+    assert body["reasoning"] == {"max_tokens": 8192}
+
+
+def test_openrouter_anthropic_off_sends_only_enabled_false():
+    """For Anthropic with reasoning OFF, body carries ``enabled: false``
+    (no max_tokens, no effort) — explicit-off pattern unchanged."""
+    req = _req(
+        ChatSessionExtras(
+            tools_enabled=True, reasoning_mode="off", reasoning_effort=None,
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["low", "medium", "high"], default_bucket="medium",
+            ),
+        ),
+        model="anthropic/claude-sonnet-4.6",
+    )
+    body = build_request_body(req)
+    assert body["reasoning"] == {"enabled": False}
 
 
 def test_openrouter_non_anthropic_keeps_effort_string():
