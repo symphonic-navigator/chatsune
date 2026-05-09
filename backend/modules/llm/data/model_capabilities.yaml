@@ -1,0 +1,74 @@
+# Capability overrides per (adapter_type, model_id pattern).
+# Matched in order; first match wins. Patterns use fnmatch semantics.
+# Adapter heuristics are consulted only when no entry matches.
+
+models:
+  # Anthropic Claude family via OpenRouter
+  - adapter: openrouter
+    pattern: "anthropic/claude-sonnet-4-6*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: openrouter
+    pattern: "anthropic/claude-opus-4-7*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # Same family via nano-gpt
+  - adapter: nano_gpt
+    pattern: "claude-sonnet-4-6*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: nano_gpt
+    pattern: "claude-opus-4-7*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # OpenAI GPT-5 via OpenRouter
+  - adapter: openrouter
+    pattern: "openai/gpt-5*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # GPT-5 via nano-gpt
+  - adapter: nano_gpt
+    pattern: "gpt-5*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # DeepSeek V4 via OpenRouter
+  - adapter: openrouter
+    pattern: "deepseek/deepseek-v4*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # DeepSeek V4 via nano-gpt
+  - adapter: nano_gpt
+    pattern: "deepseek-v4*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }

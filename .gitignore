@@ -48,6 +48,9 @@ obsidian/.obsidian/graph.json
 # Data
 data/
 data/models/
+# Exception: capability overrides are configuration, not runtime data.
+!backend/modules/llm/data/
+!backend/modules/llm/data/**
 docker-compose.worktree.yml
 
 # Runtime log files
