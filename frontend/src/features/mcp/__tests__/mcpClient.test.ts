@@ -76,3 +76,80 @@ describe('readJsonRpcResponse', () => {
     await expect(readJsonRpcResponse(resp)).rejects.toThrow(/Unexpected content-type/)
   })
 })
+
+describe('ensureSession', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>
+  let initCount = 0
+
+  beforeEach(async () => {
+    initCount = 0
+    const { useMcpStore } = await import('../mcpStore')
+    useMcpStore.setState({ sessions: {} })
+
+    fetchSpy = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body))
+      const method = body.method
+      if (method === 'initialize') {
+        initCount += 1
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }),
+          {
+            headers: {
+              'content-type': 'application/json',
+              'mcp-session-id': 'sess-it-' + initCount,
+            },
+          },
+        )
+      }
+      // notifications/initialized — no body needed
+      return new Response('', { status: 202 })
+    })
+    // @ts-expect-error - test override
+    globalThis.fetch = fetchSpy
+  })
+
+  it('sends initialize then notifications/initialized in that order', async () => {
+    const { ensureSession } = await import('../mcpClient')
+    await ensureSession('http://srv', null)
+
+    const calls = fetchSpy.mock.calls
+    const methods = calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)).method)
+    expect(methods).toEqual(['initialize', 'notifications/initialized'])
+  })
+
+  it('parses Mcp-Session-Id from response header and caches it', async () => {
+    const { ensureSession } = await import('../mcpClient')
+    const sid = await ensureSession('http://srv', null)
+    expect(sid).toEqual('sess-it-1')
+
+    const { useMcpStore } = await import('../mcpStore')
+    expect(useMcpStore.getState().getSession('http://srv/mcp')?.sessionId).toEqual('sess-it-1')
+  })
+
+  it('returns null for stateless server (no Mcp-Session-Id header)', async () => {
+    fetchSpy.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }),
+          { headers: { 'content-type': 'application/json' } },
+        )
+      }
+      return new Response('', { status: 202 })
+    })
+
+    const { ensureSession } = await import('../mcpClient')
+    const sid = await ensureSession('http://srv', null)
+    expect(sid).toBeNull()
+  })
+
+  it('dedupes concurrent calls into a single initialise', async () => {
+    const { ensureSession } = await import('../mcpClient')
+    const [a, b] = await Promise.all([
+      ensureSession('http://srv', null),
+      ensureSession('http://srv', null),
+    ])
+    expect(a).toEqual(b)
+    expect(initCount).toEqual(1)
+  })
+})

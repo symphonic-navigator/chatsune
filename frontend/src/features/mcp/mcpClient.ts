@@ -9,6 +9,7 @@
 
 import packageJson from '../../../package.json'
 import { api } from '../../core/api/client'
+import { useMcpStore } from './mcpStore'
 import type { McpToolDefinition } from './types'
 
 export const MCP_PROTOCOL_VERSION = '2025-06-18'
@@ -59,6 +60,86 @@ let requestId = 0
 
 function nextId(): number {
   return ++requestId
+}
+
+// ── Session lifecycle ─────────────────────────────────────────────────
+
+async function doInitialise(url: string, apiKey: string | null): Promise<string | null> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  }
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+
+  const initId = nextId()
+  const initResp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: initId,
+      method: 'initialize',
+      params: {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: 'chatsune', version: APP_VERSION },
+      },
+    }),
+  })
+  if (!initResp.ok) {
+    throw new Error(`MCP initialise failed: HTTP ${initResp.status}`)
+  }
+  const sessionId = initResp.headers.get('mcp-session-id')
+  // Drain body — for SSE we want to consume up to the matching reply,
+  // for JSON we just discard.
+  try {
+    await readJsonRpcResponse(initResp, initId)
+  } catch {
+    // Stream may close without a strict match; the session id header is
+    // what we need from this step.
+  }
+
+  const notifHeaders = { ...headers }
+  if (sessionId) notifHeaders['Mcp-Session-Id'] = sessionId
+  await fetch(url, {
+    method: 'POST',
+    headers: notifHeaders,
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    }),
+  })
+
+  return sessionId
+}
+
+export async function ensureSession(
+  gatewayUrl: string,
+  apiKey: string | null,
+): Promise<string | null> {
+  const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
+  const store = useMcpStore.getState()
+  const existing = store.getSession(url)
+
+  if (existing && existing.sessionId !== undefined) return existing.sessionId
+  if (existing?.initialising) return existing.initialising
+
+  const initPromise = doInitialise(url, apiKey)
+  useMcpStore.setState((s) => ({
+    sessions: {
+      ...s.sessions,
+      [url]: { sessionId: undefined, initialising: initPromise },
+    },
+  }))
+
+  try {
+    const sessionId = await initPromise
+    store.setSession(url, sessionId)
+    return sessionId
+  } catch (e) {
+    store.clearSession(url)
+    throw e
+  }
 }
 
 // ── Backend-proxied calls (admin / remote gateways) ──────────────────
