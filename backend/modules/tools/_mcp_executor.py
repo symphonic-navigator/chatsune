@@ -12,6 +12,28 @@ _log = logging.getLogger(__name__)
 _MCP_HTTP_TIMEOUT_S = 30
 _REQUEST_ID_COUNTER = 0
 
+MCP_PROTOCOL_VERSION = "2025-06-18"
+
+
+def _client_version() -> str:
+    """Resolve the version string sent in MCP `clientInfo`.
+
+    Tries Docker package name first (``chatsune-backend``), falls back
+    to host dev package (``chatsune``), then ``"unknown"``. Resolved
+    once at import time — version metadata does not change at runtime.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    for name in ("chatsune-backend", "chatsune"):
+        try:
+            return version(name)
+        except PackageNotFoundError:
+            continue
+    return "unknown"
+
+
+_CLIENT_VERSION = _client_version()
+
 
 def _next_request_id() -> int:
     global _REQUEST_ID_COUNTER
