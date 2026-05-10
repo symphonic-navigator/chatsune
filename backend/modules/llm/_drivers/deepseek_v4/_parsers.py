@@ -49,7 +49,9 @@ def parse_chunk_openrouter(
     ``finish_reason="tool_calls"`` the accumulator is finalised and one
     ``ToolCallEvent`` per accumulated call is appended in index order.
     Without ``tool_acc`` (or when no fragments arrive) tool-calls are
-    silently skipped — back-compat with callers that don't care.
+    silently skipped — defensive default for callers that don't need
+    tool-call handling. The current production caller (DeepSeekV4Driver)
+    always supplies an accumulator.
     """
     events: list[ProviderStreamEvent] = []
 
@@ -97,6 +99,14 @@ def parse_chunk_openrouter(
     # Terminal usage block (chunk with finish_reason or final usage info).
     # Guard against co-emitting StreamDone when StreamRefused was already
     # appended — the two events are mutually exclusive terminal states.
+    # Note: ToolCallEvent + StreamDone CAN co-occur on the same chunk —
+    # OR delivers usage in the same chunk as ``finish_reason="tool_calls"``
+    # (verified by probe; see deepseek-v4-wire-shapes.md). This is a
+    # deliberate behavioural improvement over the legacy _chunk_to_events
+    # path, which drops StreamDone in that case (latent token-accounting
+    # gap on tool-call iterations); the driver path captures the usage so
+    # iter_input_tokens/iter_output_tokens are populated for tool-call
+    # iterations too.
     usage = chunk.get("usage")
     if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
         details = usage.get("completion_tokens_details") or {}
