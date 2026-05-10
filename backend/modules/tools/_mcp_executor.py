@@ -176,6 +176,7 @@ class McpExecutor:
         api_key: str | None,
         tool_name: str,
         arguments: dict,
+        session_id: str | None = None,
     ) -> str:
         """Call a tool on a gateway and return JSON string {"stdout": ..., "error": ...}.
 
@@ -190,6 +191,8 @@ class McpExecutor:
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        if session_id:
+            headers["Mcp-Session-Id"] = session_id
 
         request_id = _next_request_id()
         payload = {
@@ -247,6 +250,7 @@ class McpExecutor:
         url: str,
         api_key: str | None,
         timeout: float = 10.0,
+        session_id: str | None = None,
     ) -> list[dict]:
         """Call tools/list on a gateway. Returns list of tool dicts or empty on failure.
 
@@ -259,6 +263,8 @@ class McpExecutor:
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        if session_id:
+            headers["Mcp-Session-Id"] = session_id
 
         request_id = _next_request_id()
         payload = {
