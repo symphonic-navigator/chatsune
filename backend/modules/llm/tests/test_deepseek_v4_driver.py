@@ -57,15 +57,6 @@ def test_deepseek_v4_capability_spec_for_openrouter():
     assert spec.tools.exclusive_with_reasoning is False
 
 
-def test_deepseek_v4_capability_spec_is_router_agnostic_for_now():
-    """Plan 1 ships only the OR builder; capability spec at this stage is
-    identical regardless of (adapter_type, slug). Plans 2-4 may diverge it
-    per router (e.g. Novita drops 'max' from effort buckets)."""
-    or_spec = deepseek_v4_capability_spec(adapter_type="openrouter_http", slug="deepseek/deepseek-v4-pro")
-    nano_spec = deepseek_v4_capability_spec(adapter_type="nano_gpt_http", slug="deepseek/deepseek-v4-pro:thinking")
-    assert or_spec == nano_spec
-
-
 def _make_request(
     *, effort: str | None, reasoning_mode: str = "on",
 ) -> CompletionRequest:
@@ -778,8 +769,8 @@ def test_or_flash_quirk_applicable(adapter_type: str, slug: str, expected: bool)
         ("ollama_http", "deepseek-v4-flash", ["high", "max"]),
         # Ollama + Pro: both
         ("ollama_http", "deepseek-v4-pro", ["high", "max"]),
-        # Future adapters keep the default until probed
-        ("nano_gpt_http", "deepseek/deepseek-v4-flash", ["high", "max"]),
+        # Future un-driver-aware adapters keep the default until probed.
+        # nano-gpt has its own driver branch (Task 2) — covered separately.
         ("novita_http", "deepseek/deepseek-v4-pro", ["high", "max"]),
     ],
 )
