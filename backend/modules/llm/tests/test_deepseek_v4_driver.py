@@ -555,6 +555,7 @@ def test_parser_ollama_emits_multiple_tool_call_events_for_parallel_calls():
     assert tool_calls[0].name == "get_weather"
     assert tool_calls[0].arguments == '{"city": "Berlin"}'
     assert tool_calls[1].id == "call_idgrvibj"
+    assert tool_calls[1].name == "get_weather"
     assert tool_calls[1].arguments == '{"city": "Tokyo"}'
 
 
