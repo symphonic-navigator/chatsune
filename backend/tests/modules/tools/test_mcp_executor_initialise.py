@@ -13,6 +13,7 @@ import backend.modules.tools._mcp_executor  # ensure module is loaded  # noqa: F
 _mcp_executor_mod = sys.modules["backend.modules.tools._mcp_executor"]
 
 from backend.modules.tools._mcp_executor import (  # noqa: E402
+    _NULL_LOCK,
     MCP_PROTOCOL_VERSION,
     McpExecutor,
 )
@@ -169,3 +170,14 @@ async def test_initialise_payload_advertises_protocol_version_and_capabilities(m
     assert params["capabilities"] == {}
     assert params["clientInfo"]["name"] == "chatsune"
     assert isinstance(params["clientInfo"]["version"], str)
+
+
+@pytest.mark.asyncio
+async def test_null_lock_is_a_no_op_async_context_manager():
+    """_NULL_LOCK must be usable as `async with` and must NOT suppress exceptions."""
+    async with _NULL_LOCK:
+        pass
+
+    with pytest.raises(RuntimeError):
+        async with _NULL_LOCK:
+            raise RuntimeError("must propagate")
