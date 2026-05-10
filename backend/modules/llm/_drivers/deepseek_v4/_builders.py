@@ -190,11 +190,19 @@ def build_request_for_novita(
 
     base = _novita_build_request_body(request)
 
-    # Reasoning off OR no explicit effort: delegate unchanged.
-    if (
-        request.extras.reasoning_mode == "off"
-        or request.extras.reasoning_effort is None
-    ):
+    # Reasoning off: the base builder writes the OpenRouter unified shape
+    # ``reasoning: {enabled: false}`` which DSv4 on Novita SILENTLY IGNORES
+    # (probed 2026-05-10: model still produces ~180 reasoning_tokens).
+    # The signal Novita honours for DSv4 is the vLLM-style top-level
+    # ``enable_thinking: false`` (probed: 0 reasoning_tokens). Drop the
+    # ineffective reasoning block and write the working signal instead.
+    if request.extras.reasoning_mode == "off":
+        base.pop("reasoning", None)
+        base["enable_thinking"] = False
+        return base
+
+    # Reasoning on, no explicit effort: delegate unchanged.
+    if request.extras.reasoning_effort is None:
         return base
 
     user_effort = request.extras.reasoning_effort

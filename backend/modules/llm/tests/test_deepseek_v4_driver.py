@@ -867,14 +867,18 @@ def test_builder_novita_rejects_invalid_effort_string() -> None:
         )
 
 
-def test_builder_novita_no_effort_when_reasoning_off() -> None:
+def test_builder_novita_reasoning_off_uses_enable_thinking_false() -> None:
+    """Novita ignores ``reasoning: {enabled: false}`` for DSv4 (probed
+    2026-05-10: model still produces reasoning_tokens). The wire-signal
+    Novita honours is ``enable_thinking: false`` at the top level."""
     request = _make_request(effort=None, reasoning_mode="off")
     body = build_request_for_novita(
         slug="deepseek/deepseek-v4-pro", request=request,
     )
-    # Reasoning off: delegate unchanged. Whatever the base builder
-    # produces is fine — we just must not raise.
-    # (Don't assert on reasoning field shape; the base builder owns it.)
+    assert body.get("enable_thinking") is False
+    # The ineffective reasoning block must not coexist with enable_thinking
+    # — we drop it to keep the wire shape unambiguous.
+    assert "reasoning" not in body
 
 
 def test_parser_novita_emits_content_delta() -> None:
