@@ -64,3 +64,29 @@ class TestSessionMcpRegistry:
         reg.register(_make_handle(name="homelab"))
         with pytest.raises(ValueError, match="already registered"):
             reg.register(_make_handle(name="homelab"))
+
+    def test_unregister_by_id_removes_handle_and_indices(self):
+        reg = SessionMcpRegistry()
+        handle = _make_handle(name="gw1")
+        reg.register(handle)
+        # Sanity: tool resolvable before unregister
+        gw, _ = reg.resolve("gw1__read_file")
+        assert gw.id == "gw-1"
+
+        removed = reg.unregister_by_id("gw-1")
+        assert removed is True
+
+        # Gateway gone
+        assert reg.gateway_for_id("gw-1") is None
+        assert "gw1" not in reg.gateways
+        # Tool indices pruned — resolve raises KeyError
+        with pytest.raises(KeyError):
+            reg.resolve("gw1__read_file")
+        assert reg.is_mcp_tool("gw1__read_file") is False
+
+    def test_unregister_by_id_unknown_returns_false(self):
+        reg = SessionMcpRegistry()
+        reg.register(_make_handle(name="gw1"))
+        assert reg.unregister_by_id("does-not-exist") is False
+        # Original registration still intact
+        assert reg.gateway_for_id("gw-1") is not None
