@@ -97,6 +97,17 @@ def resolve_capabilities(
     model_id: str,
     adapter: _AdapterCapabilityProvider,
 ) -> ResolvedCapabilities:
+    # Driver lookup wins — drivers handle premium models with router-
+    # specific quirks that the declarative yaml table cannot encode.
+    # See devdocs/specs/driver-layer.md and INSIGHTS.md INS-040.
+    from backend.modules.llm._drivers import match_driver
+    driver_cls = match_driver(model_id)
+    if driver_cls is not None:
+        return driver_cls().capability_spec(
+            adapter_type=adapter_type, slug=model_id,
+        )
+
+    # Existing fallback chain: yaml -> adapter heuristic -> default.
     if hint := _yaml_lookup(adapter_type, model_id):
         return ResolvedCapabilities(
             reasoning=hint.reasoning,
