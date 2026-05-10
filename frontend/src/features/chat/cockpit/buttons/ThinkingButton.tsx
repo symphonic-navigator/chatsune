@@ -2,6 +2,18 @@ import { useState, useRef, useEffect } from 'react'
 import type { ReasoningCapability } from '@/core/types/llm'
 import { CockpitButton } from '../CockpitButton'
 
+// Effort vocabulary -> short badge label. Explicit mapping disambiguates
+// "max" from "medium" (both would otherwise abbreviate to "M") and gives
+// "xhigh" a stable single-character form. Unknown values fall back to the
+// first letter uppercased.
+const EFFORT_BADGE: Record<string, string> = {
+  low: 'L',
+  medium: 'M',
+  high: 'H',
+  xhigh: 'X',
+  max: '+',
+}
+
 type Props = {
   reasoning: ReasoningCapability
   mode: 'off' | 'on'
@@ -92,7 +104,9 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
   // Effort initial shown as a small badge in the bottom-right of the button
   // — only when reasoning is on AND a bucket is selected. ``label`` keeps
   // the full word for hover-tooltip + screen readers.
-  const effortBadge = active && hasEffort && effort ? effort[0].toUpperCase() : undefined
+  const effortBadge = active && hasEffort && effort
+    ? (EFFORT_BADGE[effort] ?? effort[0].toUpperCase())
+    : undefined
   const label = active
     ? hasEffort && effort
       ? `Thinking · ${effort.charAt(0).toUpperCase() + effort.slice(1)}`
