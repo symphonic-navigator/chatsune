@@ -609,7 +609,7 @@ class NanoGptHttpAdapter(BaseAdapter):
                 block["switching_mode"]
             )
             resolved = resolve_capabilities(
-                adapter_type="nano_gpt",
+                adapter_type=self.adapter_type,
                 model_id=block["model_id"],
                 adapter=self,
             )
