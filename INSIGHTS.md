@@ -1690,3 +1690,67 @@ buckets — no Flash-quirk like INS-041 here.
 DSv4 (probed: 128 cached tokens on a tool-call request). OR shows the
 same field; nano-gpt does not (per existing memory). When QA-ing
 cache-related features for DSv4, Novita is a viable alternative to OR.
+
+## INS-043 — Driver layer capability-only mode (nano-gpt + DSv4)
+
+**Date:** 2026-05-10
+
+**Context:** When integrating DeepSeek V4 across four routers (OR, Ollama
+Cloud, Novita, nano-gpt) we found nano-gpt's existing adapter already
+covers DSv4 wire-shape needs adequately:
+
+- Slug-pair switching for thinking on/off (`:thinking` suffix) is
+  encoded directly in the URL slug — nano-gpt's
+  `_nano_gpt_http.py:402-424` handles this without driver help.
+- Reasoning streams as `delta.reasoning` (OR-unified shape), already
+  parsed by `_nano_gpt_http._chunk_to_events`.
+- Tool-calls are delivered atomically (single chunk, full args), which
+  the existing accumulator handles as a degenerate case.
+
+The only DSv4-specific knowledge the existing path lacks is the
+**capability shape** itself: on/off-only reasoning (no effort buckets,
+because nano-gpt's slug-pair encoding already covers thinking mode),
+plus a slug-based `first_class_support` differentiation (curated
+DSv4 family yes; `TEE/*` and `*-cheaper` upstream paths no).
+
+**Decision:** Introduce a "capability-only driver arm" pattern. The
+DSv4 driver's `capability_spec` gains a `nano_gpt_http` branch with
+its own logic, while `build_request` and `parse_chunk` continue to
+raise `NotImplementedError` for that adapter — *by design, not as a
+TODO*.
+
+This shape:
+
+1. Keeps the canonical DSv4 capability truth in one place (the driver),
+   so the UI behaves consistently regardless of adapter.
+2. Avoids duplicating the nano-gpt adapter's (working) wire-shape code
+   into a parallel driver path.
+3. Reflects the "best effort, not gold-plating" product stance for
+   nano-gpt — we coupled minimally to a provider whose pflege of
+   basics has been historically uneven.
+
+**Generalises to:** any future provider where the existing adapter
+already implements the wire shape correctly, but the model has
+provider-specific capability rules worth centralising. The driver
+arm acts purely as a capability lookup; wire calls stay in the
+adapter.
+
+**Anti-pattern this prevents:** dispatching a "complete the
+asymmetry" task that would copy `build_request_*` and `parse_chunk_*`
+into the driver for nano-gpt, duplicating logic and increasing
+surface area for drift between the driver arm and the live adapter
+path. The `NotImplementedError` messages and class docstring spell
+this out so it's not mistaken for unfinished work.
+
+**Slug-based `first_class_support`:** A second sub-decision worth
+recording. We were tempted to introduce a "do not recommend" list
+or new `is_curated` field, but `first_class_support` already encodes
+the right semantic: it's the UI signal for "this is a path the
+product recommends." Marking nano-gpt's `TEE/*` and `*-cheaper`
+variants as `first_class_support=False` (while still listing them)
+matches existing UI behaviour and avoids schema growth.
+
+**Re-probe condition:** if nano-gpt ever introduces effort granularity
+on the `:thinking` slug (e.g. `:thinking-max` or a real
+`reasoning.effort` parameter that reaches the model), revisit this
+to expose buckets. As of 2026-05-10, no such surface exists.
