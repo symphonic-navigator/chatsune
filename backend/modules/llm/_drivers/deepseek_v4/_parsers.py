@@ -15,7 +15,9 @@ concern (covered in the spec's worked example) but not yet wired here.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
+from uuid import uuid4
 
 from backend.modules.llm._adapters._events import (
     ContentDelta,
@@ -23,6 +25,7 @@ from backend.modules.llm._adapters._events import (
     StreamDone,
     StreamRefused,
     ThinkingDelta,
+    ToolCallEvent,
 )
 
 
@@ -101,6 +104,18 @@ def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEve
     thinking = message.get("thinking")
     if thinking:
         events.append(ThinkingDelta(delta=thinking))
+
+    # Tool-calls — Ollama Cloud delivers these atomically per chunk
+    # (one chunk holds the complete list of tool-calls; no incremental
+    # accumulation across chunks). See
+    # devdocs/research/ollama-cloud-tool-calls.md.
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        events.append(ToolCallEvent(
+            id=tc.get("id") or f"call_{uuid4().hex[:12]}",
+            name=fn.get("name", ""),
+            arguments=json.dumps(fn.get("arguments") or {}),
+        ))
 
     # Terminal handling
     if chunk.get("done"):

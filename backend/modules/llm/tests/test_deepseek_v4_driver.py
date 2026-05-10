@@ -8,6 +8,7 @@ from backend.modules.llm._adapters._events import (
     StreamDone,
     StreamRefused,
     ThinkingDelta,
+    ToolCallEvent,
 )
 from backend.modules.llm._drivers import match_driver
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
@@ -500,3 +501,98 @@ def test_dsv4_driver_build_request_for_unsupported_adapter_still_raises_on_novit
             slug="deepseek/deepseek-v4-pro",
             request=_make_request(effort="high"),
         )
+
+
+def test_parser_ollama_emits_tool_call_event_for_single_call():
+    """Ollama Cloud delivers tool-calls atomically in a single NDJSON chunk
+    (no streaming accumulation). One entry → one ToolCallEvent."""
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call_5ysinpeh",
+                "function": {
+                    "index": 0,
+                    "name": "get_time",
+                    "arguments": {"timezone": "Asia/Tokyo"},
+                },
+            }],
+        },
+        "done": False,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 1
+    tc = tool_calls[0]
+    assert tc.id == "call_5ysinpeh"
+    assert tc.name == "get_time"
+    # arguments is a JSON-encoded STRING per ToolCallEvent contract,
+    # not the dict that Ollama delivers on the wire.
+    assert tc.arguments == '{"timezone": "Asia/Tokyo"}'
+
+
+def test_parser_ollama_emits_multiple_tool_call_events_for_parallel_calls():
+    """Multiple parallel tool-calls arrive as a single chunk with a list of
+    entries; the parser emits one ToolCallEvent per entry, in order."""
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {"id": "call_iprdkyx2", "function": {"index": 0, "name": "get_weather", "arguments": {"city": "Berlin"}}},
+                {"id": "call_idgrvibj", "function": {"index": 1, "name": "get_weather", "arguments": {"city": "Tokyo"}}},
+            ],
+        },
+        "done": False,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 2
+    assert tool_calls[0].id == "call_iprdkyx2"
+    assert tool_calls[0].name == "get_weather"
+    assert tool_calls[0].arguments == '{"city": "Berlin"}'
+    assert tool_calls[1].id == "call_idgrvibj"
+    assert tool_calls[1].name == "get_weather"
+    assert tool_calls[1].arguments == '{"city": "Tokyo"}'
+
+
+def test_parser_ollama_synthesises_id_when_missing():
+    """Defence in depth: if Ollama ever omits tool_call.id, the parser
+    synthesises a stable-shape ID rather than crashing or sending an
+    empty string downstream."""
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "function": {"name": "noop", "arguments": {}},
+            }],
+        },
+        "done": False,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].id.startswith("call_")
+    assert len(tool_calls[0].id) == len("call_") + 12  # 12 hex chars after the prefix
+
+
+def test_parser_ollama_thinking_and_content_chunks_emit_no_tool_calls():
+    """Sanity: chunks that carry only thinking or content (no tool_calls
+    key) MUST NOT emit any ToolCallEvent. Probe C confirmed Ollama never
+    sends thinking + tool_calls in the same chunk; this guard ensures the
+    parser stays correct if that invariant ever shifts."""
+    thinking_chunk = {"message": {"thinking": "let me think"}, "done": False}
+    content_chunk = {"message": {"content": "hello"}, "done": False}
+    assert not any(
+        isinstance(e, ToolCallEvent)
+        for e in parse_chunk_ollama_cloud(chunk=thinking_chunk)
+    )
+    assert not any(
+        isinstance(e, ToolCallEvent)
+        for e in parse_chunk_ollama_cloud(chunk=content_chunk)
+    )
