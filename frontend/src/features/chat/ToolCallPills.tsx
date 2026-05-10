@@ -41,6 +41,10 @@ export function ToolCallPills({ toolCalls }: ToolCallPillsProps) {
     <div className="mb-2 flex flex-wrap gap-1.5">
       {toolCalls.map((tc, idx) => {
         const colour = tc.success ? '245,194,131' : '243,139,168'
+        // Treat both null and empty string as "no response" — avoids
+        // rendering an empty Response section for legacy persisted messages
+        // and for the brief moment between live tool start and completion.
+        const hasResult = tc.result_content != null && tc.result_content !== ''
         return (
           <div key={tc.tool_call_id} className="relative">
             <button
@@ -64,10 +68,15 @@ export function ToolCallPills({ toolCalls }: ToolCallPillsProps) {
                   background: 'rgba(20, 18, 28, 0.98)',
                   border: `1px solid rgba(${colour},0.25)`,
                   boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  maxHeight: 320,
+                  overflowY: 'auto',
                 }}
               >
                 <div className="mb-1.5 text-[10px] font-medium" style={{ color: `rgba(${colour},0.9)` }}>
                   {tc.tool_name}
+                </div>
+                <div className="mb-1 text-[10px] font-medium" style={{ color: `rgba(${colour},0.9)` }}>
+                  Request
                 </div>
                 <pre
                   className="whitespace-pre-wrap text-[11px] leading-relaxed text-white/50"
@@ -75,6 +84,22 @@ export function ToolCallPills({ toolCalls }: ToolCallPillsProps) {
                 >
                   {formatArgs(tc.arguments)}
                 </pre>
+                {hasResult && (
+                  <>
+                    <div
+                      className="mt-2 mb-1 text-[10px] font-medium"
+                      style={{ color: `rgba(${colour},0.9)` }}
+                    >
+                      Response
+                    </div>
+                    <pre
+                      className="whitespace-pre-wrap text-[11px] leading-relaxed text-white/50"
+                      style={{ fontFamily: "'Courier New', monospace" }}
+                    >
+                      {tc.result_content}
+                    </pre>
+                  </>
+                )}
               </div>
             )}
           </div>
