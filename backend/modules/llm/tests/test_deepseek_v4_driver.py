@@ -6,17 +6,20 @@ import pytest
 from backend.modules.llm._adapters._events import (
     ContentDelta,
     StreamDone,
+    StreamRefused,
     ThinkingDelta,
 )
 from backend.modules.llm._drivers import match_driver
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_ollama_cloud,
     build_request_for_openrouter,
 )
 from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
 )
 from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
 from shared.dtos.chat import ChatSessionExtras
@@ -239,11 +242,6 @@ def test_dsv4_driver_build_request_for_unsupported_adapter_raises():
         )
 
 
-from backend.modules.llm._drivers.deepseek_v4._builders import (
-    build_request_for_ollama_cloud,
-)
-
-
 def test_builder_ollama_reasoning_off():
     """reasoning_mode='off' → think=false, no effort translation."""
     body = build_request_for_ollama_cloud(
@@ -303,12 +301,6 @@ def test_builder_ollama_inherits_message_translation():
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][0]["content"] == "Hello"
-
-
-from backend.modules.llm._adapters._events import StreamRefused
-from backend.modules.llm._drivers.deepseek_v4._parsers import (
-    parse_chunk_ollama_cloud,
-)
 
 
 def test_parser_ollama_extracts_visible_content():
