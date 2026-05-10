@@ -118,8 +118,7 @@ export async function ensureSession(
   apiKey: string | null,
 ): Promise<string | null> {
   const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
-  const store = useMcpStore.getState()
-  const existing = store.getSession(url)
+  const existing = useMcpStore.getState().getSession(url)
 
   if (existing && existing.sessionId !== undefined) return existing.sessionId
   if (existing?.initialising) return existing.initialising
@@ -134,10 +133,10 @@ export async function ensureSession(
 
   try {
     const sessionId = await initPromise
-    store.setSession(url, sessionId)
+    useMcpStore.getState().setSession(url, sessionId)
     return sessionId
   } catch (e) {
-    store.clearSession(url)
+    useMcpStore.getState().clearSession(url)
     throw e
   }
 }
