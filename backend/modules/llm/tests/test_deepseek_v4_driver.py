@@ -799,3 +799,46 @@ def test_capability_spec_buckets(
     assert spec.reasoning is not None
     assert spec.reasoning.effort.buckets == expected_buckets
     assert spec.reasoning.effort.default_bucket == "high"
+
+
+def test_builder_silent_downgrade_or_flash_max(caplog) -> None:
+    """OR + Flash + user-effort 'max' must downgrade to 'high' silently
+    and emit one logger.warning. The wire body must show effort='high',
+    not 'xhigh'."""
+    request = _make_request(effort="max")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-flash", request=request,
+        )
+    assert body["reasoning"]["effort"] == "high"
+    assert any(
+        "DSv4 OR-Flash quirk" in rec.message and "downgraded" in rec.message
+        for rec in caplog.records
+    ), f"expected downgrade warning, got: {[r.message for r in caplog.records]}"
+
+
+def test_builder_no_downgrade_or_pro_max(caplog) -> None:
+    """OR + Pro + user-effort 'max' continues to map to wire 'xhigh',
+    no warning."""
+    request = _make_request(effort="max")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+    assert body["reasoning"]["effort"] == "xhigh"
+    assert not any(
+        "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
+    )
+
+
+def test_builder_no_downgrade_or_flash_high(caplog) -> None:
+    """OR + Flash + user-effort 'high' is unaffected, no warning."""
+    request = _make_request(effort="high")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-flash", request=request,
+        )
+    assert body["reasoning"]["effort"] == "high"
+    assert not any(
+        "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
+    )
