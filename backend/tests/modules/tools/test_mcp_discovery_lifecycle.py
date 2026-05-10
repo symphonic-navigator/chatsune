@@ -1,6 +1,5 @@
 """Tests for _discover_single_gateway lifecycle integration."""
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
