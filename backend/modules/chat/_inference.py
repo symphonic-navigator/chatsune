@@ -51,6 +51,52 @@ _TRACE_DELTAS = os.environ.get("LLM_TRACE_DELTAS") == "1"
 _MAX_TOOL_ITERATIONS = 5
 _REFUSAL_FALLBACK_TEXT = "The model declined this request."
 
+# When iteration 0 of a completion ends cleanly (no error, no abort, no
+# refusal) but produces zero content / zero thinking / zero tool_calls,
+# retry the iteration up to ``_EMPTY_RESPONSE_MAX_RETRIES`` more times
+# with exponential backoff. Provider-side intermittent glitches (observed
+# on Novita DSv4 Flash, 2026-05-10) produce HTTP-200 streams that the
+# existing 429/5xx retry path doesn't catch. Only iteration 0 is retried —
+# legitimately-empty assistant turns inside the tool loop are out of scope.
+_EMPTY_RESPONSE_MAX_RETRIES = 2  # 3 total attempts
+_EMPTY_RESPONSE_BACKOFF_BASE = 1.0  # seconds; sleeps 1s, then 2s
+
+
+def _should_retry_empty_response(
+    *,
+    iteration: int,
+    cancelled: bool,
+    status: str,
+    iter_content: str,
+    iter_thinking: str,
+    iter_tool_calls: list,
+    empty_attempt: int,
+) -> bool:
+    """Predicate for the empty-response retry decision.
+
+    Returns True when:
+      - we are on iteration 0 (later iterations may legitimately be empty
+        after a tool call — out of scope for this fix);
+      - the stream ended cleanly (not cancelled / not in error / not
+        aborted / not refused);
+      - none of {content, thinking, tool_calls} produced any output;
+      - the per-iteration retry budget has not been exhausted.
+
+    The conditions match the precise pattern observed on Novita DSv4 Flash
+    on 2026-05-10: HTTP 200, ``[DONE]`` received, zero deltas of any kind.
+    """
+    if iteration != 0:
+        return False
+    if cancelled:
+        return False
+    if status in ("error", "aborted", "refused"):
+        return False
+    if iter_content or iter_thinking or iter_tool_calls:
+        return False
+    if empty_attempt >= _EMPTY_RESPONSE_MAX_RETRIES:
+        return False
+    return True
+
 
 def make_timeline_entry(
     *,
@@ -205,163 +251,199 @@ class InferenceRunner:
 
         try:
             for iteration in range(_MAX_TOOL_ITERATIONS + 1):
-                stream = (
-                    await stream_fn(extra_messages)
-                    if asyncio.iscoroutinefunction(stream_fn)
-                    else stream_fn(extra_messages)
-                )
-
-                # Per-iteration accumulators
-                iter_content = ""
-                iter_thinking = ""
-                iter_refusal_text: str | None = None
-                iter_tool_calls: list[ToolCallEvent] = []
-                iter_reasoning_tokens: int | None = None
-                iter_input_tokens: int | None = None
-                iter_output_tokens: int | None = None
-                cancelled = False
-                stream_end_reason: str = "unknown"
-
-                if settings.inference_logging:
-                    _log.info(
-                        "inference.stream.begin session=%s correlation_id=%s iteration=%d",
-                        session_id, correlation_id, iteration,
+                # Empty-response retry counter: scoped to this iteration.
+                # Reset on every outer-loop turn so iteration 1+ starts fresh
+                # (defensive — we don't actually retry past iteration 0).
+                empty_attempt = 0
+                while True:
+                    stream = (
+                        await stream_fn(extra_messages)
+                        if asyncio.iscoroutinefunction(stream_fn)
+                        else stream_fn(extra_messages)
                     )
 
-                # If the stream raises mid-iteration we still want any
-                # partial content/thinking the user already saw to be
-                # rolled up so the persistence guard (further down) can
-                # save them. Without this, a hard internal error after
-                # streaming begins drops every token between the last
-                # successful event and the exception.
-                try:
-                    async for event in stream:
-                        if cancel_event and cancel_event.is_set():
-                            cancelled = True
-                            status = "cancelled"
-                            stream_end_reason = "cancelled"
-                            break
+                    # Per-iteration accumulators. Reset on every retry —
+                    # that's correct, because the empty-retry path only
+                    # fires when iter_content/iter_thinking/iter_tool_calls
+                    # are all empty by definition, so nothing is lost.
+                    iter_content = ""
+                    iter_thinking = ""
+                    iter_refusal_text: str | None = None
+                    iter_tool_calls: list[ToolCallEvent] = []
+                    iter_reasoning_tokens: int | None = None
+                    iter_input_tokens: int | None = None
+                    iter_output_tokens: int | None = None
+                    cancelled = False
+                    stream_end_reason: str = "unknown"
 
-                        match event:
-                            case ContentDelta(delta=delta):
-                                if t_first_token is None:
-                                    t_first_token = time.monotonic()
-                                iter_content += delta
-                                if _TRACE_DELTAS:
-                                    _log.info(
-                                        "LLM_TRACE path=inference-emit kind=content "
-                                        "correlation_id=%s len=%d preview=%r",
-                                        correlation_id, len(delta), delta[:40],
+                    if settings.inference_logging:
+                        _log.info(
+                            "inference.stream.begin session=%s correlation_id=%s iteration=%d",
+                            session_id, correlation_id, iteration,
+                        )
+
+                    # If the stream raises mid-iteration we still want any
+                    # partial content/thinking the user already saw to be
+                    # rolled up so the persistence guard (further down) can
+                    # save them. Without this, a hard internal error after
+                    # streaming begins drops every token between the last
+                    # successful event and the exception.
+                    try:
+                        async for event in stream:
+                            if cancel_event and cancel_event.is_set():
+                                cancelled = True
+                                status = "cancelled"
+                                stream_end_reason = "cancelled"
+                                break
+
+                            match event:
+                                case ContentDelta(delta=delta):
+                                    if t_first_token is None:
+                                        t_first_token = time.monotonic()
+                                    iter_content += delta
+                                    if _TRACE_DELTAS:
+                                        _log.info(
+                                            "LLM_TRACE path=inference-emit kind=content "
+                                            "correlation_id=%s len=%d preview=%r",
+                                            correlation_id, len(delta), delta[:40],
+                                        )
+                                    await emit_fn(ChatContentDeltaEvent(
+                                        correlation_id=correlation_id, delta=delta,
+                                    ))
+
+                                case ThinkingDelta(delta=delta):
+                                    if t_first_token is None:
+                                        t_first_token = time.monotonic()
+                                    iter_thinking += delta
+                                    if _TRACE_DELTAS:
+                                        _log.info(
+                                            "LLM_TRACE path=inference-emit kind=thinking "
+                                            "correlation_id=%s len=%d preview=%r",
+                                            correlation_id, len(delta), delta[:40],
+                                        )
+                                    await emit_fn(ChatThinkingDeltaEvent(
+                                        correlation_id=correlation_id, delta=delta,
+                                    ))
+
+                                case ToolCallEvent() as tc:
+                                    iter_tool_calls.append(tc)
+
+                                case StreamDone() as done:
+                                    usage = {}
+                                    if done.input_tokens is not None:
+                                        usage["input_tokens"] = done.input_tokens
+                                    if done.output_tokens is not None:
+                                        usage["output_tokens"] = done.output_tokens
+                                    if done.reasoning_tokens is not None:
+                                        usage["reasoning_tokens"] = done.reasoning_tokens
+                                    iter_reasoning_tokens = done.reasoning_tokens
+                                    iter_input_tokens = done.input_tokens
+                                    iter_output_tokens = done.output_tokens
+                                    stream_end_reason = "done"
+
+                                case StreamError() as err:
+                                    status = "error"
+                                    stream_end_reason = f"error:{err.error_code}"
+                                    await emit_fn(ChatStreamErrorEvent(
+                                        correlation_id=correlation_id,
+                                        error_code=err.error_code,
+                                        recoverable=err.error_code == "provider_unavailable",
+                                        user_message=err.message,
+                                        timestamp=datetime.now(timezone.utc),
+                                    ))
+
+                                case StreamSlow():
+                                    await emit_fn(ChatStreamSlowEvent(
+                                        correlation_id=correlation_id,
+                                        timestamp=datetime.now(timezone.utc),
+                                    ))
+
+                                case StreamAborted() as ab:
+                                    _log.warning(
+                                        "chat.stream.aborted session=%s correlation_id=%s reason=%s",
+                                        session_id, correlation_id, ab.reason,
                                     )
-                                await emit_fn(ChatContentDeltaEvent(
-                                    correlation_id=correlation_id, delta=delta,
-                                ))
+                                    status = "aborted"
+                                    stream_end_reason = f"aborted:{ab.reason}"
+                                    # Prometheus label name stays ``provider`` for
+                                    # dashboard backwards-compatibility; the value is
+                                    # now the adapter type (low-cardinality).
+                                    inferences_aborted_total.labels(
+                                        model=model_slug or "unknown",
+                                        provider=adapter_type or "unknown",
+                                    ).inc()
+                                    await emit_fn(ChatStreamErrorEvent(
+                                        correlation_id=correlation_id,
+                                        error_code="stream_aborted",
+                                        recoverable=True,
+                                        user_message="The response was interrupted. Please regenerate.",
+                                        timestamp=datetime.now(timezone.utc),
+                                    ))
 
-                            case ThinkingDelta(delta=delta):
-                                if t_first_token is None:
-                                    t_first_token = time.monotonic()
-                                iter_thinking += delta
-                                if _TRACE_DELTAS:
-                                    _log.info(
-                                        "LLM_TRACE path=inference-emit kind=thinking "
-                                        "correlation_id=%s len=%d preview=%r",
-                                        correlation_id, len(delta), delta[:40],
+                                case StreamRefused() as refused:
+                                    _log.warning(
+                                        "chat.stream.refused session=%s correlation_id=%s reason=%s",
+                                        session_id, correlation_id, refused.reason,
                                     )
-                                await emit_fn(ChatThinkingDeltaEvent(
-                                    correlation_id=correlation_id, delta=delta,
-                                ))
+                                    status = "refused"
+                                    stream_end_reason = f"refused:{refused.reason or 'unspecified'}"
+                                    iter_refusal_text = refused.refusal_text
+                                    await emit_fn(ChatStreamErrorEvent(
+                                        correlation_id=correlation_id,
+                                        error_code="refusal",
+                                        recoverable=True,
+                                        user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
+                                        timestamp=datetime.now(timezone.utc),
+                                    ))
+                    finally:
+                        # Accumulate per-iteration content/thinking onto the
+                        # full transcript even when the inner stream raised.
+                        # The outer ``except`` handler will then map the
+                        # exception to ``status="error"`` and the persistence
+                        # guard will save what the user already saw.
+                        full_content += iter_content
+                        if iter_thinking:
+                            full_thinking += iter_thinking
 
-                            case ToolCallEvent() as tc:
-                                iter_tool_calls.append(tc)
+                    if settings.inference_logging:
+                        _log.info(
+                            "inference.stream.end session=%s correlation_id=%s iteration=%d "
+                            "reason=%s tool_calls=%d content_chars=%d thinking_chars=%d "
+                            "input_tokens=%s output_tokens=%s reasoning_tokens=%s",
+                            session_id, correlation_id, iteration, stream_end_reason,
+                            len(iter_tool_calls), len(iter_content), len(iter_thinking),
+                            iter_input_tokens if iter_input_tokens is not None else "n/a",
+                            iter_output_tokens if iter_output_tokens is not None else "n/a",
+                            iter_reasoning_tokens if iter_reasoning_tokens is not None else "n/a",
+                        )
 
-                            case StreamDone() as done:
-                                usage = {}
-                                if done.input_tokens is not None:
-                                    usage["input_tokens"] = done.input_tokens
-                                if done.output_tokens is not None:
-                                    usage["output_tokens"] = done.output_tokens
-                                if done.reasoning_tokens is not None:
-                                    usage["reasoning_tokens"] = done.reasoning_tokens
-                                iter_reasoning_tokens = done.reasoning_tokens
-                                iter_input_tokens = done.input_tokens
-                                iter_output_tokens = done.output_tokens
-                                stream_end_reason = "done"
-
-                            case StreamError() as err:
-                                status = "error"
-                                stream_end_reason = f"error:{err.error_code}"
-                                await emit_fn(ChatStreamErrorEvent(
-                                    correlation_id=correlation_id,
-                                    error_code=err.error_code,
-                                    recoverable=err.error_code == "provider_unavailable",
-                                    user_message=err.message,
-                                    timestamp=datetime.now(timezone.utc),
-                                ))
-
-                            case StreamSlow():
-                                await emit_fn(ChatStreamSlowEvent(
-                                    correlation_id=correlation_id,
-                                    timestamp=datetime.now(timezone.utc),
-                                ))
-
-                            case StreamAborted() as ab:
-                                _log.warning(
-                                    "chat.stream.aborted session=%s correlation_id=%s reason=%s",
-                                    session_id, correlation_id, ab.reason,
-                                )
-                                status = "aborted"
-                                stream_end_reason = f"aborted:{ab.reason}"
-                                # Prometheus label name stays ``provider`` for
-                                # dashboard backwards-compatibility; the value is
-                                # now the adapter type (low-cardinality).
-                                inferences_aborted_total.labels(
-                                    model=model_slug or "unknown",
-                                    provider=adapter_type or "unknown",
-                                ).inc()
-                                await emit_fn(ChatStreamErrorEvent(
-                                    correlation_id=correlation_id,
-                                    error_code="stream_aborted",
-                                    recoverable=True,
-                                    user_message="The response was interrupted. Please regenerate.",
-                                    timestamp=datetime.now(timezone.utc),
-                                ))
-
-                            case StreamRefused() as refused:
-                                _log.warning(
-                                    "chat.stream.refused session=%s correlation_id=%s reason=%s",
-                                    session_id, correlation_id, refused.reason,
-                                )
-                                status = "refused"
-                                stream_end_reason = f"refused:{refused.reason or 'unspecified'}"
-                                iter_refusal_text = refused.refusal_text
-                                await emit_fn(ChatStreamErrorEvent(
-                                    correlation_id=correlation_id,
-                                    error_code="refusal",
-                                    recoverable=True,
-                                    user_message=refused.refusal_text or _REFUSAL_FALLBACK_TEXT,
-                                    timestamp=datetime.now(timezone.utc),
-                                ))
-                finally:
-                    # Accumulate per-iteration content/thinking onto the
-                    # full transcript even when the inner stream raised.
-                    # The outer ``except`` handler will then map the
-                    # exception to ``status="error"`` and the persistence
-                    # guard will save what the user already saw.
-                    full_content += iter_content
-                    if iter_thinking:
-                        full_thinking += iter_thinking
-
-                if settings.inference_logging:
-                    _log.info(
-                        "inference.stream.end session=%s correlation_id=%s iteration=%d "
-                        "reason=%s tool_calls=%d content_chars=%d thinking_chars=%d "
-                        "input_tokens=%s output_tokens=%s reasoning_tokens=%s",
-                        session_id, correlation_id, iteration, stream_end_reason,
-                        len(iter_tool_calls), len(iter_content), len(iter_thinking),
-                        iter_input_tokens if iter_input_tokens is not None else "n/a",
-                        iter_output_tokens if iter_output_tokens is not None else "n/a",
-                        iter_reasoning_tokens if iter_reasoning_tokens is not None else "n/a",
-                    )
+                    # Empty-response retry decision. Sits between the
+                    # stream.end log and the existing post-iteration
+                    # break checks (which must keep their relative order).
+                    # The predicate is extracted to a module-level helper
+                    # so it can be unit-tested in isolation.
+                    if _should_retry_empty_response(
+                        iteration=iteration,
+                        cancelled=cancelled,
+                        status=status,
+                        iter_content=iter_content,
+                        iter_thinking=iter_thinking,
+                        iter_tool_calls=iter_tool_calls,
+                        empty_attempt=empty_attempt,
+                    ):
+                        empty_attempt += 1
+                        backoff = _EMPTY_RESPONSE_BACKOFF_BASE * (
+                            2 ** (empty_attempt - 1)
+                        )
+                        _log.info(
+                            "inference.empty_response.retry session=%s "
+                            "correlation_id=%s attempt=%d/%d backoff=%.1fs",
+                            session_id, correlation_id,
+                            empty_attempt, _EMPTY_RESPONSE_MAX_RETRIES, backoff,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue  # re-execute the iteration body
+                    break  # exit while; fall through to existing logic
 
                 if cancelled or status in ("error", "aborted", "refused"):
                     break
