@@ -99,9 +99,9 @@ independent of the others.
                                │ written by orchestrator
                                │
 ┌──────────────────────────────────────────────────────────────────┐
-│  Backend  Chat orchestrator + MCP executor                       │
-│   • Orchestrator: stash extracted result text per tool_call_id,  │
-│     write into ToolCallRef before persisting assistant message.  │
+│  Backend  Inference loop + MCP executor                          │
+│   • Inference loop: pass result_str into make_timeline_entry()   │
+│     AND into ChatToolCallCompletedEvent (live carrier).          │
 │   • Executor: Accept header on every request. Branch on response │
 │     Content-Type (json | sse) to obtain the JSON-RPC reply.      │
 └──────────────────────────────────────────────────────────────────┘
@@ -164,32 +164,60 @@ interface TimelineEntryToolCall {
 
 ### 4.2 Backend population
 
-The chat orchestrator (`backend/modules/chat/_orchestrator.py`, around
-the existing `tool_call_id` flow at line ~315–360) already has the result
-in hand: `_mcp_executor.call_tool` returns
-`{"stdout": <text>, "error": <text|None>}` as a JSON string. The text
-extraction logic lives at `_mcp_executor.py:74–79`.
+The inference loop (`backend/modules/chat/_inference.py:540–712`)
+already produces the per-call `result_str` at line 545 (or the
+recoverable-error string at lines 542/555/568). That string is the
+single source of truth — what the model saw as the tool's output.
 
-Capture both halves into a per-call result string:
+Three places need to carry it forward:
 
-- On success (`error is None`): `result_content = stdout`
-- On error: `result_content = error`
-- On the `success: false` branch (failure to dispatch / executor crash):
-  same — whatever error string the executor produced.
+**(a) `ChatToolCallCompletedEvent` — for live UI updates.** The event
+already conveys `success`, `artefact_ref`, `image_refs`, and
+`moderated_count`. Add an optional `result_content: str | None = None`
+field carrying `result_str`. This is what makes the Response section
+appear in the pill *during* the stream, not just after reload — which
+is what the testers actually asked for ("see actual progress").
 
-When the assistant message is finalised and persisted, write
-`result_content` onto each `ToolCallRef` and the corresponding
-`TimelineEntryToolCall` for that `tool_call_id`. The existing tool-role
-message that carries the same content stays untouched — we are not
-de-duplicating storage here, the duplication is intentional and bounded
-by message lifetime.
+**(b) `make_timeline_entry()` (line 101 of `_inference.py`).** Add
+`result_content: str | None = None` parameter. Both call-sites of
+`TimelineEntryToolCall` inside this helper (the failure branch at
+line 121 and the generic-success branch at line 156) propagate it.
+Other entry kinds (knowledge / web / artefact / image) ignore the
+parameter — they don't have a Response section.
+
+**(c) `events.append(make_timeline_entry(...))` at line 693.** Pass
+`result_content=result_str`. This is the per-message persisted
+timeline that survives reload.
+
+The existing tool-role message at line 708 is untouched — it remains
+the LLM-context carrier. We are not de-duplicating storage; the small
+duplication is intentional and bounded by message lifetime.
 
 For client-executed tools (browser-side handlers, see
 `frontend/src/features/code-execution/clientToolHandler.ts`), the same
 field is populated when the result is sent back to the backend before
-the assistant message is sealed.
+the assistant message is sealed — same code path, same `result_str`.
 
-### 4.3 Frontend rendering
+### 4.3 Frontend live wiring
+
+`frontend/src/features/chat/useChatStream.ts:144–217` handles
+`CHAT_TOOL_CALL_COMPLETED`. Two changes:
+
+- Read `p.result_content` (string | null) from the event payload.
+- Pass it through into the `TimelineEntry` constructed in both the
+  failure branch (line 162) and the generic-success branch (line 205)
+  — same field name (`result_content`) on the entry.
+
+The other tool-name branches (artefact / generate_image / knowledge /
+web) do not carry `result_content` because they render specialised
+entries; they keep working unchanged.
+
+The legacy `ActiveToolCall` shape in `chatStore.ts:12` (the spinner
+state during a running call) does **not** need `result_content` — the
+spinner disappears the instant `appendStreamingEvent` lands, after
+which the pill (with Response) takes over.
+
+### 4.4 Frontend rendering
 
 Update `frontend/src/features/chat/ToolCallPills.tsx`:
 
@@ -223,6 +251,10 @@ Update `frontend/src/features/chat/ToolCallPills.tsx`:
 A short Vitest covers: (a) renders Response when `result_content` is
 present, (b) hides Response section when `null`, (c) `success: false`
 still renders the Response section (error text is content too).
+
+A second Vitest in `useChatStream.test.ts` confirms that
+`result_content` from the event payload reaches the appended
+`TimelineEntry` (both success and failure branches).
 
 ## 5. Detailed Design — Punkt 2: Streamable HTTP
 
