@@ -110,12 +110,18 @@ def make_timeline_entry(
     web_items: list | None = None,
     artefact_ref: ArtefactRefDto | None = None,
     image_refs: list | None = None,
+    result_content: str | None = None,
 ):
     """Map one completed tool call to its TimelineEntry variant.
 
     A failed tool always becomes a generic ``tool_call`` entry, regardless
     of which tool it was — empty knowledge/web pills would be confusing
     and a failed image generation has no refs to render.
+
+    ``result_content`` is the text the tool returned (or its error
+    message). Only carried on the generic ``tool_call`` entry — typed
+    entries (knowledge / web / artefact / image) render their own
+    structured payload and ignore the parameter.
     """
     if not success:
         return TimelineEntryToolCall(
@@ -125,6 +131,7 @@ def make_timeline_entry(
             arguments=arguments,
             success=False,
             moderated_count=moderated_count,
+            result_content=result_content,
         )
 
     if tool_name == "knowledge_search":
@@ -160,6 +167,7 @@ def make_timeline_entry(
         arguments=arguments,
         success=success,
         moderated_count=moderated_count,
+        result_content=result_content,
     )
 
 
@@ -636,6 +644,7 @@ class InferenceRunner:
                         artefact_ref=ref_for_event,
                         image_refs=image_refs_for_event,
                         moderated_count=moderated_count,
+                        result_content=result_str,
                         timestamp=datetime.now(timezone.utc),
                     ))
 
@@ -701,6 +710,7 @@ class InferenceRunner:
                         web_items=web_items_for_entry,
                         artefact_ref=ref_for_event,
                         image_refs=image_refs_for_entry,
+                        result_content=result_str,
                     ))
                     next_seq += 1
 

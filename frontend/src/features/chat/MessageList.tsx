@@ -126,6 +126,7 @@ function renderTimelineEntry(
         arguments: entry.arguments,
         success: entry.success,
         moderated_count: entry.moderated_count,
+        result_content: entry.result_content ?? null,
       }
       return <ToolCallPills key={k} toolCalls={[ref]} />
     }

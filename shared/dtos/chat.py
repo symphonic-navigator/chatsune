@@ -99,6 +99,7 @@ class ToolCallRefDto(BaseModel):
     arguments: dict
     success: bool
     moderated_count: int = 0
+    result_content: str | None = None
 
 
 class KnowledgeContextItem(BaseModel):
@@ -150,6 +151,7 @@ class TimelineEntryToolCall(BaseModel):
     arguments: dict
     success: bool
     moderated_count: int = 0
+    result_content: str | None = None
 
 
 class TimelineEntryArtefact(BaseModel):

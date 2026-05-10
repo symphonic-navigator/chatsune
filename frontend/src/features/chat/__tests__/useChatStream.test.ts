@@ -214,6 +214,53 @@ describe('useChatStream — CHAT_TOOL_CALL_COMPLETED', () => {
       expect(events[0].success).toBe(false)
     }
   })
+
+  it('forwards result_content from tool_call.completed into the TimelineEntry', () => {
+    const event = makeEvent({
+      type: 'chat.tool_call.completed',
+      correlation_id: 'c1',
+      payload: {
+        tool_call_id: 'tc-1',
+        tool_name: 'echo',
+        success: true,
+        arguments: { msg: 'hi' },
+        result_content: 'echo: hi',
+      },
+    })
+
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+
+    const events = readStream()?.streamingEvents ?? []
+    expect(events).toHaveLength(1)
+    expect(events[0].kind).toBe('tool_call')
+    if (events[0].kind === 'tool_call') {
+      expect(events[0].result_content).toBe('echo: hi')
+    }
+  })
+
+  it('forwards result_content on a failed tool call', () => {
+    const event = makeEvent({
+      type: 'chat.tool_call.completed',
+      correlation_id: 'c1',
+      payload: {
+        tool_call_id: 'tc-2',
+        tool_name: 'broken',
+        success: false,
+        arguments: {},
+        result_content: 'Error: tool blew up',
+      },
+    })
+
+    handleChatEvent(event, mockSendMessage as typeof import('../../../core/websocket/connection').sendMessage, 's1')
+
+    const events = readStream()?.streamingEvents ?? []
+    expect(events).toHaveLength(1)
+    expect(events[0].kind).toBe('tool_call')
+    if (events[0].kind === 'tool_call') {
+      expect(events[0].success).toBe(false)
+      expect(events[0].result_content).toBe('Error: tool blew up')
+    }
+  })
 })
 
 describe('useChatStream — CHAT_WEB_SEARCH_CONTEXT', () => {

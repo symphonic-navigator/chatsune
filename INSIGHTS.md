@@ -1754,3 +1754,78 @@ matches existing UI behaviour and avoids schema growth.
 on the `:thinking` slug (e.g. `:thinking-max` or a real
 `reasoning.effort` parameter that reaches the model), revisit this
 to expose buckets. As of 2026-05-10, no such surface exists.
+
+## INS-044 — Streamable HTTP session lifecycle is required by FastMCP-default servers (2026-05-10)
+
+**Date:** 2026-05-10
+
+**Context:** While polishing MCP integration we tested against a
+local FastMCP server (`/home/chris/projects/simple_mcp`). After
+adding `Accept: application/json, text/event-stream` to every MCP
+request — fixing 406 responses — calls still failed with HTTP 400
+`"Bad Request: Missing session ID"`.
+
+**Cause:** FastMCP's Streamable HTTP transport (mcp lib >= 1.27) is
+**stateful by default**. The protocol mandates a three-step lifecycle
+before any tool call:
+
+1. Client `POST /mcp` with `method: "initialize"` and capability
+   negotiation. Server responds with the `Mcp-Session-Id` header.
+2. Client stores the session id and sends it as `Mcp-Session-Id`
+   header on every subsequent request.
+3. Client sends a `notifications/initialized` notification to confirm
+   the handshake is complete.
+
+Servers can opt out via `stateless_http=True` (no session id required)
+or by accepting `json_response=True` clients in the looser JSON-only
+mode — but those are server-side switches, not something the client
+can negotiate. A *correct* MCP client must implement the lifecycle to
+be compatible with default-configured servers.
+
+**Decision:** **Out of scope** for the 2026-05-10 polish package. The
+MCP polish spec
+(`devdocs/specs/2026-05-10-mcp-pills-result-and-streamable-http-design.md`,
+§2 Non-Goals) already lists `Mcp-Session-Id` stateful session
+management as deferred. The package ships:
+
+- Accept header (both backend `_mcp_executor.py` and frontend
+  `mcpClient.ts`)
+- Content-Type dispatch (JSON / SSE) on the backend
+- Pill Response rendering
+
+A FastMCP server with `json_response=True` and either
+`stateless_http=True` *or* a server willing to skip the session check
+in JSON-only mode will work after this package. A FastMCP-default
+server (stateful, JSON or SSE) will return 400 until session
+lifecycle is implemented.
+
+**Trigger to revisit:** the first user request for "I want to point
+chatsune at a vanilla FastMCP server." Implementing the lifecycle is
+roughly:
+
+1. State on `GatewayHandle` — current session id, plus a small lock
+   so two concurrent requests don't initialise twice.
+2. `_mcp_executor.discover_tools` becomes the natural place to drive
+   the initialise handshake (it runs once at session start), then
+   stash the session id on the handle.
+3. Every subsequent `call_tool` reads the session id off the handle
+   and sets `Mcp-Session-Id` header. On 404 (`Session not found,
+   please reinitialize`) re-run `initialize` and retry once.
+4. Frontend `mcpClient.ts` needs the same lifecycle for `tier="local"`
+   gateways. This is browser-fetch territory — straightforward but
+   doubles the request count for tools/list.
+
+**Why not now:** the symptom that drove this work was tester pills
+showing no output, plus one Streamable-HTTP-aware server. Lifecycle
+implementation has its own design surface (failure modes,
+re-initialisation triggers, frontend storage of session id) and
+deserves its own spec. Bundling it into the polish package would
+have doubled the diff and delayed the pill fix that the testers
+actually asked for. Pareto.
+
+**Anti-pattern this prevents:** scope creep on a polish package.
+"While we're in here, let's also implement sessions" feels efficient
+but produces a spec that covers two distinct user-visible problems
+(what-did-the-tool-return AND can-we-talk-to-arbitrary-MCP-servers)
+in one design pass. Splitting them keeps each spec coherent and the
+PRs reviewable.

@@ -46,7 +46,10 @@ export async function mcpToolsList(
   timeoutMs: number = 10_000,
 ): Promise<{ tools: McpToolDefinition[]; errors: Array<{ server: string; error: string }> }> {
   const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 
   const controller = new AbortController()
@@ -81,7 +84,10 @@ export async function mcpToolsCall(
   timeoutMs: number = 30_000,
 ): Promise<{ stdout: string; error: string | null }> {
   const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 
   const controller = new AbortController()

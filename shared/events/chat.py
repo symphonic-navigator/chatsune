@@ -177,6 +177,11 @@ class ChatToolCallCompletedEvent(BaseModel):
     # Mirrors the artefact_ref pattern.
     image_refs: list[ImageRefDto] | None = None
     moderated_count: int = 0
+    # Tool result text — carried live so the chat pill can show the
+    # Response section the moment the tool completes, instead of only
+    # after a session reload. None when the tool produced no usable
+    # text (rare; safe default).
+    result_content: str | None = None
     timestamp: datetime
 
 

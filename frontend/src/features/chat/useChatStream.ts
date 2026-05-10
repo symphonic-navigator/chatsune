@@ -152,6 +152,7 @@ export function handleChatEvent(
       const success = (p.success as boolean | undefined) ?? true
       const toolCallId = p.tool_call_id as string
       const args = (p.arguments as Record<string, unknown> | undefined) ?? {}
+      const resultContent = (p.result_content as string | null | undefined) ?? null
 
       // Failed tool call — always becomes a generic pill regardless of
       // tool name (a failed knowledge_search must NOT render as an empty
@@ -167,6 +168,7 @@ export function handleChatEvent(
           arguments: args,
           success: false,
           moderated_count: moderatedCount,
+          result_content: resultContent,
         }
         getStore().appendStreamingEvent(entry, writeOpts)
       } else if (artefactRef) {
@@ -210,6 +212,7 @@ export function handleChatEvent(
           arguments: args,
           success,
           moderated_count: moderatedCount,
+          result_content: resultContent,
         }
         getStore().appendStreamingEvent(entry, writeOpts)
       }
