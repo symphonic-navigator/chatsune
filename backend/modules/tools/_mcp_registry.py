@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -10,7 +11,14 @@ from shared.dtos.inference import ToolDefinition
 
 @dataclass
 class GatewayHandle:
-    """One connected MCP gateway with its discovered tools."""
+    """One connected MCP gateway with its discovered tools.
+
+    The ``session_id`` and ``init_lock`` fields support the MCP Streamable
+    HTTP session lifecycle (see INS-044). They are populated for backend-
+    executed gateways (admin / remote) by ``_mcp_discovery``. For
+    ``tier='local'`` gateways the frontend manages session state itself
+    and these fields stay at their defaults.
+    """
 
     id: str
     name: str  # = namespace
@@ -20,6 +28,8 @@ class GatewayHandle:
     tool_definitions: list[ToolDefinition]
     server_tools: dict[str, list[ToolDefinition]] = field(default_factory=dict)
     collisions: list[str] = field(default_factory=list)
+    session_id: str | None = None
+    init_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class SessionMcpRegistry:

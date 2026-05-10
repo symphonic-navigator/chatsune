@@ -1535,13 +1535,18 @@ async def proxy_mcp_tools_list(
     gateway_id: str,
     user: dict = Depends(require_active_session),
 ):
-    """Proxy tools/list to a backend-reachable MCP gateway."""
+    """Proxy tools/list to a backend-reachable MCP gateway.
+
+    Runs the full Streamable HTTP lifecycle (initialise + list) per HTTP
+    request — proxy routes do not share session state with WebSocket-bound
+    discovery.
+    """
     from backend.modules.tools._mcp_executor import McpExecutor
 
     gw = await _resolve_gateway(gateway_id, user)
     executor = McpExecutor()
     mcp_url = gw.url.rstrip("/") + "/mcp"
-    tools = await executor.discover_tools(url=mcp_url, api_key=gw.api_key)
+    tools = await executor.discover_tools_oneshot(url=mcp_url, api_key=gw.api_key)
     return {"tools": tools}
 
 
@@ -1551,7 +1556,7 @@ async def proxy_mcp_tool_call(
     body: _McpProxyCallRequest,
     user: dict = Depends(require_active_session),
 ):
-    """Proxy tools/call to a backend-reachable MCP gateway."""
+    """Proxy tools/call to a backend-reachable MCP gateway with full lifecycle."""
     import json as _json
 
     from backend.modules.tools._mcp_executor import McpExecutor
@@ -1559,7 +1564,7 @@ async def proxy_mcp_tool_call(
     gw = await _resolve_gateway(gateway_id, user)
     executor = McpExecutor()
     mcp_url = gw.url.rstrip("/") + "/mcp"
-    result_json = await executor.call_tool(
+    result_json = await executor.call_tool_oneshot(
         url=mcp_url, api_key=gw.api_key,
         tool_name=body.tool_name, arguments=body.arguments,
     )
