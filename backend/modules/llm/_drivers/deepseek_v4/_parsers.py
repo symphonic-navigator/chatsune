@@ -27,6 +27,9 @@ from backend.modules.llm._adapters._events import (
     ThinkingDelta,
     ToolCallEvent,
 )
+from backend.modules.llm._drivers._tool_call_accumulator import (
+    ToolCallAccumulator,
+)
 
 
 # Mirrors _ollama_http._REFUSAL_REASONS — keeping a local copy avoids
@@ -34,8 +37,22 @@ from backend.modules.llm._adapters._events import (
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 
-def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
-    """Translate one OR SSE chunk dict into ProviderStreamEvents."""
+def parse_chunk_openrouter(
+    *,
+    chunk: dict[str, Any],
+    tool_acc: ToolCallAccumulator | None = None,
+) -> list[ProviderStreamEvent]:
+    """Translate one OR SSE chunk dict into ProviderStreamEvents.
+
+    When ``tool_acc`` is supplied, OpenAI-style streaming tool-call
+    fragments in ``delta.tool_calls`` are accumulated; on
+    ``finish_reason="tool_calls"`` the accumulator is finalised and one
+    ``ToolCallEvent`` per accumulated call is appended in index order.
+    Without ``tool_acc`` (or when no fragments arrive) tool-calls are
+    silently skipped — defensive default for callers that don't need
+    tool-call handling. The current production caller (DeepSeekV4Driver)
+    always supplies an accumulator.
+    """
     events: list[ProviderStreamEvent] = []
 
     choices = chunk.get("choices") or []
@@ -55,6 +72,13 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
         if reasoning:
             events.append(ThinkingDelta(delta=reasoning))
 
+        # Tool-call fragments — OR streams them incrementally
+        # (OpenAI-style). Accumulator state is owned by the driver-class
+        # instance (one per stream); the parser stays pure-by-arg.
+        tool_frags = delta.get("tool_calls") or []
+        if tool_frags and tool_acc is not None:
+            tool_acc.ingest(tool_frags)
+
         # Refusal: parity with _openrouter_http._chunk_to_events. Without
         # this the driver path silently drops refusals; the legacy path
         # surfaces them as StreamRefused.
@@ -64,10 +88,25 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
                 reason=finish,
                 refusal_text=delta.get("refusal") or None,
             ))
+        elif finish == "tool_calls" and tool_acc is not None:
+            for call in tool_acc.finalised():
+                events.append(ToolCallEvent(
+                    id=call["id"],
+                    name=call["name"],
+                    arguments=call["arguments"],
+                ))
 
     # Terminal usage block (chunk with finish_reason or final usage info).
     # Guard against co-emitting StreamDone when StreamRefused was already
     # appended — the two events are mutually exclusive terminal states.
+    # Note: ToolCallEvent + StreamDone CAN co-occur on the same chunk —
+    # OR delivers usage in the same chunk as ``finish_reason="tool_calls"``
+    # (verified by probe; see deepseek-v4-wire-shapes.md). This is a
+    # deliberate behavioural improvement over the legacy _chunk_to_events
+    # path, which drops StreamDone in that case (latent token-accounting
+    # gap on tool-call iterations); the driver path captures the usage so
+    # iter_input_tokens/iter_output_tokens are populated for tool-call
+    # iterations too.
     usage = chunk.get("usage")
     if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
         details = usage.get("completion_tokens_details") or {}

@@ -518,6 +518,77 @@ boundary instead of silently degrading.
 
 ---
 
+### Tool-call wire-shape (OpenRouter)
+
+**Probe date**: 2026-05-10
+**Purpose**: Verify OR's tool-call streaming format before implementing
+the driver-layer accumulator. Two probes captured: Probe A (single
+tool_call) and Probe B (parallel tool_calls).
+
+#### Key findings
+
+OR streams tool-calls in **OpenAI-style incremental delta fragments** —
+the opposite of Ollama's atomic per-chunk delivery:
+
+1. **First chunk per tool_call** — full header with `id`, `type`, and
+   `function.name`; `function.arguments` is an empty string `""`.
+2. **Subsequent chunks** — only `function.arguments` as a string
+   fragment; `id` and `name` are absent. The `index` field is stable and
+   identifies which call the fragment belongs to.
+3. **Parallel tool_calls** — each gets its own `index` (0, 1, …).
+   Fragments are streamed sequentially per-index: all index=0 fragments
+   arrive first, then all index=1 fragments.
+4. **Termination** — a chunk with empty `delta`, `finish_reason="tool_calls"`,
+   and the `usage` block arrives in the **same** chunk. ToolCallEvents
+   and StreamDone are therefore co-emitted from the same terminal chunk
+   — they are NOT mutually exclusive (unlike StreamRefused and StreamDone).
+
+#### Probe A — single tool_call
+
+Representative wire fragments:
+
+```
+# Header chunk (index=0): full id+name, empty args
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_00_abc","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+# Args fragment chunks (arguments build char-by-char)
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{"}}]},"finish_reason":null}]}
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"city\": \"Berlin\""}}]},"finish_reason":null}]}
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":null}]}
+
+# Terminal chunk: finish_reason + usage in same chunk
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":85,"completion_tokens":22,"completion_tokens_details":{"reasoning_tokens":0}}}
+data: [DONE]
+```
+
+#### Probe B — parallel tool_calls (index=0 then index=1)
+
+```
+# index=0 header
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_00_a","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+# index=0 args (all fragments before index=1 starts)
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"city\": \"Berlin\"}"}}]},"finish_reason":null}]}
+
+# index=1 header
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_01_b","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null}]}
+
+# index=1 args
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"arguments":"{\"city\": \"Tokyo\"}"}}]},"finish_reason":null}]}
+
+# Terminal: both calls resolved, finish_reason + usage together
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":95,"completion_tokens":45,"completion_tokens_details":{"reasoning_tokens":0}}}
+data: [DONE]
+```
+
+**Driver implication**: The accumulator (`ToolCallAccumulator`) is keyed
+by `index`. It ingests header and fragment chunks silently; on
+`finish_reason="tool_calls"` it finalises and emits one `ToolCallEvent`
+per call, sorted by index. The accumulator is idempotent — a second
+`finish_reason="tool_calls"` chunk produces no duplicate events.
+
+---
+
 ### Ollama Cloud
 
 Ollama Cloud uses the **native Ollama protocol** (NDJSON, no SSE), not
