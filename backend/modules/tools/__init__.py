@@ -223,12 +223,18 @@ async def execute_tool(
                         target_connection_id=originating_connection_id,
                     )
                 else:
-                    # Backend-executed: use McpExecutor
+                    # Backend-executed: use McpExecutor with session lifecycle.
+                    async def _refresh_session(new_id: str) -> None:
+                        gw.session_id = new_id
+
                     return await _mcp_executor.call_tool(
                         url=gw.url,
                         api_key=gw.api_key,
                         tool_name=original_name,
                         arguments=arguments,
+                        session_id=gw.session_id,
+                        on_session_refresh=_refresh_session,
+                        init_lock=gw.init_lock,
                     )
             finally:
                 duration = _time.monotonic() - t_start
