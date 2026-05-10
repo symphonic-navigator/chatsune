@@ -16,6 +16,7 @@ from backend.modules.llm._drivers._tool_call_accumulator import (
 )
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_novita,
     build_request_for_ollama_cloud,
     build_request_for_openrouter,
 )
@@ -23,6 +24,7 @@ from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
 )
 from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_novita,
     parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
@@ -498,17 +500,6 @@ def test_dsv4_driver_parse_chunk_for_unsupported_adapter_raises():
         )
 
 
-def test_dsv4_driver_build_request_for_unsupported_adapter_still_raises_on_novita():
-    """Plan 2 added Ollama, NOT Novita. Novita must still raise."""
-    d = DeepSeekV4Driver()
-    with pytest.raises(NotImplementedError, match="adapter_type"):
-        d.build_request(
-            adapter_type="novita_http",
-            slug="deepseek/deepseek-v4-pro",
-            request=_make_request(effort="high"),
-        )
-
-
 def test_parser_ollama_emits_tool_call_event_for_single_call():
     """Ollama Cloud delivers tool-calls atomically in a single NDJSON chunk
     (no streaming accumulation). One entry → one ToolCallEvent."""
@@ -842,3 +833,180 @@ def test_builder_no_downgrade_or_flash_high(caplog) -> None:
     assert not any(
         "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
     )
+
+
+def test_builder_novita_passes_high_effort_unchanged() -> None:
+    request = _make_request(effort="high")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-pro", request=request,
+    )
+    assert body["reasoning"]["effort"] == "high"
+
+
+def test_builder_novita_passes_max_effort_unchanged() -> None:
+    request = _make_request(effort="max")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-flash", request=request,
+    )
+    assert body["reasoning"]["effort"] == "max"
+
+
+def test_builder_novita_rejects_unsupported_effort() -> None:
+    request = _make_request(effort="xhigh")
+    with pytest.raises(ValueError, match="not in supported buckets"):
+        build_request_for_novita(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+
+
+def test_builder_novita_rejects_invalid_effort_string() -> None:
+    request = _make_request(effort="invalid_xyz")
+    with pytest.raises(ValueError, match="not in supported buckets"):
+        build_request_for_novita(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+
+
+def test_builder_novita_reasoning_off_uses_enable_thinking_false() -> None:
+    """Novita ignores ``reasoning: {enabled: false}`` for DSv4 (probed
+    2026-05-10: model still produces reasoning_tokens). The wire-signal
+    Novita honours is ``enable_thinking: false`` at the top level."""
+    request = _make_request(effort=None, reasoning_mode="off")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-pro", request=request,
+    )
+    assert body.get("enable_thinking") is False
+    # The ineffective reasoning block must not coexist with enable_thinking
+    # — we drop it to keep the wire shape unambiguous.
+    assert "reasoning" not in body
+
+
+def test_parser_novita_emits_content_delta() -> None:
+    chunk = {
+        "choices": [
+            {"delta": {"content": "Hello"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == [ContentDelta(delta="Hello")]
+
+
+def test_parser_novita_emits_thinking_delta_from_reasoning_content() -> None:
+    """Novita uses the DeepSeek-native key ``delta.reasoning_content``,
+    NOT OR's ``delta.reasoning``. The driver maps it to ThinkingDelta
+    per the same INS-038 thinking/reasoning interchangeability rule."""
+    chunk = {
+        "choices": [
+            {"delta": {"reasoning_content": "Let me think"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == [ThinkingDelta(delta="Let me think")]
+
+
+def test_parser_novita_ignores_or_legacy_reasoning_key() -> None:
+    """If a ``delta.reasoning`` (OR-style) field were ever present on a
+    Novita chunk, it must NOT be picked up — that key is OR-only and
+    routing it through here would risk double-counting CoT if both
+    keys appeared. Probe 2026-05-10 confirmed Novita never emits it."""
+    chunk = {
+        "choices": [
+            {"delta": {"reasoning": "should be ignored"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == []
+
+
+def test_parser_novita_accumulates_streamed_tool_call_fragments() -> None:
+    acc = ToolCallAccumulator()
+    # First chunk: id + name, no args yet
+    parse_chunk_novita(chunk={
+        "choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_00_xyz", "type": "function",
+            "function": {"name": "get_weather"},
+        }]}, "finish_reason": None}],
+    }, tool_acc=acc)
+    # Subsequent chunks: arg fragments
+    for frag in ['{', '"', 'city', '"', ': ', '"', 'Berlin', '"', '}']:
+        parse_chunk_novita(chunk={
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 0, "function": {"arguments": frag},
+            }]}, "finish_reason": None}],
+        }, tool_acc=acc)
+    # Terminal: finish_reason=tool_calls + usage block
+    events = parse_chunk_novita(chunk={
+        "choices": [{"delta": {}, "finish_reason": "tool_calls"}],
+        "usage": {"prompt_tokens": 303, "completion_tokens": 102,
+                  "completion_tokens_details": {"reasoning_tokens": 26}},
+    }, tool_acc=acc)
+
+    tool_event = next(e for e in events if isinstance(e, ToolCallEvent))
+    assert tool_event.id == "call_00_xyz"
+    assert tool_event.name == "get_weather"
+    assert tool_event.arguments == '{"city": "Berlin"}'
+    done_event = next(e for e in events if isinstance(e, StreamDone))
+    assert done_event.input_tokens == 303
+    assert done_event.output_tokens == 102
+    assert done_event.reasoning_tokens == 26
+
+
+def test_parser_novita_emits_stream_done_with_usage() -> None:
+    chunk = {
+        "choices": [{"delta": {}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 62, "completion_tokens": 3574,
+            "completion_tokens_details": {"reasoning_tokens": 2250},
+        },
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    done_event = next(e for e in events if isinstance(e, StreamDone))
+    assert done_event.input_tokens == 62
+    assert done_event.output_tokens == 3574
+    assert done_event.reasoning_tokens == 2250
+
+
+def test_parser_novita_emits_stream_refused_on_content_filter() -> None:
+    chunk = {
+        "choices": [{"delta": {"refusal": "I cannot help with that"},
+                     "finish_reason": "content_filter"}],
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    refused = next(e for e in events if isinstance(e, StreamRefused))
+    assert refused.reason == "content_filter"
+    assert refused.refusal_text == "I cannot help with that"
+    # StreamRefused and StreamDone are mutually exclusive terminals.
+    assert not any(isinstance(e, StreamDone) for e in events)
+
+
+def test_driver_dispatches_build_to_novita() -> None:
+    driver = DeepSeekV4Driver()
+    request = _make_request(effort="max")
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug="deepseek/deepseek-v4-pro",
+        request=request,
+    )
+    assert body["reasoning"]["effort"] == "max"
+
+
+def test_driver_dispatches_parse_to_novita() -> None:
+    driver = DeepSeekV4Driver()
+    chunk = {
+        "choices": [{"delta": {"reasoning_content": "Thinking"},
+                     "finish_reason": None}],
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http",
+        slug="deepseek/deepseek-v4-pro",
+        chunk=chunk,
+    )
+    assert events == [ThinkingDelta(delta="Thinking")]
+
+
+def test_driver_novita_accumulator_is_per_instance() -> None:
+    """Each DeepSeekV4Driver instance must own a private Novita
+    accumulator so concurrent streams don't cross-contaminate."""
+    a = DeepSeekV4Driver()
+    b = DeepSeekV4Driver()
+    assert a._novita_tool_acc is not b._novita_tool_acc

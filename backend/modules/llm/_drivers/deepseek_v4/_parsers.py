@@ -173,3 +173,78 @@ def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEve
             ))
 
     return events
+
+
+def parse_chunk_novita(
+    *,
+    chunk: dict[str, Any],
+    tool_acc: ToolCallAccumulator | None = None,
+) -> list[ProviderStreamEvent]:
+    """Translate one Novita SSE chunk dict into ProviderStreamEvents.
+
+    Wire-shape mirrors the OpenAI-compat pattern (same as OR), with two
+    differences:
+    - CoT key is ``delta.reasoning_content`` (DeepSeek-native), NOT OR's
+      ``delta.reasoning``. Probed 2026-05-10; Novita never emits the
+      OR-legacy key, so this parser does not look at it.
+    - Tool-call streaming is OpenAI-fragmented and indexed; the
+      ``ToolCallAccumulator`` (shared with OR) handles accumulation.
+
+    See ``parse_chunk_openrouter`` for the symmetric implementation;
+    duplication is intentional so each driver fully owns its chunk
+    semantics. ``StreamRefused`` and ``StreamDone`` are mutually
+    exclusive terminal states (same guard as OR).
+    """
+    events: list[ProviderStreamEvent] = []
+
+    choices = chunk.get("choices") or []
+    if choices:
+        choice = choices[0]
+        delta = choice.get("delta") or {}
+
+        # Visible content fragment
+        content = delta.get("content")
+        if content:
+            events.append(ContentDelta(delta=content))
+
+        # DeepSeek-native CoT key. Mapped to ThinkingDelta per INS-038.
+        reasoning_content = delta.get("reasoning_content")
+        if reasoning_content:
+            events.append(ThinkingDelta(delta=reasoning_content))
+
+        # Tool-call fragments — OpenAI-style streaming, accumulator owned
+        # by the driver-class instance (one per stream); parser stays
+        # pure-by-arg.
+        tool_frags = delta.get("tool_calls") or []
+        if tool_frags and tool_acc is not None:
+            tool_acc.ingest(tool_frags)
+
+        # Refusal: parity with parse_chunk_openrouter.
+        finish = choice.get("finish_reason")
+        if finish and finish.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=finish,
+                refusal_text=delta.get("refusal") or None,
+            ))
+        elif finish == "tool_calls" and tool_acc is not None:
+            for call in tool_acc.finalised():
+                events.append(ToolCallEvent(
+                    id=call["id"],
+                    name=call["name"],
+                    arguments=call["arguments"],
+                ))
+
+    # Terminal usage block. Same StreamRefused-co-emit guard as OR.
+    # ToolCallEvent + StreamDone CAN co-occur on the same chunk —
+    # Novita delivers usage in the same chunk as
+    # ``finish_reason="tool_calls"`` (verified 2026-05-10).
+    usage = chunk.get("usage")
+    if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
+        details = usage.get("completion_tokens_details") or {}
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            reasoning_tokens=details.get("reasoning_tokens"),
+        ))
+
+    return events

@@ -1,4 +1,4 @@
-"""DeepSeek V4 driver (Pro and Flash). Plan 1: OpenRouter only.
+"""DeepSeek V4 driver (Pro and Flash). Plans 1-3: OpenRouter, Ollama Cloud, Novita.
 
 See devdocs/specs/driver-layer.md and devdocs/research/deepseek-v4-wire-shapes.md.
 """
@@ -12,6 +12,7 @@ from backend.modules.llm._drivers._tool_call_accumulator import (
     ToolCallAccumulator,
 )
 from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_novita,
     build_request_for_ollama_cloud,
     build_request_for_openrouter,
 )
@@ -19,6 +20,7 @@ from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
 )
 from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_novita,
     parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
@@ -28,8 +30,8 @@ from shared.dtos.inference import CompletionRequest
 class DeepSeekV4Driver:
     """Driver for DeepSeek V4 Pro and DeepSeek V4 Flash.
 
-    Plan 1: OpenRouter. Plan 2: + Ollama Cloud (this class). Plans 3-4 add
-    Novita and nano-gpt.
+    Plan 1: OpenRouter. Plan 2: + Ollama Cloud. Plan 3: + Novita (this
+    class). Plan 4 adds nano-gpt.
     """
 
     PATTERNS: list[str] = [
@@ -41,9 +43,10 @@ class DeepSeekV4Driver:
         # Per-stream state: a fresh driver instance is created in each
         # adapter's ``stream_completion`` (``driver = driver_cls()``), so
         # the accumulator is naturally scoped to one inference iteration.
-        # Only the OpenRouter (and future Novita/nano-gpt) parsers consume
-        # it; the Ollama parser is stateless.
+        # OpenRouter and Novita both stream OpenAI-fragmented tool-calls
+        # and need their own accumulators; the Ollama parser is stateless.
         self._or_tool_acc = ToolCallAccumulator()
+        self._novita_tool_acc = ToolCallAccumulator()
 
     def capability_spec(
         self, *, adapter_type: str, slug: str,
@@ -57,10 +60,12 @@ class DeepSeekV4Driver:
             return build_request_for_openrouter(slug=slug, request=request)
         if adapter_type == "ollama_http":
             return build_request_for_ollama_cloud(slug=slug, request=request)
+        if adapter_type == "novita_http":
+            return build_request_for_novita(slug=slug, request=request)
         raise NotImplementedError(
             f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"yet (Plan 2 covers openrouter_http + ollama_http; Plans 3-4 "
-            f"add novita_http and nano_gpt_http)."
+            f"yet (Plans 1-3 cover openrouter_http + ollama_http + "
+            f"novita_http; Plan 4 adds nano_gpt_http)."
         )
 
     def parse_chunk(
@@ -72,8 +77,12 @@ class DeepSeekV4Driver:
             )
         if adapter_type == "ollama_http":
             return parse_chunk_ollama_cloud(chunk=chunk)
+        if adapter_type == "novita_http":
+            return parse_chunk_novita(
+                chunk=chunk, tool_acc=self._novita_tool_acc,
+            )
         raise NotImplementedError(
             f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"yet (Plan 2 covers openrouter_http + ollama_http; Plans 3-4 "
-            f"add novita_http and nano_gpt_http)."
+            f"yet (Plans 1-3 cover openrouter_http + ollama_http + "
+            f"novita_http; Plan 4 adds nano_gpt_http)."
         )
