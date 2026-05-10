@@ -137,3 +137,70 @@ def test_builder_or_inherits_message_translation():
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][0]["content"] == "Hello"
+
+
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    StreamDone,
+    ThinkingDelta,
+)
+from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_openrouter,
+)
+
+
+def test_parser_or_extracts_visible_content():
+    chunk = {
+        "id": "gen-1", "provider": "DeepInfra",
+        "choices": [{"index": 0, "delta": {"content": "Hello", "role": "assistant"}}],
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    assert any(isinstance(e, ContentDelta) and e.delta == "Hello" for e in events)
+
+
+def test_parser_or_extracts_reasoning_from_delta_reasoning():
+    """OR's canonical CoT key is delta.reasoning (often paired with reasoning_details).
+    The driver maps it to ThinkingDelta (the existing event class name; reasoning
+    and thinking are used interchangeably in the codebase — INS-038)."""
+    chunk = {
+        "id": "gen-1", "provider": "DeepInfra",
+        "choices": [{"index": 0, "delta": {
+            "content": "",
+            "role": "assistant",
+            "reasoning": "We need to think...",
+            "reasoning_details": [
+                {"type": "reasoning.text", "text": "We need to think...", "format": "unknown", "index": 0}
+            ],
+        }}],
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    assert any(
+        isinstance(e, ThinkingDelta) and e.delta == "We need to think..."
+        for e in events
+    )
+
+
+def test_parser_or_emits_stream_done_with_usage_and_reasoning_tokens():
+    chunk = {
+        "id": "gen-1", "provider": "DeepInfra",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 19,
+            "completion_tokens": 800,
+            "total_tokens": 819,
+            "completion_tokens_details": {"reasoning_tokens": 360, "image_tokens": 0, "audio_tokens": 0},
+        },
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    done = next((e for e in events if isinstance(e, StreamDone)), None)
+    assert done is not None
+    assert done.input_tokens == 19
+    assert done.output_tokens == 800
+    assert done.reasoning_tokens == 360
+
+
+def test_parser_or_handles_chunk_with_no_actionable_delta():
+    """Chunks with empty delta and no finish_reason produce no events."""
+    chunk = {"id": "gen-1", "choices": [{"index": 0, "delta": {}}]}
+    events = parse_chunk_openrouter(chunk=chunk)
+    assert events == []
