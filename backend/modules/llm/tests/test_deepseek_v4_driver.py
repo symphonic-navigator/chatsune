@@ -449,3 +449,54 @@ def test_parser_or_refused_case_insensitive():
     assert refused is not None
     # Reason preserves the original casing — only the check is normalised.
     assert refused.reason == "Content_Filter"
+
+
+def test_dsv4_driver_build_request_via_class_for_ollama_cloud():
+    d = DeepSeekV4Driver()
+    body = d.build_request(
+        adapter_type="ollama_http",
+        slug="deepseek-v4-pro",
+        request=_make_request(effort="max"),
+    )
+    assert body["think"] == "max"
+    # body["model"] comes from request.model, which the _make_request fixture
+    # sets to "deepseek/deepseek-v4-pro" (prefixed). The driver's `slug`
+    # parameter is for dispatch only — it does NOT override the body model.
+    assert body["model"] == "deepseek/deepseek-v4-pro"
+
+
+def test_dsv4_driver_parse_chunk_via_class_for_ollama_cloud():
+    d = DeepSeekV4Driver()
+    events = d.parse_chunk(
+        adapter_type="ollama_http",
+        slug="deepseek-v4-pro",
+        chunk={
+            "model": "deepseek-v4-pro",
+            "message": {"role": "assistant", "content": "Hi"},
+            "done": False,
+        },
+    )
+    assert any(isinstance(e, ContentDelta) and e.delta == "Hi" for e in events)
+
+
+def test_dsv4_driver_parse_chunk_for_unsupported_adapter_raises():
+    """Symmetric to test_dsv4_driver_build_request_for_unsupported_adapter_raises
+    (Gap C — Plan 1 only had this test for build_request)."""
+    d = DeepSeekV4Driver()
+    with pytest.raises(NotImplementedError, match="adapter_type"):
+        d.parse_chunk(
+            adapter_type="nano_gpt_http",
+            slug="deepseek/deepseek-v4-pro:thinking",
+            chunk={"id": "x", "choices": [{"index": 0, "delta": {"content": "Hi"}}]},
+        )
+
+
+def test_dsv4_driver_build_request_for_unsupported_adapter_still_raises_on_novita():
+    """Plan 2 added Ollama, NOT Novita. Novita must still raise."""
+    d = DeepSeekV4Driver()
+    with pytest.raises(NotImplementedError, match="adapter_type"):
+        d.build_request(
+            adapter_type="novita_http",
+            slug="deepseek/deepseek-v4-pro",
+            request=_make_request(effort="high"),
+        )
