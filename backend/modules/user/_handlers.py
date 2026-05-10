@@ -1295,7 +1295,7 @@ async def _refresh_user_mcp(user_id: str) -> None:
         return
     invalidate_mcp_registries(cids)
     for cid in cids:
-        await eager_discover_mcp(cid, user_id)
+        await eager_discover_mcp(cid, user_id, always_emit=True)
 
 
 async def _refresh_all_mcp() -> None:
@@ -1312,7 +1312,7 @@ async def _refresh_all_mcp() -> None:
     user_ids = list(manager._connections.keys())
     for user_id in user_ids:
         for cid in manager.connection_ids_for_user(user_id):
-            await eager_discover_mcp(cid, user_id)
+            await eager_discover_mcp(cid, user_id, always_emit=True)
 
 
 def _invalidate_user_mcp(user_id: str) -> None:

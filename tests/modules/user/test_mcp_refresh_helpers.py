@@ -49,7 +49,7 @@ async def test_refresh_user_mcp_invalidates_and_rediscovers():
         def connection_ids_for_user(self, uid: str) -> list[str]:
             return [cid_a, cid_b] if uid == user_id else []
 
-    async def _fake_eager(connection_id: str, uid: str) -> None:
+    async def _fake_eager(connection_id: str, uid: str, *, always_emit: bool = False) -> None:
         eager_calls.append((connection_id, uid))
 
     try:
@@ -74,7 +74,7 @@ async def test_refresh_user_mcp_no_active_connections_is_noop():
         def connection_ids_for_user(self, uid: str) -> list[str]:
             return []
 
-    async def _fake_eager(connection_id: str, uid: str) -> None:
+    async def _fake_eager(connection_id: str, uid: str, *, always_emit: bool = False) -> None:
         eager_calls.append((connection_id, uid))
 
     with patch("backend.ws.manager.get_manager", return_value=_EmptyManager()), \

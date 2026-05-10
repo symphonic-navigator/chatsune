@@ -90,3 +90,44 @@ async def test_eager_discover_mcp_event_excludes_local_tier():
         f"Local-tier gateway leaked into MCP_TOOLS_REGISTERED payload: "
         f"{namespaces}"
     )
+
+
+@pytest.mark.asyncio
+async def test_eager_discover_mcp_always_emit_publishes_empty_event():
+    """When always_emit=True, eager_discover_mcp publishes a MCP_TOOLS_REGISTERED
+    event even when no gateways are configured — required so the frontend can
+    clear stale sessionGateways after the user deletes their last remote gateway."""
+    from backend.modules.tools import (
+        eager_discover_mcp,
+        remove_mcp_registry,
+    )
+
+    connection_id = "conn-test-empty-emit"
+    user_id = "user-test"
+
+    # NOT pre-populating any registry — simulates "after delete, nothing left"
+    captured: list = []
+
+    class _FakeBus:
+        async def publish(self, topic, event, **kwargs):
+            captured.append((topic, event))
+
+    with patch(
+        "backend.modules.user.get_admin_mcp_gateways",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.modules.user.get_user_mcp_gateways",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.ws.event_bus.get_event_bus",
+        return_value=_FakeBus(),
+    ):
+        await eager_discover_mcp(connection_id, user_id, always_emit=True)
+
+    remove_mcp_registry(connection_id)
+
+    # Event was emitted despite zero gateways
+    assert len(captured) == 1, f"Expected 1 event, got {len(captured)}"
+    _topic, event = captured[0]
+    assert event.gateways == [], f"Expected empty gateways list, got {event.gateways}"
+    assert event.total_tools == 0

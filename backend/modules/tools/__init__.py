@@ -303,11 +303,18 @@ async def execute_tool(
 async def eager_discover_mcp(
     connection_id: str,
     user_id: str,
+    *,
+    always_emit: bool = False,
 ) -> None:
     """Eagerly discover MCP tools for a connection (called on WebSocket connect).
 
     Populates the per-connection registry so tools are available before the
     first chat message. Emits McpToolsRegisteredEvent to the frontend.
+
+    When ``always_emit`` is True, an event is emitted even when no gateways
+    are configured — used by the mutation-driven refresh helpers so the
+    frontend can clear stale sessionGateways after the user deletes their
+    last remote gateway.
     """
     from backend.modules.user import get_user_mcp_gateways, get_admin_mcp_gateways
     from backend.modules.tools._mcp_discovery import discover_backend_gateways
@@ -326,7 +333,7 @@ async def eager_discover_mcp(
     admin_gateways = [McpGatewayConfigDto(**gw) for gw in admin_gw_raw]
     user_gateways = [McpGatewayConfigDto(**gw) for gw in user_gw_raw]
 
-    if not any(gw.enabled for gw in admin_gateways) and not any(gw.enabled for gw in user_gateways):
+    if not always_emit and not any(gw.enabled for gw in admin_gateways) and not any(gw.enabled for gw in user_gateways):
         return  # no gateways configured — nothing to discover
 
     correlation_id = f"mcp-eager-{connection_id[:8]}"
@@ -374,7 +381,7 @@ async def eager_discover_mcp(
         for gw in mcp_registry.gateways.values()
         if gw.tier != "local"
     ]
-    if gateway_entries:
+    if gateway_entries or always_emit:
         event_bus = get_event_bus()
         await event_bus.publish(
             Topics.MCP_TOOLS_REGISTERED,
