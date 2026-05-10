@@ -101,15 +101,29 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
     void onChange(m, e)
   }
 
+  // Reconcile a stale ``effort`` against the current capability buckets.
+  // The session persists the user's last chosen effort across model
+  // switches, but a value carried over from a more permissive model
+  // (e.g. "max" from DSv4 Pro) may not be in the new model's buckets
+  // (e.g. DSv4 Flash on OR exposes only ["high"]). Fall back to the
+  // capability's ``default_bucket`` so the badge matches what the
+  // backend will actually use after its silent-downgrade. The
+  // persisted ``extras.reasoning_effort`` is left untouched, so
+  // switching back to the more permissive model restores the user's
+  // original choice.
+  const effectiveEffort = effort && reasoning.effort?.buckets.includes(effort)
+    ? effort
+    : reasoning.effort?.default_bucket ?? null
+
   // Effort initial shown as a small badge in the bottom-right of the button
-  // — only when reasoning is on AND a bucket is selected. ``label`` keeps
+  // — only when reasoning is on AND a bucket is effective. ``label`` keeps
   // the full word for hover-tooltip + screen readers.
-  const effortBadge = active && hasEffort && effort
-    ? (EFFORT_BADGE[effort] ?? effort[0].toUpperCase())
+  const effortBadge = active && hasEffort && effectiveEffort
+    ? (EFFORT_BADGE[effectiveEffort] ?? effectiveEffort[0].toUpperCase())
     : undefined
   const label = active
-    ? hasEffort && effort
-      ? `Thinking · ${effort.charAt(0).toUpperCase() + effort.slice(1)}`
+    ? hasEffort && effectiveEffort
+      ? `Thinking · ${effectiveEffort.charAt(0).toUpperCase() + effectiveEffort.slice(1)}`
       : 'Thinking · on'
     : 'Thinking · off'
 
@@ -146,7 +160,7 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
               <button
                 type="button"
                 role="menuitemradio"
-                aria-checked={active && effort === b}
+                aria-checked={active && effectiveEffort === b}
                 onClick={() => handleSelect('on', b)}
                 className="w-full px-3 py-1.5 text-left text-sm text-white/80 hover:bg-white/5"
               >

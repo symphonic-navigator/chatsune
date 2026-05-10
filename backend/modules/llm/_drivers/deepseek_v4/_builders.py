@@ -19,9 +19,16 @@ DSv4-specific translation (Plan 1):
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from shared.dtos.inference import CompletionRequest
+from backend.modules.llm._drivers.deepseek_v4._quirks import (
+    _is_or_flash_quirk_applicable,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 # User-effort -> OR wire effort. ``None`` and reasoning_mode="off" are
@@ -62,6 +69,24 @@ def build_request_for_openrouter(
 
     # Reasoning on AND effort explicit: translate or reject.
     user_effort = request.extras.reasoning_effort
+
+    # OR-quirk silent downgrade: DSv4 Flash + xhigh halves reasoning
+    # (probed 2026-05-10). When a stale stored setting carries "max"
+    # for an OR-Flash slug, downgrade to "high" instead of routing to
+    # the broken xhigh path. Capability filter normally prevents this
+    # combination at the UI; the downgrade is defence-in-depth for
+    # already-saved values. Re-probe quarterly (next due 2026-08-10);
+    # drop this branch when the probe flips to FIXED.
+    if user_effort == "max" and _is_or_flash_quirk_applicable(
+        adapter_type="openrouter_http", slug=slug,
+    ):
+        logger.warning(
+            "DSv4 OR-Flash quirk: effort='max' downgraded to 'high' "
+            "for slug=%s — OR's xhigh path halves Flash reasoning.",
+            slug,
+        )
+        user_effort = "high"
+
     if user_effort not in _OR_EFFORT_MAP:
         raise ValueError(
             f"DeepSeek V4 effort {user_effort!r} not in supported "

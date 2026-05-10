@@ -26,6 +26,9 @@ from backend.modules.llm._drivers.deepseek_v4._parsers import (
     parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
+from backend.modules.llm._drivers.deepseek_v4._quirks import (
+    _is_or_flash_quirk_applicable,
+)
 from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
@@ -748,3 +751,94 @@ def test_dsv4_driver_accumulator_is_per_instance():
         }]}, "finish_reason": None}],
     })
     assert d3._or_tool_acc is acc_ref
+
+
+@pytest.mark.parametrize(
+    "adapter_type,slug,expected",
+    [
+        # OR + Flash variants: quirk applies
+        ("openrouter_http", "deepseek/deepseek-v4-flash", True),
+        ("openrouter_http", "deepseek-v4-flash", True),
+        ("openrouter_http", "DEEPSEEK/DEEPSEEK-V4-FLASH", True),
+        # OR + non-Flash: quirk does not apply
+        ("openrouter_http", "deepseek/deepseek-v4-pro", False),
+        ("openrouter_http", "deepseek-v4-pro", False),
+        # Ollama + Flash: quirk does not apply (Ollama path works)
+        ("ollama_http", "deepseek-v4-flash", False),
+        ("ollama_http", "deepseek/deepseek-v4-flash", False),
+        # Other adapters + Flash: quirk does not apply
+        ("nano_gpt_http", "deepseek/deepseek-v4-flash", False),
+        ("novita_http", "deepseek/deepseek-v4-flash", False),
+    ],
+)
+def test_or_flash_quirk_applicable(adapter_type: str, slug: str, expected: bool) -> None:
+    assert _is_or_flash_quirk_applicable(adapter_type, slug) is expected
+
+
+@pytest.mark.parametrize(
+    "adapter_type,slug,expected_buckets",
+    [
+        # OR + Flash: only "high" (xhigh broken)
+        ("openrouter_http", "deepseek/deepseek-v4-flash", ["high"]),
+        ("openrouter_http", "deepseek-v4-flash", ["high"]),
+        # OR + Pro: both
+        ("openrouter_http", "deepseek/deepseek-v4-pro", ["high", "max"]),
+        # Ollama + Flash: both work (per probe 2026-05-10)
+        ("ollama_http", "deepseek-v4-flash", ["high", "max"]),
+        # Ollama + Pro: both
+        ("ollama_http", "deepseek-v4-pro", ["high", "max"]),
+        # Future adapters keep the default until probed
+        ("nano_gpt_http", "deepseek/deepseek-v4-flash", ["high", "max"]),
+        ("novita_http", "deepseek/deepseek-v4-pro", ["high", "max"]),
+    ],
+)
+def test_capability_spec_buckets(
+    adapter_type: str, slug: str, expected_buckets: list[str],
+) -> None:
+    spec = deepseek_v4_capability_spec(adapter_type=adapter_type, slug=slug)
+    assert spec.reasoning is not None
+    assert spec.reasoning.effort.buckets == expected_buckets
+    assert spec.reasoning.effort.default_bucket == "high"
+
+
+def test_builder_silent_downgrade_or_flash_max(caplog) -> None:
+    """OR + Flash + user-effort 'max' must downgrade to 'high' silently
+    and emit one logger.warning. The wire body must show effort='high',
+    not 'xhigh'."""
+    request = _make_request(effort="max")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-flash", request=request,
+        )
+    assert body["reasoning"]["effort"] == "high"
+    assert any(
+        "DSv4 OR-Flash quirk" in rec.message and "downgraded" in rec.message
+        for rec in caplog.records
+    ), f"expected downgrade warning, got: {[r.message for r in caplog.records]}"
+
+
+def test_builder_no_downgrade_or_pro_max(caplog) -> None:
+    """OR + Pro + user-effort 'max' continues to map to wire 'xhigh',
+    no warning."""
+    request = _make_request(effort="max")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+    assert body["reasoning"]["effort"] == "xhigh"
+    assert not any(
+        "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
+    )
+
+
+def test_builder_no_downgrade_or_flash_high(caplog) -> None:
+    """OR + Flash + user-effort 'high' is unaffected, no warning."""
+    request = _make_request(effort="high")
+    with caplog.at_level("WARNING"):
+        body = build_request_for_openrouter(
+            slug="deepseek/deepseek-v4-flash", request=request,
+        )
+    assert body["reasoning"]["effort"] == "high"
+    assert not any(
+        "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
+    )

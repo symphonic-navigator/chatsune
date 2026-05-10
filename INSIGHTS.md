@@ -1636,3 +1636,32 @@ direction stays optional and reactive.
    downgrades are the exact failure mode that makes user complaints
    useless ("I sent max but it was lazy"); rejections produce
    actionable errors.
+
+## INS-041 — OR's `xhigh` halves DSv4 Flash reasoning instead of expanding it (2026-05-10)
+
+OpenRouter's `reasoning.effort: "xhigh"` for `deepseek/deepseek-v4-flash`
+returns roughly **half** the reasoning tokens of `effort: "high"` on the
+same prompt (probed 2026-05-10: 2300 vs 4039 reasoning_tokens, ratio
+0.57). OR rejects `effort: "max"` directly (HTTP 400 — accepted set is
+`{none, minimal, low, medium, high, xhigh}`), so `xhigh` is the only
+mapping path for the user-bucket "max"; we cannot work around it by
+sending a different value.
+
+The same model on the same prompt via Ollama Cloud with `think: "max"`
+returns **4×** the reasoning of `think: true` (9880 vs 3513 eval tokens)
+and triggers a server-side system-prompt injection (prompt_eval jumps
+from 62 to 141), so the upstream "max" mode itself works — the bug is
+in OR's `xhigh → DeepSeek-Flash` translation.
+
+DSv4 Pro on OR is unaffected: `xhigh` produces measurably more reasoning
+than `high` as expected.
+
+**Action:** For (`openrouter_http`, `*flash*`) we expose only
+`effort.buckets = ["high"]`. The OR-Pro and Ollama-Cloud paths keep
+`["high", "max"]`. A defensive silent-downgrade in the OR builder
+catches stale stored settings still carrying `"max"`. Re-probe quarterly
+via `backend/llm_harness/probes/dsv4_flash_or_drift.py`.
+
+When the OR-side fix lands (verdict flips to FIXED), drop the override
+in `_capability.py` and `_builders.py` and remove
+`_is_or_flash_quirk_applicable` from `_quirks.py`.
