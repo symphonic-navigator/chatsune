@@ -101,8 +101,6 @@ def build_request_for_ollama_cloud(
     message translation, ``options.temperature``, and the base ``think``
     boolean are inherited. Then, when reasoning is on AND user-effort is
     explicit, override ``think`` to the appropriate value from the effort map.
-    The ``model`` field is always overridden with the caller-supplied ``slug``
-    (Ollama Cloud uses unprefixed slugs, not the ``owner/name`` format).
 
     Raises ``ValueError`` when ``extras.reasoning_effort`` is set to a value
     outside the DSv4 supported buckets ``[high, max]``.
@@ -114,10 +112,6 @@ def build_request_for_ollama_cloud(
     )
 
     base = _ollama_build_request_body(request)
-
-    # Ollama Cloud uses unprefixed slugs (e.g. "deepseek-v4-pro", not
-    # "deepseek/deepseek-v4-pro"). Override whatever the existing builder wrote.
-    base["model"] = slug
 
     # Reasoning off OR no explicit effort: delegate unchanged. The existing
     # builder already set ``think`` to True/False based on reasoning_mode,

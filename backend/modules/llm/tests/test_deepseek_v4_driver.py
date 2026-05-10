@@ -250,7 +250,7 @@ def test_builder_ollama_reasoning_off():
         slug="deepseek-v4-pro",
         request=_make_request(effort=None, reasoning_mode="off"),
     )
-    assert body["model"] == "deepseek-v4-pro"
+    assert body["model"] == "deepseek/deepseek-v4-pro"
     assert body["stream"] is True
     assert body["think"] is False
 
