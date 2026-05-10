@@ -17,11 +17,10 @@ class _StubDriver:
         raise NotImplementedError
 
 
-def test_registry_starts_empty():
-    """Plan 1 ships an empty registry until DeepSeekV4Driver is added in Task 7."""
-    # NOTE: this test changes after Task 7 — at that point DRIVER_REGISTRY
-    # is non-empty. Update the assertion when registering DSv4.
-    assert DRIVER_REGISTRY == []
+def test_registry_contains_dsv4():
+    """After Task 7, DRIVER_REGISTRY contains DeepSeekV4Driver."""
+    from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
+    assert DeepSeekV4Driver in DRIVER_REGISTRY
 
 
 def test_match_driver_returns_none_when_registry_empty():

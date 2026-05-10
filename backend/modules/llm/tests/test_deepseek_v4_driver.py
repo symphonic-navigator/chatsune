@@ -204,3 +204,43 @@ def test_parser_or_handles_chunk_with_no_actionable_delta():
     chunk = {"id": "gen-1", "choices": [{"index": 0, "delta": {}}]}
     events = parse_chunk_openrouter(chunk=chunk)
     assert events == []
+
+
+from backend.modules.llm._drivers import match_driver
+from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
+
+
+def test_dsv4_driver_class_matches_or_slugs():
+    assert match_driver("deepseek/deepseek-v4-pro") is DeepSeekV4Driver
+    assert match_driver("deepseek/deepseek-v4-flash") is DeepSeekV4Driver
+
+
+def test_dsv4_driver_class_matches_unprefixed_ollama_slug():
+    assert match_driver("deepseek-v4-pro") is DeepSeekV4Driver
+
+
+def test_dsv4_driver_capability_spec_via_class():
+    d = DeepSeekV4Driver()
+    spec = d.capability_spec(adapter_type="openrouter_http", slug="deepseek/deepseek-v4-pro")
+    assert spec.reasoning.effort.buckets == ["high", "max"]
+
+
+def test_dsv4_driver_build_request_via_class_for_or():
+    d = DeepSeekV4Driver()
+    body = d.build_request(
+        adapter_type="openrouter_http",
+        slug="deepseek/deepseek-v4-pro",
+        request=_make_request(effort="max"),
+    )
+    assert body["reasoning"] == {"enabled": True, "effort": "xhigh"}
+
+
+def test_dsv4_driver_build_request_for_unsupported_adapter_raises():
+    """Plan 1 only supports OR. nano-gpt/Novita/Ollama come in Plans 2-4."""
+    d = DeepSeekV4Driver()
+    with pytest.raises(NotImplementedError, match="adapter_type"):
+        d.build_request(
+            adapter_type="nano_gpt_http",
+            slug="deepseek/deepseek-v4-pro:thinking",
+            request=_make_request(effort="high"),
+        )

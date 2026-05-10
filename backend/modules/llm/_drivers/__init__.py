@@ -1,9 +1,5 @@
 """Driver registry and dispatch.
 
-Plan 1 ships an empty registry; concrete drivers register themselves
-into ``DRIVER_REGISTRY`` (see DeepSeekV4Driver in Task 7). Matching is
-basename-fnmatch on the slug.
-
 See devdocs/specs/driver-layer.md.
 """
 from __future__ import annotations
@@ -11,20 +7,18 @@ from __future__ import annotations
 import fnmatch
 
 from backend.modules.llm._drivers._protocol import Driver
+from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 
-DRIVER_REGISTRY: list[type[Driver]] = []
+DRIVER_REGISTRY: list[type[Driver]] = [
+    DeepSeekV4Driver,
+]
 
 
 def match_driver(slug: str) -> type[Driver] | None:
     """Return the first registered driver whose PATTERNS match the slug
     basename, or None.
 
-    The slug basename is everything after the last ``/`` — e.g.
-    ``"deepseek/deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``,
-    ``"deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``,
-    ``"TEE/deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``.
-
-    First match wins, in DRIVER_REGISTRY order.
+    See match_driver docstring in Task 2 for the basename semantics.
     """
     basename = slug.rsplit("/", 1)[-1]
     for driver_cls in DRIVER_REGISTRY:
