@@ -20,6 +20,33 @@ def _next_request_id() -> int:
     return _REQUEST_ID_COUNTER
 
 
+def _content_type(resp: httpx.Response) -> str:
+    raw = resp.headers.get("content-type", "")
+    return raw.split(";", 1)[0].strip().lower()
+
+
+async def _read_sse_response(resp: httpx.Response, expected_id: int) -> dict:
+    """Read an SSE stream until a JSON-RPC payload with `expected_id` arrives.
+
+    Notifications (no `id`) are silently skipped, as are unrelated `id`s.
+    Raises `RuntimeError` if the stream closes without a match.
+    """
+    async for line in resp.aiter_lines():
+        if not line.startswith("data:"):
+            continue
+        data = line[5:].lstrip()
+        if not data:
+            continue
+        try:
+            obj = json.loads(data)
+        except json.JSONDecodeError:
+            _log.warning("MCP SSE: malformed data line: %r", data[:120])
+            continue
+        if obj.get("id") == expected_id:
+            return obj
+    raise RuntimeError("SSE stream closed without a matching JSON-RPC response")
+
+
 class McpExecutor:
     """Calls MCP gateway tools via HTTP JSON-RPC.
 
@@ -37,6 +64,9 @@ class McpExecutor:
         """Call a tool on a gateway and return JSON string {"stdout": ..., "error": ...}.
 
         Never raises. All failure modes produce an error in the returned JSON.
+        Speaks the MCP Streamable HTTP transport: advertises support for both
+        application/json and text/event-stream, and handles whichever the
+        server picks.
         """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
@@ -45,32 +75,39 @@ class McpExecutor:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        request_id = _next_request_id()
         payload = {
             "jsonrpc": "2.0",
-            "id": _next_request_id(),
+            "id": request_id,
             "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments,
-            },
+            "params": {"name": tool_name, "arguments": arguments},
         }
 
         try:
             async with httpx.AsyncClient(timeout=_MCP_HTTP_TIMEOUT_S) as client:
-                resp = await client.post(url, json=payload, headers=headers)
+                async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                    ctype = _content_type(resp)
 
-            # httpx Response.json() is sync; in tests the mock may be async — handle both
-            _raw = resp.json()
-            body = (await _raw) if inspect.isawaitable(_raw) else _raw
+                    if ctype == "application/json":
+                        body_bytes = await resp.aread()
+                        body = json.loads(body_bytes)
 
-            # JSON-RPC error
+                    elif ctype == "text/event-stream":
+                        body = await _read_sse_response(resp, expected_id=request_id)
+
+                    else:
+                        _log.warning("MCP unexpected content-type from %s: %r", url, ctype)
+                        return json.dumps({
+                            "stdout": "",
+                            "error": f"MCP gateway returned unexpected content-type: {ctype!r}",
+                        })
+
             if "error" in body:
                 err = body["error"]
-                msg = err.get("message", str(err))
+                msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
                 _log.warning("MCP JSON-RPC error from %s: %s", url, msg)
                 return json.dumps({"stdout": "", "error": f"MCP error: {msg}"})
 
-            # Successful result — extract text content
             result = body.get("result", {})
             if result.get("isError"):
                 content_parts = result.get("content", [])
