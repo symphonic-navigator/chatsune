@@ -38,7 +38,10 @@ class McpExecutor:
 
         Never raises. All failure modes produce an error in the returned JSON.
         """
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
@@ -96,7 +99,10 @@ class McpExecutor:
 
         Does NOT raise — returns empty list on any error.
         """
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 

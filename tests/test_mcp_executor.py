@@ -114,3 +114,51 @@ class TestMcpExecutor:
         parsed = json.loads(result)
         assert parsed["error"] is not None
         assert "not found" in parsed["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_call_tool_sends_streamable_accept_header(self, executor):
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0", "id": 1,
+            "result": {"content": [{"type": "text", "text": "ok"}]},
+        }
+        with patch("backend.modules.tools._mcp_executor.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            await executor.call_tool(
+                url="http://example.com/mcp",
+                api_key=None,
+                tool_name="ping",
+                arguments={},
+            )
+            sent_headers = mock_client.post.call_args.kwargs["headers"]
+            accept = sent_headers.get("Accept", "")
+            assert "application/json" in accept
+            assert "text/event-stream" in accept
+
+    @pytest.mark.asyncio
+    async def test_discover_tools_sends_streamable_accept_header(self, executor):
+        mock_response = AsyncMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0", "id": 1, "result": {"tools": []},
+        }
+        with patch("backend.modules.tools._mcp_executor.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.post.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            await executor.discover_tools(url="http://example.com/mcp", api_key=None)
+            sent_headers = mock_client.post.call_args.kwargs["headers"]
+            accept = sent_headers.get("Accept", "")
+            assert "application/json" in accept
+            assert "text/event-stream" in accept
