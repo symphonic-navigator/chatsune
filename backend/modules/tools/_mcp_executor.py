@@ -343,3 +343,36 @@ class McpExecutor:
         except Exception as exc:
             _log.warning("MCP tools/list failed for %s: %s", url, exc)
             return []
+
+    async def call_tool_oneshot(
+        self,
+        *,
+        url: str,
+        api_key: str | None,
+        tool_name: str,
+        arguments: dict,
+    ) -> str:
+        """Initialise → call_tool → return. Used by stateless proxy routes.
+
+        Each invocation runs the full handshake; session state is not
+        retained between calls. See spec section 3 (proxy lifecycle).
+        """
+        session_id = await self.initialise(url=url, api_key=api_key)
+        return await self.call_tool(
+            url=url, api_key=api_key,
+            tool_name=tool_name, arguments=arguments,
+            session_id=session_id,
+        )
+
+    async def discover_tools_oneshot(
+        self,
+        *,
+        url: str,
+        api_key: str | None,
+        timeout: float = 10.0,
+    ) -> list[dict]:
+        """Initialise → tools/list → return. Used by stateless proxy routes."""
+        session_id = await self.initialise(url=url, api_key=api_key, timeout=timeout)
+        return await self.discover_tools(
+            url=url, api_key=api_key, timeout=timeout, session_id=session_id,
+        )
