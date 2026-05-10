@@ -55,6 +55,11 @@ _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 # LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
 _TRACE_PAYLOADS = os.environ.get("LLM_TRACE_PAYLOADS") == "1"
 
+# Opt-in per-chunk wire-level tracing for the NDJSON stream. Enable via
+# LLM_TRACE_CHUNKS=1 in the environment; produces one log line per
+# decoded chunk (extremely chatty on long streams). Default off.
+_TRACE_CHUNKS = os.environ.get("LLM_TRACE_CHUNKS") == "1"
+
 GUTTER_SLOW_SECONDS: float = 30.0
 GUTTER_ABORT_SECONDS: float = float(os.environ.get("LLM_STREAM_ABORT_SECONDS", "120"))
 
@@ -472,7 +477,7 @@ class OllamaHttpAdapter(BaseAdapter):
                                     except json.JSONDecodeError:
                                         _log.warning("Skipping malformed NDJSON: %s", line)
                                         continue
-                                    if settings.inference_logging:
+                                    if _TRACE_CHUNKS:
                                         msg = chunk.get("message") or {}
                                         tcs = msg.get("tool_calls") or []
                                         _log.info(
