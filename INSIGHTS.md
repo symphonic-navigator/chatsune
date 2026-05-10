@@ -1532,3 +1532,107 @@ backed by one observation, write the design down (so it isn't lost),
 ship the cheap part (here: the data field), and gate the expensive
 part (here: the UI) on a state threshold (here: third confirmed
 provider). Don't generalise UI ahead of state.
+
+---
+
+## INS-040 — Driver Layer for premium models with router-specific quirks (2026-05-10)
+
+**Observation:** Premium LLMs (the ones our users actually use day to
+day) behave significantly differently across the routers that expose
+them. The DeepSeek V4 wire-shape research
+([devdocs/research/deepseek-v4-wire-shapes.md](devdocs/research/deepseek-v4-wire-shapes.md))
+showed five orthogonal divergences for the same model on the same
+day:
+
+1. **CoT stream key differs across all four routers**:
+   `delta.reasoning` (OR), `delta.reasoning` (nano-gpt `:thinking`),
+   `delta.reasoning_content` (Novita), `message.thinking` (Ollama
+   Cloud, NDJSON not SSE).
+2. **Reasoning gating is router-specific**: OR uses
+   `reasoning.enabled`; nano-gpt uses **separate slugs** (`:thinking`
+   suffix); Novita silently ignores `reasoning.enabled` and requires
+   top-level `thinking.type`; Ollama uses `think: true|"max"`.
+3. **Effort vocabularies don't agree**: OR's `xhigh` ≡ nano-gpt's
+   `max` ≡ Ollama's `think="max"` ≡ DeepSeek-native max. Novita's
+   `max` ≡ Novita's `high` (silently — it does not pass through to
+   DeepSeek's native max mode; prompt_tokens stays at 19 with no
+   system-prompt injection).
+4. **Silent failure modes**: Novita silently degrades unknown
+   `effort` values to ~"low" with HTTP 200 (no validation error);
+   nano-gpt has no `usage` block at all on stream completion and
+   bundles reasoning into a single `outputTokens`.
+5. **Metadata visibility varies**: nano-gpt's `/v1/models` is sparse
+   by default; `?detailed=true` is required to surface
+   `context_length` (e.g. TEE variant 800k) and `capabilities`.
+
+A purely declarative table (`model_capabilities.yaml`) cannot encode
+behaviour, only shape. None of the above five are shape; all are
+behaviour.
+
+**Decision:** Introduce a **Driver Layer** at
+`backend/modules/llm/_drivers/`, one driver package per *model
+family* (not per model id), coexisting with the existing
+`model_capabilities.yaml`. Drivers handle premium models with
+router-specific quirks; yaml handles the long tail of well-behaved
+generic OpenAI-compat models. Spec:
+[devdocs/specs/driver-layer.md](devdocs/specs/driver-layer.md). First
+concrete driver: `DeepSeekV4Driver` (covers V4 Pro and V4 Flash
+across OpenRouter, nano-gpt, Novita, and Ollama Cloud).
+
+Key design points:
+
+- **Two-level dispatch.** `match_driver(slug)` uses fnmatch on the
+  slug basename (`slug.rsplit("/", 1)[-1]`). Inside the matched
+  driver, `(adapter_type, slug-suffix)` resolves to a Builder +
+  Parser via a default-with-overrides registry. Multiple PATTERNS
+  per driver are supported so naming-convention drift across routers
+  doesn't multiply driver classes.
+- **Per-driver user-facing effort scale**, not a global one. The
+  scale comes from the model author's docs, not from the router with
+  the most permissive vocabulary. DeepSeek V4 exposes `[high, max]`
+  per
+  [DeepSeek's thinking-mode docs](https://api-docs.deepseek.com/guides/thinking_mode)
+  ("low and medium are mapped to high"). OR's
+  `minimal`/`low`/`medium` and Novita's silent-low are **not**
+  exposed because their behaviour is not specified by DeepSeek and
+  varies router-to-router.
+- **Capability-spec merging.** Driver fields explicit > provider
+  metadata > defaults. Driver leaves `context_length`, `pricing`,
+  `max_output_tokens` as `None` so provider metadata fills them in
+  — per-slug variants like nano-gpt TEE (800k context) work without
+  the driver knowing about them.
+- **Force-default-routing toggle** per per-model-config — escape
+  hatch when a driver misbehaves. UI surfaces it with a warning
+  ("you will lose advanced capabilities for this model"). Default
+  off for first-class models.
+- **Validation at the boundary.** Invalid effort buckets for a given
+  `(adapter, slug)` raise at request-build time. No silent
+  degradation. Novita `max` is rejected client-side because Novita
+  silently caps it — refusing is closer to the truth than degrading
+  without telling the user.
+
+**Why coexist with yaml instead of replacing it:** yaml works well
+for the long tail. Claude 4.5/4.6/4.7 and GPT-5 are already in
+production via yaml entries and are battle-tested. Forcing every
+model through a driver would multiply boilerplate ~5x for zero
+behaviour gain on well-behaved models. The cost of "two paths to
+learn" is real but small; the cost of "every new yaml entry must
+become a driver" would have killed adoption. Migration in either
+direction stays optional and reactive.
+
+**Generalisable rules:**
+
+1. **Realism toward upstream**: when a vendor's behaviour diverges
+   from its docs, the code must embody what they actually do, not
+   what they claim. The driver is the artefact that captures the
+   divergence; the spec keeps it auditable.
+2. **Model-author docs trump router extensions**: when deciding what
+   user-facing options to expose for a model, default to the
+   vocabulary the model's author defines. Routers that extend the
+   vocabulary (intentionally or by silent permissiveness) are not
+   authoritative for what the model actually supports.
+3. **Boundary-validate against silent degradation**: prefer a clean
+   client-side rejection over a server-side silent downgrade. Silent
+   downgrades are the exact failure mode that makes user complaints
+   useless ("I sent max but it was lazy"); rejections produce
+   actionable errors.
