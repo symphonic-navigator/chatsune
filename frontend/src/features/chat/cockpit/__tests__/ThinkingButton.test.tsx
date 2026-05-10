@@ -106,6 +106,32 @@ describe('ThinkingButton', () => {
     expect(captured).toEqual({ mode: 'off', effort: null })
   })
 
+  it('falls back to default_bucket when effort is not in current buckets', () => {
+    // Simulates a model switch where the persisted effort ("max") is no
+    // longer in the new model's buckets ("high" only — e.g. DSv4 Flash
+    // on OR after the capability-spec fix). Badge must show the
+    // default_bucket initial, not the stale value's initial.
+    render(
+      <ThinkingButton
+        reasoning={{
+          kind: 'optional',
+          effort: { buckets: ['high'], default_bucket: 'high' },
+          default_on: true,
+        }}
+        mode="on"
+        effort="max"
+        onChange={noop}
+      />,
+    )
+    const btn = screen.getByRole('button')
+    expect(btn).toHaveAttribute('aria-label', 'Thinking · High')
+    expect(btn.textContent).toContain('H')
+    expect(btn.textContent).not.toContain('+')
+    fireEvent.click(btn)
+    const highItem = screen.getByRole('menuitemradio', { name: /^High$/ })
+    expect(highItem).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('selecting a bucket in pop-out commits mode=on with that effort', async () => {
     let captured: { mode: string; effort: string | null } | null = null
     render(
