@@ -1,4 +1,7 @@
-"""DeepSeek V4 driver (Pro and Flash). Plans 1-3: OpenRouter, Ollama Cloud, Novita.
+"""DeepSeek V4 driver (Pro and Flash).
+
+Wire support: OpenRouter, Ollama Cloud, Novita.
+Capability-only: nano-gpt (see INSIGHTS.md INS-043).
 
 See devdocs/specs/driver-layer.md and devdocs/research/deepseek-v4-wire-shapes.md.
 """
@@ -30,8 +33,12 @@ from shared.dtos.inference import CompletionRequest
 class DeepSeekV4Driver:
     """Driver for DeepSeek V4 Pro and DeepSeek V4 Flash.
 
-    Plan 1: OpenRouter. Plan 2: + Ollama Cloud. Plan 3: + Novita (this
-    class). Plan 4 adds nano-gpt.
+    Wire support: OpenRouter, Ollama Cloud, Novita (per-adapter
+    builders + parsers). Capability-only support: nano-gpt — the
+    driver supplies the canonical DSv4 capability spec while the
+    nano-gpt adapter retains full ownership of wire-shape translation
+    (slug-pair switching, OR-style reasoning parsing, atomic
+    tool-call delivery).
     """
 
     PATTERNS: list[str] = [
@@ -63,9 +70,10 @@ class DeepSeekV4Driver:
         if adapter_type == "novita_http":
             return build_request_for_novita(slug=slug, request=request)
         raise NotImplementedError(
-            f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"yet (Plans 1-3 cover openrouter_http + ollama_http + "
-            f"novita_http; Plan 4 adds nano_gpt_http)."
+            f"DeepSeekV4Driver: adapter_type={adapter_type!r} has no driver-level "
+            f"wire support. nano_gpt_http is capability-only by design — the "
+            f"adapter's own slug-pair switching and OR-style chunk parser are "
+            f"sufficient. Other adapter_types: not yet integrated."
         )
 
     def parse_chunk(
@@ -82,7 +90,8 @@ class DeepSeekV4Driver:
                 chunk=chunk, tool_acc=self._novita_tool_acc,
             )
         raise NotImplementedError(
-            f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"yet (Plans 1-3 cover openrouter_http + ollama_http + "
-            f"novita_http; Plan 4 adds nano_gpt_http)."
+            f"DeepSeekV4Driver: adapter_type={adapter_type!r} has no driver-level "
+            f"wire support. nano_gpt_http is capability-only by design — the "
+            f"adapter's own slug-pair switching and OR-style chunk parser are "
+            f"sufficient. Other adapter_types: not yet integrated."
         )
