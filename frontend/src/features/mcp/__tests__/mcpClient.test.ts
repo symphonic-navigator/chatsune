@@ -37,3 +37,42 @@ describe('mcpClient — Streamable HTTP Accept header', () => {
     expect(accept).toContain('text/event-stream')
   })
 })
+
+describe('readJsonRpcResponse', () => {
+  it('parses a JSON response', async () => {
+    const resp = new Response(JSON.stringify({ jsonrpc: '2.0', id: 7, result: 'x' }), {
+      headers: { 'content-type': 'application/json' },
+    })
+    const { readJsonRpcResponse } = await import('../mcpClient')
+    const out = await readJsonRpcResponse(resp)
+    expect(out.id).toEqual(7)
+    expect(out.result).toEqual('x')
+  })
+
+  it('parses an SSE response and matches by id', async () => {
+    const sseBody =
+      `data: {"jsonrpc":"2.0","method":"notifications/progress","params":{"x":1}}\n\n` +
+      `data: {"jsonrpc":"2.0","id":42,"result":"hit"}\n\n`
+    const resp = new Response(sseBody, {
+      headers: { 'content-type': 'text/event-stream' },
+    })
+    const { readJsonRpcResponse } = await import('../mcpClient')
+    const out = await readJsonRpcResponse(resp, 42)
+    expect(out.id).toEqual(42)
+    expect(out.result).toEqual('hit')
+  })
+
+  it('throws on SSE close without matching id', async () => {
+    const resp = new Response(`data: {"jsonrpc":"2.0","id":1,"result":"a"}\n\n`, {
+      headers: { 'content-type': 'text/event-stream' },
+    })
+    const { readJsonRpcResponse } = await import('../mcpClient')
+    await expect(readJsonRpcResponse(resp, 999)).rejects.toThrow(/SSE stream closed/)
+  })
+
+  it('throws on unexpected content-type', async () => {
+    const resp = new Response('hello', { headers: { 'content-type': 'text/plain' } })
+    const { readJsonRpcResponse } = await import('../mcpClient')
+    await expect(readJsonRpcResponse(resp)).rejects.toThrow(/Unexpected content-type/)
+  })
+})

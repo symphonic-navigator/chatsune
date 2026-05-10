@@ -14,6 +14,47 @@ import type { McpToolDefinition } from './types'
 export const MCP_PROTOCOL_VERSION = '2025-06-18'
 export const APP_VERSION = (packageJson as { version: string }).version
 
+type JsonRpcReply = {
+  jsonrpc: string
+  id?: number
+  result?: unknown
+  error?: { code: number; message: string }
+}
+
+export async function readJsonRpcResponse(resp: Response, expectedId?: number): Promise<JsonRpcReply> {
+  const ctype = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+
+  if (ctype === 'application/json') {
+    return (await resp.json()) as JsonRpcReply
+  }
+  if (ctype === 'text/event-stream') {
+    if (!resp.body) throw new Error('SSE response has no body')
+    const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader()
+    let buffer = ''
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += value
+      let nl: number
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).replace(/\r$/, '')
+        buffer = buffer.slice(nl + 1)
+        if (!line.startsWith('data:')) continue
+        const data = line.slice(5).trimStart()
+        if (!data) continue
+        try {
+          const obj = JSON.parse(data) as JsonRpcReply
+          if (expectedId === undefined || obj.id === expectedId) return obj
+        } catch {
+          // malformed — skip, keep reading
+        }
+      }
+    }
+    throw new Error('SSE stream closed without matching response')
+  }
+  throw new Error(`Unexpected content-type from MCP gateway: ${ctype}`)
+}
+
 let requestId = 0
 
 function nextId(): number {
