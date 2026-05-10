@@ -351,6 +351,22 @@ async def websocket_endpoint(
                         )
                     except ValueError as exc:
                         _log.warning("MCP registration failed: %s", exc)
+            elif msg_type == "mcp.tools.deregister":
+                payload = data.get("payload", data)
+                gateway_id = payload.get("gateway_id") if isinstance(payload, dict) else None
+                if not isinstance(gateway_id, str) or not gateway_id:
+                    _log.warning(
+                        "malformed mcp.tools.deregister from user=%s connection=%s",
+                        user_id, connection_id,
+                    )
+                else:
+                    registry = get_mcp_registry(connection_id)
+                    if registry is not None:
+                        removed = registry.unregister_by_id(gateway_id)
+                        _log.info(
+                            "Deregistered local MCP gateway id=%s for user=%s (removed=%s)",
+                            gateway_id, user_id, removed,
+                        )
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly
             # refresh token cookie cannot be updated over WebSocket; the token.expiring_soon
