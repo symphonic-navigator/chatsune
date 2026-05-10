@@ -24,6 +24,7 @@ from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
 )
 from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_novita,
     parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
@@ -885,3 +886,101 @@ def test_builder_novita_no_effort_when_reasoning_off() -> None:
     # Reasoning off: delegate unchanged. Whatever the base builder
     # produces is fine — we just must not raise.
     # (Don't assert on reasoning field shape; the base builder owns it.)
+
+
+def test_parser_novita_emits_content_delta() -> None:
+    chunk = {
+        "choices": [
+            {"delta": {"content": "Hello"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == [ContentDelta(delta="Hello")]
+
+
+def test_parser_novita_emits_thinking_delta_from_reasoning_content() -> None:
+    """Novita uses the DeepSeek-native key ``delta.reasoning_content``,
+    NOT OR's ``delta.reasoning``. The driver maps it to ThinkingDelta
+    per the same INS-038 thinking/reasoning interchangeability rule."""
+    chunk = {
+        "choices": [
+            {"delta": {"reasoning_content": "Let me think"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == [ThinkingDelta(delta="Let me think")]
+
+
+def test_parser_novita_ignores_or_legacy_reasoning_key() -> None:
+    """If a ``delta.reasoning`` (OR-style) field were ever present on a
+    Novita chunk, it must NOT be picked up — that key is OR-only and
+    routing it through here would risk double-counting CoT if both
+    keys appeared. Probe 2026-05-10 confirmed Novita never emits it."""
+    chunk = {
+        "choices": [
+            {"delta": {"reasoning": "should be ignored"}, "finish_reason": None}
+        ]
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    assert events == []
+
+
+def test_parser_novita_accumulates_streamed_tool_call_fragments() -> None:
+    acc = ToolCallAccumulator()
+    # First chunk: id + name, no args yet
+    parse_chunk_novita(chunk={
+        "choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_00_xyz", "type": "function",
+            "function": {"name": "get_weather"},
+        }]}, "finish_reason": None}],
+    }, tool_acc=acc)
+    # Subsequent chunks: arg fragments
+    for frag in ['{', '"', 'city', '"', ': ', '"', 'Berlin', '"', '}']:
+        parse_chunk_novita(chunk={
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 0, "function": {"arguments": frag},
+            }]}, "finish_reason": None}],
+        }, tool_acc=acc)
+    # Terminal: finish_reason=tool_calls + usage block
+    events = parse_chunk_novita(chunk={
+        "choices": [{"delta": {}, "finish_reason": "tool_calls"}],
+        "usage": {"prompt_tokens": 303, "completion_tokens": 102,
+                  "completion_tokens_details": {"reasoning_tokens": 26}},
+    }, tool_acc=acc)
+
+    tool_event = next(e for e in events if isinstance(e, ToolCallEvent))
+    assert tool_event.id == "call_00_xyz"
+    assert tool_event.name == "get_weather"
+    assert tool_event.arguments == '{"city": "Berlin"}'
+    done_event = next(e for e in events if isinstance(e, StreamDone))
+    assert done_event.input_tokens == 303
+    assert done_event.output_tokens == 102
+    assert done_event.reasoning_tokens == 26
+
+
+def test_parser_novita_emits_stream_done_with_usage() -> None:
+    chunk = {
+        "choices": [{"delta": {}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 62, "completion_tokens": 3574,
+            "completion_tokens_details": {"reasoning_tokens": 2250},
+        },
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    done_event = next(e for e in events if isinstance(e, StreamDone))
+    assert done_event.input_tokens == 62
+    assert done_event.output_tokens == 3574
+    assert done_event.reasoning_tokens == 2250
+
+
+def test_parser_novita_emits_stream_refused_on_content_filter() -> None:
+    chunk = {
+        "choices": [{"delta": {"refusal": "I cannot help with that"},
+                     "finish_reason": "content_filter"}],
+    }
+    events = parse_chunk_novita(chunk=chunk)
+    refused = next(e for e in events if isinstance(e, StreamRefused))
+    assert refused.reason == "content_filter"
+    assert refused.refusal_text == "I cannot help with that"
+    # StreamRefused and StreamDone are mutually exclusive terminals.
+    assert not any(isinstance(e, StreamDone) for e in events)
