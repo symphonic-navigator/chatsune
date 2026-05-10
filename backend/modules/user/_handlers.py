@@ -1278,6 +1278,43 @@ class UpdateMcpGatewayRequest(_BaseModel):
     tool_overrides: list | None = None
 
 
+async def _refresh_user_mcp(user_id: str) -> None:
+    """Clear and immediately rediscover MCP registries for a user.
+
+    Triggers MCP_TOOLS_REGISTERED emission for every active connection
+    of the user, so persona-McpTab and the cockpit tools list reflect
+    the change without waiting for the next inference.
+    """
+    from backend.ws.manager import get_manager
+    from backend.modules.tools import (
+        invalidate_mcp_registries,
+        eager_discover_mcp,
+    )
+    cids = get_manager().connection_ids_for_user(user_id)
+    if not cids:
+        return
+    invalidate_mcp_registries(cids)
+    for cid in cids:
+        await eager_discover_mcp(cid, user_id)
+
+
+async def _refresh_all_mcp() -> None:
+    """Admin gateway change: refresh registries for every active connection
+    of every user. Sequential — admin changes are infrequent."""
+    from backend.ws.manager import get_manager
+    from backend.modules.tools import (
+        invalidate_mcp_registries,
+        eager_discover_mcp,
+    )
+    invalidate_mcp_registries()
+    manager = get_manager()
+    # Snapshot — connection map can mutate while we await
+    user_ids = list(manager._connections.keys())
+    for user_id in user_ids:
+        for cid in manager.connection_ids_for_user(user_id):
+            await eager_discover_mcp(cid, user_id)
+
+
 def _invalidate_user_mcp(user_id: str) -> None:
     """Clear cached MCP registries for all connections of a user."""
     from backend.ws.manager import get_manager
@@ -1318,7 +1355,7 @@ async def create_mcp_gateway(
         "tool_overrides": body.tool_overrides,
     }
     await repo.add_mcp_gateway(user["sub"], gateway)
-    _invalidate_user_mcp(user["sub"])
+    await _refresh_user_mcp(user["sub"])
     return McpGatewayConfigDto(**gateway)
 
 
@@ -1347,7 +1384,7 @@ async def update_mcp_gateway(
     success = await repo.update_mcp_gateway(user["sub"], gateway_id, updates)
     if not success:
         raise HTTPException(status_code=404, detail="Gateway not found")
-    _invalidate_user_mcp(user["sub"])
+    await _refresh_user_mcp(user["sub"])
 
     gateways = await repo.get_mcp_gateways(user["sub"])
     gw = next((g for g in gateways if g["id"] == gateway_id), None)
@@ -1365,7 +1402,7 @@ async def delete_mcp_gateway(
     success = await repo.delete_mcp_gateway(user["sub"], gateway_id)
     if not success:
         raise HTTPException(status_code=404, detail="Gateway not found")
-    _invalidate_user_mcp(user["sub"])
+    await _refresh_user_mcp(user["sub"])
 
 
 # ── Admin MCP Gateways ───────────────────────────────────────────────
@@ -1420,7 +1457,7 @@ async def create_admin_mcp_gateway(
     }
     existing.append(gateway)
     await _save_admin_mcp_settings(db, existing)
-    invalidate_mcp_registries()  # admin change affects all users
+    await _refresh_all_mcp()
     return McpGatewayConfigDto(**gateway)
 
 
@@ -1451,7 +1488,7 @@ async def update_admin_mcp_gateway(
 
     target.update(updates)
     await _save_admin_mcp_settings(db, gateways)
-    invalidate_mcp_registries()  # admin change affects all users
+    await _refresh_all_mcp()
     return McpGatewayConfigDto(**target)
 
 
@@ -1468,7 +1505,7 @@ async def delete_admin_mcp_gateway(
     if len(gateways) == original_len:
         raise HTTPException(status_code=404, detail="Gateway not found")
     await _save_admin_mcp_settings(db, gateways)
-    invalidate_mcp_registries()  # admin change affects all users
+    await _refresh_all_mcp()
 
 
 # ── MCP Gateway Proxy ────────────────────────────────────────────────
