@@ -11,6 +11,9 @@ from backend.modules.llm._adapters._events import (
     ToolCallEvent,
 )
 from backend.modules.llm._drivers import match_driver
+from backend.modules.llm._drivers._tool_call_accumulator import (
+    ToolCallAccumulator,
+)
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 from backend.modules.llm._drivers.deepseek_v4._builders import (
     build_request_for_ollama_cloud,
@@ -596,3 +599,152 @@ def test_parser_ollama_thinking_and_content_chunks_emit_no_tool_calls():
         isinstance(e, ToolCallEvent)
         for e in parse_chunk_ollama_cloud(chunk=content_chunk)
     )
+
+
+def test_parser_or_accumulates_streamed_tool_call_fragments():
+    """OR streams tool-calls incrementally — first chunk has id+name with
+    empty args, subsequent chunks add args fragments. The accumulator
+    builds the full call; emission happens on finish_reason='tool_calls'."""
+    acc = ToolCallAccumulator()
+
+    # Header chunk: id + name, empty args
+    chunk_header = {
+        "id": "gen-1", "provider": "Novita",
+        "choices": [{"index": 0, "delta": {
+            "content": None, "role": "assistant",
+            "tool_calls": [{
+                "index": 0, "id": "call_00_xyz", "type": "function",
+                "function": {"name": "get_time", "arguments": ""},
+            }],
+        }, "finish_reason": None}],
+    }
+    events = parse_chunk_openrouter(chunk=chunk_header, tool_acc=acc)
+    # Header chunk yields no event yet — args still streaming.
+    assert events == []
+
+    # Args fragments
+    for frag in ('{', '"', 'tz', '"', ': ', '"', 'UTC', '"', '}'):
+        chunk_frag = {
+            "choices": [{"index": 0, "delta": {
+                "tool_calls": [{
+                    "index": 0,
+                    "function": {"arguments": frag},
+                }],
+            }, "finish_reason": None}],
+        }
+        assert parse_chunk_openrouter(chunk=chunk_frag, tool_acc=acc) == []
+
+    # Terminal chunk: finish_reason='tool_calls' triggers emission
+    chunk_done = {
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 20,
+                  "completion_tokens_details": {"reasoning_tokens": 0}},
+    }
+    events = parse_chunk_openrouter(chunk=chunk_done, tool_acc=acc)
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].id == "call_00_xyz"
+    assert tool_calls[0].name == "get_time"
+    assert tool_calls[0].arguments == '{"tz": "UTC"}'
+    # Usage in same chunk → also emit StreamDone (NOT mutually exclusive
+    # with ToolCallEvent — only mutual with StreamRefused).
+    assert any(isinstance(e, StreamDone) for e in events)
+
+
+def test_parser_or_accumulates_parallel_tool_calls_with_distinct_indices():
+    """Parallel tool-calls arrive sequentially per-index (all index=0
+    fragments first, then all index=1). The accumulator keys on `index`,
+    so the order doesn't matter — but we verify the OR wire-shape ordering."""
+    acc = ToolCallAccumulator()
+
+    # index=0 header + args
+    parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {"tool_calls": [{
+            "index": 0, "id": "call_00_a", "type": "function",
+            "function": {"name": "get_weather", "arguments": ""},
+        }]}, "finish_reason": None}],
+    }, tool_acc=acc)
+    for frag in ('{"city": "', 'Berlin', '"}'):
+        parse_chunk_openrouter(chunk={
+            "choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "function": {"arguments": frag},
+            }]}, "finish_reason": None}],
+        }, tool_acc=acc)
+
+    # index=1 header + args
+    parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {"tool_calls": [{
+            "index": 1, "id": "call_01_b", "type": "function",
+            "function": {"name": "get_weather", "arguments": ""},
+        }]}, "finish_reason": None}],
+    }, tool_acc=acc)
+    for frag in ('{"city": "', 'Tokyo', '"}'):
+        parse_chunk_openrouter(chunk={
+            "choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 1, "function": {"arguments": frag},
+            }]}, "finish_reason": None}],
+        }, tool_acc=acc)
+
+    # Terminal
+    events = parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+    }, tool_acc=acc)
+    tool_calls = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(tool_calls) == 2
+    # Sorted by index in finalised()
+    assert tool_calls[0].id == "call_00_a"
+    assert tool_calls[0].arguments == '{"city": "Berlin"}'
+    assert tool_calls[1].id == "call_01_b"
+    assert tool_calls[1].arguments == '{"city": "Tokyo"}'
+
+
+def test_parser_or_without_accumulator_silently_skips_tool_calls():
+    """Back-compat: when caller passes no accumulator, tool_call fragments
+    are silently skipped. Used by callers that genuinely don't care
+    (today: no caller; this is defence-in-depth for future code paths)."""
+    chunk = {
+        "choices": [{"index": 0, "delta": {"tool_calls": [{
+            "index": 0, "id": "call_x", "function": {"name": "noop", "arguments": "{}"},
+        }]}, "finish_reason": "tool_calls"}],
+    }
+    # No tool_acc passed — should not crash, should emit no tool events
+    events = parse_chunk_openrouter(chunk=chunk)
+    assert not any(isinstance(e, ToolCallEvent) for e in events)
+
+
+def test_parser_or_accumulator_idempotent_finalise():
+    """If finalised() runs twice (e.g. provider sends two finish chunks
+    with finish_reason='tool_calls'), no duplicate ToolCallEvent."""
+    acc = ToolCallAccumulator()
+    parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {"tool_calls": [{
+            "index": 0, "id": "call_x", "type": "function",
+            "function": {"name": "noop", "arguments": "{}"},
+        }]}, "finish_reason": None}],
+    }, tool_acc=acc)
+    first = parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+    }, tool_acc=acc)
+    second = parse_chunk_openrouter(chunk={
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
+    }, tool_acc=acc)
+    assert sum(1 for e in first if isinstance(e, ToolCallEvent)) == 1
+    assert sum(1 for e in second if isinstance(e, ToolCallEvent)) == 0
+
+
+def test_dsv4_driver_accumulator_is_per_instance():
+    """A fresh DeepSeekV4Driver instance gets a fresh accumulator. Two
+    instances (e.g. two parallel inference iterations) do not share state."""
+    d1 = DeepSeekV4Driver()
+    d2 = DeepSeekV4Driver()
+    assert d1._or_tool_acc is not d2._or_tool_acc
+    # And the same instance reuses the same accumulator across parse_chunk calls
+    d3 = DeepSeekV4Driver()
+    acc_ref = d3._or_tool_acc
+    d3.parse_chunk(adapter_type="openrouter_http", slug="deepseek-v4-pro", chunk={
+        "choices": [{"index": 0, "delta": {"tool_calls": [{
+            "index": 0, "id": "call_x", "type": "function",
+            "function": {"name": "noop", "arguments": ""},
+        }]}, "finish_reason": None}],
+    })
+    assert d3._or_tool_acc is acc_ref

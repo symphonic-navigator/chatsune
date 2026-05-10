@@ -8,6 +8,9 @@ from typing import Any
 
 from backend.modules.llm._adapters._events import ProviderStreamEvent
 from backend.modules.llm._capabilities import ResolvedCapabilities
+from backend.modules.llm._drivers._tool_call_accumulator import (
+    ToolCallAccumulator,
+)
 from backend.modules.llm._drivers.deepseek_v4._builders import (
     build_request_for_ollama_cloud,
     build_request_for_openrouter,
@@ -34,6 +37,14 @@ class DeepSeekV4Driver:
         "deepseek-v4-flash*",
     ]
 
+    def __init__(self) -> None:
+        # Per-stream state: a fresh driver instance is created in each
+        # adapter's ``stream_completion`` (``driver = driver_cls()``), so
+        # the accumulator is naturally scoped to one inference iteration.
+        # Only the OpenRouter (and future Novita/nano-gpt) parsers consume
+        # it; the Ollama parser is stateless.
+        self._or_tool_acc = ToolCallAccumulator()
+
     def capability_spec(
         self, *, adapter_type: str, slug: str,
     ) -> ResolvedCapabilities:
@@ -56,7 +67,9 @@ class DeepSeekV4Driver:
         self, *, adapter_type: str, slug: str, chunk: dict[str, Any],
     ) -> list[ProviderStreamEvent]:
         if adapter_type == "openrouter_http":
-            return parse_chunk_openrouter(chunk=chunk)
+            return parse_chunk_openrouter(
+                chunk=chunk, tool_acc=self._or_tool_acc,
+            )
         if adapter_type == "ollama_http":
             return parse_chunk_ollama_cloud(chunk=chunk)
         raise NotImplementedError(

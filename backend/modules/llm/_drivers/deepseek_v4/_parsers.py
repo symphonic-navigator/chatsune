@@ -27,6 +27,9 @@ from backend.modules.llm._adapters._events import (
     ThinkingDelta,
     ToolCallEvent,
 )
+from backend.modules.llm._drivers._tool_call_accumulator import (
+    ToolCallAccumulator,
+)
 
 
 # Mirrors _ollama_http._REFUSAL_REASONS — keeping a local copy avoids
@@ -34,8 +37,20 @@ from backend.modules.llm._adapters._events import (
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 
-def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
-    """Translate one OR SSE chunk dict into ProviderStreamEvents."""
+def parse_chunk_openrouter(
+    *,
+    chunk: dict[str, Any],
+    tool_acc: ToolCallAccumulator | None = None,
+) -> list[ProviderStreamEvent]:
+    """Translate one OR SSE chunk dict into ProviderStreamEvents.
+
+    When ``tool_acc`` is supplied, OpenAI-style streaming tool-call
+    fragments in ``delta.tool_calls`` are accumulated; on
+    ``finish_reason="tool_calls"`` the accumulator is finalised and one
+    ``ToolCallEvent`` per accumulated call is appended in index order.
+    Without ``tool_acc`` (or when no fragments arrive) tool-calls are
+    silently skipped — back-compat with callers that don't care.
+    """
     events: list[ProviderStreamEvent] = []
 
     choices = chunk.get("choices") or []
@@ -55,6 +70,13 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
         if reasoning:
             events.append(ThinkingDelta(delta=reasoning))
 
+        # Tool-call fragments — OR streams them incrementally
+        # (OpenAI-style). Accumulator state is owned by the driver-class
+        # instance (one per stream); the parser stays pure-by-arg.
+        tool_frags = delta.get("tool_calls") or []
+        if tool_frags and tool_acc is not None:
+            tool_acc.ingest(tool_frags)
+
         # Refusal: parity with _openrouter_http._chunk_to_events. Without
         # this the driver path silently drops refusals; the legacy path
         # surfaces them as StreamRefused.
@@ -64,6 +86,13 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
                 reason=finish,
                 refusal_text=delta.get("refusal") or None,
             ))
+        elif finish == "tool_calls" and tool_acc is not None:
+            for call in tool_acc.finalised():
+                events.append(ToolCallEvent(
+                    id=call["id"],
+                    name=call["name"],
+                    arguments=call["arguments"],
+                ))
 
     # Terminal usage block (chunk with finish_reason or final usage info).
     # Guard against co-emitting StreamDone when StreamRefused was already
