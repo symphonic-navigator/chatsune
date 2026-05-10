@@ -27,7 +27,7 @@ from backend.modules.integrations import emit_integration_secrets_for_user
 from backend.modules.user import decode_access_token
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
-from shared.dtos.mcp import McpToolRegistrationPayload
+from shared.dtos.mcp import McpToolRegistrationPayload, McpToolDeregistrationPayload
 from shared.dtos.tools import ClientToolResultDto
 
 _log = logging.getLogger(__name__)
@@ -352,20 +352,26 @@ async def websocket_endpoint(
                     except ValueError as exc:
                         _log.warning("MCP registration failed: %s", exc)
             elif msg_type == "mcp.tools.deregister":
-                payload = data.get("payload", data)
-                gateway_id = payload.get("gateway_id") if isinstance(payload, dict) else None
-                if not isinstance(gateway_id, str) or not gateway_id:
+                try:
+                    payload = McpToolDeregistrationPayload.model_validate(data.get("payload", data))
+                except ValidationError as e:
                     _log.warning(
-                        "malformed mcp.tools.deregister from user=%s connection=%s",
-                        user_id, connection_id,
+                        "malformed mcp.tools.deregister from user=%s connection=%s: %s",
+                        user_id, connection_id, e,
                     )
                 else:
                     registry = get_mcp_registry(connection_id)
                     if registry is not None:
-                        removed = registry.unregister_by_id(gateway_id)
+                        removed = registry.unregister_by_id(payload.gateway_id)
+                        # No event emission — local mutations are entirely
+                        # frontend-driven; the frontend updates its own
+                        # sessionGateways synchronously, and an echo would
+                        # re-introduce the duplicate-merge bug fixed by
+                        # filtering tier=local out of MCP_TOOLS_REGISTERED
+                        # (see devdocs/specs/2026-05-10-mcp-gateway-sync-design.md §4.1).
                         _log.info(
                             "Deregistered local MCP gateway id=%s for user=%s (removed=%s)",
-                            gateway_id, user_id, removed,
+                            payload.gateway_id, user_id, removed,
                         )
 
             # token.refresh is handled via POST /api/auth/refresh (HTTP) — the httpOnly

@@ -64,6 +64,12 @@ class McpToolRegistrationPayload(BaseModel):
     tools: list[McpToolDefinitionDto]
 
 
+class McpToolDeregistrationPayload(BaseModel):
+    """Frontend -> Backend via WebSocket: deregistering a local gateway."""
+
+    gateway_id: str
+
+
 class PersonaMcpConfig(BaseModel):
     """Persona-level MCP tool exclusions. Default: everything enabled."""
 
