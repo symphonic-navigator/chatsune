@@ -1665,3 +1665,28 @@ via `backend/llm_harness/probes/dsv4_flash_or_drift.py`.
 When the OR-side fix lands (verdict flips to FIXED), drop the override
 in `_capability.py` and `_builders.py` and remove
 `_is_or_flash_quirk_applicable` from `_quirks.py`.
+
+## INS-042 — Novita's permissive effort vocabulary + cache visibility (2026-05-10)
+
+**Permissive effort.** Novita accepts any string for `reasoning.effort`
+without 400-rejection (probed: `"high"`, `"max"`, `"xhigh"`,
+`"invalid_xyz"` all returned 200). Unknown values silent-degrade to a
+default low setting — `"invalid_xyz"` produced reasoning_tokens=1403 vs
+`"high"`'s 2250 on the same prompt. This is the failure mode INS-040
+generalisable rule 3 warns about ("boundary-validate against silent
+degradation"): the DSv4 Novita builder rejects any effort outside
+`{high, max}` so a typo or a stale stored value surfaces as a loud
+ValueError instead of a quiet quality drop.
+
+**Wire-shape parity with OR.** Tool-call streaming is OpenAI-fragmented
+and indexed; the `ToolCallAccumulator` shared with the OR parser handles
+both providers without duplication. The only diff vs OR is the CoT key:
+Novita uses `delta.reasoning_content` (DeepSeek-native), OR uses
+`delta.reasoning`. Both DSv4 Pro and Flash work on Novita with both
+buckets — no Flash-quirk like INS-041 here.
+
+**Free win: cache visibility.** Novita streams
+`prompt_tokens_details.cached_tokens` in the terminal usage block on
+DSv4 (probed: 128 cached tokens on a tool-call request). OR shows the
+same field; nano-gpt does not (per existing memory). When QA-ing
+cache-related features for DSv4, Novita is a viable alternative to OR.
