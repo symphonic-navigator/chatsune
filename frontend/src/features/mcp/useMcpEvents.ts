@@ -7,7 +7,7 @@ import { sendMessage } from "../../core/websocket/connection"
 import { mcpToolsList } from "./mcpClient"
 import type { BaseEvent } from "../../core/types/events"
 import { Topics } from "../../core/types/events"
-import type { McpSessionGateway } from "./types"
+import type { McpGatewayConfig, McpSessionGateway } from "./types"
 
 interface McpGatewayErrorPayload {
   gateway_name: string
@@ -28,54 +28,71 @@ interface McpToolsRegisteredPayload {
   total_tools: number
 }
 
+function namespaceFromName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+}
+
+/**
+ * Discover one local gateway and register its tools with the backend.
+ * Returns the corresponding McpSessionGateway entry on success, or null
+ * if the gateway is disabled, unreachable, or yields no tools.
+ *
+ * Called from registerLocalGateways (WS-connect bulk path) AND from
+ * mcpStore mutators (per-mutation path, in a later task).
+ */
+export async function syncLocalGatewayToBackend(
+  gw: McpGatewayConfig,
+): Promise<McpSessionGateway | null> {
+  if (!gw.enabled) return null
+  try {
+    const { tools } = await mcpToolsList(gw.url, gw.api_key)
+    if (tools.length === 0) return null
+
+    sendMessage({
+      type: "mcp.tools.register",
+      payload: {
+        gateway_id: gw.id,
+        name: gw.name,
+        tier: "local",
+        tools: tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.inputSchema ?? {},
+        })),
+      },
+    })
+
+    const ns = namespaceFromName(gw.name)
+    return {
+      namespace: ns,
+      tier: "local" as const,
+      tools: tools.map((t) => ({
+        name: `${ns}__${t.name}`,
+        description: t.description,
+        server_name: t._gateway_server ?? gw.name,
+      })),
+      collisions: [],
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Discover tools from all enabled local gateways and register them with
  * the backend via WebSocket so they are available during inference.
+ * Called once on WebSocket connect.
  */
 async function registerLocalGateways(): Promise<void> {
   const gateways = useMcpStore.getState().localGateways
   const localEntries: McpSessionGateway[] = []
 
   for (const gw of gateways) {
-    if (!gw.enabled) continue
-    try {
-      const { tools } = await mcpToolsList(gw.url, gw.api_key)
-      if (tools.length === 0) continue
-
-      // Register with backend so tools are available during inference
-      sendMessage({
-        type: "mcp.tools.register",
-        payload: {
-          gateway_id: gw.id,
-          name: gw.name,
-          tier: "local",
-          tools: tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            parameters: t.inputSchema ?? {},
-          })),
-        },
-      })
-
-      // Collect for local UI display (use namespaced names matching what the backend uses)
-      const ns = gw.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      localEntries.push({
-        namespace: ns,
-        tier: "local" as const,
-        tools: tools.map((t) => ({
-          name: `${ns}__${t.name}`,
-          description: t.description,
-          server_name: t._gateway_server ?? gw.name,
-        })),
-        collisions: [],
-      })
-    } catch {
-      // Gateway unreachable — skip silently
-    }
+    const entry = await syncLocalGatewayToBackend(gw)
+    if (entry) localEntries.push(entry)
   }
 
   if (localEntries.length > 0) {
-    // Merge local gateways into session gateways (keep existing admin/remote entries)
     const existing = useMcpStore.getState().sessionGateways.filter((e) => e.tier !== "local")
     useMcpStore.getState().setSessionGateways([...existing, ...localEntries])
   }
