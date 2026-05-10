@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 
@@ -135,6 +134,7 @@ class McpExecutor:
         """Call tools/list on a gateway. Returns list of tool dicts or empty on failure.
 
         Does NOT raise — returns empty list on any error.
+        Speaks Streamable HTTP just like call_tool.
         """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
@@ -143,18 +143,29 @@ class McpExecutor:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
+        request_id = _next_request_id()
         payload = {
             "jsonrpc": "2.0",
-            "id": _next_request_id(),
+            "id": request_id,
             "method": "tools/list",
         }
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, json=payload, headers=headers)
+                async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                    ctype = _content_type(resp)
 
-            _raw = resp.json()
-            body = (await _raw) if inspect.isawaitable(_raw) else _raw
+                    if ctype == "application/json":
+                        body_bytes = await resp.aread()
+                        body = json.loads(body_bytes)
+
+                    elif ctype == "text/event-stream":
+                        body = await _read_sse_response(resp, expected_id=request_id)
+
+                    else:
+                        _log.warning("MCP discover unexpected content-type from %s: %r", url, ctype)
+                        return []
+
             if "error" in body:
                 _log.warning("MCP tools/list error from %s: %s", url, body["error"])
                 return []

@@ -171,22 +171,25 @@ class TestMcpExecutor:
 
     @pytest.mark.asyncio
     async def test_discover_tools_sends_streamable_accept_header(self, executor):
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.json.return_value = {
-            "jsonrpc": "2.0", "id": 1, "result": {"tools": []},
-        }
+        captured: dict = {}
+
+        def _stream(method, url, json, headers):
+            captured["method"] = method
+            captured["url"] = url
+            captured["headers"] = headers
+            return _FakeJsonResp({
+                "jsonrpc": "2.0", "id": json["id"], "result": {"tools": []},
+            })
+
         with patch("backend.modules.tools._mcp_executor.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client.post.return_value = mock_response
+            mock_client.stream = _stream
             mock_client_cls.return_value = mock_client
 
             await executor.discover_tools(url="http://example.com/mcp", api_key=None)
-            sent_headers = mock_client.post.call_args.kwargs["headers"]
-            accept = sent_headers.get("Accept", "")
+            accept = captured["headers"].get("Accept", "")
             assert "application/json" in accept
             assert "text/event-stream" in accept
 
@@ -297,3 +300,36 @@ class TestMcpExecutor:
             parsed = json.loads(result)
             assert parsed["stdout"] == ""
             assert "error" in parsed and parsed["error"]
+
+    @pytest.mark.asyncio
+    async def test_discover_tools_handles_sse_response(self, executor):
+        """tools/list over text/event-stream — same dispatch logic as call_tool."""
+        captured: dict = {}
+
+        class _FakeStreamResp:
+            def __init__(self):
+                self.headers = {"content-type": "text/event-stream"}
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def aiter_lines(self):
+                resp_id = captured["id"]
+                yield (
+                    f"data: {{\"jsonrpc\":\"2.0\",\"id\":{resp_id},"
+                    "\"result\":{\"tools\":[{\"name\":\"ping\",\"description\":\"\",\"inputSchema\":{}}]}}"
+                )
+                yield ""
+
+        def _stream(method, url, json, headers):
+            captured["id"] = json["id"]
+            return _FakeStreamResp()
+
+        with patch("backend.modules.tools._mcp_executor.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
+            mock_client.stream = _stream
+            mock_client_cls.return_value = mock_client
+
+            tools = await executor.discover_tools(url="http://fastmcp.example/mcp", api_key=None)
+            assert isinstance(tools, list) and len(tools) == 1
+            assert tools[0]["name"] == "ping"
