@@ -90,6 +90,10 @@ interface ToolCallRef {
   success: boolean
   /** Number of image slots rejected by the content-moderation filter. */
   moderated_count?: number
+  /** Tool result text — shown in the expanded pill popover. Null for
+   * historical messages persisted before this field existed and for
+   * live calls that have not yet returned. */
+  result_content?: string | null
 }
 
 // Discriminated-union timeline entries — mirror of the Pydantic
@@ -121,6 +125,7 @@ interface TimelineEntryToolCall {
   arguments: Record<string, unknown>
   success: boolean
   moderated_count?: number
+  result_content?: string | null
 }
 
 interface TimelineEntryArtefact {
