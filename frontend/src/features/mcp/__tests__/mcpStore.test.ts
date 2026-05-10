@@ -121,3 +121,35 @@ describe('mcpStore mutators sync sessionGateways and notify backend', () => {
     expect(session[0]?.namespace).toBe('new')
   })
 })
+
+describe('mcpStore — session slice', () => {
+  beforeEach(() => {
+    // Reset the sessions slice between tests
+    useMcpStore.setState({ sessions: {} })
+  })
+
+  it('setSession stores the session id keyed by URL', () => {
+    useMcpStore.getState().setSession('http://srv/mcp', 'sess-1')
+    expect(useMcpStore.getState().getSession('http://srv/mcp')).toEqual({
+      sessionId: 'sess-1',
+      initialising: null,
+    })
+  })
+
+  it('setSession can mark a server as stateless with null', () => {
+    useMcpStore.getState().setSession('http://srv/mcp', null)
+    expect(useMcpStore.getState().getSession('http://srv/mcp')?.sessionId).toBeNull()
+  })
+
+  it('clearSession removes the entry', () => {
+    useMcpStore.getState().setSession('http://srv/mcp', 'sess-1')
+    useMcpStore.getState().clearSession('http://srv/mcp')
+    expect(useMcpStore.getState().getSession('http://srv/mcp')).toBeUndefined()
+  })
+
+  it('setSession overwrites an existing entry (URL edit scenario)', () => {
+    useMcpStore.getState().setSession('http://srv/mcp', 'old')
+    useMcpStore.getState().setSession('http://srv/mcp', 'new')
+    expect(useMcpStore.getState().getSession('http://srv/mcp')?.sessionId).toEqual('new')
+  })
+})

@@ -18,6 +18,12 @@ interface McpState {
   deleteLocalGateway: (id: string) => void
   setSessionGateways: (gateways: McpSessionGateway[]) => void
   clearSessionGateways: () => void
+
+  // ── Streamable HTTP session lifecycle ─────────────────────
+  sessions: Record<string, { sessionId: string | null | undefined; initialising: Promise<string | null> | null }>
+  setSession: (url: string, sessionId: string | null) => void
+  clearSession: (url: string) => void
+  getSession: (url: string) => { sessionId: string | null | undefined; initialising: Promise<string | null> | null } | undefined
 }
 
 function migrateGateway(gw: McpGatewayConfig): McpGatewayConfig {
@@ -128,4 +134,18 @@ export const useMcpStore = create<McpState>((set, get) => ({
 
   setSessionGateways: (gateways) => set({ sessionGateways: gateways }),
   clearSessionGateways: () => set({ sessionGateways: [] }),
+
+  sessions: {},
+  setSession: (url, sessionId) =>
+    set((s) => ({
+      sessions: { ...s.sessions, [url]: { sessionId, initialising: null } },
+    })),
+  clearSession: (url) =>
+    set((s) => {
+      if (!(url in s.sessions)) return {}
+      const next = { ...s.sessions }
+      delete next[url]
+      return { sessions: next }
+    }),
+  getSession: (url) => get().sessions[url],
 }))
