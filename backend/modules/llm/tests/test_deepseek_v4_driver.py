@@ -500,17 +500,6 @@ def test_dsv4_driver_parse_chunk_for_unsupported_adapter_raises():
         )
 
 
-def test_dsv4_driver_build_request_for_unsupported_adapter_still_raises_on_novita():
-    """Plan 2 added Ollama, NOT Novita. Novita must still raise."""
-    d = DeepSeekV4Driver()
-    with pytest.raises(NotImplementedError, match="adapter_type"):
-        d.build_request(
-            adapter_type="novita_http",
-            slug="deepseek/deepseek-v4-pro",
-            request=_make_request(effort="high"),
-        )
-
-
 def test_parser_ollama_emits_tool_call_event_for_single_call():
     """Ollama Cloud delivers tool-calls atomically in a single NDJSON chunk
     (no streaming accumulation). One entry → one ToolCallEvent."""
@@ -984,3 +973,36 @@ def test_parser_novita_emits_stream_refused_on_content_filter() -> None:
     assert refused.refusal_text == "I cannot help with that"
     # StreamRefused and StreamDone are mutually exclusive terminals.
     assert not any(isinstance(e, StreamDone) for e in events)
+
+
+def test_driver_dispatches_build_to_novita() -> None:
+    driver = DeepSeekV4Driver()
+    request = _make_request(effort="max")
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug="deepseek/deepseek-v4-pro",
+        request=request,
+    )
+    assert body["reasoning"]["effort"] == "max"
+
+
+def test_driver_dispatches_parse_to_novita() -> None:
+    driver = DeepSeekV4Driver()
+    chunk = {
+        "choices": [{"delta": {"reasoning_content": "Thinking"},
+                     "finish_reason": None}],
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http",
+        slug="deepseek/deepseek-v4-pro",
+        chunk=chunk,
+    )
+    assert events == [ThinkingDelta(delta="Thinking")]
+
+
+def test_driver_novita_accumulator_is_per_instance() -> None:
+    """Each DeepSeekV4Driver instance must own a private Novita
+    accumulator so concurrent streams don't cross-contaminate."""
+    a = DeepSeekV4Driver()
+    b = DeepSeekV4Driver()
+    assert a._novita_tool_acc is not b._novita_tool_acc
