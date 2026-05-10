@@ -232,7 +232,7 @@ def test_dsv4_driver_build_request_via_class_for_or():
 
 
 def test_dsv4_driver_build_request_for_unsupported_adapter_raises():
-    """Plan 1 supports OR only; Plan 2 added Ollama. nano-gpt/Novita come in Plans 3-4."""
+    """nano_gpt_http is capability-only by design; no wire builders exist for it."""
     d = DeepSeekV4Driver()
     with pytest.raises(NotImplementedError, match="adapter_type"):
         d.build_request(
@@ -480,8 +480,7 @@ def test_dsv4_driver_parse_chunk_via_class_for_ollama_cloud():
 
 
 def test_dsv4_driver_parse_chunk_for_unsupported_adapter_raises():
-    """Symmetric to test_dsv4_driver_build_request_for_unsupported_adapter_raises
-    (Gap C — Plan 1 only had this test for build_request)."""
+    """nano_gpt_http is capability-only by design; no wire parsers exist for it."""
     d = DeepSeekV4Driver()
     with pytest.raises(NotImplementedError, match="adapter_type"):
         d.parse_chunk(
