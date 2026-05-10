@@ -210,17 +210,24 @@ export async function mcpToolsCall(
   timeoutMs: number = 30_000,
 ): Promise<{ stdout: string; error: string | null }> {
   const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json, text/event-stream',
-  }
-  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-
+  let sessionId: string | null
   try {
-    const resp = await fetch(url, {
+    sessionId = await ensureSession(gatewayUrl, apiKey)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { stdout: '', error: `MCP initialise failed: ${msg}` }
+  }
+
+  const doCall = async (sid: string | null): Promise<Response> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    }
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+    if (sid) headers['Mcp-Session-Id'] = sid
+
+    return fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -229,34 +236,59 @@ export async function mcpToolsCall(
         method: 'tools/call',
         params: { name: toolName, arguments: args },
       }),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
     })
-    const body = await resp.json()
+  }
 
-    if (body.error) {
-      return { stdout: '', error: `MCP error: ${body.error.message || JSON.stringify(body.error)}` }
+  let resp: Response
+  try {
+    resp = await doCall(sessionId)
+    if (resp.status === 404 && sessionId) {
+      useMcpStore.getState().clearSession(url)
+      try {
+        sessionId = await ensureSession(gatewayUrl, apiKey)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        return { stdout: '', error: `MCP re-initialise failed: ${msg}` }
+      }
+      resp = await doCall(sessionId)
     }
-
-    const result = body.result || {}
-    if (result.isError) {
-      const text = (result.content || [])
-        .filter((c: { type: string }) => c.type === 'text')
-        .map((c: { text?: string }) => c.text || '')
-        .join('\n')
-      return { stdout: '', error: text || 'Tool returned an error' }
-    }
-
-    const text = (result.content || [])
-      .filter((c: { type: string }) => c.type === 'text')
-      .map((c: { text?: string }) => c.text || '')
-      .join('\n')
-    return { stdout: text, error: null }
   } catch (e) {
-    if (e instanceof DOMException && e.name === 'AbortError') {
+    if (e instanceof DOMException && e.name === 'TimeoutError') {
       return { stdout: '', error: `MCP gateway timed out after ${timeoutMs}ms` }
     }
-    return { stdout: '', error: `MCP gateway unreachable: ${e instanceof Error ? e.message : String(e)}` }
-  } finally {
-    clearTimeout(timer)
+    const msg = e instanceof Error ? e.message : String(e)
+    return { stdout: '', error: `MCP gateway unreachable: ${msg}` }
   }
+
+  if (!resp.ok) {
+    return { stdout: '', error: `MCP gateway returned HTTP ${resp.status}` }
+  }
+
+  let body: { jsonrpc: string; id?: number; result?: unknown; error?: { code: number; message: string } }
+  try {
+    body = await readJsonRpcResponse(resp)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { stdout: '', error: `MCP gateway response read failed: ${msg}` }
+  }
+
+  if (body.error) {
+    return { stdout: '', error: `MCP error: ${body.error.message || JSON.stringify(body.error)}` }
+  }
+
+  const result = (body.result || {}) as { isError?: boolean; content?: Array<{ type: string; text?: string }> }
+  if (result.isError) {
+    const text = (result.content || [])
+      .filter((c) => c.type === 'text')
+      .map((c) => c.text || '')
+      .join('\n')
+    return { stdout: '', error: text || 'Tool returned an error' }
+  }
+
+  const text = (result.content || [])
+    .filter((c) => c.type === 'text')
+    .map((c) => c.text || '')
+    .join('\n')
+  return { stdout: text, error: null }
 }
