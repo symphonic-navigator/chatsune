@@ -352,24 +352,29 @@ async def eager_discover_mcp(
     mcp_registry.backend_discovered = True
     set_mcp_registry(connection_id, mcp_registry)
 
-    # Notify frontend about discovered tools
-    if mcp_registry.gateways:
-        gateway_entries = [
-            McpGatewayToolEntry(
-                namespace=gw.name,
-                tier=gw.tier,
-                tools=[
-                    {
-                        "name": td.name,
-                        "description": td.description,
-                        "server_name": mcp_registry.server_name_for_tool(td.name) or "_unknown",
-                    }
-                    for td in gw.tool_definitions
-                ],
-                collisions=gw.collisions,
-            )
-            for gw in mcp_registry.gateways.values()
-        ]
+    # Notify frontend about discovered tools.
+    # Local-tier gateways are frontend-owned (per-device, in localStorage); the
+    # backend mirrors them only for the lifetime of the WS connection and must
+    # never echo them back, otherwise the frontend's merge step duplicates them
+    # on reconnect / hard reload (see devdocs/specs/2026-05-10-mcp-gateway-sync-design.md §4.1).
+    gateway_entries = [
+        McpGatewayToolEntry(
+            namespace=gw.name,
+            tier=gw.tier,
+            tools=[
+                {
+                    "name": td.name,
+                    "description": td.description,
+                    "server_name": mcp_registry.server_name_for_tool(td.name) or "_unknown",
+                }
+                for td in gw.tool_definitions
+            ],
+            collisions=gw.collisions,
+        )
+        for gw in mcp_registry.gateways.values()
+        if gw.tier != "local"
+    ]
+    if gateway_entries:
         event_bus = get_event_bus()
         await event_bus.publish(
             Topics.MCP_TOOLS_REGISTERED,
