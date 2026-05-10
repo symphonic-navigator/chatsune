@@ -217,13 +217,16 @@ class McpExecutor:
                         await resp.aread()
                         async with (init_lock or _NULL_LOCK):
                             new_session_id = await self.initialise(url=url, api_key=api_key)
-                            if new_session_id is None:
-                                return json.dumps({
-                                    "stdout": "",
-                                    "error": "MCP session expired and re-initialise failed",
-                                })
-                            if on_session_refresh:
-                                await on_session_refresh(new_session_id)
+                        if new_session_id is None:
+                            return json.dumps({
+                                "stdout": "",
+                                "error": "MCP session expired and re-initialise failed",
+                            })
+                        # Notify caller AFTER releasing the lock — the callback may do
+                        # downstream I/O (DB write, event emit) that should not block
+                        # other coroutines waiting on the same lock.
+                        if on_session_refresh:
+                            await on_session_refresh(new_session_id)
                         return await self.call_tool(
                             url=url, api_key=api_key,
                             tool_name=tool_name, arguments=arguments,
