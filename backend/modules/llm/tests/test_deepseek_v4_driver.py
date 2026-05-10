@@ -232,7 +232,7 @@ def test_dsv4_driver_build_request_via_class_for_or():
 
 
 def test_dsv4_driver_build_request_for_unsupported_adapter_raises():
-    """Plan 1 only supports OR. nano-gpt/Novita/Ollama come in Plans 2-4."""
+    """Plan 1 supports OR only; Plan 2 added Ollama. nano-gpt/Novita come in Plans 3-4."""
     d = DeepSeekV4Driver()
     with pytest.raises(NotImplementedError, match="adapter_type"):
         d.build_request(
