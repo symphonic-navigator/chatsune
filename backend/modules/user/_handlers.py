@@ -40,7 +40,6 @@ from backend.modules.user._recovery_key import InvalidRecoveryKeyError
 from backend.modules.user._refresh import RefreshTokenStore
 from backend.modules.user._repository import UserRepository
 from shared.dtos.mcp import McpGatewayConfigDto
-from backend.modules.tools import invalidate_mcp_registries
 from backend.modules.tools._namespace import normalise_namespace, validate_namespace
 from shared.dtos.auth import (
     Argon2ParamsDto,
@@ -1309,18 +1308,10 @@ async def _refresh_all_mcp() -> None:
     invalidate_mcp_registries()
     manager = get_manager()
     # Snapshot — connection map can mutate while we await
-    user_ids = list(manager._connections.keys())
+    user_ids = manager.user_ids()
     for user_id in user_ids:
         for cid in manager.connection_ids_for_user(user_id):
             await eager_discover_mcp(cid, user_id, always_emit=True)
-
-
-def _invalidate_user_mcp(user_id: str) -> None:
-    """Clear cached MCP registries for all connections of a user."""
-    from backend.ws.manager import get_manager
-    cids = get_manager().connection_ids_for_user(user_id)
-    if cids:
-        invalidate_mcp_registries(cids)
 
 
 @router.get("/user/mcp/gateways")

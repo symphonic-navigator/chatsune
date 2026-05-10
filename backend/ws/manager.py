@@ -85,6 +85,10 @@ class ConnectionManager:
         """Return the list of connection ids currently held for the user."""
         return list(self._connections.get(user_id, {}).keys())
 
+    def user_ids(self) -> list[str]:
+        """Return the list of user_ids with at least one active connection."""
+        return list(self._connections.keys())
+
     def update_role(self, user_id: str, role: str) -> None:
         if user_id in self._connections:
             self._user_roles[user_id] = role

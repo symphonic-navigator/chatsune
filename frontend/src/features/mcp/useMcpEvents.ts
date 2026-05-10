@@ -5,6 +5,7 @@ import { useEventStore } from "../../core/store/eventStore"
 import { useMcpStore } from "./mcpStore"
 import { sendMessage } from "../../core/websocket/connection"
 import { mcpToolsList } from "./mcpClient"
+import { namespaceFromName } from "./_namespace"
 import type { BaseEvent } from "../../core/types/events"
 import { Topics } from "../../core/types/events"
 import type { McpGatewayConfig, McpSessionGateway } from "./types"
@@ -26,10 +27,6 @@ interface McpToolsRegisteredPayload {
   session_id: string
   gateways: McpGatewayToolEntry[]
   total_tools: number
-}
-
-function namespaceFromName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
 /**

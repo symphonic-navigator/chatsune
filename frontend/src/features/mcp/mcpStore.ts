@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { sendMessage } from '../../core/websocket/connection'
 import { syncLocalGatewayToBackend } from './useMcpEvents'
+import { namespaceFromName } from './_namespace'
 import type { McpGatewayConfig, McpSessionGateway } from './types'
 
 const LOCAL_STORAGE_KEY = 'chatsune:mcp_local_gateways'
@@ -38,10 +39,6 @@ function readLocalGateways(): McpGatewayConfig[] {
 
 function writeLocalGateways(gateways: McpGatewayConfig[]): void {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(gateways))
-}
-
-function namespaceFromName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
 }
 
 export const useMcpStore = create<McpState>((set, get) => ({
