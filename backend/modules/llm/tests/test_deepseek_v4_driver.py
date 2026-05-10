@@ -237,3 +237,69 @@ def test_dsv4_driver_build_request_for_unsupported_adapter_raises():
             slug="deepseek/deepseek-v4-pro:thinking",
             request=_make_request(effort="high"),
         )
+
+
+from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_ollama_cloud,
+)
+
+
+def test_builder_ollama_reasoning_off():
+    """reasoning_mode='off' → think=false, no effort translation."""
+    body = build_request_for_ollama_cloud(
+        slug="deepseek-v4-pro",
+        request=_make_request(effort=None, reasoning_mode="off"),
+    )
+    assert body["model"] == "deepseek-v4-pro"
+    assert body["stream"] is True
+    assert body["think"] is False
+
+
+def test_builder_ollama_reasoning_on_no_effort():
+    """reasoning_mode='on' with no explicit effort: think=true (existing default)."""
+    body = build_request_for_ollama_cloud(
+        slug="deepseek-v4-pro",
+        request=_make_request(effort=None, reasoning_mode="on"),
+    )
+    assert body["think"] is True
+
+
+def test_builder_ollama_reasoning_high():
+    """user effort='high' → think=true (boolean, per research doc Probe B)."""
+    body = build_request_for_ollama_cloud(
+        slug="deepseek-v4-pro",
+        request=_make_request(effort="high"),
+    )
+    assert body["think"] is True
+
+
+def test_builder_ollama_reasoning_max_translates_to_string():
+    """user effort='max' → think='max' (STRING, not bool — per research doc Probe C)."""
+    body = build_request_for_ollama_cloud(
+        slug="deepseek-v4-pro",
+        request=_make_request(effort="max"),
+    )
+    assert body["think"] == "max"
+    # Sanity: not the boolean True. (json.dumps would serialise True → 'true',
+    # which Ollama Cloud accepts but treats as default 'high'-like — wrong.)
+    assert body["think"] is not True
+
+
+def test_builder_ollama_rejects_unknown_effort():
+    """Silent degradation is the failure mode this driver layer prevents."""
+    with pytest.raises(ValueError, match="effort"):
+        build_request_for_ollama_cloud(
+            slug="deepseek-v4-pro",
+            request=_make_request(effort="garbage_xyz"),
+        )
+
+
+def test_builder_ollama_inherits_message_translation():
+    """Delegate to existing build_request_body → ContentPart-to-string handled."""
+    body = build_request_for_ollama_cloud(
+        slug="deepseek-v4-pro",
+        request=_make_request(effort="high"),
+    )
+    assert len(body["messages"]) == 1
+    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["content"] == "Hello"
