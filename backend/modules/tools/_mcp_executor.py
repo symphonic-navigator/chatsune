@@ -68,11 +68,106 @@ async def _read_sse_response(resp: httpx.Response, expected_id: int) -> dict:
     raise RuntimeError("SSE stream closed without a matching JSON-RPC response")
 
 
+class _NullAsyncLock:
+    """No-op async context manager used when an explicit lock is not needed."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+
+_NULL_LOCK = _NullAsyncLock()
+
+
 class McpExecutor:
     """Calls MCP gateway tools via HTTP JSON-RPC.
 
     Stateless — one instance can be shared across connections.
     """
+
+    async def initialise(
+        self,
+        *,
+        url: str,
+        api_key: str | None,
+        timeout: float = 10.0,
+    ) -> str | None:
+        """Run the MCP Streamable HTTP three-step handshake.
+
+        Returns the ``Mcp-Session-Id`` issued by the server, or ``None`` if
+        the server is operating in stateless mode (no header issued) or
+        if the handshake failed at the protocol level (non-200 status).
+        Always sends the ``notifications/initialized`` confirmation when
+        the initialize step succeeded with 200.
+        """
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        init_id = _next_request_id()
+        init_payload = {
+            "jsonrpc": "2.0",
+            "id": init_id,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "chatsune", "version": _CLIENT_VERSION},
+            },
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream(
+                    "POST", url, json=init_payload, headers=headers
+                ) as resp:
+                    if resp.status_code != 200:
+                        _log.warning(
+                            "MCP initialise failed: HTTP %d from %s",
+                            resp.status_code, url,
+                        )
+                        return None
+                    session_id = resp.headers.get("mcp-session-id")
+                    ctype = _content_type(resp)
+                    if ctype == "application/json":
+                        await resp.aread()
+                    elif ctype == "text/event-stream":
+                        try:
+                            await _read_sse_response(resp, expected_id=init_id)
+                        except RuntimeError:
+                            # Server closed the stream without a matching reply.
+                            # Header may still be set — that's the only piece
+                            # we actually need from the handshake.
+                            pass
+
+                # Step 3: notifications/initialized — fire-and-forget.
+                notif_headers = dict(headers)
+                if session_id:
+                    notif_headers["Mcp-Session-Id"] = session_id
+                try:
+                    await client.post(
+                        url,
+                        json={
+                            "jsonrpc": "2.0",
+                            "method": "notifications/initialized",
+                        },
+                        headers=notif_headers,
+                    )
+                except Exception as exc:
+                    _log.warning(
+                        "MCP notifications/initialized post failed for %s: %s",
+                        url, exc,
+                    )
+
+            return session_id
+        except Exception as exc:
+            _log.warning("MCP initialise transport failure for %s: %s", url, exc)
+            return None
 
     async def call_tool(
         self,
