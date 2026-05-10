@@ -1829,3 +1829,13 @@ but produces a spec that covers two distinct user-visible problems
 (what-did-the-tool-return AND can-we-talk-to-arbitrary-MCP-servers)
 in one design pass. Splitting them keeps each spec coherent and the
 PRs reviewable.
+
+**Resolved (2026-05-10):** Implemented in
+`devdocs/specs/2026-05-10-mcp-streamable-http-session-lifecycle-design.md`
+and `devdocs/plans/2026-05-10-mcp-streamable-http-session-lifecycle-plan.md`.
+All four server modes (stateless+JSON/SSE, stateful+JSON/SSE)
+verified manually against `simple_mcp` across local, remote, and admin
+tiers. Mode auto-detected from `Mcp-Session-Id` response-header
+presence; per-WebSocket-session state on `GatewayHandle`; in-memory
+session cache in `mcpStore` for the local tier; one-shot lifecycle
+on backend proxy routes; 404-retry-with-reinit on the inference path.
