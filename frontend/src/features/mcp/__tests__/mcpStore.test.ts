@@ -122,6 +122,53 @@ describe('mcpStore mutators sync sessionGateways and notify backend', () => {
   })
 })
 
+describe('mcpStore — session lifecycle wiring', () => {
+  beforeEach(() => {
+    sendMessageMock.mockReset()
+    syncLocalGatewayToBackendMock.mockReset()
+    useMcpStore.setState({ sessions: {}, localGateways: [] })
+  })
+
+  it('deleting a local gateway clears its session', () => {
+    const url = 'http://srv'
+    useMcpStore.setState({
+      localGateways: [
+        { id: 'g', name: 'g', url, api_key: null, enabled: true,
+          disabled_tools: [], server_configs: {}, tool_overrides: [] } as never,
+      ],
+    })
+    useMcpStore.getState().setSession(`${url}/mcp`, 'sess-1')
+
+    useMcpStore.getState().deleteLocalGateway('g')
+
+    expect(useMcpStore.getState().getSession(`${url}/mcp`)).toBeUndefined()
+  })
+
+  it('changing a local gateway URL clears the old session', async () => {
+    const oldUrl = 'http://old'
+    const newUrl = 'http://new'
+    useMcpStore.setState({
+      localGateways: [
+        { id: 'g', name: 'g', url: oldUrl, api_key: null, enabled: true,
+          disabled_tools: [], server_configs: {}, tool_overrides: [] } as never,
+      ],
+    })
+    useMcpStore.getState().setSession(`${oldUrl}/mcp`, 'sess-old')
+
+    // updateLocalGateway is async — it triggers backend sync. Mock or wait.
+    // For this test, the URL-clear happens synchronously BEFORE the async sync,
+    // so awaiting is sufficient (any error from the WS-message side is benign here).
+    try {
+      await useMcpStore.getState().updateLocalGateway('g', { url: newUrl })
+    } catch {
+      // syncLocalGatewayToBackend may throw in tests without a WS connection
+      // — irrelevant; we only assert on the session-slice side effect.
+    }
+
+    expect(useMcpStore.getState().getSession(`${oldUrl}/mcp`)).toBeUndefined()
+  })
+})
+
 describe('mcpStore — session slice', () => {
   beforeEach(() => {
     // Reset the sessions slice between tests

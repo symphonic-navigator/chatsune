@@ -6,6 +6,10 @@ import type { McpGatewayConfig, McpSessionGateway } from './types'
 
 const LOCAL_STORAGE_KEY = 'chatsune:mcp_local_gateways'
 
+function canonicaliseGatewayUrl(rawUrl: string): string {
+  return rawUrl.replace(/\/+$/, '') + '/mcp'
+}
+
 interface McpState {
   /** User's local gateways (localStorage, this device only) */
   localGateways: McpGatewayConfig[]
@@ -76,6 +80,12 @@ export const useMcpStore = create<McpState>((set, get) => ({
     const updated = get().localGateways.map((gw) =>
       gw.id === id ? { ...gw, ...updates } : gw,
     )
+
+    // If the URL changed, clear the old session — it points at the wrong server now.
+    if (previous && updates.url !== undefined && updates.url !== previous.url) {
+      get().clearSession(canonicaliseGatewayUrl(previous.url))
+    }
+
     writeLocalGateways(updated)
     set({ localGateways: updated })
 
@@ -130,6 +140,8 @@ export const useMcpStore = create<McpState>((set, get) => ({
       type: 'mcp.tools.deregister',
       payload: { gateway_id: id },
     })
+
+    get().clearSession(canonicaliseGatewayUrl(removed.url))
   },
 
   setSessionGateways: (gateways) => set({ sessionGateways: gateways }),
