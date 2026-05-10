@@ -792,6 +792,76 @@ def test_capability_spec_buckets(
     assert spec.reasoning.effort.default_bucket == "high"
 
 
+@pytest.mark.parametrize(
+    "slug,expected_first_class",
+    [
+        # Curated DSv4 family — first class
+        ("deepseek/deepseek-v4-pro", True),
+        ("deepseek/deepseek-v4-flash", True),
+        # Pair-suffixed variants — first class (model_id == non-thinking slug,
+        # but defence-in-depth: classifier handles the suffixed form too).
+        ("deepseek/deepseek-v4-pro:thinking", True),
+        ("deepseek/deepseek-v4-flash:thinking", True),
+        # TEE upstream — not first class (incomplete vLLM-derived deploy)
+        ("TEE/deepseek-v4-pro", False),
+        ("TEE/deepseek-v4-pro:thinking", False),
+        # *-cheaper upstream — not first class (privacy-undesired Chinese path)
+        ("deepseek/deepseek-v4-pro-cheaper", False),
+        ("deepseek/deepseek-v4-pro-cheaper:thinking", False),
+    ],
+)
+def test_capability_spec_nano_gpt_first_class(
+    slug: str, expected_first_class: bool,
+) -> None:
+    """nano-gpt capability spec marks only the curated DSv4 family
+    as first class. TEE/* and *-cheaper are visible-but-not-curated."""
+    spec = deepseek_v4_capability_spec(adapter_type="nano_gpt_http", slug=slug)
+    assert spec.first_class_support is expected_first_class
+
+
+def test_capability_spec_nano_gpt_has_no_effort_buckets() -> None:
+    """nano-gpt is exposed as on/off only — no effort buckets, so the UI
+    collapses to a single toggle. Slug-pair switching at the adapter
+    layer (existing logic) handles thinking-mode encoding."""
+    spec = deepseek_v4_capability_spec(
+        adapter_type="nano_gpt_http",
+        slug="deepseek/deepseek-v4-pro",
+    )
+    assert spec.reasoning.kind == "optional"
+    assert spec.reasoning.default_on is True
+    assert spec.reasoning.effort is None
+    assert spec.tools.supported is True
+    assert spec.tools.exclusive_with_reasoning is False
+
+
+@pytest.mark.parametrize(
+    "slug,expected",
+    [
+        ("deepseek/deepseek-v4-pro", True),
+        ("deepseek/deepseek-v4-flash", True),
+        ("deepseek/deepseek-v4-pro:thinking", True),
+        ("deepseek/deepseek-v4-flash:thinking", True),
+        # Case-insensitive on the upstream prefix
+        ("DEEPSEEK/DEEPSEEK-V4-PRO", True),
+        ("TEE/deepseek-v4-pro", False),
+        ("tee/deepseek-v4-pro", False),  # case-insensitive TEE check
+        ("TEE/deepseek-v4-pro:thinking", False),
+        ("deepseek/deepseek-v4-pro-cheaper", False),
+        ("deepseek/deepseek-v4-pro-cheaper:thinking", False),
+        # Unrelated slug — not first-class either (helper returns False
+        # by virtue of the family check; capability_spec wouldn't even
+        # call this helper for non-DSv4 slugs because the driver's
+        # PATTERNS list filters those upstream of resolve_capabilities).
+        ("anthropic/claude-3-5-sonnet", False),
+    ],
+)
+def test_is_nano_gpt_first_class(slug: str, expected: bool) -> None:
+    from backend.modules.llm._drivers.deepseek_v4._capability import (
+        _is_nano_gpt_first_class,
+    )
+    assert _is_nano_gpt_first_class(slug) is expected
+
+
 def test_builder_silent_downgrade_or_flash_max(caplog) -> None:
     """OR + Flash + user-effort 'max' must downgrade to 'high' silently
     and emit one logger.warning. The wire body must show effort='high',
