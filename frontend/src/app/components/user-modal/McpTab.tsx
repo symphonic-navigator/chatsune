@@ -232,11 +232,11 @@ export function McpTab() {
   }
 
   // ── save handlers for local gateways ──
-  function handleSaveLocal(data: McpGatewayConfig, original?: McpGatewayConfig) {
+  async function handleSaveLocal(data: McpGatewayConfig, original?: McpGatewayConfig) {
     if (original) {
-      useMcpStore.getState().updateLocalGateway(original.id, data)
+      await useMcpStore.getState().updateLocalGateway(original.id, data)
     } else {
-      useMcpStore.getState().addLocalGateway({
+      await useMcpStore.getState().addLocalGateway({
         ...data,
         id: crypto.randomUUID(),
       })

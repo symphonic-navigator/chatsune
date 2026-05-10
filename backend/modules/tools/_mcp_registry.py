@@ -81,6 +81,24 @@ class SessionMcpRegistry:
                 return gw
         return None
 
+    def unregister_by_id(self, gateway_id: str) -> bool:
+        """Remove a gateway by its config id and prune its tool indices.
+
+        Returns True if a gateway was removed, False if no gateway with
+        the given id was registered. Idempotent — calling on an unknown
+        id is a no-op.
+        """
+        handle = self.gateway_for_id(gateway_id)
+        if handle is None:
+            return False
+        self._gateways.pop(handle.name, None)
+        for td in handle.tool_definitions:
+            self._tool_index.pop(td.name, None)
+        for server_tools in handle.server_tools.values():
+            for td in server_tools:
+                self._tool_server_index.pop(td.name, None)
+        return True
+
     @property
     def gateways(self) -> dict[str, GatewayHandle]:
         return self._gateways
