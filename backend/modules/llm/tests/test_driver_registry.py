@@ -23,7 +23,8 @@ def test_registry_contains_dsv4():
     assert DeepSeekV4Driver in DRIVER_REGISTRY
 
 
-def test_match_driver_returns_none_when_registry_empty():
+def test_match_driver_returns_none_for_unrecognised_slug():
+    """Slug that does not match any registered driver's PATTERNS returns None."""
     assert match_driver("anything/at-all") is None
 
 
