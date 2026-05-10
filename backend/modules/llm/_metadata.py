@@ -15,6 +15,7 @@ Two flavours live here side by side:
 import json
 import logging
 
+from pydantic import ValidationError
 from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
@@ -54,7 +55,17 @@ async def get_models_for_connection(
     """Return cached or freshly-fetched models; swallow errors for UI calm."""
     cached = await redis.get(_cache_key(c.id))
     if cached:
-        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        try:
+            return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        except ValidationError as exc:
+            # Cache schema drift — a future field-without-default must never
+            # take down the endpoint. Drop the poisoned key and fall through
+            # to the fetch path. See CLAUDE.md §Data-Model Migrations.
+            _log.warning(
+                "stale model cache for connection=%s — dropping and refetching: %s",
+                c.id, exc,
+            )
+            await redis.delete(_cache_key(c.id))
     try:
         return await _fetch_and_cache(c, adapter_cls, redis)
     except NotImplementedError:
@@ -108,7 +119,17 @@ async def get_premium_models(
     """
     cached = await redis.get(_premium_cache_key(user_id, provider_id))
     if cached:
-        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        try:
+            return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        except ValidationError as exc:
+            # Cache schema drift — see equivalent branch in
+            # ``get_models_for_connection``. CLAUDE.md §Data-Model Migrations.
+            _log.warning(
+                "stale premium model cache for provider=%s user=%s — "
+                "dropping and refetching: %s",
+                provider_id, user_id, exc,
+            )
+            await redis.delete(_premium_cache_key(user_id, provider_id))
     try:
         return await _fetch_and_cache_premium(
             c, adapter_cls, redis, user_id, provider_id,

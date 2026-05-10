@@ -41,10 +41,21 @@ class ModelMetaDto(BaseModel):
     model_id: str
     display_name: str
     context_window: int
-    reasoning: ReasoningCapability
+    # Conservative defaults for ``reasoning`` and ``tools`` — pre-migration
+    # cached documents in Redis don't carry these keys, and a 30-minute TTL
+    # is too long to wait for them to age out. ``no_reasoning`` /
+    # ``supported=False`` are the safe interpretations: a stale model that
+    # was actually a thinker simply loses its thinking toggle until the
+    # cache refreshes (capability gets restored on the next adapter fetch).
+    # See CLAUDE.md §Data-Model Migrations.
+    reasoning: ReasoningCapability = Field(
+        default_factory=lambda: ReasoningCapability(kind="no_reasoning"),
+    )
     supports_vision: bool
     supports_tool_calls: bool   # legacy field, kept for callers; tools.supported is canonical
-    tools: ToolCapability
+    tools: ToolCapability = Field(
+        default_factory=lambda: ToolCapability(supported=False),
+    )
     first_class_support: bool = False
     parameter_count: str | None = None
     raw_parameter_count: int | None = None
