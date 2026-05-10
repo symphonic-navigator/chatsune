@@ -26,6 +26,9 @@ from backend.modules.llm._drivers.deepseek_v4._parsers import (
     parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
+from backend.modules.llm._drivers.deepseek_v4._quirks import (
+    _is_or_flash_quirk_applicable,
+)
 from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import (
     CompletionMessage,
@@ -748,3 +751,25 @@ def test_dsv4_driver_accumulator_is_per_instance():
         }]}, "finish_reason": None}],
     })
     assert d3._or_tool_acc is acc_ref
+
+
+@pytest.mark.parametrize(
+    "adapter_type,slug,expected",
+    [
+        # OR + Flash variants: quirk applies
+        ("openrouter_http", "deepseek/deepseek-v4-flash", True),
+        ("openrouter_http", "deepseek-v4-flash", True),
+        ("openrouter_http", "DEEPSEEK/DEEPSEEK-V4-FLASH", True),
+        # OR + non-Flash: quirk does not apply
+        ("openrouter_http", "deepseek/deepseek-v4-pro", False),
+        ("openrouter_http", "deepseek-v4-pro", False),
+        # Ollama + Flash: quirk does not apply (Ollama path works)
+        ("ollama_http", "deepseek-v4-flash", False),
+        ("ollama_http", "deepseek/deepseek-v4-flash", False),
+        # Other adapters + Flash: quirk does not apply
+        ("nano_gpt_http", "deepseek/deepseek-v4-flash", False),
+        ("novita_http", "deepseek/deepseek-v4-flash", False),
+    ],
+)
+def test_or_flash_quirk_applicable(adapter_type: str, slug: str, expected: bool) -> None:
+    assert _is_or_flash_quirk_applicable(adapter_type, slug) is expected
