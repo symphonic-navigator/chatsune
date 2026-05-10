@@ -16,6 +16,7 @@ from backend.modules.llm._drivers._tool_call_accumulator import (
 )
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_novita,
     build_request_for_ollama_cloud,
     build_request_for_openrouter,
 )
@@ -842,3 +843,45 @@ def test_builder_no_downgrade_or_flash_high(caplog) -> None:
     assert not any(
         "DSv4 OR-Flash quirk" in rec.message for rec in caplog.records
     )
+
+
+def test_builder_novita_passes_high_effort_unchanged() -> None:
+    request = _make_request(effort="high")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-pro", request=request,
+    )
+    assert body["reasoning"]["effort"] == "high"
+
+
+def test_builder_novita_passes_max_effort_unchanged() -> None:
+    request = _make_request(effort="max")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-flash", request=request,
+    )
+    assert body["reasoning"]["effort"] == "max"
+
+
+def test_builder_novita_rejects_unsupported_effort() -> None:
+    request = _make_request(effort="xhigh")
+    with pytest.raises(ValueError, match="not in supported buckets"):
+        build_request_for_novita(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+
+
+def test_builder_novita_rejects_invalid_effort_string() -> None:
+    request = _make_request(effort="invalid_xyz")
+    with pytest.raises(ValueError, match="not in supported buckets"):
+        build_request_for_novita(
+            slug="deepseek/deepseek-v4-pro", request=request,
+        )
+
+
+def test_builder_novita_no_effort_when_reasoning_off() -> None:
+    request = _make_request(effort=None, reasoning_mode="off")
+    body = build_request_for_novita(
+        slug="deepseek/deepseek-v4-pro", request=request,
+    )
+    # Reasoning off: delegate unchanged. Whatever the base builder
+    # produces is fine — we just must not raise.
+    # (Don't assert on reasoning field shape; the base builder owns it.)

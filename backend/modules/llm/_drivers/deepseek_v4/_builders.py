@@ -158,3 +158,53 @@ def build_request_for_ollama_cloud(
 
     base["think"] = _OLLAMA_EFFORT_MAP[user_effort]
     return base
+
+
+# User-effort -> Novita wire effort. Novita is permissive at the wire
+# (accepts any string and silently degrades unknown values to default-low,
+# probed 2026-05-10: invalid_xyz produced reasoning_tokens=1403 vs high=2250).
+# We validate client-side against the canonical DSv4 vocabulary so a typo
+# or stale value surfaces as a loud error instead of a quiet quality drop.
+_NOVITA_SUPPORTED_EFFORTS: frozenset[str] = frozenset({"high", "max"})
+
+
+def build_request_for_novita(
+    *, slug: str, request: CompletionRequest,
+) -> dict[str, Any]:
+    """Build the Novita request body for DeepSeek V4 with effort validation.
+
+    Strategy: delegate to the existing ``_novita_http.build_request_body``
+    so message translation and base reasoning fields are inherited. Then,
+    when reasoning is on AND user-effort is explicit, validate against
+    the supported set and reject unknown values. The wire effort is the
+    user-effort verbatim (Novita understands "high" and "max" directly,
+    no translation needed unlike OR's xhigh).
+
+    Raises ``ValueError`` when ``extras.reasoning_effort`` is set to a
+    value outside ``[high, max]``. Boundary-validation against Novita's
+    silent-degradation behaviour.
+    """
+    from backend.modules.llm._adapters._novita_http import (
+        build_request_body as _novita_build_request_body,
+    )
+
+    base = _novita_build_request_body(request)
+
+    # Reasoning off OR no explicit effort: delegate unchanged.
+    if (
+        request.extras.reasoning_mode == "off"
+        or request.extras.reasoning_effort is None
+    ):
+        return base
+
+    user_effort = request.extras.reasoning_effort
+    if user_effort not in _NOVITA_SUPPORTED_EFFORTS:
+        raise ValueError(
+            f"DeepSeek V4 effort {user_effort!r} not in supported "
+            f"buckets {sorted(_NOVITA_SUPPORTED_EFFORTS)}; cannot send "
+            f"to Novita (provider silently degrades unknown values)"
+        )
+
+    # Identity passthrough — Novita accepts both "high" and "max".
+    base.setdefault("reasoning", {})["effort"] = user_effort
+    return base
