@@ -6,12 +6,16 @@ are mapped to high". We expose those two and only those two — router
 extensions (OR's minimal/low/medium, Novita's silent-low) are not exposed
 because their behaviour is not specified by DeepSeek.
 
-Plan 1 returns a single capability spec regardless of (adapter_type, slug).
-Plans 2-4 may diverge per router (e.g. Novita drops "max" from buckets).
+Per-adapter override: see ``_quirks.py``. As of probe 2026-05-10, the
+OR-Flash xhigh path halves reasoning instead of expanding it, so we
+drop "max" from the buckets list for that combination only.
 """
 from __future__ import annotations
 
 from backend.modules.llm._capabilities import ResolvedCapabilities
+from backend.modules.llm._drivers.deepseek_v4._quirks import (
+    _is_or_flash_quirk_applicable,
+)
 from shared.dtos.llm import (
     ReasoningCapability,
     ReasoningEffortSpec,
@@ -26,15 +30,23 @@ def deepseek_v4_capability_spec(
 ) -> ResolvedCapabilities:
     """Return the DeepSeek V4 capability spec for (adapter_type, slug).
 
-    Plan 1: capability is router-agnostic — same spec for OR, nano-gpt,
-    Novita, Ollama Cloud. Plans 2+ may branch on adapter_type when the
-    Novita "max-rejected" rule lands.
+    Default: ``buckets=["high","max"]``. Override: when the OR-Flash
+    quirk applies (see ``_quirks.py``), drop ``"max"`` from the buckets
+    list. Re-probe quarterly; drop the override branch when fixed.
     """
+    if _is_or_flash_quirk_applicable(adapter_type, slug):
+        # OR-quirk override (probed 2026-05-10): xhigh halves Flash
+        # reasoning. Re-probe via dsv4_flash_or_drift.py; next due
+        # 2026-08-10. Drop this branch when the probe flips to FIXED.
+        buckets = ["high"]
+    else:
+        buckets = ["high", "max"]
+
     return ResolvedCapabilities(
         reasoning=ReasoningCapability(
             kind="optional",
             effort=ReasoningEffortSpec(
-                buckets=["high", "max"],
+                buckets=buckets,
                 default_bucket="high",
             ),
             default_on=True,

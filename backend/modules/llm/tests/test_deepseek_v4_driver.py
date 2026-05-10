@@ -773,3 +773,29 @@ def test_dsv4_driver_accumulator_is_per_instance():
 )
 def test_or_flash_quirk_applicable(adapter_type: str, slug: str, expected: bool) -> None:
     assert _is_or_flash_quirk_applicable(adapter_type, slug) is expected
+
+
+@pytest.mark.parametrize(
+    "adapter_type,slug,expected_buckets",
+    [
+        # OR + Flash: only "high" (xhigh broken)
+        ("openrouter_http", "deepseek/deepseek-v4-flash", ["high"]),
+        ("openrouter_http", "deepseek-v4-flash", ["high"]),
+        # OR + Pro: both
+        ("openrouter_http", "deepseek/deepseek-v4-pro", ["high", "max"]),
+        # Ollama + Flash: both work (per probe 2026-05-10)
+        ("ollama_http", "deepseek-v4-flash", ["high", "max"]),
+        # Ollama + Pro: both
+        ("ollama_http", "deepseek-v4-pro", ["high", "max"]),
+        # Future adapters keep the default until probed
+        ("nano_gpt_http", "deepseek/deepseek-v4-flash", ["high", "max"]),
+        ("novita_http", "deepseek/deepseek-v4-pro", ["high", "max"]),
+    ],
+)
+def test_capability_spec_buckets(
+    adapter_type: str, slug: str, expected_buckets: list[str],
+) -> None:
+    spec = deepseek_v4_capability_spec(adapter_type=adapter_type, slug=slug)
+    assert spec.reasoning is not None
+    assert spec.reasoning.effort.buckets == expected_buckets
+    assert spec.reasoning.effort.default_bucket == "high"
