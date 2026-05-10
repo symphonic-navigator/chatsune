@@ -37,7 +37,8 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
 
     choices = chunk.get("choices") or []
     if choices:
-        delta = choices[0].get("delta") or {}
+        choice = choices[0]
+        delta = choice.get("delta") or {}
 
         # Visible content fragment
         content = delta.get("content")
@@ -50,6 +51,16 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
         reasoning = delta.get("reasoning")
         if reasoning:
             events.append(ThinkingDelta(delta=reasoning))
+
+        # Refusal: parity with _openrouter_http._chunk_to_events. Without
+        # this the driver path silently drops refusals; the legacy path
+        # surfaces them as StreamRefused.
+        finish = choice.get("finish_reason")
+        if finish and finish.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=finish,
+                refusal_text=delta.get("refusal") or None,
+            ))
 
     # Terminal usage block (chunk with finish_reason or final usage info)
     usage = chunk.get("usage")

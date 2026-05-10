@@ -383,3 +383,50 @@ def test_parser_ollama_handles_chunk_with_no_actionable_delta():
     chunk = {"model": "deepseek-v4-pro", "message": {"content": ""}, "done": False}
     events = parse_chunk_ollama_cloud(chunk=chunk)
     assert events == []
+
+
+def test_parser_or_emits_stream_refused_on_content_filter():
+    chunk = {
+        "id": "gen-1", "provider": "DeepInfra",
+        "choices": [{
+            "index": 0,
+            "delta": {"content": "", "role": "assistant"},
+            "finish_reason": "content_filter",
+        }],
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    refused = next((e for e in events if isinstance(e, StreamRefused)), None)
+    assert refused is not None
+    assert refused.reason == "content_filter"
+
+
+def test_parser_or_emits_stream_refused_with_refusal_text():
+    chunk = {
+        "id": "gen-1", "provider": "DeepInfra",
+        "choices": [{
+            "index": 0,
+            "delta": {"content": "", "role": "assistant", "refusal": "Cannot help."},
+            "finish_reason": "refusal",
+        }],
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    refused = next((e for e in events if isinstance(e, StreamRefused)), None)
+    assert refused is not None
+    assert refused.reason == "refusal"
+    assert refused.refusal_text == "Cannot help."
+
+
+def test_parser_or_does_not_emit_refused_on_normal_stop():
+    """Sanity: finish_reason='stop' must NOT produce StreamRefused."""
+    chunk = {
+        "id": "gen-1",
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 19, "completion_tokens": 800, "total_tokens": 819,
+            "completion_tokens_details": {"reasoning_tokens": 360},
+        },
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    assert not any(isinstance(e, StreamRefused) for e in events)
+    # Should still emit StreamDone.
+    assert any(isinstance(e, StreamDone) for e in events)
