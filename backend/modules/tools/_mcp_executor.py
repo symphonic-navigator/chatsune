@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -177,13 +178,19 @@ class McpExecutor:
         tool_name: str,
         arguments: dict,
         session_id: str | None = None,
+        on_session_refresh: "Callable[[str], Awaitable[None]] | None" = None,
+        init_lock: "asyncio.Lock | None" = None,
+        _retry: bool = True,
     ) -> str:
         """Call a tool on a gateway and return JSON string {"stdout": ..., "error": ...}.
 
         Never raises. All failure modes produce an error in the returned JSON.
         Speaks the MCP Streamable HTTP transport: advertises support for both
         application/json and text/event-stream, and handles whichever the
-        server picks.
+        server picks. When ``session_id`` is provided and the server
+        responds 404 (session expired), the executor re-runs ``initialise``
+        once (under ``init_lock`` if provided), notifies the caller of the
+        new id via ``on_session_refresh``, and retries the call once.
         """
         headers: dict[str, str] = {
             "Content-Type": "application/json",
@@ -205,6 +212,34 @@ class McpExecutor:
         try:
             async with httpx.AsyncClient(timeout=_MCP_HTTP_TIMEOUT_S) as client:
                 async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                    if resp.status_code == 404 and session_id and _retry:
+                        # Drain to free the connection before re-initialising.
+                        await resp.aread()
+                        async with (init_lock or _NULL_LOCK):
+                            new_session_id = await self.initialise(url=url, api_key=api_key)
+                            if new_session_id is None:
+                                return json.dumps({
+                                    "stdout": "",
+                                    "error": "MCP session expired and re-initialise failed",
+                                })
+                            if on_session_refresh:
+                                await on_session_refresh(new_session_id)
+                        return await self.call_tool(
+                            url=url, api_key=api_key,
+                            tool_name=tool_name, arguments=arguments,
+                            session_id=new_session_id,
+                            on_session_refresh=on_session_refresh,
+                            init_lock=init_lock,
+                            _retry=False,
+                        )
+
+                    if resp.status_code != 200:
+                        await resp.aread()
+                        return json.dumps({
+                            "stdout": "",
+                            "error": f"MCP gateway returned HTTP {resp.status_code}",
+                        })
+
                     ctype = _content_type(resp)
 
                     if ctype == "application/json":
@@ -230,16 +265,23 @@ class McpExecutor:
             result = body.get("result", {})
             if result.get("isError"):
                 content_parts = result.get("content", [])
-                text = "\n".join(p.get("text", "") for p in content_parts if p.get("type") == "text")
+                text = "\n".join(
+                    p.get("text", "") for p in content_parts if p.get("type") == "text"
+                )
                 return json.dumps({"stdout": "", "error": text or "Tool returned an error"})
 
             content_parts = result.get("content", [])
-            text = "\n".join(p.get("text", "") for p in content_parts if p.get("type") == "text")
+            text = "\n".join(
+                p.get("text", "") for p in content_parts if p.get("type") == "text"
+            )
             return json.dumps({"stdout": text, "error": None})
 
         except httpx.TimeoutException:
             _log.warning("MCP call timed out: %s tool=%s", url, tool_name)
-            return json.dumps({"stdout": "", "error": f"MCP gateway timeout after {_MCP_HTTP_TIMEOUT_S}s"})
+            return json.dumps({
+                "stdout": "",
+                "error": f"MCP gateway timeout after {_MCP_HTTP_TIMEOUT_S}s",
+            })
         except Exception as exc:
             _log.warning("MCP call failed: %s tool=%s error=%s", url, tool_name, exc)
             return json.dumps({"stdout": "", "error": f"MCP gateway unreachable: {exc}"})
