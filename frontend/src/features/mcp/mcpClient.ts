@@ -7,8 +7,12 @@
  * (the gateway URL may only be reachable from the backend container).
  */
 
+import packageJson from '../../../package.json'
 import { api } from '../../core/api/client'
 import type { McpToolDefinition } from './types'
+
+export const MCP_PROTOCOL_VERSION = '2025-06-18'
+export const APP_VERSION = (packageJson as { version: string }).version
 
 let requestId = 0
 
