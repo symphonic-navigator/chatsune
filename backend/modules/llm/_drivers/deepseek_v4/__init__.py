@@ -1,4 +1,7 @@
-"""DeepSeek V4 driver (Pro and Flash). Plans 1-3: OpenRouter, Ollama Cloud, Novita.
+"""DeepSeek V4 driver (Pro and Flash).
+
+Wire support: OpenRouter, Ollama Cloud, Novita.
+Capability-only: nano-gpt (see INSIGHTS.md INS-043).
 
 See devdocs/specs/driver-layer.md and devdocs/research/deepseek-v4-wire-shapes.md.
 """
