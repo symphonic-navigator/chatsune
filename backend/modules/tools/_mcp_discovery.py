@@ -119,7 +119,15 @@ async def _discover_single_gateway(
     namespace = normalise_namespace(config.name)
     mcp_url = config.url.rstrip("/") + "/mcp"
 
-    raw_tools = await _executor.discover_tools(url=mcp_url, api_key=config.api_key)
+    # Step 1: initialise — populates session_id for stateful servers, returns
+    # None for stateless servers OR for protocol failures. Both cases are
+    # handled by tools/list below; an unreachable server simply returns no
+    # tools, which keeps the existing `reachable=False` path active.
+    session_id = await _executor.initialise(url=mcp_url, api_key=config.api_key)
+
+    raw_tools = await _executor.discover_tools(
+        url=mcp_url, api_key=config.api_key, session_id=session_id,
+    )
     reachable = isinstance(raw_tools, list) and len(raw_tools) > 0
 
     tool_defs, server_tools, collisions = _raw_tools_to_definitions(
@@ -141,6 +149,7 @@ async def _discover_single_gateway(
         tool_definitions=tool_defs,
         server_tools=server_tools,
         collisions=collisions,
+        session_id=session_id,
     )
     status = McpGatewayStatusDto(
         id=config.id, name=namespace, tier=tier, tool_count=len(tool_defs), reachable=True,
