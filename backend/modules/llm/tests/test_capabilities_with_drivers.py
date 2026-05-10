@@ -53,7 +53,7 @@ def test_no_driver_match_falls_through_to_default(monkeypatch):
         "backend.modules.llm._drivers.DRIVER_REGISTRY", [],
     )
     result = resolve_capabilities(
-        adapter_type="openrouter",
+        adapter_type="openrouter_http",
         model_id="some/random-model-no-yaml-match",
         adapter=_NoOpAdapter(),
     )
@@ -68,7 +68,7 @@ def test_driver_match_wins_over_yaml(monkeypatch):
     )
     # Even if a yaml entry existed for deepseek-v4, the driver wins.
     result = resolve_capabilities(
-        adapter_type="openrouter",
+        adapter_type="openrouter_http",
         model_id="deepseek/deepseek-v4-pro",
         adapter=_NoOpAdapter(),
     )

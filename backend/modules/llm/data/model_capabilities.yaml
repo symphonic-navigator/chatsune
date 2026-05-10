@@ -12,42 +12,42 @@ models:
   # Reasoning stays as a simple on/off toggle; Sonnet's adaptive
   # default-effort handles the depth choice intelligently. Will revisit
   # once a native Anthropic adapter ships (separate spec).
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-haiku-4.5*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-sonnet-4.5*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-sonnet-4.6*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-opus-4.5"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-opus-4.6*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "anthropic/claude-opus-4.7*"
     reasoning:
       kind: optional
@@ -55,42 +55,42 @@ models:
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # Same family via nano-gpt
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "claude-haiku-4-5*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "claude-sonnet-4-5*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "anthropic/claude-sonnet-4.6*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "claude-opus-4-5*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "anthropic/claude-opus-4.6*"
     reasoning:
       kind: optional
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "anthropic/claude-opus-4.7*"
     reasoning:
       kind: optional
@@ -98,7 +98,7 @@ models:
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # OpenAI GPT-5 via OpenRouter
-  - adapter: openrouter
+  - adapter: openrouter_http
     pattern: "openai/gpt-5*"
     reasoning:
       kind: optional
@@ -107,7 +107,7 @@ models:
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # GPT-5 via nano-gpt
-  - adapter: nano_gpt
+  - adapter: nano_gpt_http
     pattern: "openai/gpt-5*"
     reasoning:
       kind: optional

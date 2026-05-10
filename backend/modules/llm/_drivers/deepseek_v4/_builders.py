@@ -78,3 +78,58 @@ def build_request_for_openrouter(
         },
     )
     return build_request_body(translated)
+
+
+# User-effort -> Ollama Cloud `think` field. ``None`` and reasoning_mode="off"
+# are handled separately (no override; the existing builder already emits the
+# correct boolean). Per research doc:
+#   user 'high' -> think=True (Ollama Cloud default reasoning level)
+#   user 'max'  -> think="max" (string-valued; activates DeepSeek-native max
+#                  upstream, mirrored by prompt_eval_count 19 -> 98)
+_OLLAMA_EFFORT_MAP: dict[str, bool | str] = {
+    "high": True,
+    "max": "max",
+}
+
+
+def build_request_for_ollama_cloud(
+    *, slug: str, request: CompletionRequest,
+) -> dict[str, Any]:
+    """Build the Ollama Cloud request body for DeepSeek V4 with effort translation.
+
+    Strategy: delegate to the existing ``_ollama_http.build_request_body`` so
+    message translation, ``options.temperature``, and the base ``think``
+    boolean are inherited. Then, when reasoning is on AND user-effort is
+    explicit, override ``think`` to the appropriate value from the effort map.
+
+    Raises ``ValueError`` when ``extras.reasoning_effort`` is set to a value
+    outside the DSv4 supported buckets ``[high, max]``.
+    """
+    # Local import to avoid a circular dependency at module load time
+    # (drivers depend on adapter helpers; adapter consults drivers at call time).
+    from backend.modules.llm._adapters._ollama_http import (
+        build_request_body as _ollama_build_request_body,
+    )
+
+    base = _ollama_build_request_body(request)
+
+    # Reasoning off OR no explicit effort: delegate unchanged. The existing
+    # builder already set ``think`` to True/False based on reasoning_mode,
+    # which matches the DSv4-on-Ollama-Cloud "default" / "off" semantics.
+    if (
+        request.extras.reasoning_mode == "off"
+        or request.extras.reasoning_effort is None
+    ):
+        return base
+
+    # Reasoning on AND effort explicit: translate or reject.
+    user_effort = request.extras.reasoning_effort
+    if user_effort not in _OLLAMA_EFFORT_MAP:
+        raise ValueError(
+            f"DeepSeek V4 effort {user_effort!r} not in supported "
+            f"buckets {list(_OLLAMA_EFFORT_MAP.keys())}; cannot translate "
+            f"for Ollama Cloud"
+        )
+
+    base["think"] = _OLLAMA_EFFORT_MAP[user_effort]
+    return base

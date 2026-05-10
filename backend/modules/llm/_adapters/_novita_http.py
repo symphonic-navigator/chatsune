@@ -239,7 +239,7 @@ def _entry_to_meta(
     # exactly once per model_id below.
     adapter._features_by_model_id[entry["id"]] = list(features)
     resolved = resolve_capabilities(
-        adapter_type="novita",
+        adapter_type=adapter.adapter_type,
         model_id=entry["id"],
         adapter=adapter,
     )

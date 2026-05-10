@@ -9,12 +9,14 @@ from typing import Any
 from backend.modules.llm._adapters._events import ProviderStreamEvent
 from backend.modules.llm._capabilities import ResolvedCapabilities
 from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_ollama_cloud,
     build_request_for_openrouter,
 )
 from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
 )
 from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_ollama_cloud,
     parse_chunk_openrouter,
 )
 from shared.dtos.inference import CompletionRequest
@@ -23,7 +25,8 @@ from shared.dtos.inference import CompletionRequest
 class DeepSeekV4Driver:
     """Driver for DeepSeek V4 Pro and DeepSeek V4 Flash.
 
-    Plan 1: OpenRouter only. Plans 2-4 add nano-gpt, Novita, Ollama Cloud.
+    Plan 1: OpenRouter. Plan 2: + Ollama Cloud (this class). Plans 3-4 add
+    Novita and nano-gpt.
     """
 
     PATTERNS: list[str] = [
@@ -41,9 +44,12 @@ class DeepSeekV4Driver:
     ) -> dict[str, Any]:
         if adapter_type == "openrouter_http":
             return build_request_for_openrouter(slug=slug, request=request)
+        if adapter_type == "ollama_http":
+            return build_request_for_ollama_cloud(slug=slug, request=request)
         raise NotImplementedError(
             f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"in Plan 1 (only openrouter_http). See Plans 2-4 for the rest."
+            f"yet (Plan 2 covers openrouter_http + ollama_http; Plans 3-4 "
+            f"add novita_http and nano_gpt_http)."
         )
 
     def parse_chunk(
@@ -51,7 +57,10 @@ class DeepSeekV4Driver:
     ) -> list[ProviderStreamEvent]:
         if adapter_type == "openrouter_http":
             return parse_chunk_openrouter(chunk=chunk)
+        if adapter_type == "ollama_http":
+            return parse_chunk_ollama_cloud(chunk=chunk)
         raise NotImplementedError(
             f"DeepSeekV4Driver: adapter_type={adapter_type!r} not supported "
-            f"in Plan 1 (only openrouter_http). See Plans 2-4 for the rest."
+            f"yet (Plan 2 covers openrouter_http + ollama_http; Plans 3-4 "
+            f"add novita_http and nano_gpt_http)."
         )

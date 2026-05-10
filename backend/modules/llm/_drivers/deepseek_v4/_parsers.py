@@ -21,8 +21,14 @@ from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
     StreamDone,
+    StreamRefused,
     ThinkingDelta,
 )
+
+
+# Mirrors _ollama_http._REFUSAL_REASONS — keeping a local copy avoids
+# importing adapter internals from the driver layer.
+_REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 
 def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
@@ -31,7 +37,8 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
 
     choices = chunk.get("choices") or []
     if choices:
-        delta = choices[0].get("delta") or {}
+        choice = choices[0]
+        delta = choice.get("delta") or {}
 
         # Visible content fragment
         content = delta.get("content")
@@ -45,14 +52,70 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
         if reasoning:
             events.append(ThinkingDelta(delta=reasoning))
 
-    # Terminal usage block (chunk with finish_reason or final usage info)
+        # Refusal: parity with _openrouter_http._chunk_to_events. Without
+        # this the driver path silently drops refusals; the legacy path
+        # surfaces them as StreamRefused.
+        finish = choice.get("finish_reason")
+        if finish and finish.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=finish,
+                refusal_text=delta.get("refusal") or None,
+            ))
+
+    # Terminal usage block (chunk with finish_reason or final usage info).
+    # Guard against co-emitting StreamDone when StreamRefused was already
+    # appended — the two events are mutually exclusive terminal states.
     usage = chunk.get("usage")
-    if usage is not None:
+    if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
         details = usage.get("completion_tokens_details") or {}
         events.append(StreamDone(
             input_tokens=usage.get("prompt_tokens"),
             output_tokens=usage.get("completion_tokens"),
             reasoning_tokens=details.get("reasoning_tokens"),
         ))
+
+    return events
+
+
+def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
+    """Translate one Ollama Cloud NDJSON-decoded chunk into ProviderStreamEvents.
+
+    Ollama Cloud uses the native Ollama envelope (no OpenAI ``choices``
+    list). Each chunk contains a ``message`` block with ``content`` and
+    optional ``thinking``; the final chunk has ``done=True`` plus
+    ``prompt_eval_count`` and ``eval_count``. Refusals are signalled via
+    ``done_reason in {content_filter, refusal}`` — emit ``StreamRefused``
+    instead of ``StreamDone``.
+    """
+    events: list[ProviderStreamEvent] = []
+
+    message = chunk.get("message") or {}
+
+    # Visible content fragment
+    content = message.get("content")
+    if content:
+        events.append(ContentDelta(delta=content))
+
+    # Ollama-native CoT key. Mapped to ThinkingDelta (per INS-038, "thinking"
+    # and "reasoning" are interchangeable in this codebase).
+    thinking = message.get("thinking")
+    if thinking:
+        events.append(ThinkingDelta(delta=thinking))
+
+    # Terminal handling
+    if chunk.get("done"):
+        done_reason = chunk.get("done_reason")
+        if done_reason and done_reason.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=done_reason,
+                refusal_text=message.get("refusal") or None,
+            ))
+        else:
+            events.append(StreamDone(
+                input_tokens=chunk.get("prompt_eval_count"),
+                output_tokens=chunk.get("eval_count"),
+                # Ollama Cloud bundles reasoning into eval_count — no separate
+                # reasoning_tokens field. Leave it as None.
+            ))
 
     return events

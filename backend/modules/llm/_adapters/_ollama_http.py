@@ -346,7 +346,23 @@ class OllamaHttpAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or None
-        payload = build_request_body(request)
+
+        # Driver-layer hook (mirrors Plan 1 Task 8 in _openrouter_http.py).
+        # Local import avoids an import cycle: drivers depend on adapter
+        # helpers (build_request_body), and the adapter consults drivers
+        # at call time.
+        from backend.modules.llm._drivers import match_driver
+        driver_cls = match_driver(request.model)
+        driver = driver_cls() if driver_cls is not None else None
+
+        if driver is not None:
+            payload = driver.build_request(
+                adapter_type=self.adapter_type,
+                slug=request.model,
+                request=request,
+            )
+        else:
+            payload = build_request_body(request)
         if _TRACE_PAYLOADS:
             _log.info(
                 "LLM_TRACE path=direct url=%s payload=%s",
@@ -479,6 +495,36 @@ class OllamaHttpAdapter(BaseAdapter):
                                                     _fn.get("name"),
                                                     len(json.dumps(_fn.get("arguments") or {})),
                                                 )
+                                    if driver is not None:
+                                        # Driver path: parser is the single
+                                        # source of truth for chunk -> events.
+                                        # Mirror the legacy diagnostic for
+                                        # unusual done_reason — the driver's
+                                        # parse_chunk does not emit logs.
+                                        if chunk.get("done"):
+                                            _dr = chunk.get("done_reason")
+                                            if _dr and _dr not in ("stop", "length"):
+                                                _log.info(
+                                                    "ollama_base.done_reason model=%s reason=%s driver=%s",
+                                                    payload.get("model"), _dr,
+                                                    driver_cls.__name__,
+                                                )
+                                        chunk_events = driver.parse_chunk(
+                                            adapter_type=self.adapter_type,
+                                            slug=request.model,
+                                            chunk=chunk,
+                                        )
+                                        for event in chunk_events:
+                                            if isinstance(event, StreamDone):
+                                                seen_done = True
+                                            yield event
+                                            if isinstance(event, (
+                                                StreamDone, StreamRefused, StreamError,
+                                            )):
+                                                return
+                                        # Driver handled this chunk; loop to next NDJSON line.
+                                        continue
+
                                     if chunk.get("done"):
                                         seen_done = True
                                         done_reason = chunk.get("done_reason")
