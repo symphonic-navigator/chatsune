@@ -554,7 +554,19 @@ class OpenRouterHttpAdapter(BaseAdapter):
     ) -> AsyncIterator[ProviderStreamEvent]:
         url = c.config["url"].rstrip("/")
         api_key = c.config.get("api_key") or ""
-        payload = build_request_body(request)
+
+        from backend.modules.llm._drivers import match_driver  # local import, avoids cycle
+        driver_cls = match_driver(request.model)
+        driver = driver_cls() if driver_cls is not None else None
+
+        if driver is not None:
+            payload = driver.build_request(
+                adapter_type=self.adapter_type,
+                slug=request.model,
+                request=request,
+            )
+        else:
+            payload = build_request_body(request)
 
         headers = {
             "Content-Type": "application/json",
@@ -704,7 +716,16 @@ class OpenRouterHttpAdapter(BaseAdapter):
                                     ):
                                         last_usage = parsed["usage"]
 
-                                    for event in _chunk_to_events(parsed, acc):
+                                    chunk_events = (
+                                        driver.parse_chunk(
+                                            adapter_type=self.adapter_type,
+                                            slug=request.model,
+                                            chunk=parsed,
+                                        )
+                                        if driver is not None
+                                        else _chunk_to_events(parsed, acc)
+                                    )
+                                    for event in chunk_events:
                                         if isinstance(event, StreamDone):
                                             seen_done = True
                                             _log_anthropic_cache(
