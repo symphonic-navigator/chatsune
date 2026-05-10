@@ -3,8 +3,32 @@ from __future__ import annotations
 
 import pytest
 
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    StreamDone,
+    ThinkingDelta,
+)
+from backend.modules.llm._drivers import match_driver
+from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
+from backend.modules.llm._drivers.deepseek_v4._builders import (
+    build_request_for_openrouter,
+)
 from backend.modules.llm._drivers.deepseek_v4._capability import (
     deepseek_v4_capability_spec,
+)
+from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_openrouter,
+)
+from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+)
+from shared.dtos.llm import (
+    ReasoningCapability,
+    ReasoningEffortSpec,
+    ToolCapability,
 )
 
 
@@ -28,23 +52,6 @@ def test_deepseek_v4_capability_spec_is_router_agnostic_for_now():
     or_spec = deepseek_v4_capability_spec(adapter_type="openrouter_http", slug="deepseek/deepseek-v4-pro")
     nano_spec = deepseek_v4_capability_spec(adapter_type="nano_gpt_http", slug="deepseek/deepseek-v4-pro:thinking")
     assert or_spec == nano_spec
-
-
-from shared.dtos.chat import ChatSessionExtras
-from shared.dtos.inference import (
-    CompletionMessage,
-    CompletionRequest,
-    ContentPart,
-)
-from shared.dtos.llm import (
-    ReasoningCapability,
-    ReasoningEffortSpec,
-    ToolCapability,
-)
-
-from backend.modules.llm._drivers.deepseek_v4._builders import (
-    build_request_for_openrouter,
-)
 
 
 def _make_request(
@@ -139,16 +146,6 @@ def test_builder_or_inherits_message_translation():
     assert body["messages"][0]["content"] == "Hello"
 
 
-from backend.modules.llm._adapters._events import (
-    ContentDelta,
-    StreamDone,
-    ThinkingDelta,
-)
-from backend.modules.llm._drivers.deepseek_v4._parsers import (
-    parse_chunk_openrouter,
-)
-
-
 def test_parser_or_extracts_visible_content():
     chunk = {
         "id": "gen-1", "provider": "DeepInfra",
@@ -204,10 +201,6 @@ def test_parser_or_handles_chunk_with_no_actionable_delta():
     chunk = {"id": "gen-1", "choices": [{"index": 0, "delta": {}}]}
     events = parse_chunk_openrouter(chunk=chunk)
     assert events == []
-
-
-from backend.modules.llm._drivers import match_driver
-from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
 
 
 def test_dsv4_driver_class_matches_or_slugs():

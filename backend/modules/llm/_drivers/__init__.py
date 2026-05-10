@@ -18,7 +18,12 @@ def match_driver(slug: str) -> type[Driver] | None:
     """Return the first registered driver whose PATTERNS match the slug
     basename, or None.
 
-    See match_driver docstring in Task 2 for the basename semantics.
+    The slug basename is everything after the last ``/`` — e.g.
+    ``"deepseek/deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``,
+    ``"deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``,
+    ``"TEE/deepseek-v4-pro"`` -> ``"deepseek-v4-pro"``.
+
+    First match wins, in DRIVER_REGISTRY order.
     """
     basename = slug.rsplit("/", 1)[-1]
     for driver_cls in DRIVER_REGISTRY:
