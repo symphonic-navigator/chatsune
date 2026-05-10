@@ -430,3 +430,22 @@ def test_parser_or_does_not_emit_refused_on_normal_stop():
     assert not any(isinstance(e, StreamRefused) for e in events)
     # Should still emit StreamDone.
     assert any(isinstance(e, StreamDone) for e in events)
+
+
+def test_parser_or_refused_case_insensitive():
+    """The driver normalises finish_reason to lowercase before checking
+    _REFUSAL_REASONS — exercises the intentional widening over the
+    legacy parser (which uses exact match)."""
+    chunk = {
+        "id": "gen-1",
+        "choices": [{
+            "index": 0,
+            "delta": {"content": "", "role": "assistant"},
+            "finish_reason": "Content_Filter",  # mixed case
+        }],
+    }
+    events = parse_chunk_openrouter(chunk=chunk)
+    refused = next((e for e in events if isinstance(e, StreamRefused)), None)
+    assert refused is not None
+    # Reason preserves the original casing — only the check is normalised.
+    assert refused.reason == "Content_Filter"

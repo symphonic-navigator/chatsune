@@ -62,9 +62,11 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
                 refusal_text=delta.get("refusal") or None,
             ))
 
-    # Terminal usage block (chunk with finish_reason or final usage info)
+    # Terminal usage block (chunk with finish_reason or final usage info).
+    # Guard against co-emitting StreamDone when StreamRefused was already
+    # appended — the two events are mutually exclusive terminal states.
     usage = chunk.get("usage")
-    if usage is not None:
+    if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
         details = usage.get("completion_tokens_details") or {}
         events.append(StreamDone(
             input_tokens=usage.get("prompt_tokens"),
