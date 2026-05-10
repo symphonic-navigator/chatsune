@@ -172,33 +172,45 @@ export async function mcpToolsList(
   timeoutMs: number = 10_000,
 ): Promise<{ tools: McpToolDefinition[]; errors: Array<{ server: string; error: string }> }> {
   const url = gatewayUrl.replace(/\/+$/, '') + '/mcp'
+
+  let sessionId: string | null
+  try {
+    sessionId = await ensureSession(gatewayUrl, apiKey)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(`MCP initialise failed: ${msg}`)
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
   }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+  if (sessionId) headers['Mcp-Session-Id'] = sessionId
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ jsonrpc: '2.0', id: nextId(), method: 'tools/list' }),
-      signal: controller.signal,
-    })
-    const body = await resp.json()
-    if (body.error) {
-      throw new Error(body.error.message || JSON.stringify(body.error))
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ jsonrpc: '2.0', id: nextId(), method: 'tools/list' }),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  if (!resp.ok) {
+    if (resp.status === 404 && sessionId) {
+      useMcpStore.getState().clearSession(url)
     }
-    const result = body.result || {}
-    return {
-      tools: result.tools || [],
-      errors: result._errors || [],
-    }
-  } finally {
-    clearTimeout(timer)
+    throw new Error(`MCP tools/list failed: HTTP ${resp.status}`)
+  }
+  const body = await readJsonRpcResponse(resp)
+  if (body.error) {
+    throw new Error(body.error.message || JSON.stringify(body.error))
+  }
+  const result = (body.result || {}) as {
+    tools?: McpToolDefinition[]
+    _errors?: Array<{ server: string; error: string }>
+  }
+  return {
+    tools: result.tools || [],
+    errors: result._errors || [],
   }
 }
 

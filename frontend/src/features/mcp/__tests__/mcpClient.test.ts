@@ -4,9 +4,30 @@ import { mcpToolsList, mcpToolsCall } from '../mcpClient'
 describe('mcpClient — Streamable HTTP Accept header', () => {
   let fetchSpy: ReturnType<typeof vi.fn>
 
-  beforeEach(() => {
-    fetchSpy = vi.fn().mockResolvedValue({
-      json: async () => ({ jsonrpc: '2.0', id: 1, result: { tools: [] } }),
+  beforeEach(async () => {
+    const { useMcpStore } = await import('../mcpStore')
+    useMcpStore.setState({ sessions: {} })
+    fetchSpy = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }),
+          {
+            headers: {
+              'content-type': 'application/json',
+              'mcp-session-id': 'sess-accept',
+            },
+          },
+        )
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      // tools/list or tools/call
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools: [], content: [] } }),
+        { headers: { 'content-type': 'application/json' } },
+      )
     })
     // @ts-expect-error - test override
     globalThis.fetch = fetchSpy
@@ -14,8 +35,11 @@ describe('mcpClient — Streamable HTTP Accept header', () => {
 
   it('mcpToolsList sends Accept: application/json, text/event-stream', async () => {
     await mcpToolsList('http://example.com', null)
-    expect(fetchSpy).toHaveBeenCalledOnce()
-    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const listCall = fetchSpy.mock.calls.find(
+      ([, init]) => JSON.parse(String((init as RequestInit).body)).method === 'tools/list',
+    )!
+    expect(listCall).toBeDefined()
+    const init = listCall[1] as RequestInit
     const accept = (init.headers as Record<string, string>)['Accept'] ?? ''
     expect(accept).toContain('application/json')
     expect(accept).toContain('text/event-stream')
@@ -175,6 +199,55 @@ describe('ensureSession', () => {
     ])
     expect(a).toEqual(b)
     expect(initCount).toEqual(1)
+  })
+})
+
+describe('mcpToolsList lifecycle', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(async () => {
+    const { useMcpStore } = await import('../mcpStore')
+    useMcpStore.setState({ sessions: {} })
+    fetchSpy = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body))
+      if (body.method === 'initialize') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: body.id, result: {} }),
+          {
+            headers: {
+              'content-type': 'application/json',
+              'mcp-session-id': 'sess-list',
+            },
+          },
+        )
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response('', { status: 202 })
+      }
+      // tools/list
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: { tools: [{ name: 't1', description: '', inputSchema: {} }] },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      )
+    })
+    // @ts-expect-error - test override
+    globalThis.fetch = fetchSpy
+  })
+
+  it('runs initialise then sends Mcp-Session-Id on tools/list', async () => {
+    const { mcpToolsList } = await import('../mcpClient')
+    const out = await mcpToolsList('http://srv', null)
+    expect(out.tools.length).toEqual(1)
+
+    const listCall = fetchSpy.mock.calls.find(
+      ([, init]) => JSON.parse(String((init as RequestInit).body)).method === 'tools/list',
+    )!
+    const headers = (listCall[1] as RequestInit).headers as Record<string, string>
+    expect(headers['Mcp-Session-Id']).toEqual('sess-list')
   })
 })
 
