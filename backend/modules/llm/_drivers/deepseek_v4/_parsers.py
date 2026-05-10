@@ -21,8 +21,14 @@ from backend.modules.llm._adapters._events import (
     ContentDelta,
     ProviderStreamEvent,
     StreamDone,
+    StreamRefused,
     ThinkingDelta,
 )
+
+
+# Mirrors _ollama_http._REFUSAL_REASONS — keeping a local copy avoids
+# importing adapter internals from the driver layer.
+_REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 
 def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
@@ -54,5 +60,49 @@ def parse_chunk_openrouter(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent
             output_tokens=usage.get("completion_tokens"),
             reasoning_tokens=details.get("reasoning_tokens"),
         ))
+
+    return events
+
+
+def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEvent]:
+    """Translate one Ollama Cloud NDJSON-decoded chunk into ProviderStreamEvents.
+
+    Ollama Cloud uses the native Ollama envelope (no OpenAI ``choices``
+    list). Each chunk contains a ``message`` block with ``content`` and
+    optional ``thinking``; the final chunk has ``done=True`` plus
+    ``prompt_eval_count`` and ``eval_count``. Refusals are signalled via
+    ``done_reason in {content_filter, refusal}`` — emit ``StreamRefused``
+    instead of ``StreamDone``.
+    """
+    events: list[ProviderStreamEvent] = []
+
+    message = chunk.get("message") or {}
+
+    # Visible content fragment
+    content = message.get("content")
+    if content:
+        events.append(ContentDelta(delta=content))
+
+    # Ollama-native CoT key. Mapped to ThinkingDelta (per INS-038, "thinking"
+    # and "reasoning" are interchangeable in this codebase).
+    thinking = message.get("thinking")
+    if thinking:
+        events.append(ThinkingDelta(delta=thinking))
+
+    # Terminal handling
+    if chunk.get("done"):
+        done_reason = chunk.get("done_reason")
+        if done_reason and done_reason.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=done_reason,
+                refusal_text=message.get("refusal") or None,
+            ))
+        else:
+            events.append(StreamDone(
+                input_tokens=chunk.get("prompt_eval_count"),
+                output_tokens=chunk.get("eval_count"),
+                # Ollama Cloud bundles reasoning into eval_count — no separate
+                # reasoning_tokens field. Leave it as None.
+            ))
 
     return events

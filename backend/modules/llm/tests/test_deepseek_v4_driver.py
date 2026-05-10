@@ -303,3 +303,91 @@ def test_builder_ollama_inherits_message_translation():
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][0]["content"] == "Hello"
+
+
+from backend.modules.llm._adapters._events import StreamRefused
+from backend.modules.llm._drivers.deepseek_v4._parsers import (
+    parse_chunk_ollama_cloud,
+)
+
+
+def test_parser_ollama_extracts_visible_content():
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {"role": "assistant", "content": "Hello"},
+        "done": False,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    assert any(isinstance(e, ContentDelta) and e.delta == "Hello" for e in events)
+
+
+def test_parser_ollama_extracts_thinking_from_message_thinking():
+    """Ollama Cloud's CoT key is message.thinking (Anthropic-style on the
+    Ollama native envelope; see research doc Probe B)."""
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {"role": "assistant", "content": "", "thinking": "We need to think..."},
+        "done": False,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    assert any(
+        isinstance(e, ThinkingDelta) and e.delta == "We need to think..."
+        for e in events
+    )
+
+
+def test_parser_ollama_emits_stream_done_with_eval_counts():
+    """Ollama returns prompt_eval_count + eval_count on the done chunk; eval_count
+    bundles thinking + visible (no separate reasoning_tokens — see research doc)."""
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {"role": "assistant", "content": ""},
+        "done": True,
+        "done_reason": "stop",
+        "total_duration": 615230395,
+        "prompt_eval_count": 19,
+        "eval_count": 789,
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    done = next((e for e in events if isinstance(e, StreamDone)), None)
+    assert done is not None
+    assert done.input_tokens == 19
+    assert done.output_tokens == 789
+    # Ollama does not split reasoning out — it stays None.
+    assert done.reasoning_tokens is None
+
+
+def test_parser_ollama_emits_stream_refused_on_content_filter():
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {"role": "assistant", "content": ""},
+        "done": True,
+        "done_reason": "content_filter",
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    refused = next((e for e in events if isinstance(e, StreamRefused)), None)
+    assert refused is not None
+    assert refused.reason == "content_filter"
+    # No StreamDone when refused — refusal is the terminal event.
+    assert not any(isinstance(e, StreamDone) for e in events)
+
+
+def test_parser_ollama_emits_stream_refused_with_refusal_text():
+    chunk = {
+        "model": "deepseek-v4-pro",
+        "message": {"role": "assistant", "content": "", "refusal": "I cannot help with that."},
+        "done": True,
+        "done_reason": "refusal",
+    }
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    refused = next((e for e in events if isinstance(e, StreamRefused)), None)
+    assert refused is not None
+    assert refused.reason == "refusal"
+    assert refused.refusal_text == "I cannot help with that."
+
+
+def test_parser_ollama_handles_chunk_with_no_actionable_delta():
+    """Empty message + done=False → no events."""
+    chunk = {"model": "deepseek-v4-pro", "message": {"content": ""}, "done": False}
+    events = parse_chunk_ollama_cloud(chunk=chunk)
+    assert events == []
