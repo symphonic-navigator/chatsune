@@ -109,6 +109,45 @@ async def test_fetch_models_deprecated_for_legacy_models():
     assert by_id["grok-4.3"].is_deprecated is False
 
 
+@pytest.mark.asyncio
+async def test_fetch_models_grok_4_3_exposes_4_reasoning_buckets():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    g43 = by_id["grok-4.3"]
+    assert g43.reasoning.effort is not None
+    assert g43.reasoning.effort.buckets == ["none", "low", "medium", "high"]
+    assert g43.reasoning.effort.default_bucket == "low"
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_legacy_models_have_no_effort_buckets():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    assert by_id["grok-4.1-fast"].reasoning.effort is None
+    assert by_id["grok-4.20"].reasoning.effort is None
+
+
+def test_capability_hint_returns_effortless_hint_for_legacy_ids():
+    adapter = XaiHttpAdapter()
+    hint = adapter.capability_hint("grok-4.1-fast")
+    assert hint is not None
+    assert hint.reasoning.kind == "optional"
+    assert hint.reasoning.effort is None
+    assert hint.tools.supported is True
+    assert hint.first_class_support is False
+
+    hint_420 = adapter.capability_hint("grok-4.20")
+    assert hint_420 is not None
+    assert hint_420.reasoning.effort is None
+
+
+def test_capability_hint_returns_none_for_unknown_model_id():
+    adapter = XaiHttpAdapter()
+    assert adapter.capability_hint("grok-totally-unknown") is None
+
+
 from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
 from backend.modules.llm._adapters._xai_http import _translate_message
 
