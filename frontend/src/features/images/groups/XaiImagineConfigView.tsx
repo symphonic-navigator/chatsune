@@ -1,7 +1,7 @@
 import type { XaiImagineConfig } from '@/core/api/images'
 import type { ConfigViewProps } from './registry'
 
-const TIERS: XaiImagineConfig['tier'][] = ['normal', 'pro']
+const TIERS: XaiImagineConfig['tier'][] = ['normal', 'quality']
 const RESOLUTIONS: XaiImagineConfig['resolution'][] = ['1k', '2k']
 const ASPECTS: XaiImagineConfig['aspect'][] = ['1:1', '16:9', '9:16', '4:3', '3:4']
 

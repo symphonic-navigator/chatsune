@@ -167,7 +167,7 @@ def test_get_config_returns_active_when_set():
     svc = MagicMock(spec=ImageService)
     svc.list_available_groups = AsyncMock(return_value=[])
     svc.get_active_config = AsyncMock(return_value=ActiveImageConfigDto(
-        connection_id="conn_a", group_id="xai_imagine", config={"tier": "pro"},
+        connection_id="conn_a", group_id="xai_imagine", config={"tier": "quality"},
     ))
     client = TestClient(_build_app(svc))
     r = client.get("/api/images/config")
@@ -191,13 +191,13 @@ def test_set_config_422_on_validation_error():
 def test_set_config_200_on_success():
     svc = MagicMock(spec=ImageService)
     svc.set_active_config = AsyncMock(return_value=ActiveImageConfigDto(
-        connection_id="conn_a", group_id="xai_imagine", config={"tier": "pro"},
+        connection_id="conn_a", group_id="xai_imagine", config={"tier": "quality"},
     ))
     client = TestClient(_build_app(svc))
     r = client.post("/api/images/config", json={
         "connection_id": "conn_a",
         "group_id": "xai_imagine",
-        "config": {"tier": "pro"},
+        "config": {"tier": "quality"},
     })
     assert r.status_code == 200
     assert r.json()["connection_id"] == "conn_a"

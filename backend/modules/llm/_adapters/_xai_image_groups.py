@@ -9,9 +9,14 @@ GROUP_ID = "xai_imagine"
 
 
 def model_id_for_tier(tier: str) -> str:
-    """Map config tier to xAI's model id."""
-    if tier == "pro":
-        return "grok-imagine-image-pro"
+    """Map config tier to xAI's model id.
+
+    Verified against the live xAI API; ``grok-imagine-image-pro`` was
+    deprecated on 2026-05-15 in favour of ``grok-imagine-image-quality``.
+    Docs: https://docs.x.ai/developers/model-capabilities/images/generation
+    """
+    if tier == "quality":
+        return "grok-imagine-image-quality"
     return "grok-imagine-image"
 
 

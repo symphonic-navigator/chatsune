@@ -19,7 +19,7 @@ async def test_validate_image_config_accepts_valid_xai():
         config={"tier": "pro", "resolution": "2k", "aspect": "16:9", "n": 6},
     )
     assert isinstance(cfg, XaiImagineConfig)
-    assert cfg.tier == "pro"
+    assert cfg.tier == "quality"  # "pro" is a legacy alias, normalised on load
     assert cfg.resolution == "2k"
     assert cfg.aspect == "16:9"
     assert cfg.n == 6

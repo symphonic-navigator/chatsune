@@ -1,4 +1,4 @@
-"""xAI HTTP adapter — Chat Completions (legacy) for Grok 4.1 Fast."""
+"""xAI HTTP adapter — Chat Completions for Grok 4.3 (first-class) and legacy Grok models."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, Literal
 from uuid import uuid4
 
 import httpx
@@ -272,8 +272,11 @@ class _XaiModelEntry:
     model_id: str
     display_name: str
     context_window: int
-    reasoning_slug: str
-    non_reasoning_slug: str
+    reasoning_via: Literal["slug_switch", "effort_param"]
+    reasoning_slug: str | None = None
+    non_reasoning_slug: str | None = None
+    first_class_support: bool = False
+    is_deprecated: bool = False
     remarks: str | None = None
 
 
@@ -282,30 +285,26 @@ _XAI_MODELS: tuple[_XaiModelEntry, ...] = (
         model_id="grok-4.1-fast",
         display_name="Grok 4.1 Fast",
         context_window=128_000,
+        reasoning_via="slug_switch",
         reasoning_slug="grok-4-1-fast-reasoning",
         non_reasoning_slug="grok-4-1-fast-non-reasoning",
+        is_deprecated=True,
     ),
     _XaiModelEntry(
         model_id="grok-4.20",
         display_name="Grok 4.20",
         context_window=200_000,
+        reasoning_via="slug_switch",
         reasoning_slug="grok-4.20-0309-reasoning",
         non_reasoning_slug="grok-4.20-0309-non-reasoning",
+        is_deprecated=True,
     ),
     _XaiModelEntry(
         model_id="grok-4.3",
         display_name="Grok 4.3",
         context_window=200_000,
-        reasoning_slug="grok-4.3",
-        # No native non-reasoning variant exists for 4.3. We fall back
-        # to the previous-generation 4.20 non-reasoning slug so voice /
-        # low-latency paths stay viable; the user-visible remarks line
-        # discloses this. See devdocs/specs/2026-05-01-grok-4.3-with-
-        # 4.20-fallback-design.md.
-        non_reasoning_slug="grok-4.20-0309-non-reasoning",
-        remarks=(
-            "Falls back to Grok 4.20 (non-reasoning) when thinking is off."
-        ),
+        reasoning_via="effort_param",
+        first_class_support=True,
     ),
 )
 
@@ -316,26 +315,34 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     entry = _XAI_MODELS_BY_ID.get(request.model)
     if entry is None:
         # Stale persona reference (e.g. legacy `xai:grok-4`) — fall back
-        # to Grok 4.1 Fast so the request stays routable. Logged as a
-        # warning so it shows up in Claude-oriented logs without
-        # raising. The fallback path is exercised by Task 5's tests.
+        # to grok-4.3 so the request stays routable. Previously this
+        # fell back to grok-4.1-fast, but that model is being phased
+        # out by xAI. Logged as a warning so it shows up in
+        # Claude-oriented logs without raising.
         _log.warning(
             "xAI: unknown model_id=%r in CompletionRequest; "
-            "falling back to grok-4.1-fast",
+            "falling back to grok-4.3",
             request.model,
         )
-        entry = _XAI_MODELS_BY_ID["grok-4.1-fast"]
+        entry = _XAI_MODELS_BY_ID["grok-4.3"]
 
-    model_slug = (
-        entry.reasoning_slug if request.extras.reasoning_mode == "on"
-        else entry.non_reasoning_slug
-    )
+    if entry.reasoning_via == "effort_param":
+        model_slug = entry.model_id
+    else:
+        # slug_switch
+        model_slug = (
+            entry.reasoning_slug if request.extras.reasoning_mode == "on"
+            else entry.non_reasoning_slug
+        )
+
     payload: dict = {
         "model": model_slug,
         "stream": True,
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
+    if entry.reasoning_via == "effort_param" and request.extras.reasoning_effort:
+        payload["reasoning_effort"] = request.extras.reasoning_effort
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:
@@ -400,11 +407,12 @@ class XaiHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        # All Grok entries currently in ``_XAI_MODELS`` expose a reasoning
-        # toggle via the slug-pair table (see ``_build_chat_payload``), so
-        # ``reasoning.kind == "optional"`` for every entry. The follow-up
-        # premium-handling spec will revisit ``first_class_support`` and
-        # any per-model nuance — for now we emit conservative defaults.
+        # Reasoning UX is now per-entry: legacy entries use slug switching
+        # (``reasoning_mode`` on/off), grok-4.3 uses the native
+        # ``reasoning_effort`` parameter. See ``_build_chat_payload`` for
+        # the dispatch. ``first_class_support`` and ``is_deprecated`` come
+        # from the per-entry table — grok-4.3 is the first-class entry,
+        # the older slug-switch models are flagged deprecated.
         return [
             ModelMetaDto(
                 connection_id=c.id,
@@ -419,7 +427,8 @@ class XaiHttpAdapter(BaseAdapter):
                 tools=ToolCapability(
                     supported=True, exclusive_with_reasoning=False,
                 ),
-                first_class_support=False,
+                first_class_support=entry.first_class_support,
+                is_deprecated=entry.is_deprecated,
                 supports_vision=True,
                 supports_tool_calls=True,
                 billing_category="pay_per_token",

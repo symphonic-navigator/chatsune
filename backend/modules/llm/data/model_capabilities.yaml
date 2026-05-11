@@ -114,3 +114,12 @@ models:
       effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
+
+  # xAI native — grok-4.3 with configurable reasoning_effort
+  - adapter: xai_http
+    pattern: "grok-4.3"
+    reasoning:
+      kind: optional
+      effort: { buckets: [none, low, medium, high], default_bucket: low }
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }

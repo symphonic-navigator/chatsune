@@ -72,9 +72,7 @@ async def test_fetch_models_returns_three_grok_entries():
     g43 = by_id["grok-4.3"]
     assert g43.display_name == "Grok 4.3"
     assert g43.context_window == 200_000
-    assert g43.remarks == (
-        "Falls back to Grok 4.20 (non-reasoning) when thinking is off."
-    )
+    assert g43.remarks is None
 
     for m in metas:
         assert m.supports_reasoning is True
@@ -89,6 +87,26 @@ async def test_fetch_models_billing_category_is_pay_per_token_for_all_entries():
     adapter = XaiHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
     assert {m.billing_category for m in metas} == {"pay_per_token"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_first_class_support_only_for_grok_4_3():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    assert by_id["grok-4.3"].first_class_support is True
+    assert by_id["grok-4.1-fast"].first_class_support is False
+    assert by_id["grok-4.20"].first_class_support is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_deprecated_for_legacy_models():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    assert by_id["grok-4.1-fast"].is_deprecated is True
+    assert by_id["grok-4.20"].is_deprecated is True
+    assert by_id["grok-4.3"].is_deprecated is False
 
 
 from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
@@ -217,37 +235,25 @@ def test_build_payload_grok_4_20_non_reasoning_uses_non_reasoning_slug():
     assert payload["model"] == "grok-4.20-0309-non-reasoning"
 
 
-def test_build_payload_grok_4_3_reasoning_uses_4_3_slug():
-    payload = _build_chat_payload(
-        _simple_request(model="grok-4.3", reasoning_enabled=True)
-    )
-    assert payload["model"] == "grok-4.3"
-
-
-def test_build_payload_grok_4_3_non_reasoning_falls_back_to_4_20():
-    payload = _build_chat_payload(
-        _simple_request(model="grok-4.3", reasoning_enabled=False)
-    )
-    assert payload["model"] == "grok-4.20-0309-non-reasoning"
-
-
-def test_build_payload_unknown_model_falls_back_to_4_1_fast(caplog):
+def test_build_payload_unknown_model_falls_back_to_grok_4_3(caplog):
     import logging
+    extras = ChatSessionExtras(
+        tools_enabled=True,
+        reasoning_mode="on",
+        reasoning_effort="medium",
+    )
     with caplog.at_level(logging.WARNING):
         payload = _build_chat_payload(
-            _simple_request(model="grok-stale-legacy", reasoning_enabled=True)
+            _simple_request(model="grok-totally-unknown", extras=extras)
         )
-    assert payload["model"] == "grok-4-1-fast-reasoning"
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "medium"
     assert any(
-        "grok-stale-legacy" in rec.message for rec in caplog.records
+        "grok-totally-unknown" in rec.message for rec in caplog.records
     ), "expected a warning log mentioning the unknown model_id"
-
-
-def test_build_payload_unknown_model_non_reasoning_also_falls_back():
-    payload = _build_chat_payload(
-        _simple_request(model="grok-stale-legacy", reasoning_enabled=False)
-    )
-    assert payload["model"] == "grok-4-1-fast-non-reasoning"
+    assert any(
+        "grok-4.3" in rec.message for rec in caplog.records
+    ), "expected the warning log to reference the grok-4.3 fallback target"
 
 
 def test_build_payload_omits_temperature_when_none():
@@ -288,6 +294,83 @@ def test_build_payload_translates_tools_to_openai_schema():
             },
         },
     ]
+
+
+def test_build_payload_grok_4_3_uses_native_slug_and_effort_medium():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "medium"
+
+
+def test_build_payload_grok_4_3_passes_effort_none_through():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="none",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "none"
+
+
+def test_build_payload_grok_4_3_omits_effort_when_unset():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert "reasoning_effort" not in payload
+
+
+def test_build_payload_grok_4_3_ignores_reasoning_mode():
+    """For effort_param models the legacy on/off mode flag is ignored."""
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="off", reasoning_effort="low",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "low"
+
+
+def test_build_payload_grok_4_1_fast_still_slug_switches():
+    """Regression: legacy slug-switch path stays intact."""
+    on = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
+    )
+    off = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="off", reasoning_effort=None,
+    )
+    p_on = _build_chat_payload(
+        _simple_request(model="grok-4.1-fast", extras=on)
+    )
+    p_off = _build_chat_payload(
+        _simple_request(model="grok-4.1-fast", extras=off)
+    )
+    assert p_on["model"] == "grok-4-1-fast-reasoning"
+    assert p_off["model"] == "grok-4-1-fast-non-reasoning"
+    assert "reasoning_effort" not in p_on
+    assert "reasoning_effort" not in p_off
+
+
+def test_build_payload_slug_switch_ignores_reasoning_effort():
+    """For slug_switch models, reasoning_effort is not forwarded."""
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.20", extras=extras)
+    )
+    assert payload["model"] == "grok-4.20-0309-reasoning"
+    assert "reasoning_effort" not in payload
 
 
 from backend.modules.llm._adapters._xai_http import _parse_sse_line, _SSE_DONE
@@ -876,7 +959,7 @@ def test_imagine_test_endpoint_returns_items_and_drains_buffers(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
+async def test_xai_generate_images_quality_tier_uses_quality_model(monkeypatch):
     captured_body: dict = {}
 
     class _FakeResp:
@@ -909,11 +992,11 @@ async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
     await adapter.generate_images(
         connection=_resolved_conn(),
         group_id="xai_imagine",
-        config=XaiImagineConfig(tier="pro", resolution="2k", aspect="16:9", n=1),
+        config=XaiImagineConfig(tier="quality", resolution="2k", aspect="16:9", n=1),
         prompt="x",
     )
 
-    assert captured_body["model"] == "grok-imagine-image-pro"
+    assert captured_body["model"] == "grok-imagine-image-quality"
     assert captured_body["resolution"] == "2k"
     assert captured_body["aspect_ratio"] == "16:9"
     assert captured_body["n"] == 1

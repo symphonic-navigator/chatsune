@@ -529,14 +529,24 @@ class ImageService:
         *,
         user_id: str,
     ) -> ActiveImageConfigDto | None:
-        """Return the currently active image config for ``user_id``, or ``None``."""
+        """Return the currently active image config for ``user_id``, or ``None``.
+
+        The stored config dict is round-tripped through the group's typed
+        schema so that field validators (e.g. the legacy ``tier='pro'`` →
+        ``'quality'`` alias) run on every read. Without this, legacy docs
+        would surface unchanged and the FE — whose TIERS array has dropped
+        ``'pro'`` — would render an unselected SegRow.
+        """
         doc = await self._cfg.get_active(user_id=user_id)
         if doc is None:
             return None
+        validated = await self._llm.validate_image_config(
+            group_id=doc.group_id, config=doc.config,
+        )
         return ActiveImageConfigDto(
             connection_id=doc.connection_id,
             group_id=doc.group_id,
-            config=doc.config,
+            config=validated.model_dump(),
         )
 
     async def set_active_config(
@@ -549,20 +559,25 @@ class ImageService:
     ) -> ActiveImageConfigDto:
         """Validate, persist, and activate an image config for ``user_id``.
 
-        Validates the config against the group's typed schema before writing
-        so that stale or malformed configs are rejected immediately.
+        Validates the config against the group's typed schema and persists
+        the validator's normalised output (``model_dump()``) — never the
+        raw input. This is what makes the lazy migration of legacy values
+        (e.g. ``tier='pro'`` → ``'quality'``) actually stick to MongoDB:
+        any save naturally heals the document.
 
         Returns:
             The resulting ``ActiveImageConfigDto`` for the newly active config.
         """
-        # Validate first — reject stale or malformed configs before touching the DB.
-        await self._llm.validate_image_config(group_id=group_id, config=config)
+        validated = await self._llm.validate_image_config(
+            group_id=group_id, config=config,
+        )
+        clean = validated.model_dump()
 
         await self._cfg.upsert(
             user_id=user_id,
             connection_id=connection_id,
             group_id=group_id,
-            config=config,
+            config=clean,
         )
         await self._cfg.set_active(
             user_id=user_id,
@@ -573,7 +588,7 @@ class ImageService:
         return ActiveImageConfigDto(
             connection_id=connection_id,
             group_id=group_id,
-            config=config,
+            config=clean,
         )
 
     # ------------------------------------------------------------------
