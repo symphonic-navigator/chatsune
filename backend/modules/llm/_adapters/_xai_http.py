@@ -309,6 +309,13 @@ _XAI_MODELS: tuple[_XaiModelEntry, ...] = (
 
 _XAI_MODELS_BY_ID: dict[str, _XaiModelEntry] = {m.model_id: m for m in _XAI_MODELS}
 
+# Mirrors backend/modules/llm/data/model_capabilities.yaml grok-4.3 row.
+# xAI rejects unknown reasoning_effort values; stale persisted values
+# (e.g. a pre-cleanup "none" bucket) must fall back to the default bucket.
+_GROK_4_3_EFFORT_BUCKETS: frozenset[str] = frozenset({"low", "medium", "high"})
+_GROK_4_3_DEFAULT_EFFORT: str = "low"
+
+
 def _build_chat_payload(request: CompletionRequest) -> dict:
     entry = _XAI_MODELS_BY_ID.get(request.model)
     if entry is None:
@@ -339,8 +346,16 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
-    if entry.reasoning_via == "effort_param" and request.extras.reasoning_effort:
-        payload["reasoning_effort"] = request.extras.reasoning_effort
+    if entry.reasoning_via == "effort_param":
+        if request.extras.reasoning_mode == "off":
+            # xAI accepts "none" to disable reasoning entirely; this is
+            # the only off-path now that the UI bucket has been dropped.
+            payload["reasoning_effort"] = "none"
+        else:
+            effort = request.extras.reasoning_effort
+            if effort not in _GROK_4_3_EFFORT_BUCKETS:
+                effort = _GROK_4_3_DEFAULT_EFFORT
+            payload["reasoning_effort"] = effort
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:
