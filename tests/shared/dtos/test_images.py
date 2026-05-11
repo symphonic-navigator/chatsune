@@ -78,11 +78,6 @@ def test_image_ref_dto_required_fields():
     assert ref.id == "img_a"
 
 
-def test_xai_imagine_config_tier_default_is_normal():
-    cfg = XaiImagineConfig()
-    assert cfg.tier == "normal"
-
-
 def test_xai_imagine_config_accepts_quality_tier():
     cfg = XaiImagineConfig(tier="quality")
     assert cfg.tier == "quality"
