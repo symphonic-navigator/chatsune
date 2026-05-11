@@ -4,7 +4,7 @@ All dependencies are mocked — no database, filesystem, or network required.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 from datetime import UTC, datetime
 
 from backend.modules.images._service import ImageGenerationOutcome, ImageService
@@ -177,6 +177,13 @@ async def test_get_active_config_aliases_legacy_pro_to_quality():
 
     The FE TIERS array is ``['normal', 'quality']``; without aliasing the
     SegRow would show no selected button for legacy docs.
+
+    Note: we cannot return a real ``XaiImagineConfig(tier="pro")`` from the
+    mocked validator — its constructor runs the alias validator itself, so
+    the mock return value would already be normalised before any service
+    code runs, masking a regression where the service forgot to route
+    through ``model_dump()``. Instead, mock the validator's return so that
+    ``model_dump()`` is the thing under verification.
     """
     svc, llm, _, _, cfg = _make_service()
     cfg.get_active.return_value = UserImageConfigDocument(
@@ -188,7 +195,15 @@ async def test_get_active_config_aliases_legacy_pro_to_quality():
         selected=True,
         updated_at=datetime.now(UTC),
     )
-    llm.validate_image_config.return_value = XaiImagineConfig(tier="pro", n=4)
+    validated = Mock()
+    validated.model_dump.return_value = {
+        "group_id": "xai_imagine",
+        "tier": "quality",
+        "resolution": "1k",
+        "aspect": "1:1",
+        "n": 4,
+    }
+    llm.validate_image_config.return_value = validated
 
     out = await svc.get_active_config(user_id="u1")
 
@@ -196,6 +211,12 @@ async def test_get_active_config_aliases_legacy_pro_to_quality():
     assert out.connection_id == "conn_a"
     assert out.group_id == "xai_imagine"
     assert out.config["tier"] == "quality"
+    assert out.config["n"] == 4
+    llm.validate_image_config.assert_awaited_once_with(
+        group_id="xai_imagine",
+        config={"tier": "pro", "n": 4},
+    )
+    validated.model_dump.assert_called_once()
 
 
 @pytest.mark.asyncio
