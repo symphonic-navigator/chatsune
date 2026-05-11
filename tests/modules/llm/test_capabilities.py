@@ -85,3 +85,33 @@ def test_default_capabilities_constant_is_optional_no_effort():
     assert DEFAULT_CAPABILITIES.reasoning.effort is None
     assert DEFAULT_CAPABILITIES.tools.supported is True
     assert DEFAULT_CAPABILITIES.tools.exclusive_with_reasoning is False
+
+
+def test_grok_4_3_xai_http_has_effort_buckets():
+    """xAI native adapter exposes the four-way effort picker for grok-4.3."""
+    res = resolve_capabilities(
+        adapter_type="xai_http",
+        model_id="grok-4.3",
+        adapter=_StubAdapter(),
+    )
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "optional"
+    assert res.reasoning.effort is not None
+    assert res.reasoning.effort.buckets == ["none", "low", "medium", "high"]
+    assert res.reasoning.effort.default_bucket == "low"
+    assert res.tools.supported is True
+
+
+def test_grok_4_3_via_openrouter_has_no_effort_buckets():
+    """Cross-adapter scope: effort buckets only via xai_http.
+
+    grok-4.3 served through OpenRouter has no specific YAML rule and falls
+    through to the adapter heuristic / universal fallback, which carries
+    no effort spec.
+    """
+    res = resolve_capabilities(
+        adapter_type="openrouter_http",
+        model_id="grok-4.3",
+        adapter=_StubAdapter(),
+    )
+    assert res.reasoning.effort is None
