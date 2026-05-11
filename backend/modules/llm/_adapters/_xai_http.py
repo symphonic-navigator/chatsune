@@ -1,4 +1,4 @@
-"""xAI HTTP adapter — Chat Completions (legacy) for Grok 4.1 Fast."""
+"""xAI HTTP adapter — Chat Completions for Grok 4.3 (first-class) and legacy Grok models."""
 
 from __future__ import annotations
 
@@ -315,15 +315,16 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     entry = _XAI_MODELS_BY_ID.get(request.model)
     if entry is None:
         # Stale persona reference (e.g. legacy `xai:grok-4`) — fall back
-        # to Grok 4.1 Fast so the request stays routable. Logged as a
-        # warning so it shows up in Claude-oriented logs without
-        # raising. The fallback path is exercised by Task 5's tests.
+        # to grok-4.3 so the request stays routable. Previously this
+        # fell back to grok-4.1-fast, but that model is being phased
+        # out by xAI. Logged as a warning so it shows up in
+        # Claude-oriented logs without raising.
         _log.warning(
             "xAI: unknown model_id=%r in CompletionRequest; "
-            "falling back to grok-4.1-fast",
+            "falling back to grok-4.3",
             request.model,
         )
-        entry = _XAI_MODELS_BY_ID["grok-4.1-fast"]
+        entry = _XAI_MODELS_BY_ID["grok-4.3"]
 
     if entry.reasoning_via == "effort_param":
         model_slug = entry.model_id

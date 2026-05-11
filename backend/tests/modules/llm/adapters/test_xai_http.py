@@ -235,23 +235,25 @@ def test_build_payload_grok_4_20_non_reasoning_uses_non_reasoning_slug():
     assert payload["model"] == "grok-4.20-0309-non-reasoning"
 
 
-def test_build_payload_unknown_model_falls_back_to_4_1_fast(caplog):
+def test_build_payload_unknown_model_falls_back_to_grok_4_3(caplog):
     import logging
+    extras = ChatSessionExtras(
+        tools_enabled=True,
+        reasoning_mode="on",
+        reasoning_effort="medium",
+    )
     with caplog.at_level(logging.WARNING):
         payload = _build_chat_payload(
-            _simple_request(model="grok-stale-legacy", reasoning_enabled=True)
+            _simple_request(model="grok-totally-unknown", extras=extras)
         )
-    assert payload["model"] == "grok-4-1-fast-reasoning"
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "medium"
     assert any(
-        "grok-stale-legacy" in rec.message for rec in caplog.records
+        "grok-totally-unknown" in rec.message for rec in caplog.records
     ), "expected a warning log mentioning the unknown model_id"
-
-
-def test_build_payload_unknown_model_non_reasoning_also_falls_back():
-    payload = _build_chat_payload(
-        _simple_request(model="grok-stale-legacy", reasoning_enabled=False)
-    )
-    assert payload["model"] == "grok-4-1-fast-non-reasoning"
+    assert any(
+        "grok-4.3" in rec.message for rec in caplog.records
+    ), "expected the warning log to reference the grok-4.3 fallback target"
 
 
 def test_build_payload_omits_temperature_when_none():
