@@ -275,7 +275,6 @@ class _XaiModelEntry:
     reasoning_via: Literal["slug_switch", "effort_param"]
     reasoning_slug: str | None = None
     non_reasoning_slug: str | None = None
-    first_class_support: bool = False
     is_deprecated: bool = False
     remarks: str | None = None
 
@@ -304,7 +303,6 @@ _XAI_MODELS: tuple[_XaiModelEntry, ...] = (
         display_name="Grok 4.3",
         context_window=200_000,
         reasoning_via="effort_param",
-        first_class_support=True,
     ),
 )
 
@@ -407,35 +405,49 @@ class XaiHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        # Reasoning UX is now per-entry: legacy entries use slug switching
+        # Reasoning UX is per-entry: legacy entries use slug switching
         # (``reasoning_mode`` on/off), grok-4.3 uses the native
-        # ``reasoning_effort`` parameter. See ``_build_chat_payload`` for
-        # the dispatch. ``first_class_support`` and ``is_deprecated`` come
-        # from the per-entry table — grok-4.3 is the first-class entry,
-        # the older slug-switch models are flagged deprecated.
-        return [
-            ModelMetaDto(
+        # ``reasoning_effort`` parameter. The YAML capability table flips
+        # ``first_class_support`` to True for grok-4.3 and supplies the
+        # effort buckets; legacy entries fall through to ``capability_hint``
+        # which retains the on/off shape without buckets.
+        from backend.modules.llm._capabilities import resolve_capabilities
+
+        metas: list[ModelMetaDto] = []
+        for entry in _XAI_MODELS:
+            resolved = resolve_capabilities(
+                adapter_type=self.adapter_type,
+                model_id=entry.model_id,
+                adapter=self,
+            )
+            metas.append(ModelMetaDto(
                 connection_id=c.id,
                 connection_display_name=c.display_name,
                 connection_slug=c.slug,
                 model_id=entry.model_id,
                 display_name=entry.display_name,
                 context_window=entry.context_window,
-                reasoning=ReasoningCapability(
-                    kind="optional", default_on=True,
-                ),
-                tools=ToolCapability(
-                    supported=True, exclusive_with_reasoning=False,
-                ),
-                first_class_support=entry.first_class_support,
+                reasoning=resolved.reasoning,
+                tools=resolved.tools,
+                first_class_support=resolved.first_class_support,
                 is_deprecated=entry.is_deprecated,
                 supports_vision=True,
                 supports_tool_calls=True,
                 billing_category="pay_per_token",
                 remarks=entry.remarks,
-            )
-            for entry in _XAI_MODELS
-        ]
+            ))
+        return metas
+
+    def capability_hint(self, model_id: str):
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        if model_id not in _XAI_MODELS_BY_ID:
+            return None
+        return CapabilityHint(
+            reasoning=ReasoningCapability(kind="optional", default_on=True),
+            tools=ToolCapability(supported=True, exclusive_with_reasoning=False),
+            first_class_support=False,
+        )
 
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
