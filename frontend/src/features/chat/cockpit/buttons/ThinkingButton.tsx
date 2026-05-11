@@ -141,7 +141,7 @@ export function ThinkingButton({ reasoning, mode, effort, onChange }: Props) {
       {popOpen && hasEffort && (
         <ul
           role="menu"
-          className="absolute right-0 bottom-full mb-1 z-40 min-w-[140px] rounded-md border border-white/10 bg-[#0f0d16] py-1 shadow-lg"
+          className="absolute left-0 bottom-full mb-1 z-40 min-w-[140px] rounded-md border border-white/10 bg-[#0f0d16] py-1 shadow-lg"
         >
           <li>
             <button

@@ -63,7 +63,7 @@ export function CockpitGroupButton({ icon, label, children, hasActiveChild }: Pr
         <div
           role="group"
           aria-label={label}
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-40 flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#1a1625] px-2 py-1.5 shadow-xl"
+          className="absolute bottom-full left-0 mb-2 z-40 flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#1a1625] px-2 py-1.5 shadow-xl"
           onClick={() => setOpen(false)}
         >
           {children}
