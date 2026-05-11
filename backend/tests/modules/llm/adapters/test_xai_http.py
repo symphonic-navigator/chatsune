@@ -110,14 +110,16 @@ async def test_fetch_models_deprecated_for_legacy_models():
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_grok_4_3_exposes_4_reasoning_buckets():
+async def test_fetch_models_grok_4_3_exposes_3_reasoning_buckets():
     adapter = XaiHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
     by_id = {m.model_id: m for m in metas}
     g43 = by_id["grok-4.3"]
+    assert g43.reasoning.kind == "optional"
     assert g43.reasoning.effort is not None
-    assert g43.reasoning.effort.buckets == ["none", "low", "medium", "high"]
+    assert g43.reasoning.effort.buckets == ["low", "medium", "high"]
     assert g43.reasoning.effort.default_bucket == "low"
+    assert g43.reasoning.default_on is True
 
 
 @pytest.mark.asyncio
@@ -335,20 +337,9 @@ def test_build_payload_translates_tools_to_openai_schema():
     ]
 
 
-def test_build_payload_grok_4_3_uses_native_slug_and_effort_medium():
+def test_build_chat_payload_grok_4_3_off_mode_sends_none_effort():
     extras = ChatSessionExtras(
-        tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
-    )
-    payload = _build_chat_payload(
-        _simple_request(model="grok-4.3", extras=extras)
-    )
-    assert payload["model"] == "grok-4.3"
-    assert payload["reasoning_effort"] == "medium"
-
-
-def test_build_payload_grok_4_3_passes_effort_none_through():
-    extras = ChatSessionExtras(
-        tools_enabled=True, reasoning_mode="on", reasoning_effort="none",
+        tools_enabled=True, reasoning_mode="off", reasoning_effort=None,
     )
     payload = _build_chat_payload(
         _simple_request(model="grok-4.3", extras=extras)
@@ -357,21 +348,45 @@ def test_build_payload_grok_4_3_passes_effort_none_through():
     assert payload["reasoning_effort"] == "none"
 
 
-def test_build_payload_grok_4_3_omits_effort_when_unset():
+def test_build_chat_payload_grok_4_3_off_mode_ignores_persisted_effort():
+    # "Off" wins over any leftover effort bucket value.
     extras = ChatSessionExtras(
-        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
+        tools_enabled=True, reasoning_mode="off", reasoning_effort="high",
     )
     payload = _build_chat_payload(
         _simple_request(model="grok-4.3", extras=extras)
     )
     assert payload["model"] == "grok-4.3"
-    assert "reasoning_effort" not in payload
+    assert payload["reasoning_effort"] == "none"
 
 
-def test_build_payload_grok_4_3_ignores_reasoning_mode():
-    """For effort_param models the legacy on/off mode flag is ignored."""
+def test_build_chat_payload_grok_4_3_on_passes_through_valid_effort():
     extras = ChatSessionExtras(
-        tools_enabled=True, reasoning_mode="off", reasoning_effort="low",
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="high",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "high"
+
+
+def test_build_chat_payload_grok_4_3_on_with_stale_none_falls_back_to_low():
+    # Pre-cleanup cockpit state could still carry "none" — fall back rather
+    # than forward an unknown value xAI would reject.
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="none",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "low"
+
+
+def test_build_chat_payload_grok_4_3_on_with_null_effort_falls_back_to_low():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
     )
     payload = _build_chat_payload(
         _simple_request(model="grok-4.3", extras=extras)
