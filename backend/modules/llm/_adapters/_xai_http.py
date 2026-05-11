@@ -325,16 +325,23 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
         )
         entry = _XAI_MODELS_BY_ID["grok-4.1-fast"]
 
-    model_slug = (
-        entry.reasoning_slug if request.extras.reasoning_mode == "on"
-        else entry.non_reasoning_slug
-    )
+    if entry.reasoning_via == "effort_param":
+        model_slug = entry.model_id
+    else:
+        # slug_switch
+        model_slug = (
+            entry.reasoning_slug if request.extras.reasoning_mode == "on"
+            else entry.non_reasoning_slug
+        )
+
     payload: dict = {
         "model": model_slug,
         "stream": True,
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
+    if entry.reasoning_via == "effort_param" and request.extras.reasoning_effort:
+        payload["reasoning_effort"] = request.extras.reasoning_effort
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:

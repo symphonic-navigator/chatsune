@@ -294,6 +294,83 @@ def test_build_payload_translates_tools_to_openai_schema():
     ]
 
 
+def test_build_payload_grok_4_3_uses_native_slug_and_effort_medium():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "medium"
+
+
+def test_build_payload_grok_4_3_passes_effort_none_through():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="none",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "none"
+
+
+def test_build_payload_grok_4_3_omits_effort_when_unset():
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert "reasoning_effort" not in payload
+
+
+def test_build_payload_grok_4_3_ignores_reasoning_mode():
+    """For effort_param models the legacy on/off mode flag is ignored."""
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="off", reasoning_effort="low",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.3", extras=extras)
+    )
+    assert payload["model"] == "grok-4.3"
+    assert payload["reasoning_effort"] == "low"
+
+
+def test_build_payload_grok_4_1_fast_still_slug_switches():
+    """Regression: legacy slug-switch path stays intact."""
+    on = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort=None,
+    )
+    off = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="off", reasoning_effort=None,
+    )
+    p_on = _build_chat_payload(
+        _simple_request(model="grok-4.1-fast", extras=on)
+    )
+    p_off = _build_chat_payload(
+        _simple_request(model="grok-4.1-fast", extras=off)
+    )
+    assert p_on["model"] == "grok-4-1-fast-reasoning"
+    assert p_off["model"] == "grok-4-1-fast-non-reasoning"
+    assert "reasoning_effort" not in p_on
+    assert "reasoning_effort" not in p_off
+
+
+def test_build_payload_slug_switch_ignores_reasoning_effort():
+    """For slug_switch models, reasoning_effort is not forwarded."""
+    extras = ChatSessionExtras(
+        tools_enabled=True, reasoning_mode="on", reasoning_effort="medium",
+    )
+    payload = _build_chat_payload(
+        _simple_request(model="grok-4.20", extras=extras)
+    )
+    assert payload["model"] == "grok-4.20-0309-reasoning"
+    assert "reasoning_effort" not in payload
+
+
 from backend.modules.llm._adapters._xai_http import _parse_sse_line, _SSE_DONE
 
 
