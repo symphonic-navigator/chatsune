@@ -614,10 +614,16 @@ async def run_inference(
     """Shared inference path used by send, edit, and regenerate."""
     persona_id = session.get("persona_id")
 
-    # Resolve persona early — the model is always read from the persona,
-    # never from the session.
+    # Resolve persona — the model defaults to the persona's, but a session
+    # may carry an override (e.g. ChatGPT-imported sessions, which start
+    # with the pseudo ``imported:chatgpt:<slug>`` until the user picks a
+    # real connection on first follow-up send).
     persona = await get_persona(persona_id, user_id) if persona_id else None
-    model_unique_id = persona.get("model_unique_id", "") if persona else ""
+    session_model_override = session.get("model_unique_id")
+    if session_model_override and not session_model_override.startswith("imported:"):
+        model_unique_id = session_model_override
+    else:
+        model_unique_id = persona.get("model_unique_id", "") if persona else ""
 
     # Mindspace: when the session belongs to a project, the project's
     # ``knowledge_library_ids`` are merged with the persona+session

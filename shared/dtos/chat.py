@@ -56,6 +56,15 @@ class ChatSessionDto(BaseModel):
     # frontend computes initial defaults from the current model capability
     # in that case (and PATCHes them back on first user interaction).
     extras: "ChatSessionExtras | None" = None
+    # Per-session model override. ``None`` for legacy / native sessions —
+    # the orchestrator falls back to the persona's model. Used by ChatGPT
+    # imports: the session carries ``imported:chatgpt:<original_slug>``
+    # until the user picks a real connection on first follow-up send.
+    model_unique_id: str | None = None
+    # Imported-session provenance. ``None`` for native sessions.
+    imported_from: Literal["chatgpt"] | None = None
+    imported_model_slug: str | None = None
+    imported_at: datetime | None = None
 
 
 class ChatSessionExtras(BaseModel):
@@ -214,3 +223,42 @@ class ChatMessagesBundleDto(BaseModel):
     context_fill_percentage: float = 0.0
     context_used_tokens: int = 0
     context_max_tokens: int = 0
+
+
+# --- Imported-session contracts (ChatGPT import) --------------------------
+
+
+class ImportedMessageInput(BaseModel):
+    """One message of an imported conversation, in Chatsune-shape.
+
+    The chatgpt_import module produces these from its parser output and
+    hands them to the chat module's ``create_imported_session`` API.
+    """
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+    imported_model_slug: str | None = None
+
+
+class CreateImportedSessionRequest(BaseModel):
+    """Args for ChatService.create_imported_session.
+
+    ``imported_from`` is the provenance tag ("chatgpt"); the resulting
+    session carries the pseudo ``model_unique_id`` ``imported:chatgpt:<slug>``
+    until the user picks a real connection on the first follow-up send.
+    """
+    persona_id: str
+    title: str
+    messages: list[ImportedMessageInput]
+    imported_from: Literal["chatgpt"]
+    imported_model_slug: str | None
+    original_created_at: datetime
+
+
+class UpdateSessionModelRequest(BaseModel):
+    """Body for ``PATCH /api/chat/sessions/{id}/model``.
+
+    Used by the connection-picker UI on imported sessions to replace the
+    ``imported:chatgpt:<slug>`` pseudo-id with a real ``{connection}:{model}``.
+    """
+    model_unique_id: str

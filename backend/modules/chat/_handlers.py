@@ -6,7 +6,12 @@ from pydantic import BaseModel, Field
 
 from backend.database import get_db
 from backend.dependencies import require_active_session
-from shared.dtos.chat import ChatMessagesBundleDto, ChatSessionExtras, SessionProjectUpdateDto
+from shared.dtos.chat import (
+    ChatMessagesBundleDto,
+    ChatSessionExtras,
+    SessionProjectUpdateDto,
+    UpdateSessionModelRequest,
+)
 from shared.dtos.knowledge import SetKnowledgeLibrariesRequest
 from backend.jobs import submit, JobType
 from backend.modules.chat._repository import ChatRepository
@@ -480,6 +485,37 @@ async def update_session_project(
 
     doc = await repo.get_session(session_id, user["sub"])
     return ChatRepository.session_to_dto(doc)
+
+
+@router.patch("/sessions/{session_id}/model")
+async def update_session_model(
+    session_id: str,
+    body: UpdateSessionModelRequest,
+    user: dict = Depends(require_active_session),
+):
+    """Set the per-session model override.
+
+    Used by the connection-picker UI on imported sessions to replace the
+    placeholder ``imported:chatgpt:<slug>`` with a real
+    ``{connection_id}:{model_slug}`` after the user picks. The body shape
+    matches ``UpdateSessionModelRequest``. Returns the updated session DTO.
+
+    Validation: the supplied id must contain a colon (``{connection}:{model}``)
+    and must not itself start with ``imported:`` — the picker is supposed to
+    replace that placeholder, not chain another one.
+    """
+    if ":" not in body.model_unique_id or body.model_unique_id.startswith("imported:"):
+        raise HTTPException(status_code=400, detail="Invalid model_unique_id")
+    repo = _chat_repo()
+    session = await repo.get_session(session_id, user["sub"])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    updated = await repo.update_session_model(
+        session_id, user["sub"], body.model_unique_id,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return ChatRepository.session_to_dto(updated)
 
 
 @router.post("/sessions/{session_id}/generate-title", status_code=202)

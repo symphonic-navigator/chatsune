@@ -17,13 +17,14 @@ import { MemoriesTab } from './MemoriesTab'
 import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
+import { ChatGptImportTab } from '../../../features/chatgpt-import/ChatGptImportTab'
 import { resolveSTTEngine, resolveTTSEngine } from '../../../features/voice/engines/resolver'
 import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 import { useSecretsStore } from '../../../features/integrations/secretsStore'
 import { OverlayMobileNav } from '../overlay-mobile-nav/OverlayMobileNav'
 import type { NavLeaf } from '../overlay-mobile-nav/types'
 
-export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations' | 'voice'
+export type PersonaOverlayTab = 'overview' | 'edit' | 'knowledge' | 'memories' | 'history' | 'mcp' | 'integrations' | 'voice' | 'chatgpt-import'
 
 interface PersonaOverlayProps {
   persona: PersonaDto | null
@@ -46,6 +47,7 @@ const TABS: { id: PersonaOverlayTab; label: string; subtitle?: string }[] = [
   { id: 'mcp', label: 'MCP', subtitle: 'ajna' },
   { id: 'voice', label: 'Voice', subtitle: 'sahasrara' },
   { id: 'integrations', label: 'Integrations' },
+  { id: 'chatgpt-import', label: 'ChatGPT Import' },
 ]
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -385,6 +387,9 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
           {activeTab === 'integrations' && !isCreating && <PersonaIntegrationsTab persona={resolved} onSave={onSave} />}
           {activeTab === 'voice' && !isCreating && (
             <PersonaVoiceConfig key={resolved.id} persona={resolved} chakra={chakra} onSave={onSave} />
+          )}
+          {activeTab === 'chatgpt-import' && !isCreating && (
+            <ChatGptImportTab personaId={resolved.id} personaName={resolved.name} />
           )}
         </div>
       </div>

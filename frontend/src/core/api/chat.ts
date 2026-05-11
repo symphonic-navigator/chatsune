@@ -57,6 +57,18 @@ interface ChatSessionDto {
    * call sites do not need to specify it; runtime treats undefined as null.
    */
   extras?: ChatSessionExtras | null
+  /**
+   * Per-session model override. Set for ChatGPT-imported sessions to the
+   * pseudo-id ``imported:chatgpt:<original_slug>`` until the user picks a
+   * real connection on first follow-up send. For native sessions the
+   * orchestrator falls back to the persona's model; this field is null
+   * unless the session has an override.
+   */
+  model_unique_id?: string | null
+  /** Provenance tag for imported sessions. ``null`` for native sessions. */
+  imported_from?: 'chatgpt' | null
+  imported_model_slug?: string | null
+  imported_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -300,6 +312,19 @@ export const chatApi = {
 
   updateSessionPinned: (sessionId: string, pinned: boolean) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),
+
+  /**
+   * Set the per-session model override.
+   *
+   * Used by the connection-picker dialog on imported sessions (those whose
+   * ``model_unique_id`` starts with ``imported:``) to replace the
+   * placeholder with a real ``{connection_id}:{model_slug}``. After this
+   * call the session behaves identically to any native Chatsune session.
+   */
+  updateSessionModel: (sessionId: string, modelUniqueId: string) =>
+    api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/model`, {
+      model_unique_id: modelUniqueId,
+    }),
 
   listToolGroups: () =>
     api.get<ToolGroupDto[]>("/api/chat/tools"),
