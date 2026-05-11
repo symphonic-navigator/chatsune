@@ -72,9 +72,7 @@ async def test_fetch_models_returns_three_grok_entries():
     g43 = by_id["grok-4.3"]
     assert g43.display_name == "Grok 4.3"
     assert g43.context_window == 200_000
-    assert g43.remarks == (
-        "Falls back to Grok 4.20 (non-reasoning) when thinking is off."
-    )
+    assert g43.remarks is None
 
     for m in metas:
         assert m.supports_reasoning is True
@@ -89,6 +87,26 @@ async def test_fetch_models_billing_category_is_pay_per_token_for_all_entries():
     adapter = XaiHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
     assert {m.billing_category for m in metas} == {"pay_per_token"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_first_class_support_only_for_grok_4_3():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    assert by_id["grok-4.3"].first_class_support is True
+    assert by_id["grok-4.1-fast"].first_class_support is False
+    assert by_id["grok-4.20"].first_class_support is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_deprecated_for_legacy_models():
+    adapter = XaiHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m for m in metas}
+    assert by_id["grok-4.1-fast"].is_deprecated is True
+    assert by_id["grok-4.20"].is_deprecated is True
+    assert by_id["grok-4.3"].is_deprecated is False
 
 
 from shared.dtos.inference import CompletionMessage, ContentPart, ToolCallResult
