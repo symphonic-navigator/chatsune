@@ -133,6 +133,93 @@ async def test_set_active_config_validates_then_persists():
     assert out.group_id == "xai_imagine"
 
 
+@pytest.mark.asyncio
+async def test_set_active_config_normalises_legacy_pro_to_quality():
+    """Setting a legacy ``tier='pro'`` config must persist and return ``tier='quality'``.
+
+    Without this, the FE could keep round-tripping the deprecated tier
+    indefinitely: validator runs but the validated output is thrown away
+    and the raw input is persisted unchanged.
+    """
+    svc, llm, _, _, cfg = _make_service()
+    # Real validator behaviour: "pro" gets aliased to "quality".
+    llm.validate_image_config.return_value = XaiImagineConfig(tier="pro", n=4)
+
+    out = await svc.set_active_config(
+        user_id="u1",
+        connection_id="conn_a",
+        group_id="xai_imagine",
+        config={"tier": "pro", "n": 4},
+    )
+
+    # DTO returned to the caller must carry the normalised value.
+    assert out.config["tier"] == "quality"
+
+    # And the value persisted to the repository must also be normalised —
+    # otherwise the MongoDB document stays "dirty" forever.
+    cfg.upsert.assert_awaited_once()
+    persisted_config = cfg.upsert.await_args.kwargs["config"]
+    assert persisted_config["tier"] == "quality"
+
+
+# --- get_active_config ---------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_active_config_returns_none_when_no_active():
+    svc, _, _, _, cfg = _make_service()
+    cfg.get_active.return_value = None
+    assert await svc.get_active_config(user_id="u1") is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_config_aliases_legacy_pro_to_quality():
+    """A persisted ``tier='pro'`` document must surface as ``tier='quality'``.
+
+    The FE TIERS array is ``['normal', 'quality']``; without aliasing the
+    SegRow would show no selected button for legacy docs.
+    """
+    svc, llm, _, _, cfg = _make_service()
+    cfg.get_active.return_value = UserImageConfigDocument(
+        id="u1:conn_a:xai_imagine",
+        user_id="u1",
+        connection_id="conn_a",
+        group_id="xai_imagine",
+        config={"tier": "pro", "n": 4},
+        selected=True,
+        updated_at=datetime.now(UTC),
+    )
+    llm.validate_image_config.return_value = XaiImagineConfig(tier="pro", n=4)
+
+    out = await svc.get_active_config(user_id="u1")
+
+    assert out is not None
+    assert out.connection_id == "conn_a"
+    assert out.group_id == "xai_imagine"
+    assert out.config["tier"] == "quality"
+
+
+@pytest.mark.asyncio
+async def test_get_active_config_passes_through_already_quality():
+    """An already-normalised ``tier='quality'`` doc round-trips unchanged."""
+    svc, llm, _, _, cfg = _make_service()
+    cfg.get_active.return_value = UserImageConfigDocument(
+        id="u1:conn_a:xai_imagine",
+        user_id="u1",
+        connection_id="conn_a",
+        group_id="xai_imagine",
+        config={"tier": "quality", "n": 2},
+        selected=True,
+        updated_at=datetime.now(UTC),
+    )
+    llm.validate_image_config.return_value = XaiImagineConfig(tier="quality", n=2)
+
+    out = await svc.get_active_config(user_id="u1")
+
+    assert out is not None
+    assert out.config["tier"] == "quality"
+    assert out.config["n"] == 2
+
+
 # --- get_image -----------------------------------------------------------
 
 @pytest.mark.asyncio
