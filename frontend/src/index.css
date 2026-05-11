@@ -79,6 +79,35 @@ body {
   }
 }
 
+/* Counter-scaled gap/padding mirrors .cockpit-btn-fixed so the bar never wraps at higher UI-scale. */
+.cockpit-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: 0;
+  gap: calc(4px / var(--ui-scale, 1));
+  padding: calc(8px / var(--ui-scale, 1));
+}
+@media (min-width: 1024px) {
+  .cockpit-bar {
+    gap: calc(6px / var(--ui-scale, 1));
+    padding-block: calc(8px / var(--ui-scale, 1));
+    padding-inline: calc(12px / var(--ui-scale, 1));
+  }
+}
+@media (max-width: 400px) {
+  .cockpit-bar {
+    gap: calc(2px / var(--ui-scale, 1));
+    padding-inline: calc(4px / var(--ui-scale, 1));
+  }
+}
+@media (max-width: 360px) {
+  .cockpit-bar {
+    gap: calc(1px / var(--ui-scale, 1));
+    padding-inline: calc(2px / var(--ui-scale, 1));
+  }
+}
+
 /* Persona card entrance animation */
 @keyframes card-entrance {
   from {

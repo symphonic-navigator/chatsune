@@ -136,7 +136,7 @@ export function CockpitBar(props: Props) {
   )
 
   return (
-    <div className={`flex flex-wrap items-center py-2 bg-[#0f0d16] rounded-lg ${isMobile ? 'gap-1 px-2' : 'gap-1.5 px-3'}`}>
+    <div className="cockpit-bar bg-[#0f0d16] rounded-lg">
       {isMobile ? (
         <CockpitGroupButton icon="📎" label="Attach, camera, browse">
           {attachGroupChildren}
