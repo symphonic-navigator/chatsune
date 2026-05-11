@@ -29,6 +29,13 @@ sind bei unseren Beta-Testern verbreitet (wegen STT/TTS), die Preise sind
 niedrig, und grok-4.3 ist nach den Änderungen das einzige Grok-Modell, das
 mittelfristig überlebt.
 
+**Wichtig zur Abgrenzung:** grok-4.3 kommt auch über die Router-Adapter
+nano-gpt und OpenRouter rein (über deren dynamische Model-Listen). Diese
+Einträge sind **kein** first-class — sie zeigen im Model-Browser keinen
+first-class-Badge und keinen Effort-Bucket-Picker. First-class und der
+configurable `reasoning_effort` Picker sind strikt auf den xAI-Adapter-Pfad
+für grok-4.3 begrenzt.
+
 ## Scope
 
 **In Scope:**
@@ -59,6 +66,10 @@ mittelfristig überlebt.
 - Kein One-Shot-Migrations-Skript für `XaiImagineConfig` mit `tier="pro"`. Lazy
   read genügt.
 - Keine "premium"/"first-class" Ausweitung auf andere Modelle.
+- **Keine YAML-Capability-Einträge für grok-4.3 via nano-gpt / OpenRouter.**
+  Die Router-Adapter-Pfade für grok-4.3 nutzen ihre Default-Capabilities
+  (kein Effort-Bucket-Picker, kein first-class-Badge). Wer den Bucket-Picker
+  will, nimmt den xAI-Connection-Pfad.
 - Keine Verifikation des `grok-imagine-image` (normal-tier) Slugs gegen die
   Live-API jetzt — wenn xAI ihn stilllegt, reagieren wir reaktiv.
 - Keine Persona-Auto-Migration für User, die noch grok-4.1-fast oder grok-4.20
@@ -149,6 +160,12 @@ Neuer Eintrag, einsortiert in den xAI-Block:
   tools: { supported: true, exclusive_with_reasoning: false }
 ```
 
+`adapter: xai_http` ist hier kein Detail, sondern essentiell: damit wirkt die
+Effort-Capability nur auf xAI-Connection-Pfade. Vor dem Hinzufügen prüfen,
+dass keine existierende, breiter formulierte YAML-Regel (z.B. ein generisches
+`pattern: "grok*"`) bereits auf andere Adapter zugreift und unbeabsichtigt
+Buckets ausspielt.
+
 ### Backend: Image-Tier-Slug
 
 ```python
@@ -199,6 +216,22 @@ als Label.
 
 Effort-Bucket-Picker für grok-4.3 entsteht automatisch durch den existierenden
 `ThinkingButton` + `ReasoningToolsCluster`, sobald die YAML-Capability geladen ist.
+
+### Cross-Adapter-Verhalten für grok-4.3
+
+grok-4.3 kann von einem User über drei Wege erreicht werden:
+
+| Adapter-Pfad | first_class_support | Effort-Picker | Reasoning-UX |
+|---|---|---|---|
+| xAI-Connection (`xai_http`) | True | Ja, 4 Buckets | Native `reasoning_effort` Parameter |
+| OpenRouter-Connection | False | Nein | OR-default (on/off, ggf. nested `reasoning.effort` passthrough wenn extras gesetzt) |
+| nano-gpt-Connection | False | Nein | nano-gpt-default |
+
+Im Model-Browser sieht der User pro Connection einen separaten Eintrag (das
+ist das existierende Verhalten — model unique ID ist `<connection_id>:<slug>`).
+Der xAI-Eintrag trägt zusätzlich den first-class-Badge, die anderen nicht.
+Das ist explizit so gewollt: Effort-Buckets sind eine xAI-API-Detail-Capability
+und werden nur dort ausgespielt, wo wir den Wire-Vertrag direkt kennen.
 
 ## Datenfluss (grok-4.3 mit reasoning_effort)
 
@@ -305,6 +338,14 @@ Auf realem Setup gegen die Live-xAI-API (Beta-Discord ankündigen):
    - Nach xAIs Pro-Slug-Abschaltung Test wiederholen: Tier `"quality"`
      muss weiterhin funktionieren, Tier `"normal"` (Slug
      `grok-imagine-image`) wird beobachtet.
+
+6. **Cross-Adapter-Abgrenzung:**
+   - Wenn der Test-User auch eine OpenRouter- oder nano-gpt-Connection mit
+     einem grok-4.3-fähigen Slug aktiv hat, im Model-Browser prüfen: jene
+     Einträge zeigen **keinen** first-class-Badge und **keinen**
+     Effort-Bucket-Picker im ThinkingButton.
+   - Nur der xAI-Connection-Pfad für grok-4.3 trägt den Badge und liefert
+     die 4-Bucket-UI.
 
 ## Offene Punkte / Follow-ups
 
