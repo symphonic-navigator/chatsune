@@ -33,13 +33,13 @@ def test_image_group_config_discriminated_union_parses_xai():
     adapter = TypeAdapter(ImageGroupConfig)
     parsed = adapter.validate_python({
         "group_id": "xai_imagine",
-        "tier": "pro",
+        "tier": "quality",
         "resolution": "2k",
         "aspect": "16:9",
         "n": 2,
     })
     assert isinstance(parsed, XaiImagineConfig)
-    assert parsed.tier == "pro"
+    assert parsed.tier == "quality"
 
 
 def test_image_group_config_discriminated_union_rejects_unknown():
@@ -76,3 +76,24 @@ def test_image_ref_dto_required_fields():
         tool_call_id="tc_a",
     )
     assert ref.id == "img_a"
+
+
+def test_xai_imagine_config_tier_default_is_normal():
+    cfg = XaiImagineConfig()
+    assert cfg.tier == "normal"
+
+
+def test_xai_imagine_config_accepts_quality_tier():
+    cfg = XaiImagineConfig(tier="quality")
+    assert cfg.tier == "quality"
+
+
+def test_xai_imagine_config_pro_tier_alias_to_quality():
+    """Backwards-compat: legacy 'pro' input deserialises as 'quality'."""
+    cfg = XaiImagineConfig(tier="pro")
+    assert cfg.tier == "quality"
+
+
+def test_xai_imagine_config_rejects_unknown_tier():
+    with pytest.raises(ValidationError):
+        XaiImagineConfig(tier="ultra")

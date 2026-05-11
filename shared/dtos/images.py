@@ -3,17 +3,24 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- per-group typed configs (discriminated union via group_id) -----------
 
 class XaiImagineConfig(BaseModel):
     group_id: Literal["xai_imagine"] = "xai_imagine"
-    tier: Literal["normal", "pro"] = "normal"
+    tier: Literal["normal", "quality"] = "normal"
     resolution: Literal["1k", "2k"] = "1k"
     aspect: Literal["1:1", "16:9", "9:16", "4:3", "3:4"] = "1:1"
     n: int = Field(4, ge=1, le=10)
+
+    @field_validator("tier", mode="before")
+    @classmethod
+    def _alias_pro_to_quality(cls, v):
+        # Lazy migration for legacy persisted configs (xAI deprecated
+        # the "pro" image slug on 2026-05-15).
+        return "quality" if v == "pro" else v
 
 
 # Future image groups (Seedream, FLUX, etc.) extend this union.
