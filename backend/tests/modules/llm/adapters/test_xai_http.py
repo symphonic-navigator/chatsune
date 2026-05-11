@@ -876,7 +876,7 @@ def test_imagine_test_endpoint_returns_items_and_drains_buffers(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
+async def test_xai_generate_images_quality_tier_uses_quality_model(monkeypatch):
     captured_body: dict = {}
 
     class _FakeResp:
@@ -909,11 +909,11 @@ async def test_xai_generate_images_pro_tier_uses_pro_model(monkeypatch):
     await adapter.generate_images(
         connection=_resolved_conn(),
         group_id="xai_imagine",
-        config=XaiImagineConfig(tier="pro", resolution="2k", aspect="16:9", n=1),
+        config=XaiImagineConfig(tier="quality", resolution="2k", aspect="16:9", n=1),
         prompt="x",
     )
 
-    assert captured_body["model"] == "grok-imagine-image-pro"
+    assert captured_body["model"] == "grok-imagine-image-quality"
     assert captured_body["resolution"] == "2k"
     assert captured_body["aspect_ratio"] == "16:9"
     assert captured_body["n"] == 1

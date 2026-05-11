@@ -124,7 +124,7 @@ async def test_set_active_config_validates_then_persists():
         user_id="u1",
         connection_id="conn_a",
         group_id="xai_imagine",
-        config={"tier": "pro", "n": 4},
+        config={"tier": "quality", "n": 4},
     )
     llm.validate_image_config.assert_awaited_once()
     cfg.upsert.assert_awaited_once()
