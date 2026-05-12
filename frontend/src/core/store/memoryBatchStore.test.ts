@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   selectActiveBatchesForPersona,
+  selectFirstActiveBatchForPersona,
   selectBatchByImportAndPersona,
   useMemoryBatchStore,
 } from './memoryBatchStore'
@@ -249,6 +250,63 @@ describe('memoryBatchStore', () => {
       )
       const ids = active.map((b) => b.import_id).sort()
       expect(ids).toEqual(['a', 'b'])
+    })
+  })
+
+  describe('selectFirstActiveBatchForPersona', () => {
+    it('prefers running over paused', () => {
+      const s = useMemoryBatchStore.getState()
+      s.setBatch(dto({ import_id: 'p', state: 'paused', paused_at: {
+        session_index: 1, session_id: 's1', reason: 'other',
+        user_message: 'x', detail: null, at: 't',
+      } }))
+      s.setBatch(dto({ import_id: 'r', state: 'running' }))
+      const first = selectFirstActiveBatchForPersona('persona-1')(
+        useMemoryBatchStore.getState(),
+      )
+      expect(first?.import_id).toBe('r')
+    })
+
+    it('falls back to paused when no running', () => {
+      const s = useMemoryBatchStore.getState()
+      s.setBatch(dto({ import_id: 'p', state: 'paused', paused_at: {
+        session_index: 1, session_id: 's1', reason: 'other',
+        user_message: 'x', detail: null, at: 't',
+      } }))
+      const first = selectFirstActiveBatchForPersona('persona-1')(
+        useMemoryBatchStore.getState(),
+      )
+      expect(first?.import_id).toBe('p')
+    })
+
+    it('returns null when no active batch exists', () => {
+      const s = useMemoryBatchStore.getState()
+      s.setBatch(dto({ state: 'done' }))
+      const first = selectFirstActiveBatchForPersona('persona-1')(
+        useMemoryBatchStore.getState(),
+      )
+      expect(first).toBeNull()
+    })
+
+    // Regression: the original selectActiveBatchesForPersona allocated
+    // a fresh array on every call, triggering an infinite render loop
+    // when subscribed via useMemoryBatchStore. selectFirstActiveBatchForPersona
+    // must return the same entry reference when state has not changed.
+    it('returns identical reference on repeated reads when state unchanged', () => {
+      useMemoryBatchStore.getState().setBatch(dto({ state: 'running' }))
+      const selector = selectFirstActiveBatchForPersona('persona-1')
+      const a = selector(useMemoryBatchStore.getState())
+      const b = selector(useMemoryBatchStore.getState())
+      expect(a).toBe(b)
+      expect(a).not.toBeNull()
+    })
+
+    it('returns null reference identity stably across reads', () => {
+      const selector = selectFirstActiveBatchForPersona('persona-1')
+      const a = selector(useMemoryBatchStore.getState())
+      const b = selector(useMemoryBatchStore.getState())
+      expect(a).toBe(b)
+      expect(a).toBeNull()
     })
   })
 

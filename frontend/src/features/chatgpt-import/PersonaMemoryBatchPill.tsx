@@ -15,7 +15,7 @@
  * When multiple imports share a persona (rare), the first active one is
  * shown — the user can step through them by opening the tab.
  */
-import { useMemoryBatchStore, selectActiveBatchesForPersona } from '../../core/store/memoryBatchStore'
+import { useMemoryBatchStore, selectFirstActiveBatchForPersona } from '../../core/store/memoryBatchStore'
 
 interface Props {
   personaId: string
@@ -23,9 +23,8 @@ interface Props {
 }
 
 export function PersonaMemoryBatchPill({ personaId, onOpenImportTab }: Props) {
-  const active = useMemoryBatchStore(selectActiveBatchesForPersona(personaId))
-  if (active.length === 0) return null
-  const batch = active[0]
+  const batch = useMemoryBatchStore(selectFirstActiveBatchForPersona(personaId))
+  if (!batch) return null
   const total = batch.target_count
   const current =
     batch.state === 'paused' && batch.paused_at
