@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useMemoryStore } from '../../../core/store/memoryStore'
+import {
+  selectActiveBatchesForPersona,
+  useMemoryBatchStore,
+} from '../../../core/store/memoryBatchStore'
 import { memoryApi } from '../../../core/api/memory'
 import type { JournalEntryDto } from '../../../core/api/memory'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
@@ -20,6 +24,22 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   const [dreamBusy, setDreamBusy] = useState(false)
   const [extractBusy, setExtractBusy] = useState(false)
   const isExtracting = useMemoryStore((s) => s.isExtracting[personaId] ?? false)
+  // Memory-batch state for ChatGPT imports targeting this persona. While
+  // an import batch is running, the per-persona extraction slot is held
+  // server-side; the manual "Extract Now" button stays disabled so the
+  // user is not confused by 409s. The paused state is also blocked here
+  // per the spec (§6.3), with a tooltip directing them to the import
+  // panel.
+  const activeBatches = useMemoryBatchStore(
+    selectActiveBatchesForPersona(personaId),
+  )
+  const runningBatch = activeBatches.find((b) => b.state === 'running')
+  const pausedBatch = activeBatches.find((b) => b.state === 'paused')
+  const importBatchBlock: 'running' | 'paused' | null = runningBatch
+    ? 'running'
+    : pausedBatch
+      ? 'paused'
+      : null
 
   const uncommittedEntries = useMemoryStore((s) =>
     s.uncommittedEntries[personaId] ?? EMPTY_ENTRIES
@@ -70,7 +90,7 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   }
 
   const handleExtract = async () => {
-    if (extractBusy || isExtracting) return
+    if (extractBusy || isExtracting || importBatchBlock) return
     setExtractBusy(true)
     try {
       await memoryApi.triggerExtraction(personaId, true)
@@ -78,6 +98,13 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
       setExtractBusy(false)
     }
   }
+
+  const extractDisabled = extractBusy || isExtracting || importBatchBlock !== null
+  const extractTitle = importBatchBlock === 'running'
+    ? 'Memory extraction in progress for an import'
+    : importBatchBlock === 'paused'
+      ? 'Import memory extraction paused — resume or discard from the import panel'
+      : 'Extract memories from recent chat messages'
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-8">
@@ -97,9 +124,9 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleExtract}
-            disabled={extractBusy || isExtracting}
+            disabled={extractDisabled}
             className="px-3 py-1.5 rounded-md text-xs bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            title="Extract memories from recent chat messages"
+            title={extractTitle}
           >
             {isExtracting ? 'Extracting...' : 'Extract Now'}
           </button>
