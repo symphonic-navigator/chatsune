@@ -23,6 +23,12 @@ def test_registry_contains_dsv4():
     assert DeepSeekV4Driver in DRIVER_REGISTRY
 
 
+def test_registry_contains_kimi():
+    """After Task 1 of kimi-k2 plan, DRIVER_REGISTRY contains KimiK2Driver."""
+    from backend.modules.llm._drivers.kimi_k2 import KimiK2Driver
+    assert KimiK2Driver in DRIVER_REGISTRY
+
+
 def test_match_driver_returns_none_for_unrecognised_slug():
     """Slug that does not match any registered driver's PATTERNS returns None."""
     assert match_driver("anything/at-all") is None
