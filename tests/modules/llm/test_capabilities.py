@@ -19,7 +19,7 @@ def test_yaml_match_returns_first_class():
     """Use a YAML entry that still has effort buckets (GPT-5) — Claude
     entries dropped effort per INS-037."""
     res = resolve_capabilities(
-        adapter_type="openrouter",
+        adapter_type="openrouter_http",
         model_id="openai/gpt-5",
         adapter=_StubAdapter(),
     )
@@ -34,8 +34,8 @@ def test_yaml_match_anthropic_has_no_effort_per_INS037():
     """Claude entries deliberately omit effort buckets — see INS-037.
     Anthropic-via-router uses on/off only so cache_control survives."""
     res = resolve_capabilities(
-        adapter_type="openrouter",
-        model_id="anthropic/claude-opus-4-7",
+        adapter_type="openrouter_http",
+        model_id="anthropic/claude-opus-4.7",
         adapter=_StubAdapter(),
     )
     assert res.first_class_support is True
@@ -73,8 +73,8 @@ def test_universal_fallback_when_nothing_matches():
 
 def test_wildcard_pattern_matches():
     res = resolve_capabilities(
-        adapter_type="openrouter",
-        model_id="anthropic/claude-opus-4-7:beta",
+        adapter_type="openrouter_http",
+        model_id="anthropic/claude-opus-4.7:beta",
         adapter=_StubAdapter(),
     )
     assert res.first_class_support is True
@@ -88,7 +88,7 @@ def test_default_capabilities_constant_is_optional_no_effort():
 
 
 def test_grok_4_3_xai_http_has_effort_buckets():
-    """xAI native adapter exposes the four-way effort picker for grok-4.3."""
+    """xAI native adapter exposes the three-way effort picker for grok-4.3 — off-path is handled inside the adapter, not as a fourth bucket."""
     res = resolve_capabilities(
         adapter_type="xai_http",
         model_id="grok-4.3",
@@ -97,7 +97,7 @@ def test_grok_4_3_xai_http_has_effort_buckets():
     assert res.first_class_support is True
     assert res.reasoning.kind == "optional"
     assert res.reasoning.effort is not None
-    assert res.reasoning.effort.buckets == ["none", "low", "medium", "high"]
+    assert res.reasoning.effort.buckets == ["low", "medium", "high"]
     assert res.reasoning.effort.default_bucket == "low"
     assert res.tools.supported is True
 
