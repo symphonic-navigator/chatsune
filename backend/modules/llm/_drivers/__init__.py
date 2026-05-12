@@ -8,9 +8,14 @@ import fnmatch
 
 from backend.modules.llm._drivers._protocol import Driver
 from backend.modules.llm._drivers.deepseek_v4 import DeepSeekV4Driver
+from backend.modules.llm._drivers.mimo_v25 import MiMoV25Driver
 
+# Order is cosmetic — DSv4 and MiMo PATTERNS do not overlap, so the
+# first-match-wins rule never has to break a tie here. New drivers
+# append at the bottom unless they need to win over an earlier driver.
 DRIVER_REGISTRY: list[type[Driver]] = [
     DeepSeekV4Driver,
+    MiMoV25Driver,
 ]
 
 
