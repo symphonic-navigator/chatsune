@@ -570,3 +570,74 @@ def test_parse_chunk_novita_emits_stream_refused_on_content_filter() -> None:
     assert refused.refusal_text == "I cannot help with that"
     # Mutually exclusive with StreamDone.
     assert not any(isinstance(e, StreamDone) for e in events)
+
+
+# --- integration with resolve_capabilities ---------------------------------
+
+
+from backend.modules.llm._capabilities import (  # noqa: E402
+    DEFAULT_CAPABILITIES,
+    resolve_capabilities,
+)
+
+
+class _NoOpAdapter:
+    """Adapter that gives no capability hint — forces fallthrough."""
+
+    def capability_hint(self, model_id: str):
+        return None
+
+
+def test_resolve_capabilities_returns_driver_spec_for_ollama_k25() -> None:
+    spec = resolve_capabilities(
+        adapter_type="ollama_http",
+        model_id=_OLLAMA_K25,
+        adapter=_NoOpAdapter(),
+    )
+    assert spec.first_class_support is True
+    assert spec.reasoning.kind == "optional"
+    assert spec.reasoning.default_on is True
+    assert spec.tools.supported is True
+    # Sanity: this is NOT the universal default — proves the driver fired.
+    assert spec != DEFAULT_CAPABILITIES
+
+
+def test_resolve_capabilities_returns_driver_spec_for_ollama_k26() -> None:
+    spec = resolve_capabilities(
+        adapter_type="ollama_http",
+        model_id=_OLLAMA_K26,
+        adapter=_NoOpAdapter(),
+    )
+    assert spec.reasoning.kind == "optional"
+    assert spec.first_class_support is True
+
+
+def test_resolve_capabilities_returns_driver_spec_for_novita_k25() -> None:
+    spec = resolve_capabilities(
+        adapter_type="novita_http",
+        model_id=_NOVITA_K25,
+        adapter=_NoOpAdapter(),
+    )
+    assert spec.reasoning.kind == "no_reasoning"
+    assert spec.first_class_support is True
+
+
+def test_resolve_capabilities_returns_driver_spec_for_novita_k26() -> None:
+    spec = resolve_capabilities(
+        adapter_type="novita_http",
+        model_id=_NOVITA_K26,
+        adapter=_NoOpAdapter(),
+    )
+    assert spec.reasoning.kind == "always_on"
+    assert spec.first_class_support is True
+
+
+# --- per-instance state ----------------------------------------------------
+
+
+def test_driver_novita_accumulator_is_per_instance() -> None:
+    """Each KimiK2Driver instance owns a private Novita accumulator so
+    concurrent streams don't cross-contaminate."""
+    a = KimiK2Driver()
+    b = KimiK2Driver()
+    assert a._novita_tool_acc is not b._novita_tool_acc
