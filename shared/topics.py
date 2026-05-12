@@ -201,3 +201,6 @@ class Topics:
     CHATGPT_IMPORT_PARSE_FAILED = "chatgpt_import.parse.failed"
     CHATGPT_IMPORT_CONVERSATION_IMPORTED = "chatgpt_import.conversation.imported"
     CHATGPT_IMPORT_CONVERSATION_IMPORT_FAILED = "chatgpt_import.conversation.import_failed"
+    CHATGPT_IMPORT_MEMORY_PROGRESS = "chatgpt_import.memory.progress"
+    CHATGPT_IMPORT_MEMORY_PAUSED = "chatgpt_import.memory.paused"
+    CHATGPT_IMPORT_MEMORY_DONE = "chatgpt_import.memory.done"

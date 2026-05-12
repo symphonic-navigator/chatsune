@@ -197,6 +197,9 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHATGPT_IMPORT_PARSE_FAILED: ([], True),
     Topics.CHATGPT_IMPORT_CONVERSATION_IMPORTED: ([], True),
     Topics.CHATGPT_IMPORT_CONVERSATION_IMPORT_FAILED: ([], True),
+    Topics.CHATGPT_IMPORT_MEMORY_PROGRESS: ([], True),
+    Topics.CHATGPT_IMPORT_MEMORY_PAUSED: ([], True),
+    Topics.CHATGPT_IMPORT_MEMORY_DONE: ([], True),
 }
 
 def _topic_definition_for(topic: str) -> TopicDefinition | None:

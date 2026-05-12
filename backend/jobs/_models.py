@@ -13,6 +13,7 @@ class JobType(StrEnum):
     MEMORY_CONSOLIDATION = "memory_consolidation"
     CHATGPT_IMPORT_PARSE = "chatgpt_import_parse"
     CHATGPT_IMPORT_CONVERSATION = "chatgpt_import_conversation"
+    CHATGPT_IMPORT_MEMORY_BATCH = "chatgpt_import_memory_batch"
 
 
 @dataclass(frozen=True)
