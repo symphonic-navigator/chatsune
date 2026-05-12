@@ -146,10 +146,17 @@ class ChatGptImportService:
         Returns ``(correlation_id, [(conv_id, job_id), ...])``. The shared
         correlation id groups the per-conversation events from a single
         multi-select "Import" click so the frontend can show progress.
+
+        ``persona_target_count`` rides in each per-conversation payload
+        so the per-conversation handler can ensure/upsert the matching
+        ``chatgpt_import_memory_batches`` row with the right cohort
+        size. This is the same value across all jobs in this trigger
+        call — the cohort being imported in one click into one persona.
         """
         from backend.jobs import submit
 
         correlation_id = f"import-batch-{secrets.token_hex(6)}"
+        persona_target_count = len(chatgpt_conversation_ids)
         jobs: list[tuple[str, str]] = []
         for cid in chatgpt_conversation_ids:
             job_id = await submit(
@@ -162,6 +169,7 @@ class ChatGptImportService:
                     "chatgpt_conversation_id": cid,
                     "persona_id": persona_id,
                     "correlation_id": correlation_id,
+                    "persona_target_count": persona_target_count,
                 },
                 correlation_id=correlation_id,
             )
