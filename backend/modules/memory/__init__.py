@@ -6,6 +6,10 @@ from uuid import uuid4
 from backend.modules.memory._handlers import router
 from backend.modules.memory._repository import MemoryRepository
 from backend.modules.memory._assembly import assemble_memory_context
+from backend.modules.memory._extraction_core import (
+    ExtractionResult,
+    extract_and_store_messages,
+)
 from shared.dtos.export import MemoryBundleDto
 from shared.dtos.memory import JournalEntryDto
 from shared.events.memory import MemoryEntryAuthoredByPersonaEvent
@@ -189,4 +193,6 @@ __all__ = [
     "write_persona_authored_entry",
     "bulk_export_for_persona",
     "bulk_import_for_persona",
+    "ExtractionResult",
+    "extract_and_store_messages",
 ]
