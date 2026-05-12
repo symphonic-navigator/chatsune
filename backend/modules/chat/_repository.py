@@ -300,14 +300,14 @@ class ChatRepository:
     ) -> dict:
         """Create a session backed by an external import (e.g. ChatGPT export).
 
-        The session is stamped with ``model_unique_id =
-        "imported:<provider>:<original_slug>"`` so the chat-send flow can
-        intercept the first follow-up send and ask the user to pick a real
-        connection. ``created_at`` is set to the original conversation's
-        creation time so chronological sorting in the sidebar lines up.
+        ``model_unique_id`` is left ``None`` so the orchestrator falls back
+        to the persona's default model when the user sends a follow-up. The
+        original provider/model slug travels as provenance only on the
+        ``imported_from`` and ``imported_model_slug`` fields (plus per-
+        message ``imported_model_slug`` for assistant messages).
+        ``created_at`` is set to the original conversation's creation time
+        so chronological sorting in the sidebar lines up.
         """
-        slug = imported_model_slug or "unknown"
-        pseudo_model_id = f"imported:{imported_from}:{slug}"
         now = datetime.now(UTC)
         session_id = str(uuid4())
         session_doc = {
@@ -320,7 +320,7 @@ class ChatRepository:
             "auto_read": False,
             "reasoning_override": None,
             "project_id": None,
-            "model_unique_id": pseudo_model_id,
+            "model_unique_id": None,
             "imported_from": imported_from,
             "imported_model_slug": imported_model_slug,
             "imported_at": now,
@@ -350,27 +350,6 @@ class ChatRepository:
             await self._messages.insert_many(message_docs)
 
         return session_doc
-
-    async def update_session_model(
-        self, session_id: str, user_id: str, model_unique_id: str,
-    ) -> dict | None:
-        """Set the per-session model override.
-
-        Used by the connection-picker UI to replace the placeholder
-        ``imported:chatgpt:<slug>`` on imported sessions with a real
-        ``{connection_id}:{model_slug}`` after the user picks. Returns the
-        updated session doc, or ``None`` if no session matched.
-        """
-        result = await self._sessions.update_one(
-            {"_id": session_id, "user_id": user_id, "deleted_at": None},
-            {"$set": {
-                "model_unique_id": model_unique_id,
-                "updated_at": datetime.now(UTC),
-            }},
-        )
-        if result.matched_count == 0:
-            return None
-        return await self._sessions.find_one({"_id": session_id})
 
     async def get_session(self, session_id: str, user_id: str) -> dict | None:
         return await self._sessions.find_one({"_id": session_id, "user_id": user_id, "deleted_at": None})

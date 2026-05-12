@@ -434,11 +434,12 @@ async def create_imported_session(
 
     Public API used by the chatgpt_import module to turn a parsed ChatGPT
     conversation into a Chatsune chat session. ``imported_from`` is the
-    provenance tag (currently always ``"chatgpt"``); the session is stamped
-    with the pseudo-model ``imported:<provider>:<original_slug>`` so the
-    chat-send flow intercepts the first follow-up send and asks the user to
-    pick a real connection. Returns the raw session document — the chatgpt
-    import job handler extracts the ``_id`` from it.
+    provenance tag (currently always ``"chatgpt"``); ``imported_model_slug``
+    records which model the conversation originally ran on. The resulting
+    session has no per-session model override, so the orchestrator falls
+    back to the persona's default model on the first follow-up send.
+    Returns the raw session document — the chatgpt import job handler
+    extracts the ``_id`` from it.
     """
     repo = ChatRepository(get_db())
     return await repo.create_imported_session(

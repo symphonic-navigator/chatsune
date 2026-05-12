@@ -56,10 +56,10 @@ class ChatSessionDto(BaseModel):
     # frontend computes initial defaults from the current model capability
     # in that case (and PATCHes them back on first user interaction).
     extras: "ChatSessionExtras | None" = None
-    # Per-session model override. ``None`` for legacy / native sessions —
-    # the orchestrator falls back to the persona's model. Used by ChatGPT
-    # imports: the session carries ``imported:chatgpt:<original_slug>``
-    # until the user picks a real connection on first follow-up send.
+    # Per-session model override. ``None`` for legacy / native / imported
+    # sessions — the orchestrator falls back to the persona's model. The
+    # field is reserved for future per-session overrides; ChatGPT-imported
+    # sessions deliberately do NOT set it and rely on the persona default.
     model_unique_id: str | None = None
     # Imported-session provenance. ``None`` for native sessions.
     imported_from: Literal["chatgpt"] | None = None
@@ -243,9 +243,10 @@ class ImportedMessageInput(BaseModel):
 class CreateImportedSessionRequest(BaseModel):
     """Args for ChatService.create_imported_session.
 
-    ``imported_from`` is the provenance tag ("chatgpt"); the resulting
-    session carries the pseudo ``model_unique_id`` ``imported:chatgpt:<slug>``
-    until the user picks a real connection on the first follow-up send.
+    ``imported_from`` is the provenance tag ("chatgpt") and
+    ``imported_model_slug`` records the original model the conversation ran
+    on. The resulting session has no per-session model override; follow-up
+    sends fall back to the persona's default model.
     """
     persona_id: str
     title: str
@@ -253,12 +254,3 @@ class CreateImportedSessionRequest(BaseModel):
     imported_from: Literal["chatgpt"]
     imported_model_slug: str | None
     original_created_at: datetime
-
-
-class UpdateSessionModelRequest(BaseModel):
-    """Body for ``PATCH /api/chat/sessions/{id}/model``.
-
-    Used by the connection-picker UI on imported sessions to replace the
-    ``imported:chatgpt:<slug>`` pseudo-id with a real ``{connection}:{model}``.
-    """
-    model_unique_id: str
