@@ -114,3 +114,221 @@ def test_capability_spec_unsupported_adapters_raise(adapter_type: str) -> None:
     driver = KimiK2Driver()
     with pytest.raises(NotImplementedError, match="adapter_type"):
         driver.capability_spec(adapter_type=adapter_type, slug=_OLLAMA_K25)
+
+
+# --- builder helpers -------------------------------------------------------
+
+
+from shared.dtos.chat import ChatSessionExtras  # noqa: E402
+from shared.dtos.inference import (  # noqa: E402
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ToolDefinition,
+)
+from shared.dtos.llm import ReasoningCapability, ToolCapability  # noqa: E402
+
+
+def _make_request(
+    *,
+    slug: str,
+    kind: str = "optional",
+    default_on: bool = True,
+    reasoning_mode: str = "on",
+    tools_enabled: bool = False,
+    tools: list[ToolDefinition] | None = None,
+) -> CompletionRequest:
+    """Build a CompletionRequest for builder tests.
+
+    The ``kind`` argument lets a test simulate the capability spec the
+    resolver would have attached for a given (adapter, slug). For Kimi
+    tests we pass:
+      - kind='optional' for Ollama K2.5/K2.6
+      - kind='no_reasoning' for Novita K2.5
+      - kind='always_on' for Novita K2.6
+    """
+    return CompletionRequest(
+        model=slug,
+        messages=[
+            CompletionMessage(
+                role="user",
+                content=[ContentPart(type="text", text="Hello")],
+            )
+        ],
+        tools=tools,
+        reasoning=ReasoningCapability(
+            kind=kind, effort=None, default_on=default_on,
+        ),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=tools_enabled,
+            reasoning_mode=reasoning_mode,
+            reasoning_effort=None,
+        ),
+    )
+
+
+# --- build_request: Ollama Cloud -------------------------------------------
+
+
+def test_build_request_ollama_reasoning_on_writes_think_true() -> None:
+    """Optional kind + reasoning_mode='on' -> body['think'] is True.
+    The base ``_ollama_http.build_request_body`` already handles this
+    when ``reasoning.kind == 'optional'`` — the driver just delegates."""
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="ollama_http",
+        slug=_OLLAMA_K25,
+        request=_make_request(slug=_OLLAMA_K25, kind="optional", reasoning_mode="on"),
+    )
+    assert body["think"] is True
+
+
+def test_build_request_ollama_reasoning_off_writes_think_false() -> None:
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="ollama_http",
+        slug=_OLLAMA_K25,
+        request=_make_request(slug=_OLLAMA_K25, kind="optional", reasoning_mode="off"),
+    )
+    assert body["think"] is False
+
+
+def test_build_request_ollama_k26_reasoning_on_writes_think_true() -> None:
+    """K2.6 on Ollama Cloud uses the same wire shape as K2.5."""
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="ollama_http",
+        slug=_OLLAMA_K26,
+        request=_make_request(slug=_OLLAMA_K26, kind="optional", reasoning_mode="on"),
+    )
+    assert body["think"] is True
+
+
+def test_build_request_ollama_includes_tools_when_enabled() -> None:
+    driver = KimiK2Driver()
+    tools = [
+        ToolDefinition(
+            name="get_time",
+            description="Return the current time",
+            parameters={"type": "object", "properties": {}},
+        )
+    ]
+    body = driver.build_request(
+        adapter_type="ollama_http",
+        slug=_OLLAMA_K25,
+        request=_make_request(
+            slug=_OLLAMA_K25, kind="optional",
+            tools_enabled=True, tools=tools,
+        ),
+    )
+    assert "tools" in body
+    assert body["tools"][0]["function"]["name"] == "get_time"
+
+
+def test_build_request_ollama_omits_tools_when_disabled() -> None:
+    driver = KimiK2Driver()
+    tools = [
+        ToolDefinition(
+            name="get_time",
+            description="Return the current time",
+            parameters={"type": "object", "properties": {}},
+        )
+    ]
+    body = driver.build_request(
+        adapter_type="ollama_http",
+        slug=_OLLAMA_K25,
+        request=_make_request(
+            slug=_OLLAMA_K25, kind="optional",
+            tools_enabled=False, tools=tools,
+        ),
+    )
+    assert "tools" not in body
+
+
+# --- build_request: Novita -------------------------------------------------
+
+
+def test_build_request_novita_k25_omits_reasoning_block() -> None:
+    """K2.5 on Novita is no_reasoning — the base Novita builder only adds
+    a ``reasoning`` block when kind=='optional', so this should already
+    be absent. The driver delegates unchanged.
+    """
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug=_NOVITA_K25,
+        request=_make_request(
+            slug=_NOVITA_K25, kind="no_reasoning", default_on=False,
+            reasoning_mode="off",
+        ),
+    )
+    assert "reasoning" not in body
+    assert "enable_thinking" not in body
+
+
+def test_build_request_novita_k26_omits_reasoning_block() -> None:
+    """K2.6 on Novita is always_on — the base Novita builder omits the
+    reasoning block (only set for kind=='optional'). The provider
+    ignores the toggle anyway."""
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug=_NOVITA_K26,
+        request=_make_request(
+            slug=_NOVITA_K26, kind="always_on", default_on=True,
+            reasoning_mode="on",
+        ),
+    )
+    assert "reasoning" not in body
+    assert "enable_thinking" not in body
+
+
+def test_build_request_novita_inherits_message_translation() -> None:
+    driver = KimiK2Driver()
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug=_NOVITA_K25,
+        request=_make_request(slug=_NOVITA_K25, kind="no_reasoning"),
+    )
+    assert len(body["messages"]) == 1
+    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["content"] == "Hello"
+
+
+def test_build_request_novita_includes_tools_when_enabled() -> None:
+    driver = KimiK2Driver()
+    tools = [
+        ToolDefinition(
+            name="get_time",
+            description="Return the current time",
+            parameters={"type": "object", "properties": {}},
+        )
+    ]
+    body = driver.build_request(
+        adapter_type="novita_http",
+        slug=_NOVITA_K26,
+        request=_make_request(
+            slug=_NOVITA_K26, kind="always_on",
+            tools_enabled=True, tools=tools,
+        ),
+    )
+    assert "tools" in body
+    assert body["tools"][0]["function"]["name"] == "get_time"
+
+
+# --- build_request: unsupported adapters -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "adapter_type",
+    ["openrouter_http", "nano_gpt_http", "gmi_http"],
+)
+def test_build_request_unsupported_adapter_raises(adapter_type: str) -> None:
+    driver = KimiK2Driver()
+    with pytest.raises(NotImplementedError, match="adapter_type"):
+        driver.build_request(
+            adapter_type=adapter_type,
+            slug=_OLLAMA_K25,
+            request=_make_request(slug=_OLLAMA_K25, kind="optional"),
+        )
