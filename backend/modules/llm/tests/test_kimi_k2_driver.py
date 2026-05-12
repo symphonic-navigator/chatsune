@@ -86,6 +86,7 @@ def test_capability_spec_novita_k25_no_reasoning() -> None:
     spec = driver.capability_spec(adapter_type="novita_http", slug=_NOVITA_K25)
     assert spec.first_class_support is True
     assert spec.reasoning.kind == "no_reasoning"
+    assert spec.reasoning.default_on is False
     assert spec.reasoning.effort is None
     assert spec.tools.supported is True
     assert spec.tools.exclusive_with_reasoning is False
@@ -99,6 +100,7 @@ def test_capability_spec_novita_k26_always_on_reasoning() -> None:
     spec = driver.capability_spec(adapter_type="novita_http", slug=_NOVITA_K26)
     assert spec.first_class_support is True
     assert spec.reasoning.kind == "always_on"
+    assert spec.reasoning.default_on is True
     assert spec.reasoning.effort is None
     assert spec.tools.supported is True
     assert spec.tools.exclusive_with_reasoning is False
