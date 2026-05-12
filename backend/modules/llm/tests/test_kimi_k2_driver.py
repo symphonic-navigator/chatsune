@@ -572,6 +572,32 @@ def test_parse_chunk_novita_emits_stream_refused_on_content_filter() -> None:
     assert not any(isinstance(e, StreamDone) for e in events)
 
 
+def test_parse_chunk_novita_refused_with_inline_usage_does_not_emit_stream_done() -> None:
+    """Defensive check: if Novita ever delivers ``usage`` inline in the
+    same chunk as ``finish_reason='content_filter'`` (instead of in a
+    separate trailing chunk as the probe observed), the StreamRefused
+    guard must still suppress StreamDone. The production guard reads
+    ``not any(isinstance(e, StreamRefused) for e in events)`` — this
+    test locks that contract in."""
+    driver = KimiK2Driver()
+    chunk = {
+        "choices": [{
+            "delta": {"refusal": "I cannot help with that"},
+            "finish_reason": "content_filter",
+        }],
+        "usage": {
+            "prompt_tokens": 19,
+            "completion_tokens": 0,
+            "completion_tokens_details": {"reasoning_tokens": 0},
+        },
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http", slug=_NOVITA_K26, chunk=chunk,
+    )
+    assert any(isinstance(e, StreamRefused) for e in events)
+    assert not any(isinstance(e, StreamDone) for e in events)
+
+
 # --- integration with resolve_capabilities ---------------------------------
 
 
