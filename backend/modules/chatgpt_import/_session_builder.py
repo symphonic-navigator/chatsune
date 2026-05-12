@@ -18,9 +18,9 @@ def build_imported_session_request(
     Resolves ``imported_model_slug`` from the conversation's
     ``default_model_slug`` first, then falls back to the first assistant
     message's per-message ``model_slug``. Falls through to ``None`` when
-    neither is set — the session still gets a placeholder pseudo-model
-    (``imported:chatgpt:unknown``) so the connection-picker flow still
-    fires on first follow-up send.
+    neither is set — the resulting session simply records no original
+    model slug and otherwise behaves like any native session, with the
+    persona's default model handling follow-up sends.
     """
     model_slug = parsed.default_model_slug
     if model_slug is None:

@@ -615,12 +615,10 @@ async def run_inference(
     persona_id = session.get("persona_id")
 
     # Resolve persona — the model defaults to the persona's, but a session
-    # may carry an override (e.g. ChatGPT-imported sessions, which start
-    # with the pseudo ``imported:chatgpt:<slug>`` until the user picks a
-    # real connection on first follow-up send).
+    # may carry an override.
     persona = await get_persona(persona_id, user_id) if persona_id else None
     session_model_override = session.get("model_unique_id")
-    if session_model_override and not session_model_override.startswith("imported:"):
+    if session_model_override:
         model_unique_id = session_model_override
     else:
         model_unique_id = persona.get("model_unique_id", "") if persona else ""

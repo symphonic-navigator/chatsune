@@ -31,7 +31,6 @@ import { useBookmarks } from '../../core/hooks/useBookmarks'
 import { bookmarksApi } from '../../core/api/bookmarks'
 import { useNotificationStore } from '../../core/store/notificationStore'
 import { BookmarkModal } from './BookmarkModal'
-import { ConnectionPickerDialog } from './ConnectionPickerDialog'
 import { ChatBookmarkList } from './ChatBookmarkList'
 import { JournalBadge } from './JournalBadge'
 import { KnowledgeDropdown } from './KnowledgeDropdown'
@@ -299,15 +298,6 @@ export function ChatView({ persona }: ChatViewProps) {
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const [sessionPinned, setSessionPinned] = useState<boolean>(false)
-  // Tracks the per-session model override and imported-session provenance.
-  // For native sessions both are null and the orchestrator falls back to the
-  // persona's model. For ChatGPT-imported sessions the model starts as
-  // ``imported:chatgpt:<slug>`` until the user picks a real connection via
-  // ConnectionPickerDialog on first follow-up send.
-  const [sessionModelUniqueId, setSessionModelUniqueId] = useState<string | null>(null)
-  const [importedModelSlug, setImportedModelSlug] = useState<string | null>(null)
-  const [connectionPickerOpen, setConnectionPickerOpen] = useState(false)
-  const [pendingSendText, setPendingSendText] = useState<string | null>(null)
   const attachments = useAttachments(personaId)
   const highlighter = useHighlighter()
   const { containerRef, bottomRef, showScrollButton, scrollToBottom } = useAutoScroll()
@@ -515,8 +505,6 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setAutoRead(session.auto_read ?? false)
         useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
         useChatStore.getState().setActiveProjectId(session.project_id ?? null)
-        setSessionModelUniqueId(session.model_unique_id ?? null)
-        setImportedModelSlug(session.imported_model_slug ?? null)
         // Capture the session's stored extras so a follow-up effect can
         // hydrate the cockpit once the model capability is also resolved.
         // - If session.extras is non-null → hydrate as-is (covers user-
@@ -874,7 +862,7 @@ export function ChatView({ persona }: ChatViewProps) {
     [effectiveSessionId, isIncognito, personaId, scrollToBottom, attachments],
   )
 
-  const doSend = useCallback(
+  const handleSend = useCallback(
     (text: string) => {
       if (!effectiveSessionId) return
       const correlationId = crypto.randomUUID()
@@ -883,52 +871,6 @@ export function ChatView({ persona }: ChatViewProps) {
     },
     [effectiveSessionId, createAndRegisterGroup, insertOptimisticAndSend],
   )
-
-  // Imported-session interception: a session created from a ChatGPT export
-  // carries ``model_unique_id`` of the form ``imported:chatgpt:<slug>``
-  // until the user picks a real Chatsune connection on the first follow-up
-  // send. We show ConnectionPickerDialog here, PATCH the session to the
-  // picked ``{connection_id}:{model_slug}``, then run ``doSend`` as usual.
-  const handleSend = useCallback(
-    (text: string) => {
-      if (sessionModelUniqueId?.startsWith('imported:')) {
-        setPendingSendText(text)
-        setConnectionPickerOpen(true)
-        return
-      }
-      doSend(text)
-    },
-    [sessionModelUniqueId, doSend],
-  )
-
-  const onConnectionPicked = useCallback(
-    async (modelUniqueId: string) => {
-      setConnectionPickerOpen(false)
-      if (!effectiveSessionId) return
-      try {
-        await chatApi.updateSessionModel(effectiveSessionId, modelUniqueId)
-        setSessionModelUniqueId(modelUniqueId)
-        if (pendingSendText) {
-          const t = pendingSendText
-          setPendingSendText(null)
-          doSend(t)
-        }
-      } catch (err) {
-        useNotificationStore.getState().addNotification({
-          level: 'error',
-          title: 'Could not set connection',
-          message: err instanceof Error ? err.message : 'Unknown error',
-        })
-        setPendingSendText(null)
-      }
-    },
-    [effectiveSessionId, pendingSendText, doSend],
-  )
-
-  const onConnectionCancel = useCallback(() => {
-    setConnectionPickerOpen(false)
-    setPendingSendText(null)
-  }, [])
 
   const handleCancel = useCallback(() => {
     if (!effectiveSessionId) return
@@ -1788,13 +1730,6 @@ export function ChatView({ persona }: ChatViewProps) {
           setBookmarkTargetMsgId(null)
         }}
         accentColour={accentColour}
-      />
-
-      <ConnectionPickerDialog
-        isOpen={connectionPickerOpen}
-        importedModelSlug={importedModelSlug}
-        onCancel={onConnectionCancel}
-        onConfirm={onConnectionPicked}
       />
     </div>
   )
