@@ -91,4 +91,61 @@ def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEve
 def parse_chunk_novita(
     *, chunk: dict[str, Any], tool_acc: ToolCallAccumulator,
 ) -> list[ProviderStreamEvent]:
-    raise NotImplementedError("filled in Task 5")
+    """Translate one Novita SSE chunk dict into ProviderStreamEvents.
+
+    Wire-shape is OpenAI-compat with the DeepSeek-native CoT key
+    ``delta.reasoning_content`` (probe 2026-05-12: K2.6 emits this key;
+    K2.5 omits it, which is fine — the .get() returns None). Tool-call
+    streaming is OpenAI-fragmented (id+name first, then arguments string
+    fragments under the same index); the accumulator handles assembly.
+
+    Logic is structurally identical to ``deepseek_v4._parsers.parse_chunk_novita``
+    but is intentionally NOT imported from there (per driver-layer spec).
+
+    ``StreamRefused`` and ``StreamDone`` are mutually exclusive terminal
+    states. ``ToolCallEvent`` + ``StreamDone`` CAN co-occur — Novita
+    delivers usage in the same chunk as ``finish_reason='tool_calls'``.
+    """
+    events: list[ProviderStreamEvent] = []
+
+    choices = chunk.get("choices") or []
+    if choices:
+        choice = choices[0]
+        delta = choice.get("delta") or {}
+
+        content = delta.get("content")
+        if content:
+            events.append(ContentDelta(delta=content))
+
+        reasoning_content = delta.get("reasoning_content")
+        if reasoning_content:
+            events.append(ThinkingDelta(delta=reasoning_content))
+
+        tool_frags = delta.get("tool_calls") or []
+        if tool_frags:
+            tool_acc.ingest(tool_frags)
+
+        finish = choice.get("finish_reason")
+        if finish and finish.lower() in _REFUSAL_REASONS:
+            events.append(StreamRefused(
+                reason=finish,
+                refusal_text=delta.get("refusal") or None,
+            ))
+        elif finish == "tool_calls":
+            for call in tool_acc.finalised():
+                events.append(ToolCallEvent(
+                    id=call["id"],
+                    name=call["name"],
+                    arguments=call["arguments"],
+                ))
+
+    usage = chunk.get("usage")
+    if usage is not None and not any(isinstance(e, StreamRefused) for e in events):
+        details = usage.get("completion_tokens_details") or {}
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            reasoning_tokens=details.get("reasoning_tokens"),
+        ))
+
+    return events

@@ -456,3 +456,117 @@ def test_parse_chunk_ollama_emits_stream_refused_on_content_filter() -> None:
     assert refused.refusal_text == "I cannot help with that"
     # Mutually exclusive: no StreamDone alongside StreamRefused.
     assert not any(isinstance(e, StreamDone) for e in events)
+
+
+# --- parse_chunk: Novita ---------------------------------------------------
+
+
+def test_parse_chunk_novita_emits_content_delta() -> None:
+    driver = KimiK2Driver()
+    chunk = {"choices": [{"delta": {"content": "1,"}, "finish_reason": None}]}
+    events = driver.parse_chunk(
+        adapter_type="novita_http", slug=_NOVITA_K25, chunk=chunk,
+    )
+    assert events == [ContentDelta(delta="1,")]
+
+
+def test_parse_chunk_novita_emits_thinking_delta_from_reasoning_content() -> None:
+    """Novita uses DeepSeek-native ``delta.reasoning_content`` (also for K2.6
+    — probe 2026-05-12). Mapped to ThinkingDelta per INS-038."""
+    driver = KimiK2Driver()
+    chunk = {
+        "choices": [{
+            "delta": {"reasoning_content": "The user"}, "finish_reason": None,
+        }]
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http", slug=_NOVITA_K26, chunk=chunk,
+    )
+    assert events == [ThinkingDelta(delta="The user")]
+
+
+def test_parse_chunk_novita_accumulates_fragmented_tool_call() -> None:
+    """Novita streams tool calls OpenAI-style: id+name in the first chunk,
+    then string arguments fragments under index:0. Final ``finish_reason:
+    tool_calls`` finalises the accumulator into a ToolCallEvent."""
+    driver = KimiK2Driver()
+    # First chunk: id + name, no args yet
+    driver.parse_chunk(
+        adapter_type="novita_http",
+        slug=_NOVITA_K25,
+        chunk={
+            "choices": [{"delta": {"tool_calls": [{
+                "index": 0, "id": "functions.get_weather:0", "type": "function",
+                "function": {"name": "get_weather"},
+            }]}, "finish_reason": None}],
+        },
+    )
+    # Args fragments
+    for frag in ['{"', 'city', '": ', '"Berlin', '"}']:
+        driver.parse_chunk(
+            adapter_type="novita_http",
+            slug=_NOVITA_K25,
+            chunk={
+                "choices": [{"delta": {"tool_calls": [{
+                    "index": 0, "function": {"arguments": frag},
+                }]}, "finish_reason": None}],
+            },
+        )
+    # Terminal: finish_reason=tool_calls + usage block
+    events = driver.parse_chunk(
+        adapter_type="novita_http",
+        slug=_NOVITA_K25,
+        chunk={
+            "choices": [{"delta": {}, "finish_reason": "tool_calls"}],
+            "usage": {
+                "prompt_tokens": 80, "completion_tokens": 24,
+                "completion_tokens_details": {"reasoning_tokens": 0},
+            },
+        },
+    )
+    tool_event = next(e for e in events if isinstance(e, ToolCallEvent))
+    assert tool_event.id == "functions.get_weather:0"
+    assert tool_event.name == "get_weather"
+    assert tool_event.arguments == '{"city": "Berlin"}'
+    done = next(e for e in events if isinstance(e, StreamDone))
+    assert done.input_tokens == 80
+    assert done.output_tokens == 24
+
+
+def test_parse_chunk_novita_emits_stream_done_with_reasoning_tokens() -> None:
+    """K2.6 on Novita populates completion_tokens_details.reasoning_tokens
+    (probe 2026-05-12). StreamDone must carry it through."""
+    driver = KimiK2Driver()
+    chunk = {
+        "choices": [{"delta": {}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": 19,
+            "completion_tokens": 312,
+            "completion_tokens_details": {"reasoning_tokens": 220},
+        },
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http", slug=_NOVITA_K26, chunk=chunk,
+    )
+    done = next(e for e in events if isinstance(e, StreamDone))
+    assert done.input_tokens == 19
+    assert done.output_tokens == 312
+    assert done.reasoning_tokens == 220
+
+
+def test_parse_chunk_novita_emits_stream_refused_on_content_filter() -> None:
+    driver = KimiK2Driver()
+    chunk = {
+        "choices": [{
+            "delta": {"refusal": "I cannot help with that"},
+            "finish_reason": "content_filter",
+        }],
+    }
+    events = driver.parse_chunk(
+        adapter_type="novita_http", slug=_NOVITA_K26, chunk=chunk,
+    )
+    refused = next(e for e in events if isinstance(e, StreamRefused))
+    assert refused.reason == "content_filter"
+    assert refused.refusal_text == "I cannot help with that"
+    # Mutually exclusive with StreamDone.
+    assert not any(isinstance(e, StreamDone) for e in events)
