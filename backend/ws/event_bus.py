@@ -190,6 +190,13 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.DEBUG_INFERENCE_STARTED: (["admin", "master_admin"], False),
     Topics.DEBUG_INFERENCE_FINISHED: (["admin", "master_admin"], False),
     Topics.DEBUG_SNAPSHOT: (["admin", "master_admin"], False),
+    # ChatGPT import — target user only
+    Topics.CHATGPT_IMPORT_PARSE_STARTED: ([], True),
+    Topics.CHATGPT_IMPORT_PARSE_PROGRESS: ([], True),
+    Topics.CHATGPT_IMPORT_PARSE_DONE: ([], True),
+    Topics.CHATGPT_IMPORT_PARSE_FAILED: ([], True),
+    Topics.CHATGPT_IMPORT_CONVERSATION_IMPORTED: ([], True),
+    Topics.CHATGPT_IMPORT_CONVERSATION_IMPORT_FAILED: ([], True),
 }
 
 def _topic_definition_for(topic: str) -> TopicDefinition | None:

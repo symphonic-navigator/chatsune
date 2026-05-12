@@ -11,6 +11,8 @@ class JobType(StrEnum):
     TITLE_GENERATION = "title_generation"
     MEMORY_EXTRACTION = "memory_extraction"
     MEMORY_CONSOLIDATION = "memory_consolidation"
+    CHATGPT_IMPORT_PARSE = "chatgpt_import_parse"
+    CHATGPT_IMPORT_CONVERSATION = "chatgpt_import_conversation"
 
 
 @dataclass(frozen=True)

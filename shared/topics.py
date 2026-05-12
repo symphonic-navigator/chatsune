@@ -194,3 +194,10 @@ class Topics:
     # --- Invitation tokens ---
     INVITATION_CREATED = "user.invitation.created"
     INVITATION_USED = "user.invitation.used"
+    # --- ChatGPT import ---
+    CHATGPT_IMPORT_PARSE_STARTED = "chatgpt_import.parse.started"
+    CHATGPT_IMPORT_PARSE_PROGRESS = "chatgpt_import.parse.progress"
+    CHATGPT_IMPORT_PARSE_DONE = "chatgpt_import.parse.done"
+    CHATGPT_IMPORT_PARSE_FAILED = "chatgpt_import.parse.failed"
+    CHATGPT_IMPORT_CONVERSATION_IMPORTED = "chatgpt_import.conversation.imported"
+    CHATGPT_IMPORT_CONVERSATION_IMPORT_FAILED = "chatgpt_import.conversation.import_failed"

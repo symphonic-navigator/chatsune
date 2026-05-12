@@ -29,6 +29,7 @@ from backend.modules.chat._orchestrator import (
 )
 from backend.modules.chat._prompt_assembler import assemble_preview
 from backend.modules.chat._repository import ChatRepository
+from shared.dtos.chat import ImportedMessageInput
 from shared.dtos.export import (
     SessionExportDto,
     SessionsBundleDto,
@@ -419,6 +420,38 @@ async def bulk_import_for_persona(
     return id_map
 
 
+async def create_imported_session(
+    *,
+    user_id: str,
+    persona_id: str,
+    title: str,
+    messages: list[ImportedMessageInput],
+    imported_from: str,
+    imported_model_slug: str | None,
+    original_created_at,
+) -> dict:
+    """Materialise an externally-imported conversation as a native chat session.
+
+    Public API used by the chatgpt_import module to turn a parsed ChatGPT
+    conversation into a Chatsune chat session. ``imported_from`` is the
+    provenance tag (currently always ``"chatgpt"``); the session is stamped
+    with the pseudo-model ``imported:<provider>:<original_slug>`` so the
+    chat-send flow intercepts the first follow-up send and asks the user to
+    pick a real connection. Returns the raw session document — the chatgpt
+    import job handler extracts the ``_id`` from it.
+    """
+    repo = ChatRepository(get_db())
+    return await repo.create_imported_session(
+        user_id=user_id,
+        persona_id=persona_id,
+        title=title,
+        messages=messages,
+        imported_from=imported_from,  # type: ignore[arg-type]
+        imported_model_slug=imported_model_slug,
+        original_created_at=original_created_at,
+    )
+
+
 async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:
     """Return ``{session_id: {"title": str | None, "persona_id": str}}`` for the given ids.
 
@@ -451,4 +484,5 @@ __all__ = [
     "list_session_ids_for_project", "list_sessions_for_project",
     "list_attachment_ids_for_sessions", "list_image_ids_for_sessions",
     "set_session_project", "delete_session",
+    "create_imported_session",
 ]

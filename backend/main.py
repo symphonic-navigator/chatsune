@@ -52,6 +52,10 @@ from backend.modules.images._repository import (
 )
 from backend.modules.storage._blob_store import BlobStore
 from backend.modules.memory import router as memory_router, init_indexes as memory_init_indexes
+from backend.modules.chatgpt_import import (
+    router as chatgpt_import_router,
+    init_indexes as chatgpt_import_init_indexes,
+)
 from backend.modules.embedding import router as embedding_router, startup as embedding_startup, shutdown as embedding_shutdown
 from backend.modules.knowledge import (
     knowledge_router,
@@ -112,6 +116,7 @@ async def lifespan(app: FastAPI):
     await storage_init_indexes(db)
     await images_init_indexes(db)
     await memory_init_indexes(db)
+    await chatgpt_import_init_indexes(db)
     await knowledge_init_indexes(db)
     await artefact_init_indexes(db)
     await project_init_indexes(db)
@@ -622,6 +627,7 @@ app.include_router(bookmark_router)
 app.include_router(storage_router)
 app.include_router(images_router)
 app.include_router(memory_router)
+app.include_router(chatgpt_import_router)
 app.include_router(embedding_router)
 app.include_router(knowledge_router)
 app.include_router(artefact_router)
