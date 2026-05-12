@@ -232,3 +232,33 @@ class ChatGptImportRepository:
                 }
             },
         )
+
+    async def list_imported_session_ids_chronological(
+        self,
+        *,
+        import_id: str,
+        persona_id: str,
+    ) -> list[str]:
+        """Return all session_ids imported under ``(import_id, persona_id)``.
+
+        Ordered by the original ChatGPT ``create_time`` ascending. Used by
+        the memory-batch trigger so the batch handler processes the
+        oldest conversation first — the spec's anti-contradiction
+        invariant: later conversations may correct earlier facts; reversed
+        order would mark corrections as duplicates of their originals.
+        """
+        from bson import ObjectId
+        cursor = self._conversations.find(
+            {
+                "import_id": ObjectId(import_id),
+                "imports.persona_id": persona_id,
+            },
+            projection={"create_time": 1, "imports": 1},
+        ).sort("create_time", 1)
+        out: list[str] = []
+        async for doc in cursor:
+            for imp in doc.get("imports") or []:
+                if imp.get("persona_id") == persona_id and imp.get("session_id"):
+                    out.append(imp["session_id"])
+                    break
+        return out
