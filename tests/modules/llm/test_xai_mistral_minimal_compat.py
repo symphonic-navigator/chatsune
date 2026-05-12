@@ -113,7 +113,9 @@ async def test_xai_meta_carries_new_capability_fields() -> None:
         assert isinstance(meta.tools, ToolCapability)
         assert meta.tools.supported is True
         assert meta.tools.exclusive_with_reasoning is False
-        assert meta.first_class_support is False
+        # Only grok-4.3 is first-class (per 2026-05-11 spec). The deprecated
+        # grok-4.1-fast and grok-4.20 entries stay non-first-class.
+        assert meta.first_class_support is (meta.model_id == "grok-4.3")
         assert meta.supports_reasoning is True
 
 
