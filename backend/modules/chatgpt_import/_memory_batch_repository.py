@@ -21,9 +21,27 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pymongo import ReturnDocument
+
+
+class BatchInProgressError(Exception):
+    """Raised when ``start_new_action`` finds an existing batch that is
+    neither ``done`` nor ``discarded`` — i.e. an active batch is already
+    running for ``(import_id, persona_id)``. The REST handler surfaces
+    this as 409 so the user knows to wait or discard.
+    """
+
+    def __init__(self, *, import_id: str, persona_id: str, current_state: str) -> None:
+        super().__init__(
+            f"Memory batch already in progress for import={import_id}, "
+            f"persona={persona_id} (state={current_state})"
+        )
+        self.import_id = import_id
+        self.persona_id = persona_id
+        self.current_state = current_state
 
 
 def _batch_id(import_id: str, persona_id: str) -> str:
@@ -94,6 +112,110 @@ class ChatGptImportMemoryBatchRepository:
         # to keep type-checkers happy.
         assert doc is not None
         return doc
+
+    async def start_new_action(
+        self,
+        *,
+        import_id: str,
+        persona_id: str,
+        user_id: str,
+        model_unique_id: str,
+        target_count: int,
+    ) -> dict:
+        """Open a fresh batch lifecycle for the given action.
+
+        Three outcomes:
+
+        - **Reset path:** if a batch doc exists in ``done`` or
+          ``discarded`` state, counters and target are reset in place
+          (state → ``pending``). This is the "user finishes one
+          import, starts another from the same upload" case.
+        - **Insert path:** if no batch doc exists, one is created in
+          ``pending`` state.
+        - **Conflict path:** if a doc exists in ``pending``, ``running``,
+          or ``paused`` state, ``BatchInProgressError`` is raised — the
+          caller must surface this so the user can wait or discard.
+
+        Concurrency: the reset and insert paths are individually atomic
+        via ``find_one_and_update``. A per-call ``current_action_id``
+        sentinel distinguishes "I just inserted this" from "another
+        caller's existing doc". Two concurrent callers landing in the
+        insert path will both attempt an upsert; only one's sentinel
+        survives, so the other raises ``BatchInProgressError`` —
+        correct behaviour for a true concurrent request.
+        """
+        now = datetime.now(UTC)
+        action_id = uuid4().hex
+
+        # Step 1 — reset a finalised batch in place.
+        reset = await self._batches.find_one_and_update(
+            {
+                "_id": _batch_id(import_id, persona_id),
+                "state": {"$in": ["done", "discarded"]},
+            },
+            {
+                "$set": {
+                    "state": "pending",
+                    "model_unique_id": model_unique_id,
+                    "target_count": target_count,
+                    "conversations_imported": 0,
+                    "permanent_failures": 0,
+                    "session_ids": [],
+                    "paused_at": None,
+                    "total_entries_created": 0,
+                    "started_at": None,
+                    "updated_at": now,
+                    "current_action_id": action_id,
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if reset is not None:
+            return reset
+
+        # Step 2 — upsert if absent. The sentinel in $setOnInsert lets us
+        # distinguish a fresh insert from a stale-doc race.
+        doc = await self._batches.find_one_and_update(
+            {"_id": _batch_id(import_id, persona_id)},
+            {
+                "$setOnInsert": {
+                    "_id": _batch_id(import_id, persona_id),
+                    "import_id": import_id,
+                    "persona_id": persona_id,
+                    "user_id": user_id,
+                    "model_unique_id": model_unique_id,
+                    "state": "pending",
+                    "target_count": target_count,
+                    "conversations_imported": 0,
+                    "permanent_failures": 0,
+                    "session_ids": [],
+                    "paused_at": None,
+                    "total_entries_created": 0,
+                    "created_at": now,
+                    "updated_at": now,
+                    "current_action_id": action_id,
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc.get("current_action_id") == action_id:
+            return doc
+
+        # Existed in an active state — conflict.
+        raise BatchInProgressError(
+            import_id=import_id,
+            persona_id=persona_id,
+            current_state=str(doc.get("state", "unknown")),
+        )
+
+    async def delete_for_import(self, import_id: str) -> int:
+        """Remove all batch docs for an import. Called from delete_import
+        so the user can re-upload the same file cleanly without
+        inheriting a stale ``done`` doc that would block the trigger.
+        """
+        result = await self._batches.delete_many({"import_id": import_id})
+        return result.deleted_count
 
     async def get(self, import_id: str, persona_id: str) -> dict | None:
         return await self._batches.find_one(
