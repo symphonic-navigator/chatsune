@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useMemoryStore } from '../../../core/store/memoryStore'
 import {
-  selectActiveBatchesForPersona,
+  selectFirstActiveBatchForPersona,
   useMemoryBatchStore,
 } from '../../../core/store/memoryBatchStore'
 import { memoryApi } from '../../../core/api/memory'
@@ -30,16 +30,17 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   // user is not confused by 409s. The paused state is also blocked here
   // per the spec (§6.3), with a tooltip directing them to the import
   // panel.
-  const activeBatches = useMemoryBatchStore(
-    selectActiveBatchesForPersona(personaId),
+  // Single stable-reference selector — see ``selectFirstActiveBatchForPersona``
+  // docstring for why we don't subscribe to the full array here.
+  const activeBatch = useMemoryBatchStore(
+    selectFirstActiveBatchForPersona(personaId),
   )
-  const runningBatch = activeBatches.find((b) => b.state === 'running')
-  const pausedBatch = activeBatches.find((b) => b.state === 'paused')
-  const importBatchBlock: 'running' | 'paused' | null = runningBatch
-    ? 'running'
-    : pausedBatch
-      ? 'paused'
-      : null
+  const importBatchBlock: 'running' | 'paused' | null =
+    activeBatch?.state === 'running'
+      ? 'running'
+      : activeBatch?.state === 'paused'
+        ? 'paused'
+        : null
 
   const uncommittedEntries = useMemoryStore((s) =>
     s.uncommittedEntries[personaId] ?? EMPTY_ENTRIES

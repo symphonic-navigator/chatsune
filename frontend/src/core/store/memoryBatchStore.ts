@@ -278,3 +278,23 @@ export function selectActiveBatchesForPersona(personaId: string) {
         (b.state === 'running' || b.state === 'paused'),
     )
 }
+
+// Returns a single stable-reference entry (or null) for the persona's
+// most relevant active batch — running preferred over paused. This
+// avoids the new-array-every-render trap that the broader
+// ``selectActiveBatchesForPersona`` would create when used as a React
+// store selector (Zustand compares with Object.is, so a fresh
+// ``filter`` result would cause an infinite re-render loop).
+export function selectFirstActiveBatchForPersona(personaId: string) {
+  return (state: MemoryBatchState): MemoryBatchEntry | null => {
+    let running: MemoryBatchEntry | null = null
+    let paused: MemoryBatchEntry | null = null
+    for (const b of Object.values(state.batches)) {
+      if (b.persona_id !== personaId) continue
+      if (b.state === 'running' && !running) running = b
+      else if (b.state === 'paused' && !paused) paused = b
+      if (running) break
+    }
+    return running ?? paused
+  }
+}
