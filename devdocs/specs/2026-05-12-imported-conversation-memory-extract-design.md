@@ -189,15 +189,21 @@ While the slot is held:
 
 While the batch is **paused** (terminal failure, user has not yet acted):
 
-- The slot is **released** (Resume re-acquires it). Reason: a paused
-  batch may sit unresolved for hours; holding the slot would freeze the
-  user's live-chat memory for this persona.
-- The live-chat flow may pick up new messages in the meantime via the
-  normal trigger. Anti-contradiction caveat: if the user writes in an
-  *imported* session while the batch is paused, the live flow may extract
-  some imported messages out of chronological order across sessions.
-  This is an accepted trade-off — see §5.4 for mitigations considered
-  and rejected.
+- The slot **remains held** with a 7-day TTL (no per-conversation
+  refresh while paused). Rationale: state consistency over throughput
+  — the user has just initiated an import that has not finished, so
+  live-flow extraction for that persona is correctly gated until the
+  user resolves it.
+- Resume re-acquires/refreshes the slot. Discard releases it.
+- If the user does not act within 7 days, the slot expires as a safety
+  net. The `chatgpt_import_memory_batches` doc still carries
+  `state="paused"`, so the UI banner stays visible and the user can
+  still click Resume — which re-acquires the slot. Live-flow may have
+  processed new messages in the meantime; out-of-order risk is then
+  accepted (the user has effectively abandoned the batch for a week).
+- Manual "Extract now" UI button is disabled while paused (same slot
+  check) with tooltip "Import memory extraction paused — resume or
+  discard from the import panel".
 
 ---
 
@@ -209,6 +215,16 @@ In `backend/jobs/_models.py::JobType`:
 
 ```python
 CHATGPT_IMPORT_MEMORY_BATCH = "chatgpt_import_memory_batch"
+```
+
+Job payload shape:
+
+```python
+{
+    "import_id": str,
+    "persona_id": str,
+    "force_budget": bool,   # one-shot override, see §4.4
+}
 ```
 
 Registered with the existing job consumer; no special retry semantics —
@@ -270,34 +286,58 @@ All three published on **two scopes** (matching the existing import
 events): `chatgpt_import:{import_id}` (the import-detail tab) and
 `persona:{persona_id}` (the persona-detail page surfaces a banner).
 
-### 4.3 Parent-import doc changes
+### 4.3 New collection `chatgpt_import_memory_batches`
 
-Add three fields to the `chatgpt_imports` collection (§4.1 in the
-2026-05-11 import spec):
+Scoped to `(import_id, persona_id)` so a single import targeting
+multiple personas yields independent batch states. Separate from
+`chatgpt_imports` to keep that doc's lifecycle (TTL on `expires_at`,
+parse-only state) clean.
 
 ```python
 {
-    # ... existing fields ...
-    "memory_batch_state": "idle" | "running" | "paused" | "done" | None,
-    "memory_batch_paused_at": {
+    "_id": str,                          # f"{import_id}:{persona_id}"
+    "import_id": str,
+    "persona_id": str,
+    "user_id": str,
+    "model_unique_id": str,              # snapshot from persona at submit time
+    "state": "running" | "paused" | "done" | "discarded",
+    "target_count": int,                 # total conversations targeted for this persona
+    "conversations_imported": int,       # successful per-conversation imports
+    "permanent_failures": int,           # terminal per-conversation failures
+    "session_ids": list[str],            # filled when state transitions running, sorted by original ChatGPT create_time
+    "paused_at": {
         "session_index": int,
         "session_id": str,
         "reason": str,
         "user_message": str,
         "at": datetime,
     } | None,
-    "memory_batch_total_entries_created": int,    # cumulative
+    "total_entries_created": int,        # cumulative across all conversations in this batch
+    "created_at": datetime,
+    "updated_at": datetime,
 }
 ```
 
-`memory_batch_state == "paused"` is the source of truth for the UI's
-Resume button and for the import-batch job's idempotent re-entry on
-Resume.
+**Trigger condition** (atomic compound):
+`conversations_imported + permanent_failures == target_count` →
+transition `state` to `"running"`, populate `session_ids` from
+`chatgpt_import_conversations` filtered by `(import_id, persona_id)`
+where the linked Chatsune session still exists and is not soft-deleted,
+sorted chronologically. Submit the batch job.
 
-**Backwards compatibility:** existing imports have these fields missing.
-Defaults in the Pydantic model handle that (`= None` / `= 0`). No
-migration required for read-side compatibility. The fields are populated
-the first time the batch handler runs against an import.
+**Session-deletion tolerance:** the batch handler always re-resolves
+`session_ids` from `_sessions.find({"_id": {"$in": session_ids},
+"deleted_at": None})` at the start of each iteration step. A session
+the user deleted between submit and run is silently skipped — no
+error, the batch moves to the next.
+
+**Index:** `{"user_id": 1, "state": 1}` for "are there pending batches
+for this user" queries on reconnect.
+
+**Backwards compatibility:** existing imports get no batch document.
+Reading APIs return `null` / "no batch" cleanly. Imports made before
+this change ship are intentionally never retroactively batched —
+opt-in only via a future admin script if a tester needs it.
 
 ### 4.4 New REST endpoints
 
@@ -305,19 +345,29 @@ In `backend/modules/chatgpt_import/_handlers.py`:
 
 ```
 POST /api/chatgpt_import/{import_id}/memory_batch/resume
-    body: { persona_id: str }
-    Effect: if memory_batch_state == "paused" and matches persona_id,
-            re-submits CHATGPT_IMPORT_MEMORY_BATCH job.
-            Returns 409 if state != "paused".
+    body: {
+        persona_id: str,
+        force_budget: bool = false,   # bypass daily-budget reservation
+    }
+    Effect: if state == "paused" for (import_id, persona_id), re-submits
+            CHATGPT_IMPORT_MEMORY_BATCH job. When force_budget=true the
+            batch handler skips check_and_reserve_budget (one-shot
+            override carried in the job payload, not persisted as
+            user preference). Returns 409 if state != "paused".
 
 POST /api/chatgpt_import/{import_id}/memory_batch/discard
     body: { persona_id: str }
-    Effect: if memory_batch_state == "paused", sets state to "idle",
-            clears paused_at, emits ChatGptImportMemoryBatchDoneEvent
-            with total_entries_created reflecting what was done so far.
-            Does NOT touch journal entries or imported sessions.
+    Effect: if state == "paused", sets state to "discarded", clears
+            paused_at, releases the in-flight slot, emits
+            ChatGptImportMemoryBatchDoneEvent with
+            total_entries_created reflecting work done so far. Does
+            NOT touch journal entries or imported sessions.
             Returns 409 if state != "paused".
 ```
+
+The `force_budget` toggle is surfaced in the UI only when
+`paused_at.reason == "budget_exhausted"` — for other pause reasons
+the Resume button does not carry it.
 
 ---
 
@@ -359,17 +409,12 @@ explicitly opted into that by clicking Discard.
 
 ### 5.4 Trade-offs considered
 
-**Holding the in-flight slot while paused:** Rejected because a paused
-batch may sit unresolved for hours or days, freezing the user's live
-memory extraction for that persona.
-
-**Blocking live-flow extraction for imported messages during paused
-state:** Rejected because it requires either (a) tagging individual
-messages as "batch-pending", which leaks batch state into the messages
-collection, or (b) checking `memory_batch_state` on every live trigger,
-which couples the chat module to the import module's state. The
-out-of-order extraction during paused windows is a real but small
-risk, and a paused batch is intended to be resolved quickly.
+**Holding the in-flight slot while paused — accepted.** Live-chat
+memory for this persona is gated until the user resolves the paused
+batch (Resume / Discard / 7-day TTL expiry). Reason: state consistency
+matters more than throughput, and the paused-state UI is prominent
+enough that a user has clear feedback to act. See §3.3 for the slot
+lifecycle.
 
 **Auto-retry with exponential backoff (like the live flow):** Rejected
 in favour of explicit user control. The live flow auto-retries because
@@ -377,6 +422,12 @@ the user has a continuous expectation that memory works in the
 background. The import batch is a one-shot operation the user just
 initiated; failure should be visible and actionable, not buried in
 retries.
+
+**Per-message tagging during paused state to block only imported
+messages from the live flow:** Rejected. Would leak batch state into
+the messages collection. The slot-held approach gates the whole
+persona briefly; over a 7-day window this is acceptable because the
+user has clear UI to act.
 
 ---
 
@@ -402,11 +453,29 @@ updates. On `ChatGptImportMemoryBatchDoneEvent`, the panel collapses to
 ```
 ┌─────────────────────────────────────────────────┐
 │ Memory extraction paused at 3 / 7                │
-│ Reason: Daily budget exhausted                   │
+│ Reason: Provider not reachable                   │
 │                                                  │
-│ [Resume]   [Discard remaining]                  │
+│ [Resume]   [Discard remaining]                   │
 └─────────────────────────────────────────────────┘
 ```
+
+When `paused_at.reason == "budget_exhausted"`, the Resume button
+splits into two:
+
+```
+┌─────────────────────────────────────────────────┐
+│ Memory extraction paused at 3 / 7                │
+│ Reason: Daily budget exhausted                   │
+│                                                  │
+│ [Resume tomorrow]   [Resume now — exceed budget] │
+│                                          [Discard]│
+└─────────────────────────────────────────────────┘
+```
+
+"Resume tomorrow" is a no-op (just dismisses the dialog — the user
+re-opens it when they want to retry without override). "Resume now —
+exceed budget" calls Resume with `force_budget=true`. The wording is
+deliberately explicit so the user knows they're opting in.
 
 ### 6.2 Persona-detail page (top-level)
 
@@ -447,29 +516,63 @@ write. The paused batch sits separately in the import panel.
 ### 7.2 Submit-trigger location
 
 The per-conversation job handler
-(`backend/jobs/handlers/_chatgpt_import_conversation.py`) gains an
-atomic Mongo update after `record_import`:
+(`backend/jobs/handlers/_chatgpt_import_conversation.py`) ensures a
+batch row exists for `(import_id, persona_id)` on first per-conversation
+job for that pair (upsert with `target_count` derived from the original
+`import_conversations` request size), then atomically increments the
+appropriate counter:
 
 ```python
-# Pseudocode
-result = await imports.find_one_and_update(
-    {"_id": import_id},
-    {"$inc": {"conversations_imported": 1}},
+# Pseudocode — success path
+result = await batches.find_one_and_update(
+    {"_id": f"{import_id}:{persona_id}", "state": {"$in": ["pending", "running"]}},
+    {"$inc": {"conversations_imported": 1},
+     "$set":  {"updated_at": now}},
+    upsert=False,  # row was created at import_conversations() entry
     return_document=ReturnDocument.AFTER,
 )
-target = result.get("conversation_count")  # set when parse finished
-if result["conversations_imported"] == target:
-    await submit(JobType.CHATGPT_IMPORT_MEMORY_BATCH, ...)
+if result["conversations_imported"] + result["permanent_failures"] == result["target_count"]:
+    # Transition to running atomically, claim the trigger
+    claimed = await batches.find_one_and_update(
+        {"_id": f"{import_id}:{persona_id}", "state": "pending"},
+        {"$set": {"state": "running", "session_ids": <sorted-by-create-time>,
+                  "started_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if claimed:
+        await submit(JobType.CHATGPT_IMPORT_MEMORY_BATCH,
+                     payload={"import_id": import_id, "persona_id": persona_id})
+
+# Failure path (terminal per-conversation failure)
+await batches.find_one_and_update(
+    {"_id": f"{import_id}:{persona_id}"},
+    {"$inc": {"permanent_failures": 1}, "$set": {"updated_at": now}},
+)
+# Same target-check + claim-and-submit logic as above
 ```
 
-The atomic `$inc` guarantees exactly one submit even when N
-per-conversation jobs finish concurrently.
+Two atomic operations: the increment, then a guarded state transition
+from `"pending"` to `"running"` that only the last finishing
+per-conversation job will claim. This guarantees exactly one batch
+submit, even under concurrent finishes.
 
-If a per-conversation job **fails** (the existing failed-event path),
-`conversations_imported` is **not** incremented. The batch then waits
-for the failed conversation to be retried or for the user to skip it.
-**Open question Q1:** If the user gives up on a failed conversation and
-the counter never reaches target, the batch never fires. Decision in §8.
+**Q1 resolved (Stuck-batch trigger):** terminal per-conversation
+failures count toward the target via `permanent_failures`. The batch
+fires when `imported + permanent_failures == target`, regardless of
+the success/failure mix. If a per-conversation job is still retrying,
+the batch waits — that is correct, since we don't yet know whether
+the conversation will succeed.
+
+**User mitigation for stuck imports:** if a single conversation
+permanently fails and the user wants the rest extracted, the user can
+re-import just the failed conversation (the existing import-conversations
+flow already supports per-conversation selection). The new import
+creates a new `import_id` / batch and proceeds independently.
+
+**Mid-batch session deletion:** the batch handler skips any `session_id`
+whose Chatsune session no longer exists (`deleted_at IS NOT None`).
+This covers both pre-run and mid-run deletions; the batch finishes
+with fewer extractions but does not error.
 
 ### 7.3 Test surface
 
@@ -489,44 +592,36 @@ own delivery.
 
 ### 7.4 Migration
 
-No migration required. Existing imports get `memory_batch_state = None`
-on first read (Pydantic default). They are **not** retroactively
-processed. If a tester asks for that, we add a one-shot admin script
-later.
+No migration required. Existing imports have no row in
+`chatgpt_import_memory_batches`; reading APIs return "no batch"
+cleanly. They are **not** retroactively processed. If a tester asks
+for that, we add a one-shot admin script later.
 
 ---
 
-## 8. Open Questions
+## 8. Resolved Questions
 
-**Q1 — Stuck batch trigger:** If 1 out of 7 per-conversation imports
-fails permanently and the user does not retry, the
-`conversations_imported == target` condition never holds and the batch
-never submits. Options:
+All three open questions were closed during review on 2026-05-12.
 
-  - (a) Trigger the batch on `conversations_imported + permanent_failures
-    == target`. Simple, but couples failure tracking to the trigger.
-  - (b) Schedule a 5-minute timer after the parse-done event: when it
-    fires, submit the batch with whatever has been imported by then.
-  - (c) Manual "Start memory extraction" button on the import panel —
-    user-controlled trigger, never automatic. Most explicit.
+**Q1 — Stuck batch trigger.** Resolved: count terminal per-conversation
+failures via `permanent_failures` counter; trigger fires on
+`imported + permanent_failures == target_count`. User mitigation for
+a permanently stuck single conversation is "re-import that one
+conversation" (creates a new independent batch). See §7.2.
 
-  **Recommendation:** (a) — keeps the flow uniform with one trigger
-  point. We already publish `conversation_import_failed`, so the
-  per-conversation handler can `$inc: {"permanent_failures": 1}` on
-  failure and check against the same target. Decision pending review.
+**Q2 — Budget-exhausted resume.** Resolved: Resume re-checks the daily
+budget by default, but the UI exposes a `force_budget` option
+specifically when the pause reason was `"budget_exhausted"`. The user
+opts into spending beyond the daily cap for this one-shot operation,
+which is an acceptable trade-off given how rarely imports happen. See
+§4.4.
 
-**Q2 — Budget-exhausted resume:** Should Resume re-check the daily
-budget before re-acquiring the slot? Or trust the user clicking Resume
-to mean "I know there's headroom now"? Cheap to check; recommend
-checking and short-circuiting back to paused if still over.
-
-**Q3 — Multiple personas in one import batch:** Today a user can import
-the same conversation into multiple personas. Each persona gets its
-own session, and our design submits **one batch per (import_id,
-persona_id)** pair. The atomic counter logic in §7.2 doesn't cleanly
-handle that — `conversations_imported` is per import_id, not per
-persona. Likely solution: scope the counter to `(import_id, persona_id)`
-via a nested object. Defer to Plan.
+**Q3 — Multiple personas per import.** Resolved: scope state to
+`(import_id, persona_id)` in a separate collection
+`chatgpt_import_memory_batches` (§4.3). Each (import, persona) pair
+has its own counters, state, and batch lifecycle. Session deletion is
+tolerated at every step (handler skips deleted sessions, trigger
+counts use `conversations_imported + permanent_failures`).
 
 ---
 
@@ -576,6 +671,18 @@ LLM connection for the test persona.
 3. Expect: paused-state UI disappears. Memory tab shows entries from any
    conversation that completed before pause (if any). Manual "Extract
    now" button is enabled again.
+
+### 9.4b Force-budget Resume
+
+1. Manually set the daily-token-budget Redis counter to a value
+   exceeding the cap (or temporarily lower the cap in the admin
+   panel), then import 3 conversations.
+2. Expect: batch starts, fails on conversation 1 with reason
+   `"budget_exhausted"`. Resume dialog shows two buttons.
+3. Click "Resume now — exceed budget".
+4. Expect: batch continues, runs to "3 / 3". Daily-budget counter is
+   now over cap but no error blocks the run.
+5. Reset the Redis counter / cap afterwards.
 
 ### 9.5 Live-chat continues to work for this persona
 
