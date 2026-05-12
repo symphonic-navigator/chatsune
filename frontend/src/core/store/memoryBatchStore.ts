@@ -17,6 +17,7 @@
  * relies on ``selectActiveBatchesForPersona`` which filters down to
  * "running" / "paused".
  */
+import { useMemo } from 'react'
 import { create } from 'zustand'
 
 import {
@@ -297,4 +298,35 @@ export function selectFirstActiveBatchForPersona(personaId: string) {
     }
     return running ?? paused
   }
+}
+
+// --- React hooks -----------------------------------------------------------
+//
+// The factory selectors above produce a fresh closure on every call. When
+// passed directly to ``useMemoryBatchStore`` from a component, the new
+// identity per render makes React's ``useSyncExternalStore`` re-subscribe
+// on every commit and triggers a "result of getSnapshot should be cached"
+// warning that escalates into "Maximum update depth exceeded" in dev. The
+// hooks below memoise the selector by its inputs so the identity is
+// stable while the inputs are stable.
+
+export function useFirstActiveBatchForPersona(
+  personaId: string,
+): MemoryBatchEntry | null {
+  const selector = useMemo(
+    () => selectFirstActiveBatchForPersona(personaId),
+    [personaId],
+  )
+  return useMemoryBatchStore(selector)
+}
+
+export function useBatchByImportAndPersona(
+  importId: string,
+  personaId: string,
+): MemoryBatchEntry | undefined {
+  const selector = useMemo(
+    () => selectBatchByImportAndPersona(importId, personaId),
+    [importId, personaId],
+  )
+  return useMemoryBatchStore(selector)
 }
