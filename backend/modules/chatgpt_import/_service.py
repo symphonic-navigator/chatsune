@@ -11,6 +11,10 @@ from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from backend.jobs._models import JobType
+from backend.modules.chatgpt_import._memory_batch_repository import (
+    BatchInProgressError,
+    ChatGptImportMemoryBatchRepository,
+)
 from backend.modules.chatgpt_import._repository import ChatGptImportRepository
 from shared.dtos.chatgpt_import import (
     ConversationItemDto,
@@ -44,6 +48,7 @@ class ImportNotFoundError(Exception):
 class ChatGptImportService:
     def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self._repo = ChatGptImportRepository(db)
+        self._batch_repo = ChatGptImportMemoryBatchRepository(db)
 
     async def upload_streaming(
         self,
@@ -154,9 +159,26 @@ class ChatGptImportService:
         call — the cohort being imported in one click into one persona.
         """
         from backend.jobs import submit
+        from backend.modules.persona import get_persona
 
         correlation_id = f"import-batch-{secrets.token_hex(6)}"
         persona_target_count = len(chatgpt_conversation_ids)
+
+        # Open a fresh memory-batch lifecycle for this (import_id, persona_id).
+        # If a prior batch is still ``done`` or ``discarded`` (e.g. the user
+        # already imported once from this upload), counters and target are
+        # reset in place so the trigger fires correctly for the new cohort.
+        # If a batch is in an active state, raise — caller surfaces as 409.
+        persona = await get_persona(persona_id, user_id)
+        model_unique_id = (persona or {}).get("model_unique_id") or ""
+        await self._batch_repo.start_new_action(
+            import_id=import_id,
+            persona_id=persona_id,
+            user_id=user_id,
+            model_unique_id=model_unique_id,
+            target_count=persona_target_count,
+        )
+
         jobs: list[tuple[str, str]] = []
         for cid in chatgpt_conversation_ids:
             job_id = await submit(
@@ -208,6 +230,9 @@ class ChatGptImportService:
         if not doc or doc.get("user_id") != user_id:
             raise ImportNotFoundError(import_id)
         await self._repo.delete_import(import_id)
+        # Remove any per-persona memory-batch docs for this import so the
+        # next upload (which may reuse the file hash) starts cleanly.
+        await self._batch_repo.delete_for_import(import_id)
 
 
 def _import_doc_to_dto(doc: dict) -> ImportDto:

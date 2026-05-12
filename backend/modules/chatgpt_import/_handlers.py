@@ -162,12 +162,25 @@ async def trigger_import(
     if not body.chatgpt_conversation_ids:
         raise HTTPException(status_code=400, detail="No conversations selected")
 
-    correlation_id, job_pairs = await _service().trigger_conversation_imports(
-        user_id=user_id,
-        import_id=import_id,
-        persona_id=body.persona_id,
-        chatgpt_conversation_ids=body.chatgpt_conversation_ids,
+    from backend.modules.chatgpt_import._memory_batch_repository import (
+        BatchInProgressError,
     )
+    try:
+        correlation_id, job_pairs = await _service().trigger_conversation_imports(
+            user_id=user_id,
+            import_id=import_id,
+            persona_id=body.persona_id,
+            chatgpt_conversation_ids=body.chatgpt_conversation_ids,
+        )
+    except BatchInProgressError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A memory-extraction batch is already in progress for this "
+                f"persona (state={exc.current_state}). Wait for it to finish "
+                f"or discard it before importing more conversations."
+            ),
+        ) from exc
     return ImportTriggerResponse(
         correlation_id=correlation_id,
         jobs=[

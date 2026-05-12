@@ -41,15 +41,20 @@ def _matches(doc: dict, filter_: dict) -> bool:
     return True
 
 
-def _apply(doc: dict, update: dict) -> dict:
-    """Apply ``$set``, ``$setOnInsert``, ``$inc`` operators to ``doc``."""
+def _apply(doc: dict, update: dict, *, is_insert: bool = False) -> dict:
+    """Apply ``$set``, ``$setOnInsert``, ``$inc`` operators to ``doc``.
+
+    ``$setOnInsert`` mirrors MongoDB semantics: only applied when the
+    operation is an actual insert (upsert that didn't match). On a
+    regular update the operator is a no-op.
+    """
     out = dict(doc)
     for op, fields in update.items():
         if op == "$set":
             out.update(fields)
         elif op == "$setOnInsert":
-            for k, v in fields.items():
-                out.setdefault(k, v)
+            if is_insert:
+                out.update(fields)
         elif op == "$inc":
             for k, v in fields.items():
                 out[k] = int(out.get(k, 0)) + int(v)
@@ -90,10 +95,10 @@ class FakeCollection:
         if existing is None:
             if not upsert:
                 return None
-            new = _apply({"_id": doc_id} if doc_id else {}, update)
+            new = _apply({"_id": doc_id} if doc_id else {}, update, is_insert=True)
             self._docs[new["_id"]] = new
             return deepcopy(new) if return_document == ReturnDocument.AFTER else None
-        updated = _apply(existing, update)
+        updated = _apply(existing, update, is_insert=False)
         self._docs[updated["_id"]] = updated
         if return_document == ReturnDocument.AFTER:
             return deepcopy(updated)
@@ -112,6 +117,15 @@ class FakeCollection:
             if _matches(doc, filter_):
                 return deepcopy(doc)
         return None
+
+    async def delete_many(self, filter_: dict) -> Any:
+        matching_ids = [k for k, doc in self._docs.items() if _matches(doc, filter_)]
+        for k in matching_ids:
+            del self._docs[k]
+
+        class _Result:
+            deleted_count = len(matching_ids)
+        return _Result()
 
     def find(self, filter_: dict, projection: dict | None = None) -> FakeCursor:
         out = [deepcopy(doc) for doc in self._docs.values() if _matches(doc, filter_)]
@@ -423,3 +437,123 @@ class TestAddEntriesCreated:
         await repo.add_entries_created("imp1", "p1", 0)
         doc = await repo.get("imp1", "p1")
         assert doc["total_entries_created"] == 0
+
+
+class TestStartNewAction:
+    @pytest.mark.asyncio
+    async def test_inserts_when_no_doc_exists(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        doc = await repo.start_new_action(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=3,
+        )
+        assert doc["state"] == "pending"
+        assert doc["target_count"] == 3
+        assert doc["conversations_imported"] == 0
+        assert doc["permanent_failures"] == 0
+
+    @pytest.mark.asyncio
+    async def test_resets_done_batch_for_new_action(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        # Simulate a completed first action.
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m1", target_count=2,
+        )
+        await repo.increment_imported("imp1", "p1")
+        await repo.increment_imported("imp1", "p1")
+        await repo.claim_running(
+            import_id="imp1", persona_id="p1", session_ids=["s1", "s2"],
+        )
+        await repo.add_entries_created("imp1", "p1", 5)
+        await repo.mark_done("imp1", "p1")
+
+        # Now the user starts a fresh action — different model, different size.
+        doc = await repo.start_new_action(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m2", target_count=4,
+        )
+        assert doc["state"] == "pending"
+        assert doc["target_count"] == 4
+        assert doc["conversations_imported"] == 0
+        assert doc["permanent_failures"] == 0
+        assert doc["session_ids"] == []
+        assert doc["paused_at"] is None
+        assert doc["total_entries_created"] == 0
+        assert doc["model_unique_id"] == "conn:m2"
+
+    @pytest.mark.asyncio
+    async def test_resets_discarded_batch(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=1,
+        )
+        await repo.mark_discarded(import_id="imp1", persona_id="p1")
+        doc = await repo.start_new_action(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=2,
+        )
+        assert doc["state"] == "pending"
+        assert doc["target_count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_raises_when_pending_in_progress(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=2,
+        )
+        from backend.modules.chatgpt_import._memory_batch_repository import (
+            BatchInProgressError,
+        )
+        with pytest.raises(BatchInProgressError) as exc_info:
+            await repo.start_new_action(
+                import_id="imp1", persona_id="p1", user_id="u1",
+                model_unique_id="conn:m", target_count=2,
+            )
+        assert exc_info.value.current_state == "pending"
+
+    @pytest.mark.asyncio
+    async def test_raises_when_running_in_progress(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=1,
+        )
+        await repo.claim_running(
+            import_id="imp1", persona_id="p1", session_ids=["s1"],
+        )
+        from backend.modules.chatgpt_import._memory_batch_repository import (
+            BatchInProgressError,
+        )
+        with pytest.raises(BatchInProgressError):
+            await repo.start_new_action(
+                import_id="imp1", persona_id="p1", user_id="u1",
+                model_unique_id="conn:m", target_count=2,
+            )
+
+
+class TestDeleteForImport:
+    @pytest.mark.asyncio
+    async def test_removes_all_persona_batches_for_import(self, repo_and_coll):
+        repo, _coll = repo_and_coll
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=1,
+        )
+        await repo.ensure_batch(
+            import_id="imp1", persona_id="p2", user_id="u1",
+            model_unique_id="conn:m", target_count=1,
+        )
+        # An unrelated import — must survive.
+        await repo.ensure_batch(
+            import_id="imp2", persona_id="p1", user_id="u1",
+            model_unique_id="conn:m", target_count=1,
+        )
+
+        deleted = await repo.delete_for_import("imp1")
+        assert deleted == 2
+        assert await repo.get("imp1", "p1") is None
+        assert await repo.get("imp1", "p2") is None
+        assert await repo.get("imp2", "p1") is not None
