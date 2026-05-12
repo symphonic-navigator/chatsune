@@ -332,3 +332,127 @@ def test_build_request_unsupported_adapter_raises(adapter_type: str) -> None:
             slug=_OLLAMA_K25,
             request=_make_request(slug=_OLLAMA_K25, kind="optional"),
         )
+
+
+# --- parse_chunk: Ollama Cloud ---------------------------------------------
+
+
+from backend.modules.llm._adapters._events import (  # noqa: E402
+    ContentDelta,
+    StreamDone,
+    StreamRefused,
+    ThinkingDelta,
+    ToolCallEvent,
+)
+
+
+def test_parse_chunk_ollama_emits_content_delta() -> None:
+    driver = KimiK2Driver()
+    chunk = {"message": {"content": "hi"}, "done": False}
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K25, chunk=chunk,
+    )
+    assert events == [ContentDelta(delta="hi")]
+
+
+def test_parse_chunk_ollama_emits_thinking_delta() -> None:
+    """Ollama Cloud uses ``message.thinking`` for CoT, mapped to
+    ThinkingDelta per INS-038."""
+    driver = KimiK2Driver()
+    chunk = {"message": {"thinking": "let me think"}, "done": False}
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K25, chunk=chunk,
+    )
+    assert events == [ThinkingDelta(delta="let me think")]
+
+
+def test_parse_chunk_ollama_emits_atomic_tool_call() -> None:
+    """Ollama delivers tool_calls atomically (full call per chunk; no
+    incremental accumulation). Arguments arrive as an object and must be
+    JSON-stringified to match the ToolCallEvent.arguments: str contract."""
+    driver = KimiK2Driver()
+    chunk = {
+        "message": {
+            "tool_calls": [
+                {
+                    "id": "functions.get_weather:0",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": {"city": "Berlin"},
+                    },
+                }
+            ]
+        },
+        "done": False,
+    }
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K26, chunk=chunk,
+    )
+    tool_event = next(e for e in events if isinstance(e, ToolCallEvent))
+    assert tool_event.id == "functions.get_weather:0"
+    assert tool_event.name == "get_weather"
+    # Arguments are JSON-stringified — exact match on the serialised dict
+    # is brittle (key order) but the field carries valid JSON.
+    import json
+    assert json.loads(tool_event.arguments) == {"city": "Berlin"}
+
+
+def test_parse_chunk_ollama_tool_call_without_id_gets_synthetic_id() -> None:
+    """Ollama responses sometimes omit the tool_call id. Fallback is a
+    synthetic ``call_<hex>`` id so the continuation turn has something
+    to echo. Same logic as the DSv4 Ollama parser."""
+    driver = KimiK2Driver()
+    chunk = {
+        "message": {
+            "tool_calls": [{
+                "function": {
+                    "name": "get_weather",
+                    "arguments": {"city": "Berlin"},
+                },
+            }]
+        },
+        "done": False,
+    }
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K25, chunk=chunk,
+    )
+    tool_event = next(e for e in events if isinstance(e, ToolCallEvent))
+    assert tool_event.id.startswith("call_")
+    assert len(tool_event.id) == 5 + 12  # "call_" + 12 hex chars
+
+
+def test_parse_chunk_ollama_emits_stream_done_on_terminal() -> None:
+    driver = KimiK2Driver()
+    chunk = {
+        "message": {},
+        "done": True,
+        "done_reason": "stop",
+        "prompt_eval_count": 14,
+        "eval_count": 71,
+    }
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K25, chunk=chunk,
+    )
+    done = next(e for e in events if isinstance(e, StreamDone))
+    assert done.input_tokens == 14
+    assert done.output_tokens == 71
+    # Ollama Cloud bundles reasoning into eval_count — no separate
+    # reasoning_tokens field on the wire.
+    assert done.reasoning_tokens is None
+
+
+def test_parse_chunk_ollama_emits_stream_refused_on_content_filter() -> None:
+    driver = KimiK2Driver()
+    chunk = {
+        "message": {"refusal": "I cannot help with that"},
+        "done": True,
+        "done_reason": "content_filter",
+    }
+    events = driver.parse_chunk(
+        adapter_type="ollama_http", slug=_OLLAMA_K25, chunk=chunk,
+    )
+    refused = next(e for e in events if isinstance(e, StreamRefused))
+    assert refused.reason == "content_filter"
+    assert refused.refusal_text == "I cannot help with that"
+    # Mutually exclusive: no StreamDone alongside StreamRefused.
+    assert not any(isinstance(e, StreamDone) for e in events)
