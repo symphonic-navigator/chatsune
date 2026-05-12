@@ -213,7 +213,12 @@ def iter_conversations_from_file(file_path: str) -> Iterator[dict]:
     Uses ``ijson`` to avoid loading the full ~100 MB file into memory. The
     export is always a top-level JSON array, so the path ``item`` selects
     each element of that array.
+
+    ``use_float=True`` is required: ijson's default decodes JSON numbers as
+    ``decimal.Decimal`` to preserve precision, but PyMongo cannot BSON-encode
+    ``Decimal`` and the conversation dict is persisted verbatim as ``raw_data``.
+    Native float is sufficient for ChatGPT's microsecond-resolution timestamps.
     """
     import ijson  # local import — heavy
     with open(file_path, "rb") as f:
-        yield from ijson.items(f, "item")
+        yield from ijson.items(f, "item", use_float=True)
