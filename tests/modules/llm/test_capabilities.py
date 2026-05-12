@@ -115,3 +115,65 @@ def test_grok_4_3_via_openrouter_has_no_effort_buckets():
         adapter=_StubAdapter(),
     )
     assert res.reasoning.effort is None
+
+
+def test_glm_5_ollama_http_is_first_class_optional_reasoning():
+    """GLM-5 via Ollama Cloud: reasoning toggleable via think:true/false."""
+    res = resolve_capabilities(
+        adapter_type="ollama_http",
+        model_id="glm-5",
+        adapter=_StubAdapter(),
+    )
+    assert isinstance(res, ResolvedCapabilities)
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "optional"
+    assert res.reasoning.effort is None
+    assert res.reasoning.default_on is True
+    assert res.tools.supported is True
+    assert res.tools.exclusive_with_reasoning is False
+
+
+def test_glm_5_1_ollama_http_is_first_class_optional_reasoning():
+    """GLM-5.1 via Ollama Cloud: same profile as GLM-5."""
+    res = resolve_capabilities(
+        adapter_type="ollama_http",
+        model_id="glm-5.1",
+        adapter=_StubAdapter(),
+    )
+    assert isinstance(res, ResolvedCapabilities)
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "optional"
+    assert res.reasoning.effort is None
+    assert res.reasoning.default_on is True
+    assert res.tools.supported is True
+    assert res.tools.exclusive_with_reasoning is False
+
+
+def test_glm_5_novita_http_is_first_class_always_on_reasoning():
+    """GLM-5 via Novita: reasoning_content cannot be suppressed upstream."""
+    res = resolve_capabilities(
+        adapter_type="novita_http",
+        model_id="zai-org/glm-5",
+        adapter=_StubAdapter(),
+    )
+    assert isinstance(res, ResolvedCapabilities)
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "always_on"
+    assert res.reasoning.effort is None
+    assert res.tools.supported is True
+    assert res.tools.exclusive_with_reasoning is False
+
+
+def test_glm_5_1_novita_http_is_first_class_always_on_reasoning():
+    """GLM-5.1 via Novita: same profile as GLM-5."""
+    res = resolve_capabilities(
+        adapter_type="novita_http",
+        model_id="zai-org/glm-5.1",
+        adapter=_StubAdapter(),
+    )
+    assert isinstance(res, ResolvedCapabilities)
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "always_on"
+    assert res.reasoning.effort is None
+    assert res.tools.supported is True
+    assert res.tools.exclusive_with_reasoning is False
