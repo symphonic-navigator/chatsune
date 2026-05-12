@@ -52,3 +52,63 @@ def test_match_driver_does_not_match_older_kimi() -> None:
 
 def test_match_driver_does_not_match_unrelated_moonshot_model() -> None:
     assert match_driver("moonshotai/kimi-vl") is None
+
+
+# --- capability_spec -------------------------------------------------------
+
+
+def test_capability_spec_ollama_k25_optional_reasoning() -> None:
+    driver = KimiK2Driver()
+    spec = driver.capability_spec(adapter_type="ollama_http", slug=_OLLAMA_K25)
+    assert spec.first_class_support is True
+    assert spec.reasoning.kind == "optional"
+    assert spec.reasoning.default_on is True
+    assert spec.reasoning.effort is None
+    assert spec.tools.supported is True
+    assert spec.tools.exclusive_with_reasoning is False
+
+
+def test_capability_spec_ollama_k26_optional_reasoning() -> None:
+    driver = KimiK2Driver()
+    spec = driver.capability_spec(adapter_type="ollama_http", slug=_OLLAMA_K26)
+    assert spec.first_class_support is True
+    assert spec.reasoning.kind == "optional"
+    assert spec.reasoning.default_on is True
+    assert spec.reasoning.effort is None
+    assert spec.tools.supported is True
+    assert spec.tools.exclusive_with_reasoning is False
+
+
+def test_capability_spec_novita_k25_no_reasoning() -> None:
+    """Probe 2026-05-12: K2.5 on Novita never returns reasoning_content.
+    Surfaced as ``no_reasoning`` so UI hides the toggle entirely."""
+    driver = KimiK2Driver()
+    spec = driver.capability_spec(adapter_type="novita_http", slug=_NOVITA_K25)
+    assert spec.first_class_support is True
+    assert spec.reasoning.kind == "no_reasoning"
+    assert spec.reasoning.effort is None
+    assert spec.tools.supported is True
+    assert spec.tools.exclusive_with_reasoning is False
+
+
+def test_capability_spec_novita_k26_always_on_reasoning() -> None:
+    """Probe 2026-05-12: K2.6 on Novita always emits reasoning_content;
+    the reasoning toggle is upstream-ignored. Surfaced as ``always_on``
+    so UI hides the toggle and shows reasoning by default."""
+    driver = KimiK2Driver()
+    spec = driver.capability_spec(adapter_type="novita_http", slug=_NOVITA_K26)
+    assert spec.first_class_support is True
+    assert spec.reasoning.kind == "always_on"
+    assert spec.reasoning.effort is None
+    assert spec.tools.supported is True
+    assert spec.tools.exclusive_with_reasoning is False
+
+
+@pytest.mark.parametrize(
+    "adapter_type",
+    ["openrouter_http", "nano_gpt_http", "gmi_http"],
+)
+def test_capability_spec_unsupported_adapters_raise(adapter_type: str) -> None:
+    driver = KimiK2Driver()
+    with pytest.raises(NotImplementedError, match="adapter_type"):
+        driver.capability_spec(adapter_type=adapter_type, slug=_OLLAMA_K25)
