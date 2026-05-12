@@ -21,7 +21,7 @@ import { useState } from 'react'
 
 import { chatGptImportApi } from '../../core/api/chatGptImportApi'
 import {
-  selectBatchByImportAndPersona,
+  useBatchByImportAndPersona,
   useMemoryBatchStore,
 } from '../../core/store/memoryBatchStore'
 
@@ -37,9 +37,7 @@ function reasonHeadline(reason: string, userMessage: string): string {
 }
 
 export function MemoryBatchProgressPanel({ importId, personaId }: Props) {
-  const batch = useMemoryBatchStore(
-    selectBatchByImportAndPersona(importId, personaId),
-  )
+  const batch = useBatchByImportAndPersona(importId, personaId)
   const setBatch = useMemoryBatchStore((s) => s.setBatch)
   const [busy, setBusy] = useState(false)
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)

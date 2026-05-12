@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMemoryStore } from '../../../core/store/memoryStore'
-import {
-  selectFirstActiveBatchForPersona,
-  useMemoryBatchStore,
-} from '../../../core/store/memoryBatchStore'
+import { useFirstActiveBatchForPersona } from '../../../core/store/memoryBatchStore'
 import { memoryApi } from '../../../core/api/memory'
 import type { JournalEntryDto } from '../../../core/api/memory'
 import type { ChakraPaletteEntry } from '../../../core/types/chakra'
@@ -30,11 +27,7 @@ export function MemoriesTab({ persona, chakra: _chakra }: MemoriesTabProps) {
   // user is not confused by 409s. The paused state is also blocked here
   // per the spec (§6.3), with a tooltip directing them to the import
   // panel.
-  // Single stable-reference selector — see ``selectFirstActiveBatchForPersona``
-  // docstring for why we don't subscribe to the full array here.
-  const activeBatch = useMemoryBatchStore(
-    selectFirstActiveBatchForPersona(personaId),
-  )
+  const activeBatch = useFirstActiveBatchForPersona(personaId)
   const importBatchBlock: 'running' | 'paused' | null =
     activeBatch?.state === 'running'
       ? 'running'
