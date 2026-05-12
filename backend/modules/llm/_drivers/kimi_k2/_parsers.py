@@ -7,17 +7,17 @@ prevents a Kimi change from accidentally affecting DSv4 (and vice versa).
 """
 from __future__ import annotations
 
-import json
+import json  # noqa: F401  # filled in Task 4
 from typing import Any
-from uuid import uuid4
+from uuid import uuid4  # noqa: F401  # filled in Task 4
 
 from backend.modules.llm._adapters._events import (
-    ContentDelta,
+    ContentDelta,  # noqa: F401  # filled in Task 4/5
     ProviderStreamEvent,
-    StreamDone,
-    StreamRefused,
-    ThinkingDelta,
-    ToolCallEvent,
+    StreamDone,  # noqa: F401  # filled in Task 4/5
+    StreamRefused,  # noqa: F401  # filled in Task 4/5
+    ThinkingDelta,  # noqa: F401  # filled in Task 4/5
+    ToolCallEvent,  # noqa: F401  # filled in Task 4/5
 )
 from backend.modules.llm._drivers._tool_call_accumulator import (
     ToolCallAccumulator,
