@@ -20,9 +20,11 @@ import {
 import { ApiError } from '../../core/api/client'
 import { personasApi } from '../../core/api/personas'
 import { useChatGptImportStore } from '../../core/store/chatGptImportStore'
+import { useMemoryBatchStore } from '../../core/store/memoryBatchStore'
 import { useNotificationStore } from '../../core/store/notificationStore'
 
 import { ConversationList } from './ConversationList'
+import { MemoryBatchProgressPanel } from './MemoryBatchProgressPanel'
 import { ParseProgressBanner } from './ParseProgressBanner'
 import { ReplaceUploadDialog } from './ReplaceUploadDialog'
 import { UploadEmptyState } from './UploadEmptyState'
@@ -76,6 +78,16 @@ export function ChatGptImportTab({ personaId, personaName }: Props) {
       .then((imp) => setActiveImport(imp))
       .catch(() => setActiveImport(null))
   }, [setActiveImport])
+
+  // Rehydrate the memory-batch state from the server whenever the
+  // import + persona pair changes. Idempotent; collapses to no-op when
+  // no batch exists for the pair.
+  useEffect(() => {
+    if (!activeImport) return
+    void useMemoryBatchStore
+      .getState()
+      .rehydrateForPersona(activeImport.import_id, personaId)
+  }, [activeImport, personaId])
 
   // Reload conversations whenever filters or the active import change.
   useEffect(() => {
@@ -246,6 +258,16 @@ export function ChatGptImportTab({ personaId, personaName }: Props) {
 
   return (
     <div className="p-4 pb-0">
+      <div
+        id="chatgpt-import-memory-batch-panel"
+        data-import-id={activeImport.import_id}
+        data-persona-id={personaId}
+      >
+        <MemoryBatchProgressPanel
+          importId={activeImport.import_id}
+          personaId={personaId}
+        />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-white/5 rounded mb-4 text-sm">
         <span className="text-white/70">
           <code className="font-mono">{activeImport.filename}</code> ·{' '}

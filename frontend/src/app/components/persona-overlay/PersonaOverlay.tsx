@@ -18,6 +18,7 @@ import { HistoryTab } from './HistoryTab'
 import { McpTab } from './McpTab'
 import { IntegrationsTab as PersonaIntegrationsTab } from './IntegrationsTab'
 import { ChatGptImportTab } from '../../../features/chatgpt-import/ChatGptImportTab'
+import { PersonaMemoryBatchPill } from '../../../features/chatgpt-import/PersonaMemoryBatchPill'
 import { resolveSTTEngine, resolveTTSEngine } from '../../../features/voice/engines/resolver'
 import { PersonaVoiceConfig } from '../../../features/voice/components/PersonaVoiceConfig'
 import { useSecretsStore } from '../../../features/integrations/secretsStore'
@@ -259,6 +260,12 @@ export function PersonaOverlay({ persona, allPersonas, isCreating, activeTab, on
             <span className="text-[13px] font-semibold text-white/80">
               {isCreating ? 'New Persona' : resolved.name}
             </span>
+            {!isCreating && resolved.id && (
+              <PersonaMemoryBatchPill
+                personaId={resolved.id}
+                onOpenImportTab={() => guardedOnTabChange('chatgpt-import')}
+              />
+            )}
           </div>
           <button
             type="button"

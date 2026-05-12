@@ -3,11 +3,21 @@
  *
  * Listens on the ``chatgpt_import.*`` namespace via the shared event bus.
  * The hook is mounted once by ``ChatGptImportTab``; unsubscribes on unmount.
+ *
+ * The three ``chatgpt_import.memory.*`` events bypass the "active import"
+ * gate because the persona-header pill must reflect batch state for
+ * any active import, not only the one the user happens to have open.
  */
 import { useEffect } from 'react'
 
 import { eventBus } from '../../core/websocket/eventBus'
 import { useChatGptImportStore } from '../../core/store/chatGptImportStore'
+import {
+  useMemoryBatchStore,
+  type ChatGptImportMemoryDonePayload,
+  type ChatGptImportMemoryPausedPayload,
+  type ChatGptImportMemoryProgressPayload,
+} from '../../core/store/memoryBatchStore'
 
 export function useChatGptImportEvents(): void {
   useEffect(() => {
@@ -15,9 +25,32 @@ export function useChatGptImportEvents(): void {
       const p = event.payload as Record<string, unknown>
       const store = useChatGptImportStore.getState()
       const active = store.activeImport
-      // All events carry an import_id; ignore events that target a different
-      // import than the one currently displayed in this tab.
       const eventImportId = p.import_id as string | undefined
+
+      // Memory-batch events route to the dedicated store and are global
+      // (drive the persona-header pill regardless of which import the
+      // user is viewing). Handled before the active-import gate.
+      if (event.type === 'chatgpt_import.memory.progress') {
+        useMemoryBatchStore
+          .getState()
+          .handleProgressEvent(p as unknown as ChatGptImportMemoryProgressPayload)
+        return
+      }
+      if (event.type === 'chatgpt_import.memory.paused') {
+        useMemoryBatchStore
+          .getState()
+          .handlePausedEvent(p as unknown as ChatGptImportMemoryPausedPayload)
+        return
+      }
+      if (event.type === 'chatgpt_import.memory.done') {
+        useMemoryBatchStore
+          .getState()
+          .handleDoneEvent(p as unknown as ChatGptImportMemoryDonePayload)
+        return
+      }
+
+      // Remaining events carry an import_id; ignore events that target
+      // a different import than the one currently displayed in this tab.
       if (active && eventImportId && eventImportId !== active.import_id) return
 
       switch (event.type) {
