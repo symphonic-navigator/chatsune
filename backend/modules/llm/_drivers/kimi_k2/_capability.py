@@ -17,6 +17,10 @@ buckets and probes did not surface a working knob on either provider.
 from __future__ import annotations
 
 from backend.modules.llm._capabilities import ResolvedCapabilities
+from backend.modules.llm._drivers.kimi_k2._helpers import (
+    _kimi_version,
+    _unsupported_adapter,
+)
 from shared.dtos.llm import (
     ReasoningCapability,
     ToolCapability,
@@ -27,10 +31,6 @@ def kimi_k2_capability_spec(
     *, adapter_type: str, slug: str,
 ) -> ResolvedCapabilities:
     """Return the (adapter, slug)-specific capability spec for Kimi K2."""
-    # Local import to keep the driver-package dependency graph one-way.
-    from backend.modules.llm._drivers.kimi_k2 import (
-        _kimi_version, _unsupported_adapter,
-    )
 
     tools = ToolCapability(supported=True, exclusive_with_reasoning=False)
 
