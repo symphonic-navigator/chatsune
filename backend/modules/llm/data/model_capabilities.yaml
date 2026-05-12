@@ -126,3 +126,38 @@ models:
       effort: { buckets: [low, medium, high], default_bucket: low }
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
+
+  # z.AI GLM-5 family via Ollama Cloud — reasoning toggleable via think:
+  # true/false (probed 2026-05-12 against ollama.com/api/chat). Tool calls
+  # work in both reasoning modes. No vision support in this family.
+  - adapter: ollama_http
+    pattern: "glm-5"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: ollama_http
+    pattern: "glm-5.1"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # z.AI GLM-5 family via Novita — reasoning is forced on upstream
+  # (probed 2026-05-12: neither reasoning.enabled=false nor
+  # chat_template_kwargs.thinking=false suppress reasoning_content).
+  # Tool calls work. No vision support in this family.
+  - adapter: novita_http
+    pattern: "zai-org/glm-5"
+    reasoning:
+      kind: always_on
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: novita_http
+    pattern: "zai-org/glm-5.1"
+    reasoning:
+      kind: always_on
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
