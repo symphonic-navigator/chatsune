@@ -1839,3 +1839,47 @@ tiers. Mode auto-detected from `Mcp-Session-Id` response-header
 presence; per-WebSocket-session state on `GatewayHandle`; in-memory
 session cache in `mcpStore` for the local tier; one-shot lifecycle
 on backend proxy routes; 404-retry-with-reinit on the inference path.
+
+---
+
+## INS-045 — Semver build versioning (`version.txt` + `/api/version`) (2026-05-13)
+
+**Decision:** The repo's base version lives in a single `version.txt` at
+the root (semver `<major>.<minor>.<patch>`). The CI workflow
+(`.github/workflows/docker.yml`) derives the *full* version per build:
+
+- Push to `master` → `<base>-pre.<github.run_number>` (e.g. `0.1.0-pre.25`)
+- Push to tag `v1.2.3` → `1.2.3` (no `-pre` suffix)
+- Pull request → same `-pre.<run>` shape; not pushed to GHCR
+
+The computed value is passed to both Dockerfiles as a `VERSION` build-arg,
+along with `CHATSUNE_GIT_SHA` (short SHA) and `CHATSUNE_BUILT_AT` (ISO-8601
+UTC). The backend exposes `GET /api/version` returning a `VersionDto`
+(`shared/dtos/system.py`). The frontend image writes the same value to
+`/usr/share/nginx/html/VERSION` so nginx serves a plain-text `/VERSION`
+endpoint.
+
+**Resolution order in `backend.modules.system._version`:**
+
+1. `CHATSUNE_VERSION` env var (Docker-injected)
+2. `/app/VERSION` file (Docker fallback if env var stripped at runtime)
+3. `version.txt` at repo root with `-dev` suffix appended (local dev runs)
+4. `0.0.0-unknown` (hard fallback — should never be seen in practice)
+
+Cached for the process lifetime via `lru_cache`; restart needed to pick
+up a new version.
+
+**Where the code lives:** A new tiny module `backend/modules/system/`
+(public API: `router`, `resolve_version`). It's intentionally minimal —
+versioning is a platform concern, not a domain. Adding business logic
+to this module is a smell; pick or create a domain module instead.
+
+**Why not embed in `main.py`:** the project convention is one module per
+concern with a `_handlers.py` + public `__init__.py`. Putting a router
+in `main.py` would set a precedent for other "tiny" features and erode
+the boundary discipline that has paid off elsewhere.
+
+**Bumping rules:** patch for bug fixes, minor for backwards-compatible
+features, major for breaking changes. The `-pre.N` suffix is automatic
+on master and means "what's currently on master, build N"; it is *not*
+a stable identifier — only tagged `v*.*.*` builds are.

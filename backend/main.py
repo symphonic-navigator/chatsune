@@ -72,6 +72,7 @@ from backend.modules.providers import (
 )
 from backend.modules.debug import router as debug_router
 from backend.modules.metrics import router as metrics_router
+from backend.modules.system import router as system_router
 from backend.ws.event_bus import EventBus, set_event_bus
 from backend.ws.manager import ConnectionManager, set_manager
 from backend.ws.router import ws_router, get_background_tasks
@@ -640,6 +641,7 @@ app.include_router(jobs_http_router)
 app.include_router(ws_router)
 app.include_router(sidecar_router)
 app.include_router(metrics_router)
+app.include_router(system_router)
 
 
 @app.get("/api/health")

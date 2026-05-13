@@ -43,6 +43,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute version
+        id: version
+        run: |
+          BASE=$(cat version.txt | tr -d '[:space:]')
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${BASE}-pre.${GITHUB_RUN_NUMBER}"
+          fi
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "built_at=$BUILT_AT" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VERSION (sha=$SHORT_SHA built_at=$BUILT_AT)"
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -56,6 +72,7 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
 
       - name: Build and push Docker image
         id: build-and-push
@@ -65,6 +82,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            CHATSUNE_GIT_SHA=${{ steps.version.outputs.short_sha }}
+            CHATSUNE_BUILT_AT=${{ steps.version.outputs.built_at }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
@@ -78,18 +99,21 @@ jobs:
       - name: Write build manifest
         env:
           TRIGGER: ${{ github.event_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+          BUILT_AT: ${{ steps.version.outputs.built_at }}
         run: |
-          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           cat > build-manifest.json << EOF
           {
             "schema": "chatsune-build/v1",
-            "built_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "built_at": "$BUILT_AT",
             "trigger": "$TRIGGER",
             "artifacts": [
               {
                 "name": "frontend",
                 "type": "docker",
-                "version": "$SHORT_SHA",
+                "version": "$VERSION",
+                "git_sha": "$SHORT_SHA",
                 "ref": "ghcr.io/symphonic-navigator/chatsune-frontend:sha-$SHORT_SHA"
               }
             ]
@@ -133,6 +157,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute version
+        id: version
+        run: |
+          BASE=$(cat version.txt | tr -d '[:space:]')
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${BASE}-pre.${GITHUB_RUN_NUMBER}"
+          fi
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "built_at=$BUILT_AT" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VERSION (sha=$SHORT_SHA built_at=$BUILT_AT)"
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -146,6 +186,7 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
 
       - name: Build and push Docker image
         id: build-and-push
@@ -156,6 +197,10 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            CHATSUNE_GIT_SHA=${{ steps.version.outputs.short_sha }}
+            CHATSUNE_BUILT_AT=${{ steps.version.outputs.built_at }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
@@ -169,18 +214,21 @@ jobs:
       - name: Write build manifest
         env:
           TRIGGER: ${{ github.event_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
+          BUILT_AT: ${{ steps.version.outputs.built_at }}
         run: |
-          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           cat > build-manifest.json << EOF
           {
             "schema": "chatsune-build/v1",
-            "built_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "built_at": "$BUILT_AT",
             "trigger": "$TRIGGER",
             "artifacts": [
               {
                 "name": "backend",
                 "type": "docker",
-                "version": "$SHORT_SHA",
+                "version": "$VERSION",
+                "git_sha": "$SHORT_SHA",
                 "ref": "ghcr.io/symphonic-navigator/chatsune-backend:sha-$SHORT_SHA"
               }
             ]

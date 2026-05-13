@@ -70,6 +70,19 @@ even if local development works fine.
 
 ---
 
+## Versioning
+
+The base version lives in `version.txt` at the repo root (semver:
+`<major>.<minor>.<patch>`). CI computes the full version on each build:
+master pushes produce `<base>-pre.<run_number>`, git tags `v1.2.3` produce
+`1.2.3`. Both Dockerfiles bake the value in via a `VERSION` build-arg and
+expose it as `CHATSUNE_VERSION`; the backend serves it at `GET /api/version`.
+Bump `version.txt` when cutting a release: patch for fixes, minor for
+backwards-compatible features, major for breaking changes. See INSIGHTS
+INS-VERSIONING for resolution-order details.
+
+---
+
 ## Data Model Migrations — No More Wipes
 
 **Effective 2026-04-15 (alpha → beta release).** Up to this point we wiped
