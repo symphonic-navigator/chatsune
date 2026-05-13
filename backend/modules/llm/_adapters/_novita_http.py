@@ -440,7 +440,7 @@ class NovitaHttpAdapter(BaseAdapter):
         api_key = c.config.get("api_key") or ""
 
         from backend.modules.llm._drivers import match_driver  # local import, avoids cycle
-        driver_cls = match_driver(request.model)
+        driver_cls = match_driver(adapter_type=self.adapter_type, slug=request.model)
         driver = driver_cls() if driver_cls is not None else None
 
         if driver is not None:

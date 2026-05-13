@@ -25,6 +25,22 @@ class Driver(Protocol):
     (slug.rsplit('/', 1)[-1]). Multiple patterns supported so naming-
     convention drift across routers does not multiply driver classes."""
 
+    SUPPORTED_ADAPTERS: ClassVar[frozenset[str]]
+    """Set of adapter_types this driver claims for capability resolution
+    and (where applicable) wire handling.
+
+    ``match_driver`` only returns the driver class when both the slug
+    basename matches one of ``PATTERNS`` AND the adapter_type is in
+    this set. Listings on non-supported adapters therefore fall through
+    cleanly to the YAML lookup, the adapter heuristic, or the universal
+    default — they never reach the driver's ``capability_spec`` and so
+    cannot trigger the driver's defensive ``NotImplementedError``.
+
+    The driver-internal ``NotImplementedError`` guards in
+    ``capability_spec`` / ``build_request`` / ``parse_chunk`` remain in
+    place as defence-in-depth and are intentionally loud at inference
+    time if anything ever bypasses ``match_driver``."""
+
     def capability_spec(
         self,
         *,

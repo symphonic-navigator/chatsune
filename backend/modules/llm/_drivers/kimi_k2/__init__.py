@@ -57,6 +57,12 @@ class KimiK2Driver:
         "kimi-k2.6*",
     ]
 
+    # Adapter-aware ``match_driver`` consults this set; the helper
+    # module ``_helpers.py`` remains the single source of truth so the
+    # internal ``_unsupported_adapter`` defence-in-depth guard cannot
+    # drift from the class attribute.
+    SUPPORTED_ADAPTERS: frozenset[str] = _SUPPORTED_ADAPTERS
+
     def __init__(self) -> None:
         # Per-stream state: a fresh driver instance is created in the
         # adapter's ``stream_completion`` (``driver = driver_cls()``), so

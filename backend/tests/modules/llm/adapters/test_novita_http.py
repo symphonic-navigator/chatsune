@@ -333,10 +333,17 @@ def _resolved() -> ResolvedConnection:
 
 def _make_entry(**overrides) -> dict:
     """Returns a Novita catalogue entry that PASSES every filter rule.
-    Override fields to drive specific failure cases."""
+    Override fields to drive specific failure cases.
+
+    The default slug is deliberately a slug NO driver claims and NO
+    YAML pattern matches, so ``_entry_to_meta`` exercises the generic
+    capability path (adapter heuristic via ``capability_hint``).
+    Tests targeting driver-specific behaviour should pass an explicit
+    ``id`` override.
+    """
     base = {
-        "id": "xiaomimimo/mimo-v2.5-pro",
-        "display_name": "XiaomiMiMo/MiMo-V2.5-Pro",
+        "id": "qwen/qwen3-8b",
+        "display_name": "Qwen/Qwen3-8B",
         "context_size": 1_048_576,
         "model_type": "chat",
         "status": 1,
@@ -358,8 +365,8 @@ def test_entry_to_meta_maps_all_fields_for_a_full_pass():
     assert meta.connection_id == "premium:novita"
     assert meta.connection_slug == "novita"
     assert meta.connection_display_name == "Novita AI"
-    assert meta.model_id == "xiaomimimo/mimo-v2.5-pro"
-    assert meta.display_name == "XiaomiMiMo/MiMo-V2.5-Pro"
+    assert meta.model_id == "qwen/qwen3-8b"
+    assert meta.display_name == "Qwen/Qwen3-8B"
     assert meta.context_window == 1_048_576
     # New capability shape: ``reasoning`` feature in the catalogue maps
     # to ``ReasoningCapability(kind="optional")``; the legacy
@@ -380,7 +387,7 @@ def test_entry_to_meta_falls_back_to_id_when_display_name_missing():
         _make_entry(display_name=None), _resolved(), adapter=NovitaHttpAdapter(),
     )
     assert meta is not None
-    assert meta.display_name == "xiaomimimo/mimo-v2.5-pro"
+    assert meta.display_name == "qwen/qwen3-8b"
 
 
 def test_entry_to_meta_filters_non_text_output():

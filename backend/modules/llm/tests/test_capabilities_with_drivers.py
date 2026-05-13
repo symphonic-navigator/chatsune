@@ -36,6 +36,10 @@ _DSv4_DRIVER_SPEC = ResolvedCapabilities(
 
 class _StubDSv4Driver:
     PATTERNS = ["deepseek-v4*"]
+    # Adapter-aware match_driver — the existing tests below exercise
+    # openrouter_http and ollama_http; declaring both keeps them passing
+    # without expanding scope to other routers.
+    SUPPORTED_ADAPTERS = frozenset({"openrouter_http", "ollama_http"})
 
     def capability_spec(self, *, adapter_type: str, slug: str):
         return _DSv4_DRIVER_SPEC
@@ -97,6 +101,9 @@ def test_driver_passes_adapter_type_and_slug(monkeypatch):
 
     class _CapturingDriver:
         PATTERNS = ["captured-model*"]
+        # Match the adapter_type used in the resolve_capabilities call
+        # below so the adapter-aware match_driver returns this stub.
+        SUPPORTED_ADAPTERS = frozenset({"some_adapter"})
         def capability_spec(self, *, adapter_type: str, slug: str):
             captured["adapter_type"] = adapter_type
             captured["slug"] = slug

@@ -46,6 +46,18 @@ class DeepSeekV4Driver:
         "deepseek-v4-flash*",
     ]
 
+    # nano-gpt is capability-only: the driver provides the canonical
+    # DSv4 capability spec for nano-gpt listings, but the nano-gpt
+    # adapter retains full ownership of wire-shape translation and
+    # never calls ``match_driver``. Listing on the other three is
+    # full wire + capability support.
+    SUPPORTED_ADAPTERS: frozenset[str] = frozenset({
+        "openrouter_http",
+        "novita_http",
+        "ollama_http",
+        "nano_gpt_http",
+    })
+
     def __init__(self) -> None:
         # Per-stream state: a fresh driver instance is created in each
         # adapter's ``stream_completion`` (``driver = driver_cls()``), so
