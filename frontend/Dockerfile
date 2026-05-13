@@ -28,8 +28,23 @@ RUN pnpm run build
 # ---------- Runtime stage ----------
 FROM nginx:1.27-alpine
 
+# Build-time version metadata. CI injects these; local builds fall back
+# to inert placeholders. The VERSION file is served as-is by nginx at
+# ``/VERSION`` (plain text) so external tooling can fetch the running
+# frontend build without parsing HTML.
+ARG VERSION=0.0.0-dev
+ARG CHATSUNE_GIT_SHA=""
+ARG CHATSUNE_BUILT_AT=""
+ENV CHATSUNE_VERSION=$VERSION
+ENV CHATSUNE_GIT_SHA=$CHATSUNE_GIT_SHA
+ENV CHATSUNE_BUILT_AT=$CHATSUNE_BUILT_AT
+
 # Static assets
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Plain-text version marker. Written after the dist copy so it is not
+# clobbered by a stray ``VERSION`` artifact from the build stage.
+RUN echo "$VERSION" > /usr/share/nginx/html/VERSION
 
 # SPA-friendly nginx config (fallback to index.html for client-side routing)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
