@@ -81,6 +81,21 @@ Bump `version.txt` when cutting a release: patch for fixes, minor for
 backwards-compatible features, major for breaking changes. See INSIGHTS
 INS-VERSIONING for resolution-order details.
 
+### Release flow
+
+A git tag only overrides the version for the **single build it triggers**;
+it does not edit `version.txt`. If you tag `v0.2.0` while `version.txt`
+still says `0.1.0`, the next master push reverts to `0.1.0-pre.<n+1>` —
+backwards. To keep the version line monotonically increasing, always:
+
+1. Bump `version.txt` (e.g. `0.1.0` → `0.2.0`), commit, merge to master.
+2. Tag that commit: `git tag v0.2.0 && git push origin v0.2.0`.
+3. Subsequent master pushes then produce `0.2.0-pre.<n>` — forward of the
+   tagged release.
+
+The tag is the hard published version; `version.txt` is the anchor for all
+subsequent pre-builds. Keep them consistent.
+
 ---
 
 ## Data Model Migrations — No More Wipes
