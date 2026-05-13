@@ -188,6 +188,13 @@ class MiMoV25Driver:
         "mimo-v2.5-pro*",
     ]
 
+    # MiMo is a Novita-only integration today; the adapter-aware
+    # ``match_driver`` will skip this driver entirely when listing
+    # OR / nano-gpt / Ollama catalogues so the defensive
+    # ``NotImplementedError`` in ``capability_spec`` cannot bubble up
+    # through ``resolve_capabilities`` and break listing.
+    SUPPORTED_ADAPTERS: frozenset[str] = frozenset({"novita_http"})
+
     def __init__(self) -> None:
         # Per-stream state: a fresh driver instance is created in the
         # adapter's ``stream_completion`` (``driver = driver_cls()``),

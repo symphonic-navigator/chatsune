@@ -101,7 +101,7 @@ def resolve_capabilities(
     # specific quirks that the declarative yaml table cannot encode.
     # See devdocs/specs/driver-layer.md and INSIGHTS.md INS-040.
     from backend.modules.llm._drivers import match_driver
-    driver_cls = match_driver(model_id)
+    driver_cls = match_driver(adapter_type=adapter_type, slug=model_id)
     if driver_cls is not None:
         return driver_cls().capability_spec(
             adapter_type=adapter_type, slug=model_id,

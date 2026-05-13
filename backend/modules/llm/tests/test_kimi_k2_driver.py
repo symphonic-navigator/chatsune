@@ -29,29 +29,52 @@ _NOVITA_K26 = "moonshotai/kimi-k2.6"
 
 
 def test_match_driver_ollama_k25() -> None:
-    assert match_driver(_OLLAMA_K25) is KimiK2Driver
+    assert match_driver(adapter_type="ollama_http", slug=_OLLAMA_K25) is KimiK2Driver
 
 
 def test_match_driver_ollama_k26() -> None:
-    assert match_driver(_OLLAMA_K26) is KimiK2Driver
+    assert match_driver(adapter_type="ollama_http", slug=_OLLAMA_K26) is KimiK2Driver
 
 
 def test_match_driver_novita_k25_with_publisher_prefix() -> None:
-    assert match_driver(_NOVITA_K25) is KimiK2Driver
+    assert match_driver(adapter_type="novita_http", slug=_NOVITA_K25) is KimiK2Driver
 
 
 def test_match_driver_novita_k26_with_publisher_prefix() -> None:
-    assert match_driver(_NOVITA_K26) is KimiK2Driver
+    assert match_driver(adapter_type="novita_http", slug=_NOVITA_K26) is KimiK2Driver
 
 
 def test_match_driver_does_not_match_older_kimi() -> None:
     """K2.4 and earlier are not first-class — the driver targets K2.5+."""
-    assert match_driver("kimi-k2.4") is None
-    assert match_driver("moonshotai/kimi-k2") is None
+    assert match_driver(adapter_type="ollama_http", slug="kimi-k2.4") is None
+    assert match_driver(adapter_type="novita_http", slug="moonshotai/kimi-k2") is None
 
 
 def test_match_driver_does_not_match_unrelated_moonshot_model() -> None:
-    assert match_driver("moonshotai/kimi-vl") is None
+    assert match_driver(adapter_type="novita_http", slug="moonshotai/kimi-vl") is None
+
+
+def test_match_driver_does_not_match_on_openrouter() -> None:
+    """Regression for the listing-time crash: Kimi K2 slugs appear in the
+    OpenRouter catalogue but the driver only supports Ollama and Novita.
+    Adapter-aware match_driver must return None so resolve_capabilities
+    falls through to the YAML / heuristic / default chain."""
+    assert (
+        match_driver(adapter_type="openrouter_http", slug="moonshotai/kimi-k2.6")
+        is None
+    )
+    assert (
+        match_driver(adapter_type="openrouter_http", slug="kimi-k2.6:thinking")
+        is None
+    )
+
+
+def test_match_driver_does_not_match_on_nano_gpt() -> None:
+    """Same regression as the OR case for the nano-gpt catalogue."""
+    assert (
+        match_driver(adapter_type="nano_gpt_http", slug="moonshotai/kimi-k2.6")
+        is None
+    )
 
 
 # --- capability_spec -------------------------------------------------------

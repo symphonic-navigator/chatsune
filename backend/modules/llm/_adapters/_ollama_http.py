@@ -357,7 +357,7 @@ class OllamaHttpAdapter(BaseAdapter):
         # helpers (build_request_body), and the adapter consults drivers
         # at call time.
         from backend.modules.llm._drivers import match_driver
-        driver_cls = match_driver(request.model)
+        driver_cls = match_driver(adapter_type=self.adapter_type, slug=request.model)
         driver = driver_cls() if driver_cls is not None else None
 
         if driver is not None:

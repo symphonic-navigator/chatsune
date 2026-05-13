@@ -207,12 +207,32 @@ def test_parser_or_handles_chunk_with_no_actionable_delta():
 
 
 def test_dsv4_driver_class_matches_or_slugs():
-    assert match_driver("deepseek/deepseek-v4-pro") is DeepSeekV4Driver
-    assert match_driver("deepseek/deepseek-v4-flash") is DeepSeekV4Driver
+    assert (
+        match_driver(adapter_type="openrouter_http", slug="deepseek/deepseek-v4-pro")
+        is DeepSeekV4Driver
+    )
+    assert (
+        match_driver(adapter_type="openrouter_http", slug="deepseek/deepseek-v4-flash")
+        is DeepSeekV4Driver
+    )
 
 
 def test_dsv4_driver_class_matches_unprefixed_ollama_slug():
-    assert match_driver("deepseek-v4-pro") is DeepSeekV4Driver
+    assert (
+        match_driver(adapter_type="ollama_http", slug="deepseek-v4-pro")
+        is DeepSeekV4Driver
+    )
+
+
+def test_dsv4_driver_does_not_match_on_unsupported_adapter():
+    """DSv4 currently declares all four routers it ships on
+    (openrouter_http, novita_http, ollama_http, nano_gpt_http). Any adapter
+    outside that set must return None — locking the contract so future
+    additions cannot regress accidentally."""
+    assert (
+        match_driver(adapter_type="mistral_http", slug="deepseek/deepseek-v4-pro")
+        is None
+    )
 
 
 def test_dsv4_driver_capability_spec_via_class():

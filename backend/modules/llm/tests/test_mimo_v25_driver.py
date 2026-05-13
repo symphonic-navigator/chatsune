@@ -80,17 +80,40 @@ def _make_request(
 
 
 def test_match_driver_with_publisher_prefix() -> None:
-    assert match_driver(_NOVITA_SLUG) is MiMoV25Driver
+    assert match_driver(adapter_type="novita_http", slug=_NOVITA_SLUG) is MiMoV25Driver
 
 
 def test_match_driver_basename_without_prefix() -> None:
-    assert match_driver("mimo-v2.5-pro") is MiMoV25Driver
+    assert match_driver(adapter_type="novita_http", slug="mimo-v2.5-pro") is MiMoV25Driver
 
 
 def test_match_driver_does_not_match_sibling_flash() -> None:
     """The driver targets v2.5-pro only. v2-flash on Novita is a separate,
     capability-only model and must not accidentally route through this driver."""
-    assert match_driver("xiaomimimo/mimo-v2-flash") is not MiMoV25Driver
+    assert (
+        match_driver(adapter_type="novita_http", slug="xiaomimimo/mimo-v2-flash")
+        is not MiMoV25Driver
+    )
+
+
+def test_match_driver_does_not_match_on_openrouter() -> None:
+    """Regression for the listing-time crash: MiMo's slug appears in the
+    OpenRouter catalogue but the driver only supports Novita. Adapter-aware
+    match_driver must return None so resolve_capabilities falls through
+    cleanly to the YAML / heuristic / default chain instead of bubbling up
+    the driver's defensive NotImplementedError."""
+    assert (
+        match_driver(adapter_type="openrouter_http", slug="xiaomimimo/mimo-v2.5-pro")
+        is None
+    )
+
+
+def test_match_driver_does_not_match_on_nano_gpt() -> None:
+    """Same regression as the OR case for the nano-gpt catalogue."""
+    assert (
+        match_driver(adapter_type="nano_gpt_http", slug="xiaomimimo/mimo-v2.5-pro")
+        is None
+    )
 
 
 # --- capability_spec -------------------------------------------------------
