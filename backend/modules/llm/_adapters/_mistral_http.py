@@ -283,17 +283,30 @@ def _translate_message(msg: CompletionMessage) -> dict:
 def _build_chat_payload(request: CompletionRequest) -> dict:
     """Build a Mistral chat/completions payload.
 
-    Unlike xAI (which special-cases grok-4-1-fast-reasoning vs
-    -non-reasoning), Mistral's reasoning capability is baked into specific
-    models (e.g. magistral-*, mistral-medium-latest) — so we simply pass
-    ``request.model`` through unchanged.
+    Maps our internal model_id to Mistral's upstream slug, applies the
+    binary reasoning toggle (on -> "high", off -> "none") for reasoning
+    models, and falls back to mistral-medium-3-5 when a stale persona
+    references a model we no longer expose.
     """
+    entry = _MISTRAL_MODELS_BY_ID.get(request.model)
+    if entry is None:
+        _log.warning(
+            "Mistral: unknown model_id=%r in CompletionRequest; "
+            "falling back to mistral-medium-3-5",
+            request.model,
+        )
+        entry = _MISTRAL_MODELS_BY_ID["mistral-medium-3-5"]
+
     payload: dict = {
-        "model": request.model,
+        "model": entry.upstream_slug,
         "stream": True,
         "stream_options": {"include_usage": True},
         "messages": [_translate_message(m) for m in request.messages],
     }
+    if entry.has_reasoning:
+        payload["reasoning_effort"] = (
+            "high" if request.extras.reasoning_mode == "on" else "none"
+        )
     if request.temperature is not None:
         payload["temperature"] = request.temperature
     if request.tools:

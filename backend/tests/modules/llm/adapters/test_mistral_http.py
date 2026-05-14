@@ -257,7 +257,7 @@ def _simple_request(**kwargs) -> CompletionRequest:
     reasoning_enabled = bool(kwargs.pop("reasoning_enabled", False))
     kwargs.pop("supports_reasoning", None)
     base = {
-        "model": "mistral-medium-latest",
+        "model": "mistral-medium-3-5",
         "messages": [
             CompletionMessage(role="user",
                               content=[ContentPart(type="text", text="hi")]),
@@ -274,14 +274,113 @@ def _simple_request(**kwargs) -> CompletionRequest:
     return CompletionRequest(**base)
 
 
-def test_build_payload_passes_model_slug_through_unchanged():
-    # Mistral does NOT route on reasoning_enabled the way xAI does — the
-    # model slug from the caller must reach the upstream verbatim.
-    payload = _build_chat_payload(_simple_request(
-        model="magistral-medium-latest",
-        reasoning_enabled=True,
-    ))
-    assert payload["model"] == "magistral-medium-latest"
+# ---------------------------------------------------------------------------
+# build_chat_payload — slug-mapping, reasoning toggle, legacy fallback
+# ---------------------------------------------------------------------------
+
+
+def test_build_payload_maps_small_4_to_mistral_small_latest():
+    req = _simple_request(model="mistral-small-4")
+    payload = _build_chat_payload(req)
+    assert payload["model"] == "mistral-small-latest"
+
+
+def test_build_payload_maps_medium_3_5_to_dated_slug():
+    req = _simple_request(model="mistral-medium-3-5")
+    payload = _build_chat_payload(req)
+    assert payload["model"] == "mistral-medium-3-5"
+
+
+def test_build_payload_maps_large_3_to_mistral_large_latest():
+    req = _simple_request(model="mistral-large-3")
+    payload = _build_chat_payload(req)
+    assert payload["model"] == "mistral-large-latest"
+
+
+def test_build_payload_reasoning_on_sends_high():
+    req = _simple_request(
+        model="mistral-small-4",
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort=None,
+        ),
+    )
+    payload = _build_chat_payload(req)
+    assert payload["reasoning_effort"] == "high"
+
+
+def test_build_payload_reasoning_off_sends_none():
+    req = _simple_request(
+        model="mistral-small-4",
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
+    )
+    payload = _build_chat_payload(req)
+    assert payload["reasoning_effort"] == "none"
+
+
+def test_build_payload_ignores_persisted_effort_bucket():
+    # Stale persona may carry e.g. reasoning_effort="medium" from a different
+    # adapter — Mistral rejects medium with HTTP 400. We must drop it entirely
+    # and always send the high/none binary derived from reasoning_mode.
+    req = _simple_request(
+        model="mistral-medium-3-5",
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort="medium",
+        ),
+    )
+    payload = _build_chat_payload(req)
+    assert payload["reasoning_effort"] == "high"
+
+
+def test_build_payload_large_3_omits_reasoning_effort():
+    req = _simple_request(
+        model="mistral-large-3",
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort=None,
+        ),
+    )
+    payload = _build_chat_payload(req)
+    assert "reasoning_effort" not in payload
+
+
+def test_build_payload_unknown_model_falls_back_to_medium_3_5(caplog):
+    import logging
+    req = _simple_request(model="magistral-medium-latest")
+    with caplog.at_level(logging.WARNING):
+        payload = _build_chat_payload(req)
+    assert payload["model"] == "mistral-medium-3-5"
+    assert any(
+        "unknown model_id" in r.message and "magistral-medium-latest" in r.message
+        for r in caplog.records
+    )
+
+
+def test_build_payload_stream_options_included():
+    req = _simple_request(model="mistral-small-4")
+    payload = _build_chat_payload(req)
+    assert payload["stream"] is True
+    assert payload["stream_options"] == {"include_usage": True}
+
+
+def test_build_payload_tools_translated_to_openai_schema():
+    req = _simple_request(
+        model="mistral-large-3",
+        tools=[ToolDefinition(
+            name="get_weather",
+            description="Get weather",
+            parameters={"type": "object", "properties": {"city": {"type": "string"}}},
+        )],
+    )
+    payload = _build_chat_payload(req)
+    assert payload["tools"] == [{
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get weather",
+            "parameters": {"type": "object", "properties": {"city": {"type": "string"}}},
+        },
+    }]
 
 
 def test_build_payload_includes_stream_options_for_usage():

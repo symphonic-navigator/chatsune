@@ -8,9 +8,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from backend.modules.llm._adapters._mistral_http import (
-    _build_chat_payload as _mistral_build_chat_payload,
-)
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._adapters._xai_http import (
     XaiHttpAdapter,
@@ -119,15 +116,8 @@ def test_xai_request_translation_reads_reasoning_mode_off() -> None:
     assert payload["model"] == "grok-4-1-fast-non-reasoning"
 
 
-# ---------------------------------------------------------------------------
-# Mistral — request translation passes the model through unchanged
-# ---------------------------------------------------------------------------
-
-
-def test_mistral_request_translation_passes_model_through_with_extras() -> None:
-    """Mistral's reasoning is baked into the model id; ``_build_chat_payload``
-    must accept the new request shape without touching the model slug."""
-    req = _completion_request(model="magistral-medium-latest", reasoning_mode="on")
-    payload = _mistral_build_chat_payload(req)
-    assert payload["model"] == "magistral-medium-latest"
-    assert payload["stream"] is True
+# NOTE: Mistral request-translation coverage now lives in
+# backend/tests/modules/llm/adapters/test_mistral_http.py (the
+# build_chat_payload block). The old "passes model through unchanged"
+# assertion no longer holds because we now map internal model_ids to
+# upstream slugs via the curated table, with a fallback for unknown ids.
