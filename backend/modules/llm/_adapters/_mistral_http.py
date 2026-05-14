@@ -58,7 +58,6 @@ GUTTER_ABORT_SECONDS: float = float(
 )
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
-_PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
@@ -312,94 +311,6 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     return payload
 
 
-def _dedup_models(
-    entries: list[dict],
-    c: ResolvedConnection,
-) -> list[ModelMetaDto]:
-    """Apply Mistral-specific dedup + filter pipeline.
-
-    Pipeline:
-      1. Filter out entries without ``capabilities.completion_chat`` — we
-         only list chat-completion models (no embeddings, moderation,
-         classification, FIM-only, audio-only, …).
-      2. Group entries by their ``name`` field — Mistral's canonical id
-         (distinct from the ``id`` field, which may be an alias like
-         ``-latest`` or a dated variant).
-      3. For each group pick a preferred ``id``: prefer a ``-latest``
-         alias whose stem (id minus the ``-latest`` suffix) shares the
-         canonical name's base slug — i.e. ``canonical == stem`` or
-         ``canonical`` starts with ``stem + "-"``. This guards against
-         unrelated ``-latest`` endpoints that Mistral occasionally tags
-         with the same canonical name. Otherwise fall back to the
-         canonical ``name`` itself (the dated id).
-      4. Emit one :class:`ModelMetaDto` per group.
-    """
-    groups: dict[str, list[dict]] = {}
-    for entry in entries:
-        caps = entry.get("capabilities") or {}
-        if not caps.get("completion_chat"):
-            continue
-        name = entry.get("name")
-        if not isinstance(name, str) or not name:
-            continue
-        groups.setdefault(name, []).append(entry)
-
-    metas: list[ModelMetaDto] = []
-    for canonical_name, group in groups.items():
-        preferred_id = canonical_name
-        for entry in group:
-            entry_id = entry.get("id")
-            if not isinstance(entry_id, str) or not entry_id.endswith("-latest"):
-                continue
-            # Reject unrelated ``-latest`` endpoints that Mistral tags
-            # with another canonical name (e.g. ``mistral-vibe-cli-latest``
-            # appearing under ``mistral-medium-3-5``).
-            stem = entry_id[: -len("-latest")]
-            if canonical_name == stem or canonical_name.startswith(stem + "-"):
-                preferred_id = entry_id
-                break
-
-        # All entries in the group describe the same underlying model —
-        # pick any one for capability/context fields. Prefer the entry
-        # whose id matches preferred_id for display consistency.
-        source = next(
-            (e for e in group if e.get("id") == preferred_id),
-            group[0],
-        )
-        caps = source.get("capabilities") or {}
-        context_window = source.get("max_context_length") or 0
-        deprecation = source.get("deprecation")
-        # Conservative-default capability mapping — the follow-up premium
-        # spec will refine this. ``function_calling`` defaults to ``True``
-        # when the upstream omits it, mirroring the universal default.
-        reasoning_kind = "optional" if caps.get("reasoning") else "no_reasoning"
-        function_calling = caps.get("function_calling")
-        tools_supported = (
-            True if function_calling is None else bool(function_calling)
-        )
-        metas.append(ModelMetaDto(
-            connection_id=c.id,
-            connection_display_name=c.display_name,
-            connection_slug=c.slug,
-            model_id=preferred_id,
-            display_name=preferred_id,
-            context_window=context_window if isinstance(context_window, int) else 0,
-            reasoning=ReasoningCapability(
-                kind=reasoning_kind, default_on=True,
-            ),
-            tools=ToolCapability(
-                supported=tools_supported,
-                exclusive_with_reasoning=False,
-            ),
-            first_class_support=False,
-            supports_vision=bool(caps.get("vision")),
-            supports_tool_calls=bool(caps.get("function_calling")),
-            is_deprecated=deprecation is not None,
-            billing_category="pay_per_token",
-        ))
-    return metas
-
-
 class MistralHttpAdapter(BaseAdapter):
     adapter_type = "mistral_http"
     display_name = "Mistral"
@@ -430,40 +341,31 @@ class MistralHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        url = c.config["url"].rstrip("/")
-        api_key = c.config.get("api_key") or ""
-        headers = {"Authorization": f"Bearer {api_key}"}
-        try:
-            async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
-                resp = await client.get(f"{url}/models", headers=headers)
-        except httpx.HTTPError as exc:
-            _log.warning("mistral_http.fetch_models transport error: %s", exc)
-            return []
+        from backend.modules.llm._capabilities import resolve_capabilities
 
-        if resp.status_code in (401, 403):
-            _log.warning(
-                "mistral_http.fetch_models auth failure: status=%d",
-                resp.status_code,
+        metas: list[ModelMetaDto] = []
+        for entry in _MISTRAL_MODELS:
+            resolved = resolve_capabilities(
+                adapter_type=self.adapter_type,
+                model_id=entry.model_id,
+                adapter=self,
             )
-            return []
-        if resp.status_code != 200:
-            _log.warning(
-                "mistral_http.fetch_models upstream %d: %s",
-                resp.status_code,
-                resp.text[:200],
-            )
-            return []
-
-        try:
-            data = resp.json()
-        except ValueError:
-            _log.warning("mistral_http.fetch_models malformed JSON response")
-            return []
-
-        entries = data.get("data") or []
-        if not isinstance(entries, list):
-            return []
-        return _dedup_models(entries, c)
+            metas.append(ModelMetaDto(
+                connection_id=c.id,
+                connection_display_name=c.display_name,
+                connection_slug=c.slug,
+                model_id=entry.model_id,
+                display_name=entry.display_name,
+                context_window=entry.context_window,
+                reasoning=resolved.reasoning,
+                tools=resolved.tools,
+                first_class_support=resolved.first_class_support,
+                supports_vision=entry.supports_vision,
+                supports_tool_calls=entry.supports_tool_calls,
+                is_deprecated=False,
+                billing_category="pay_per_token",
+            ))
+        return metas
 
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,

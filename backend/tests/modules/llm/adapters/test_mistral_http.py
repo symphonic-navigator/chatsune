@@ -18,7 +18,6 @@ from backend.modules.llm._adapters._events import (
 from backend.modules.llm._adapters._mistral_http import (
     MistralHttpAdapter,
     _build_chat_payload,
-    _dedup_models,
     _parse_sse_line,
     _SSE_DONE,
     _ToolCallAccumulator,
@@ -187,336 +186,9 @@ def test_adapter_identity():
 
 def test_premium_adapter_has_no_templates_or_config_schema():
     # Premium-only adapter: not user-createable, so it exposes the
-    # BaseAdapter defaults (empty templates + schema + None router).
+    # BaseAdapter defaults (empty templates + schema).
     assert MistralHttpAdapter.templates() == []
     assert MistralHttpAdapter.config_schema() == []
-    assert MistralHttpAdapter.router() is None
-
-
-# ---------------------------------------------------------------------------
-# Dedup / filter pipeline
-# ---------------------------------------------------------------------------
-
-
-def _cap(**kw) -> dict:
-    base = {
-        "completion_chat": True,
-        "completion_fim": False,
-        "function_calling": False,
-        "fine_tuning": False,
-        "vision": False,
-        "reasoning": False,
-    }
-    base.update(kw)
-    return base
-
-
-def test_dedup_collapses_latest_and_dated_aliases_onto_preferred_id():
-    # Mirror of the user-provided sample: three entries for mistral-medium
-    # (dated, -latest, bare) all sharing name="mistral-medium-2508" collapse
-    # to a single row keyed on the -latest alias.
-    entries = [
-        {
-            "id": "mistral-medium-2508",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-latest",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.model_id == "mistral-medium-latest"
-    assert m.display_name == "mistral-medium-latest"
-    assert m.context_window == 131_072
-    assert m.supports_tool_calls is True
-    assert m.supports_vision is True
-    assert m.supports_reasoning is False
-    assert m.is_deprecated is False
-
-
-def test_dedup_marks_group_deprecated_when_entries_carry_deprecation():
-    entries = [
-        {
-            "id": "pixtral-large-2411",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-        {
-            "id": "pixtral-large-latest",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-        {
-            "id": "mistral-large-pixtral-2411",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.model_id == "pixtral-large-latest"
-    assert m.is_deprecated is True
-
-
-def test_dedup_keeps_standalone_entry_without_latest_alias():
-    entries = [
-        {
-            "id": "labs-mistral-small-creative",
-            "name": "labs-mistral-small-creative",
-            "max_context_length": 32_768,
-            "capabilities": _cap(),
-            "deprecation": "2026-09-01T00:00:00Z",
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.model_id == "labs-mistral-small-creative"
-    assert m.is_deprecated is True
-
-
-def test_dedup_filters_non_chat_models():
-    entries = [
-        {
-            "id": "mistral-embed-2312",
-            "name": "mistral-embed-2312",
-            "max_context_length": 8_192,
-            "capabilities": _cap(completion_chat=False),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-embed",
-            "name": "mistral-embed-2312",
-            "max_context_length": 8_192,
-            "capabilities": _cap(completion_chat=False),
-            "deprecation": None,
-        },
-    ]
-    assert _dedup_models(entries, _resolved_conn()) == []
-
-
-def test_dedup_full_sample_yields_exactly_three_rows():
-    # The composite user-provided sample: medium group (3), pixtral group
-    # (3), labs-creative (1), embed (2 — filtered). Expected output: 3.
-    entries = [
-        # medium group
-        {
-            "id": "mistral-medium-2508",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-latest",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        # pixtral group (deprecated)
-        {
-            "id": "pixtral-large-2411",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-        {
-            "id": "pixtral-large-latest",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-        {
-            "id": "mistral-large-pixtral-2411",
-            "name": "pixtral-large-2411",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": "2026-05-31T12:00:00Z",
-        },
-        # standalone deprecated
-        {
-            "id": "labs-mistral-small-creative",
-            "name": "labs-mistral-small-creative",
-            "max_context_length": 32_768,
-            "capabilities": _cap(),
-            "deprecation": "2026-09-01T00:00:00Z",
-        },
-        # embeddings (filtered)
-        {
-            "id": "mistral-embed-2312",
-            "name": "mistral-embed-2312",
-            "max_context_length": 8_192,
-            "capabilities": _cap(completion_chat=False),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-embed",
-            "name": "mistral-embed-2312",
-            "max_context_length": 8_192,
-            "capabilities": _cap(completion_chat=False),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    by_id = {m.model_id: m for m in metas}
-    assert set(by_id.keys()) == {
-        "mistral-medium-latest",
-        "pixtral-large-latest",
-        "labs-mistral-small-creative",
-    }
-    assert by_id["mistral-medium-latest"].is_deprecated is False
-    assert by_id["pixtral-large-latest"].is_deprecated is True
-    assert by_id["labs-mistral-small-creative"].is_deprecated is True
-
-
-def test_dedup_ignores_unrelated_latest_alias_in_group():
-    # Reproduces the live Mistral quirk for ``mistral-medium-3-5``: six
-    # entries share the same canonical name, but one of them is the
-    # unrelated ``mistral-vibe-cli-latest`` endpoint. The preferred id
-    # must remain the canonical name, not the foreign ``-latest`` alias.
-    caps = _cap(function_calling=True, vision=True, reasoning=True)
-    entries = [
-        {
-            "id": "mistral-medium-3-5",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-3.5",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-3",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-2604",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-c21211-r0-75",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-vibe-cli-latest",
-            "name": "mistral-medium-3-5",
-            "max_context_length": 262_144,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.model_id == "mistral-medium-3-5"
-    assert m.display_name == "mistral-medium-3-5"
-    assert m.context_window == 262_144
-    assert m.supports_reasoning is True
-    assert m.supports_vision is True
-    assert m.supports_tool_calls is True
-
-
-def test_dedup_ignores_latest_alias_with_different_base_slug():
-    # Narrower regression of the same class of bug: the
-    # ``open-mistral-nemo`` group contains ``mistral-tiny-latest`` as a
-    # member; the canonical name must win.
-    entries = [
-        {
-            "id": "open-mistral-nemo",
-            "name": "open-mistral-nemo",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-tiny-latest",
-            "name": "open-mistral-nemo",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    assert metas[0].model_id == "open-mistral-nemo"
-
-
-def test_dedup_still_picks_matching_latest_alias():
-    # Positive control: when the ``-latest`` alias's stem IS the canonical
-    # name's base slug, it must still be preferred.
-    entries = [
-        {
-            "id": "mistral-medium-2508",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium-latest",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-        {
-            "id": "mistral-medium",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _cap(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _resolved_conn())
-    assert len(metas) == 1
-    assert metas[0].model_id == "mistral-medium-latest"
 
 
 # ---------------------------------------------------------------------------
@@ -856,73 +528,77 @@ async def test_stream_completion_emits_refusal_on_content_filter(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# fetch_models — mocked HTTP
+# fetch_models — curated table (no HTTP)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_calls_models_endpoint_with_auth(monkeypatch):
-    def handler(request):
-        assert request.url.path.endswith("/models")
-        assert request.headers["authorization"] == "Bearer mistral-test-key"
-        return httpx.Response(200, json={
-            "object": "list",
-            "data": [
-                {
-                    "id": "mistral-medium-latest",
-                    "name": "mistral-medium-2508",
-                    "max_context_length": 131_072,
-                    "capabilities": _cap(function_calling=True, vision=True),
-                    "deprecation": None,
-                },
-            ],
-        })
-
-    _install_mock_transport(monkeypatch, handler)
+async def test_fetch_models_returns_exactly_three_curated_entries():
     adapter = MistralHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
-    assert len(metas) == 1
-    assert metas[0].model_id == "mistral-medium-latest"
-    assert metas[0].connection_slug == "mistral"
+    ids = {m.model_id for m in metas}
+    assert ids == {"mistral-small-4", "mistral-medium-3-5", "mistral-large-3"}
+    assert len(metas) == 3
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_returns_empty_on_auth_failure(monkeypatch):
-    def handler(request):
-        return httpx.Response(401, json={"error": "unauthorised"})
-
-    _install_mock_transport(monkeypatch, handler)
+async def test_fetch_models_carries_curated_display_names():
     adapter = MistralHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
-    assert metas == []
+    by_id = {m.model_id: m.display_name for m in metas}
+    assert by_id["mistral-small-4"] == "Mistral Small 4"
+    assert by_id["mistral-medium-3-5"] == "Mistral Medium 3.5"
+    assert by_id["mistral-large-3"] == "Mistral Large 3"
 
 
 @pytest.mark.asyncio
-async def test_fetch_models_labels_billing_category_as_pay_per_token(monkeypatch):
-    def handler(request):
-        return httpx.Response(200, json={
-            "object": "list",
-            "data": [
-                {
-                    "id": "mistral-medium-latest",
-                    "name": "mistral-medium-2508",
-                    "max_context_length": 131_072,
-                    "capabilities": _cap(function_calling=True, vision=True),
-                    "deprecation": None,
-                },
-                {
-                    "id": "pixtral-large-latest",
-                    "name": "pixtral-large-2411",
-                    "max_context_length": 131_072,
-                    "capabilities": _cap(function_calling=True, vision=True),
-                    "deprecation": None,
-                },
-            ],
-        })
-
-    _install_mock_transport(monkeypatch, handler)
+async def test_fetch_models_billing_category_is_pay_per_token_for_all_entries():
     adapter = MistralHttpAdapter()
     metas = await adapter.fetch_models(_resolved_conn())
-    assert metas, "expected at least one model"
     for m in metas:
         assert m.billing_category == "pay_per_token"
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_first_class_only_for_small_and_medium():
+    adapter = MistralHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    by_id = {m.model_id: m.first_class_support for m in metas}
+    assert by_id["mistral-small-4"] is True
+    assert by_id["mistral-medium-3-5"] is True
+    assert by_id["mistral-large-3"] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_makes_no_http_call(monkeypatch):
+    """Curated fetch_models must not hit /v1/models — it's a static table."""
+    called = False
+
+    async def _boom(*a, **kw):
+        nonlocal called
+        called = True
+        raise AssertionError("fetch_models should not perform HTTP")
+
+    # Patch httpx so any accidental network call would crash loudly.
+    monkeypatch.setattr(httpx.AsyncClient, "get", _boom)
+    adapter = MistralHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    assert called is False
+    assert len(metas) == 3
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_carries_context_window():
+    adapter = MistralHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    for m in metas:
+        assert m.context_window == 262_144
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_carries_vision_and_tool_flags():
+    adapter = MistralHttpAdapter()
+    metas = await adapter.fetch_models(_resolved_conn())
+    for m in metas:
+        assert m.supports_vision is True
+        assert m.supports_tool_calls is True

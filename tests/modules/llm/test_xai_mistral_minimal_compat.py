@@ -9,9 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from backend.modules.llm._adapters._mistral_http import (
-    MistralHttpAdapter,
     _build_chat_payload as _mistral_build_chat_payload,
-    _dedup_models,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
 from backend.modules.llm._adapters._xai_http import (
@@ -39,23 +37,6 @@ def _xai_conn() -> ResolvedConnection:
             "url": "https://api.x.ai/v1",
             "api_key": "xai-test-key",
             "max_parallel": 4,
-        },
-        created_at=now,
-        updated_at=now,
-    )
-
-
-def _mistral_conn() -> ResolvedConnection:
-    now = datetime.now(UTC)
-    return ResolvedConnection(
-        id="premium:mistral",
-        user_id="u1",
-        adapter_type="mistral_http",
-        display_name="Mistral",
-        slug="mistral",
-        config={
-            "url": "https://api.mistral.ai/v1",
-            "api_key": "mistral-test-key",
         },
         created_at=now,
         updated_at=now,
@@ -136,92 +117,6 @@ def test_xai_request_translation_reads_reasoning_mode_off() -> None:
     req = _completion_request(model="grok-4.1-fast", reasoning_mode="off")
     payload = _xai_build_chat_payload(req)
     assert payload["model"] == "grok-4-1-fast-non-reasoning"
-
-
-# ---------------------------------------------------------------------------
-# Mistral — ModelMetaDto carries the new capability fields
-# ---------------------------------------------------------------------------
-
-
-def _mistral_caps(**overrides) -> dict:
-    base = {
-        "completion_chat": True,
-        "completion_fim": False,
-        "function_calling": False,
-        "fine_tuning": False,
-        "vision": False,
-        "reasoning": False,
-    }
-    base.update(overrides)
-    return base
-
-
-def test_mistral_meta_carries_new_capability_fields_for_reasoning_model() -> None:
-    """Mistral entries with ``capabilities.reasoning=True`` must emit
-    a ``ReasoningCapability(kind="optional")`` plus ``ToolCapability``."""
-    entries = [
-        {
-            "id": "magistral-medium-latest",
-            "name": "magistral-medium-2509",
-            "max_context_length": 131_072,
-            "capabilities": _mistral_caps(function_calling=True, reasoning=True),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _mistral_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert isinstance(m.reasoning, ReasoningCapability)
-    assert m.reasoning.kind == "optional"
-    assert m.reasoning.default_on is True
-    assert isinstance(m.tools, ToolCapability)
-    assert m.tools.supported is True
-    assert m.tools.exclusive_with_reasoning is False
-    assert m.first_class_support is False
-    assert m.supports_reasoning is True
-
-
-def test_mistral_meta_carries_new_capability_fields_for_non_reasoning_model() -> None:
-    """Mistral entries with ``capabilities.reasoning=False`` must emit
-    ``ReasoningCapability(kind="no_reasoning")`` and the legacy
-    ``supports_reasoning`` computed field must be ``False``."""
-    entries = [
-        {
-            "id": "mistral-medium-latest",
-            "name": "mistral-medium-2508",
-            "max_context_length": 131_072,
-            "capabilities": _mistral_caps(function_calling=True, vision=True),
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _mistral_conn())
-    assert len(metas) == 1
-    m = metas[0]
-    assert m.reasoning.kind == "no_reasoning"
-    assert m.tools.supported is True
-    assert m.tools.exclusive_with_reasoning is False
-    assert m.first_class_support is False
-    assert m.supports_reasoning is False
-
-
-def test_mistral_meta_tools_supported_defaults_to_true_when_capability_missing() -> None:
-    """If upstream omits ``function_calling`` we conservatively default to
-    True (the safer side: tools may be silently ignored, but we don't
-    falsely block tool calls on models that do support them)."""
-    caps = _mistral_caps()
-    caps.pop("function_calling")
-    entries = [
-        {
-            "id": "mistral-small-latest",
-            "name": "mistral-small-2506",
-            "max_context_length": 32_768,
-            "capabilities": caps,
-            "deprecation": None,
-        },
-    ]
-    metas = _dedup_models(entries, _mistral_conn())
-    assert len(metas) == 1
-    assert metas[0].tools.supported is True
 
 
 # ---------------------------------------------------------------------------
