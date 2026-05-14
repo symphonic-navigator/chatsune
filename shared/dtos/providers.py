@@ -54,6 +54,10 @@ class PremiumProviderDefinitionDto(BaseModel):
     capabilities: list[Capability]
     config_fields: list[dict[str, Any]]
     linked_integrations: list[str] = Field(default_factory=list)
+    # See PremiumProviderDefinition.sort_priority. Default 100 keeps
+    # pre-existing cached payloads readable per CLAUDE.md §Data-Model
+    # Migrations.
+    sort_priority: int = 100
 
 
 class PremiumProviderAccountDto(BaseModel):

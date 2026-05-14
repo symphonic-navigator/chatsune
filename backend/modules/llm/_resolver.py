@@ -33,6 +33,7 @@ from backend.modules.llm._connections import ConnectionRepository
 _PREMIUM_ADAPTER_TYPE: dict[str, str] = {
     "xai": "xai_http",
     "mistral": "mistral_http",
+    "tensorix": "tensorix_http",
     "ollama_cloud": "ollama_http",
     "nano_gpt": "nano_gpt_http",
     "openrouter": "openrouter_http",

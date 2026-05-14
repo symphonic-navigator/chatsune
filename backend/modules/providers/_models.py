@@ -17,3 +17,8 @@ class PremiumProviderDefinition:
     probe_method: Literal["GET", "POST"] = "GET"
     linked_integrations: list[str] = field(default_factory=list)
     secret_fields: frozenset[str] = frozenset({"api_key"})
+    # Lower value = earlier in the catalogue list. Ties break by
+    # registration order (Python dicts preserve insertion order, and
+    # ``sorted`` is stable). Default 100 keeps unspecified providers
+    # at the tail of the list.
+    sort_priority: int = 100

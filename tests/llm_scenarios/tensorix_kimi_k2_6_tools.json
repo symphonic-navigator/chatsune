@@ -1,0 +1,23 @@
+{
+  "model": "kimi-k2-6",
+  "system": "Use tools when they're appropriate.",
+  "messages": [
+    {"role": "user", "content": "What is the weather in Tokyo right now?"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Return the current weather for a location.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {"type": "string"}
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ]
+}
