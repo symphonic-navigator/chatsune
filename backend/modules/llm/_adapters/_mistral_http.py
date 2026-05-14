@@ -1,11 +1,12 @@
 """Mistral HTTP adapter — OpenAI-compatible Chat Completions.
 
-Premium-only adapter: not user-creatable. Instantiated exclusively via the
-Premium Provider resolver (see :mod:`backend.modules.llm._resolver`).
-Because Mistral's API is OpenAI-compatible, the SSE parser, tool-call
-accumulator, and gutter-timer logic are structurally identical to the xAI
-adapter. They are intentionally copied here (not imported) so each adapter
-remains independent — extracting shared helpers is out of scope for Phase 1.
+Hosts a curated three-model list (Mistral Small 4, Medium 3.5, Large 3)
+against the official Mistral Cloud API. Reasoning is a binary toggle
+because Mistral only accepts ``reasoning_effort`` values ``high`` and
+``none`` for Small 4 / Medium 3.5; Large 3 has no reasoning. Mistral's
+SSE stream uses a proprietary ``thinking``-block format inside
+``delta.content`` (polymorphic: string or typed-item array) — see
+``_translate_delta_content`` for the parser.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ import logging
 import os
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from typing import Literal
 from uuid import uuid4
 
 import httpx
@@ -59,6 +62,56 @@ _PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
+
+
+@dataclass(frozen=True)
+class _MistralModelEntry:
+    model_id: str            # persona-stable internal ID
+    upstream_slug: str       # the slug we send to Mistral
+    display_name: str
+    context_window: int
+    has_reasoning: bool      # True -> reasoning_effort toggle (high/none)
+    supports_vision: bool
+    supports_tool_calls: bool
+    first_class_support: bool
+
+
+_MISTRAL_MODELS: tuple[_MistralModelEntry, ...] = (
+    _MistralModelEntry(
+        model_id="mistral-small-4",
+        upstream_slug="mistral-small-latest",
+        display_name="Mistral Small 4",
+        context_window=262_144,
+        has_reasoning=True,
+        supports_vision=True,
+        supports_tool_calls=True,
+        first_class_support=True,
+    ),
+    _MistralModelEntry(
+        model_id="mistral-medium-3-5",
+        upstream_slug="mistral-medium-3-5",
+        display_name="Mistral Medium 3.5",
+        context_window=262_144,
+        has_reasoning=True,
+        supports_vision=True,
+        supports_tool_calls=True,
+        first_class_support=True,
+    ),
+    _MistralModelEntry(
+        model_id="mistral-large-3",
+        upstream_slug="mistral-large-latest",
+        display_name="Mistral Large 3",
+        context_window=262_144,
+        has_reasoning=False,
+        supports_vision=True,
+        supports_tool_calls=True,
+        first_class_support=False,
+    ),
+)
+
+_MISTRAL_MODELS_BY_ID: dict[str, _MistralModelEntry] = {
+    m.model_id: m for m in _MISTRAL_MODELS
+}
 
 
 class _ToolCallAccumulator:
@@ -352,6 +405,27 @@ class MistralHttpAdapter(BaseAdapter):
     display_name = "Mistral"
     view_id = "mistral_http"
     secret_fields = frozenset({"api_key"})
+
+    def capability_hint(self, model_id: str):
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        entry = _MISTRAL_MODELS_BY_ID.get(model_id)
+        if entry is None:
+            return None
+        reasoning_kind: Literal["no_reasoning", "optional"] = (
+            "optional" if entry.has_reasoning else "no_reasoning"
+        )
+        return CapabilityHint(
+            reasoning=ReasoningCapability(
+                kind=reasoning_kind,
+                default_on=entry.has_reasoning,
+            ),
+            tools=ToolCapability(
+                supported=entry.supports_tool_calls,
+                exclusive_with_reasoning=False,
+            ),
+            first_class_support=entry.first_class_support,
+        )
 
     async def fetch_models(
         self, c: ResolvedConnection,

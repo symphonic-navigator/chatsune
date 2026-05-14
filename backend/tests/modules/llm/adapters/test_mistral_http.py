@@ -35,6 +35,87 @@ from shared.dtos.inference import (
 )
 from shared.dtos.llm import ReasoningCapability, ToolCapability
 
+from backend.modules.llm._adapters._mistral_http import (
+    _MISTRAL_MODELS,
+    _MISTRAL_MODELS_BY_ID,
+    _MistralModelEntry,
+)
+
+
+def test_mistral_models_table_has_exactly_three_entries():
+    assert len(_MISTRAL_MODELS) == 3
+    ids = {m.model_id for m in _MISTRAL_MODELS}
+    assert ids == {"mistral-small-4", "mistral-medium-3-5", "mistral-large-3"}
+
+
+def test_mistral_models_display_names_are_curated():
+    by_id = {m.model_id: m.display_name for m in _MISTRAL_MODELS}
+    assert by_id["mistral-small-4"] == "Mistral Small 4"
+    assert by_id["mistral-medium-3-5"] == "Mistral Medium 3.5"
+    assert by_id["mistral-large-3"] == "Mistral Large 3"
+
+
+def test_mistral_models_upstream_slugs_match_api_reality():
+    by_id = {m.model_id: m.upstream_slug for m in _MISTRAL_MODELS}
+    assert by_id["mistral-small-4"] == "mistral-small-latest"
+    assert by_id["mistral-medium-3-5"] == "mistral-medium-3-5"
+    assert by_id["mistral-large-3"] == "mistral-large-latest"
+
+
+def test_mistral_models_first_class_only_for_reasoning_models():
+    by_id = {m.model_id: m.first_class_support for m in _MISTRAL_MODELS}
+    assert by_id["mistral-small-4"] is True
+    assert by_id["mistral-medium-3-5"] is True
+    assert by_id["mistral-large-3"] is False
+
+
+def test_mistral_models_large_3_has_no_reasoning():
+    entry = _MISTRAL_MODELS_BY_ID["mistral-large-3"]
+    assert entry.has_reasoning is False
+
+
+def test_mistral_models_small_and_medium_have_reasoning():
+    assert _MISTRAL_MODELS_BY_ID["mistral-small-4"].has_reasoning is True
+    assert _MISTRAL_MODELS_BY_ID["mistral-medium-3-5"].has_reasoning is True
+
+
+def test_mistral_models_context_window_is_262144_for_all():
+    for entry in _MISTRAL_MODELS:
+        assert entry.context_window == 262_144
+
+
+def test_mistral_models_all_support_vision_and_tools():
+    for entry in _MISTRAL_MODELS:
+        assert entry.supports_vision is True
+        assert entry.supports_tool_calls is True
+
+
+def test_capability_hint_returns_optional_reasoning_for_small_4():
+    adapter = MistralHttpAdapter()
+    hint = adapter.capability_hint("mistral-small-4")
+    assert hint is not None
+    assert hint.reasoning.kind == "optional"
+    assert hint.reasoning.default_on is True
+    assert hint.reasoning.effort is None
+    assert hint.tools.supported is True
+    assert hint.first_class_support is True
+
+
+def test_capability_hint_returns_no_reasoning_for_large_3():
+    adapter = MistralHttpAdapter()
+    hint = adapter.capability_hint("mistral-large-3")
+    assert hint is not None
+    assert hint.reasoning.kind == "no_reasoning"
+    assert hint.reasoning.default_on is False
+    assert hint.tools.supported is True
+    assert hint.first_class_support is False
+
+
+def test_capability_hint_returns_none_for_unknown_model_id():
+    adapter = MistralHttpAdapter()
+    assert adapter.capability_hint("magistral-medium-latest") is None
+    assert adapter.capability_hint("totally-made-up") is None
+
 
 def _resolved_conn(api_key: str = "mistral-test-key") -> ResolvedConnection:
     now = datetime.now(UTC)
