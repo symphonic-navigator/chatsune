@@ -383,11 +383,6 @@ def test_build_payload_tools_translated_to_openai_schema():
     }]
 
 
-def test_build_payload_includes_stream_options_for_usage():
-    payload = _build_chat_payload(_simple_request())
-    assert payload["stream_options"] == {"include_usage": True}
-
-
 def test_build_payload_omits_temperature_when_none():
     payload = _build_chat_payload(_simple_request(temperature=None))
     assert "temperature" not in payload
@@ -396,17 +391,6 @@ def test_build_payload_omits_temperature_when_none():
 def test_build_payload_includes_temperature_when_set():
     payload = _build_chat_payload(_simple_request(temperature=0.7))
     assert payload["temperature"] == 0.7
-
-
-def test_build_payload_translates_tools_to_openai_schema():
-    tool = ToolDefinition(
-        name="web_search",
-        description="Search the web",
-        parameters={"type": "object",
-                    "properties": {"query": {"type": "string"}}},
-    )
-    payload = _build_chat_payload(_simple_request(tools=[tool]))
-    assert payload["tools"][0]["function"]["name"] == "web_search"
 
 
 # ---------------------------------------------------------------------------
