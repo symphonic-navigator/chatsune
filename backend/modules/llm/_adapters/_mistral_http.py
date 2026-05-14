@@ -153,6 +153,47 @@ class _ToolCallAccumulator:
         return calls
 
 
+def _translate_delta_content(content: object) -> tuple[str, str]:
+    """Return (visible_text, thinking_text) from Mistral's polymorphic delta.content.
+
+    Mistral breaks from OpenAI's schema when reasoning is active: delta.content
+    becomes a list of typed items {"type": "thinking" | "text", ...} rather
+    than a plain string. We fold visible-text fragments and thinking-text
+    fragments separately so _chunk_to_events can emit ContentDelta and
+    ThinkingDelta cleanly.
+
+    When reasoning_effort="none" (or for models without reasoning) Mistral
+    keeps delta.content as a plain string — handled identically to the
+    OpenAI path.
+    """
+    if isinstance(content, str):
+        return content, ""
+    if not isinstance(content, list):
+        return "", ""
+    visible: list[str] = []
+    thinking: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("type")
+        if kind == "text":
+            text = item.get("text")
+            if isinstance(text, str):
+                visible.append(text)
+        elif kind == "thinking":
+            for inner in item.get("thinking") or []:
+                if not isinstance(inner, dict):
+                    continue
+                if inner.get("type") == "text":
+                    text = inner.get("text")
+                    if isinstance(text, str):
+                        thinking.append(text)
+        # other item types (e.g. future tool-call representation) are
+        # ignored intentionally — tool_calls arrive on delta.tool_calls,
+        # not inline in content.
+    return "".join(visible), "".join(thinking)
+
+
 def _chunk_to_events(
     chunk: dict,
     acc: _ToolCallAccumulator,
@@ -187,13 +228,19 @@ def _chunk_to_events(
     choice = choices[0]
     delta = choice.get("delta") or {}
 
-    reasoning = delta.get("reasoning_content") or ""
-    if reasoning:
-        events.append(ThinkingDelta(delta=reasoning))
+    # Mistral packs thinking blocks inside delta.content (polymorphic:
+    # string or typed-item list). The OpenAI-style reasoning_content
+    # field is kept as a fallback in case Mistral converges to OpenAI's
+    # schema in a future API revision.
+    visible, thinking_from_content = _translate_delta_content(delta.get("content"))
+    if thinking_from_content:
+        events.append(ThinkingDelta(delta=thinking_from_content))
+    if visible:
+        events.append(ContentDelta(delta=visible))
 
-    content = delta.get("content") or ""
-    if content:
-        events.append(ContentDelta(delta=content))
+    oai_reasoning = delta.get("reasoning_content") or ""
+    if oai_reasoning:
+        events.append(ThinkingDelta(delta=oai_reasoning))
 
     tool_frags = delta.get("tool_calls") or []
     if tool_frags:

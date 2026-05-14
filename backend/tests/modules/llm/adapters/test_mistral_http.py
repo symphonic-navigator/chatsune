@@ -21,6 +21,7 @@ from backend.modules.llm._adapters._mistral_http import (
     _parse_sse_line,
     _SSE_DONE,
     _ToolCallAccumulator,
+    _translate_delta_content,
     _translate_message,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
@@ -414,6 +415,81 @@ def test_parse_sse_line_returns_none_for_empty_or_malformed():
 
 
 # ---------------------------------------------------------------------------
+# translate_delta_content (thinking-blocks)
+# ---------------------------------------------------------------------------
+
+
+def test_translate_delta_content_string_input_passes_through():
+    visible, thinking = _translate_delta_content("hello")
+    assert visible == "hello"
+    assert thinking == ""
+
+
+def test_translate_delta_content_empty_string():
+    visible, thinking = _translate_delta_content("")
+    assert visible == ""
+    assert thinking == ""
+
+
+def test_translate_delta_content_none_returns_empty_pair():
+    visible, thinking = _translate_delta_content(None)
+    assert visible == ""
+    assert thinking == ""
+
+
+def test_translate_delta_content_array_with_only_thinking():
+    arr = [{
+        "type": "thinking",
+        "thinking": [{"type": "text", "text": "Okay, let me think"}],
+        "closed": True,
+    }]
+    visible, thinking = _translate_delta_content(arr)
+    assert visible == ""
+    assert thinking == "Okay, let me think"
+
+
+def test_translate_delta_content_array_with_only_text():
+    arr = [{"type": "text", "text": "Result is 4"}]
+    visible, thinking = _translate_delta_content(arr)
+    assert visible == "Result is 4"
+    assert thinking == ""
+
+
+def test_translate_delta_content_array_with_mixed_items():
+    arr = [
+        {"type": "thinking",
+         "thinking": [{"type": "text", "text": "Hmm "}, {"type": "text", "text": "let me see."}]},
+        {"type": "text", "text": "The answer "},
+        {"type": "text", "text": "is 4."},
+    ]
+    visible, thinking = _translate_delta_content(arr)
+    assert visible == "The answer is 4."
+    assert thinking == "Hmm let me see."
+
+
+def test_translate_delta_content_ignores_unknown_item_types():
+    arr = [
+        {"type": "future_unknown_type", "data": "..."},
+        {"type": "text", "text": "Hello"},
+    ]
+    visible, thinking = _translate_delta_content(arr)
+    assert visible == "Hello"
+    assert thinking == ""
+
+
+def test_translate_delta_content_robust_against_malformed_items():
+    arr = [
+        "not a dict",  # malformed item
+        {"type": "thinking"},  # missing thinking-field
+        {"type": "text"},  # missing text-field
+        {"type": "text", "text": "ok"},
+    ]
+    visible, thinking = _translate_delta_content(arr)
+    assert visible == "ok"
+    assert thinking == ""
+
+
+# ---------------------------------------------------------------------------
 # Tool-call accumulator
 # ---------------------------------------------------------------------------
 
@@ -510,6 +586,31 @@ async def test_stream_completion_emits_thinking_delta_for_reasoning_content(monk
             'data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}',
             'data: {"choices":[{"delta":{"content":"42"}}]}',
             'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = MistralHttpAdapter()
+    events = await _collect(adapter.stream_completion(_resolved_conn(), _simple_request()))
+    thinking = [e for e in events if isinstance(e, ThinkingDelta)]
+    content = [e for e in events if isinstance(e, ContentDelta)]
+    assert [t.delta for t in thinking] == ["hmm"]
+    assert [c.delta for c in content] == ["42"]
+
+
+@pytest.mark.asyncio
+async def test_stream_completion_emits_thinking_delta_for_mistral_thinking_blocks(monkeypatch):
+    """Mistral's proprietary format: delta.content as array with
+    thinking-typed items.
+    """
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{"content":'
+            '[{"type":"thinking","thinking":[{"type":"text","text":"hmm"}]}]}}]}',
+            'data: {"choices":[{"delta":{"content":'
+            '[{"type":"text","text":"42"}]}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":3}}',
             'data: [DONE]',
         ])
 
