@@ -117,6 +117,45 @@ def test_capability_hint_returns_none_for_unknown_model_id():
     assert adapter.capability_hint("totally-made-up") is None
 
 
+def test_resolve_capabilities_small_4_has_no_effort_buckets():
+    from backend.modules.llm._capabilities import resolve_capabilities
+    adapter = MistralHttpAdapter()
+    resolved = resolve_capabilities(
+        adapter_type="mistral_http",
+        model_id="mistral-small-4",
+        adapter=adapter,
+    )
+    assert resolved.reasoning.kind == "optional"
+    assert resolved.reasoning.effort is None
+    assert resolved.reasoning.default_on is True
+    assert resolved.first_class_support is True
+
+
+def test_resolve_capabilities_medium_3_5_has_no_effort_buckets():
+    from backend.modules.llm._capabilities import resolve_capabilities
+    adapter = MistralHttpAdapter()
+    resolved = resolve_capabilities(
+        adapter_type="mistral_http",
+        model_id="mistral-medium-3-5",
+        adapter=adapter,
+    )
+    assert resolved.reasoning.kind == "optional"
+    assert resolved.reasoning.effort is None
+    assert resolved.first_class_support is True
+
+
+def test_resolve_capabilities_large_3_has_no_reasoning():
+    from backend.modules.llm._capabilities import resolve_capabilities
+    adapter = MistralHttpAdapter()
+    resolved = resolve_capabilities(
+        adapter_type="mistral_http",
+        model_id="mistral-large-3",
+        adapter=adapter,
+    )
+    assert resolved.reasoning.kind == "no_reasoning"
+    assert resolved.tools.supported is True
+
+
 def _resolved_conn(api_key: str = "mistral-test-key") -> ResolvedConnection:
     now = datetime.now(UTC)
     return ResolvedConnection(

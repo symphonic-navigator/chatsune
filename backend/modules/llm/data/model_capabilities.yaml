@@ -127,6 +127,23 @@ models:
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
+  # Mistral native — Small 4 und Medium 3.5 mit binärem reasoning_effort
+  # (Mistral akzeptiert nur high/none, kein low/medium). Der UI-Toggle
+  # mappt direkt auf high (an) / none (aus); kein Bucket-Selector.
+  - adapter: mistral_http
+    pattern: "mistral-small-4"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  - adapter: mistral_http
+    pattern: "mistral-medium-3-5"
+    reasoning:
+      kind: optional
+      default_on: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
   # z.AI GLM-5 family via Ollama Cloud — reasoning toggleable via think:
   # true/false (probed 2026-05-12 against ollama.com/api/chat). Tool calls
   # work in both reasoning modes. No vision support in this family.
