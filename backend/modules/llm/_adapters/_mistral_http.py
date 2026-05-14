@@ -238,9 +238,13 @@ def _chunk_to_events(
     if visible:
         events.append(ContentDelta(delta=visible))
 
-    oai_reasoning = delta.get("reasoning_content") or ""
-    if oai_reasoning:
-        events.append(ThinkingDelta(delta=oai_reasoning))
+    # Only fall back to OAI-style reasoning_content if the content array
+    # carried no thinking — prevents double ThinkingDelta in a hybrid chunk
+    # (e.g. during a future Mistral schema transition).
+    if not thinking_from_content:
+        oai_reasoning = delta.get("reasoning_content") or ""
+        if oai_reasoning:
+            events.append(ThinkingDelta(delta=oai_reasoning))
 
     tool_frags = delta.get("tool_calls") or []
     if tool_frags:

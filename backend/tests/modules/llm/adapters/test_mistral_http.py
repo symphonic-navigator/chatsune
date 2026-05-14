@@ -624,6 +624,30 @@ async def test_stream_completion_emits_thinking_delta_for_mistral_thinking_block
 
 
 @pytest.mark.asyncio
+async def test_stream_completion_does_not_double_emit_thinking_when_both_paths_present(monkeypatch):
+    """If Mistral ever sends BOTH content-array thinking AND reasoning_content
+    in the same chunk, we must emit exactly one ThinkingDelta (the
+    Mistral-native one), not two.
+    """
+    def handler(request):
+        return _sse_response([
+            'data: {"choices":[{"delta":{'
+            '"content":[{"type":"thinking","thinking":[{"type":"text","text":"native"}]}],'
+            '"reasoning_content":"fallback"'
+            '}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1}}',
+            'data: [DONE]',
+        ])
+
+    _install_mock_transport(monkeypatch, handler)
+    adapter = MistralHttpAdapter()
+    events = await _collect(adapter.stream_completion(_resolved_conn(), _simple_request()))
+    thinking = [e for e in events if isinstance(e, ThinkingDelta)]
+    assert [t.delta for t in thinking] == ["native"]
+
+
+@pytest.mark.asyncio
 async def test_stream_completion_accumulates_tool_call_fragments(monkeypatch):
     def handler(request):
         return _sse_response([
