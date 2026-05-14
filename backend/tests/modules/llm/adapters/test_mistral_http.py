@@ -1,4 +1,4 @@
-"""Tests for the Mistral HTTP adapter — identity, dedup pipeline, streaming."""
+"""Tests for the Mistral HTTP adapter — curated model table, stream parser, routing."""
 
 from __future__ import annotations
 
@@ -154,6 +154,7 @@ def test_resolve_capabilities_large_3_has_no_reasoning():
     )
     assert resolved.reasoning.kind == "no_reasoning"
     assert resolved.tools.supported is True
+    assert resolved.first_class_support is False
 
 
 def _resolved_conn(api_key: str = "mistral-test-key") -> ResolvedConnection:
