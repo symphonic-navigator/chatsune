@@ -22,6 +22,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
+from fastapi import APIRouter, Depends
 
 from backend._retry import (
     MAX_RETRY_ATTEMPTS,
@@ -58,6 +59,7 @@ GUTTER_ABORT_SECONDS: float = float(
 )
 
 _TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+_PROBE_TIMEOUT = httpx.Timeout(10.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
@@ -375,11 +377,26 @@ def _build_chat_payload(request: CompletionRequest) -> dict:
     return payload
 
 
+def _mistral_repo_factory():
+    """Default factory — returns a ConnectionRepository backed by the live DB.
+
+    Defined at module level so tests can monkeypatch it:
+        monkeypatch.setattr(_mistral_http, "_mistral_repo_factory", lambda: _FakeRepo())
+    """
+    from backend.database import get_db
+    from backend.modules.llm._connections import ConnectionRepository
+    return ConnectionRepository(get_db())
+
+
 class MistralHttpAdapter(BaseAdapter):
     adapter_type = "mistral_http"
     display_name = "Mistral"
     view_id = "mistral_http"
     secret_fields = frozenset({"api_key"})
+
+    @classmethod
+    def router(cls) -> APIRouter:
+        return _build_adapter_router()
 
     def capability_hint(self, model_id: str):
         from backend.modules.llm._capabilities import CapabilityHint
@@ -589,3 +606,58 @@ class MistralHttpAdapter(BaseAdapter):
                 # Sleep with the stream context closed.
                 assert retry_delay is not None
                 await asyncio.sleep(retry_delay)
+
+
+def _build_adapter_router() -> APIRouter:
+    from datetime import UTC, datetime
+
+    import backend.modules.llm._adapters._mistral_http as _self
+    from backend.modules.llm._connections import ConnectionRepository
+    from backend.modules.llm._resolver import resolve_connection_for_user
+    from backend.ws.event_bus import EventBus, get_event_bus
+    from shared.events.llm import LlmConnectionUpdatedEvent
+    from shared.topics import Topics
+
+    router = APIRouter()
+
+    @router.post("/test")
+    async def test_connection(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+        event_bus: EventBus = Depends(get_event_bus),
+        repo=Depends(lambda: _self._mistral_repo_factory()),
+    ) -> dict:
+        url = c.config["url"].rstrip("/")
+        api_key = c.config.get("api_key") or ""
+        valid = False
+        error: str | None = None
+        try:
+            async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+                resp = await client.get(
+                    f"{url}/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if resp.status_code in (401, 403):
+                    error = "API key rejected by Mistral"
+                elif resp.status_code != 200:
+                    error = f"Mistral returned {resp.status_code}"
+                else:
+                    valid = True
+        except Exception as exc:  # noqa: BLE001 — surface to frontend
+            error = str(exc)
+
+        updated = await repo.update_test_status(
+            c.user_id, c.id,
+            status="valid" if valid else "failed",
+            error=error,
+        )
+        if updated is not None:
+            await event_bus.publish(
+                Topics.LLM_CONNECTION_UPDATED,
+                LlmConnectionUpdatedEvent(
+                    connection=ConnectionRepository.to_dto(updated),
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return {"valid": valid, "error": error}
+
+    return router

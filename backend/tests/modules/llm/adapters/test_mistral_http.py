@@ -810,3 +810,81 @@ async def test_fetch_models_carries_vision_and_tool_flags():
     for m in metas:
         assert m.supports_vision is True
         assert m.supports_tool_calls is True
+
+
+# ---------------------------------------------------------------------------
+# Sub-router POST /test
+# ---------------------------------------------------------------------------
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _app_with_mistral_router(monkeypatch, handler) -> TestClient:
+    from backend.modules.llm._adapters import _mistral_http
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    class _PatchedClient(httpx.AsyncClient):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(_mistral_http.httpx, "AsyncClient", _PatchedClient)
+
+    router = MistralHttpAdapter.router()
+    app = FastAPI()
+    app.include_router(router, prefix="/adapter")
+    app.dependency_overrides[resolve_connection_for_user] = lambda: _resolved_conn()
+
+    from backend.ws.event_bus import get_event_bus
+
+    class _FakeRepo:
+        async def update_test_status(self, *a, **kw):
+            return None
+
+    class _FakeBus:
+        async def publish(self, *a, **kw):
+            return None
+
+    monkeypatch.setattr(_mistral_http, "_mistral_repo_factory",
+                        lambda: _FakeRepo(), raising=False)
+    app.dependency_overrides[get_event_bus] = lambda: _FakeBus()
+    return TestClient(app)
+
+
+def test_post_test_valid_key_returns_true(monkeypatch):
+    def handler(request):
+        assert request.url.path.endswith("/models")
+        assert request.headers["authorization"] == "Bearer mistral-test-key"
+        return httpx.Response(200, json={"data": [{"id": "mistral-small-latest"}]})
+
+    client = _app_with_mistral_router(monkeypatch, handler)
+    resp = client.post("/adapter/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["error"] is None
+
+
+def test_post_test_invalid_key_returns_false_with_clear_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(401, json={"error": "unauthorised"})
+
+    client = _app_with_mistral_router(monkeypatch, handler)
+    resp = client.post("/adapter/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "key" in body["error"].lower() and "mistral" in body["error"].lower()
+
+
+def test_post_test_upstream_error_returns_false(monkeypatch):
+    def handler(request):
+        return httpx.Response(503, json={"error": "down"})
+
+    client = _app_with_mistral_router(monkeypatch, handler)
+    resp = client.post("/adapter/test")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert "503" in body["error"]
