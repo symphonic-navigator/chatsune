@@ -838,3 +838,97 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 )
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)
+
+
+async def _emit_compaction_failed(
+    event_bus,
+    session_id: str,
+    correlation_id: str,
+    user_id: str,
+    *,
+    error_code: str,
+    user_message: str,
+    recoverable: bool,
+) -> None:
+    """Publish a ChatCompactionFailedEvent — used by the trigger handler.
+
+    Deferred imports mirror the rest of this file's pattern (heavy chat /
+    shared modules are pulled in lazily where they would otherwise cause
+    circular imports through ``backend.modules.chat.__init__``).
+    """
+    from shared.events.chat import ChatCompactionFailedEvent
+
+    await event_bus.publish(
+        Topics.CHAT_COMPACTION_FAILED,
+        ChatCompactionFailedEvent(
+            session_id=session_id,
+            correlation_id=correlation_id,
+            error_code=error_code,
+            user_message=user_message,
+            recoverable=recoverable,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+
+async def handle_chat_compaction_request(
+    user_id: str, data: dict, *, connection_id: str | None = None,
+) -> None:
+    """Handle a chat.compaction.request WebSocket message — trigger a
+    compaction job. See spec §6.1.
+
+    Signature mirrors the other ``handle_chat_*`` handlers in this file so
+    the WS router can dispatch all of them uniformly. ``connection_id`` is
+    currently unused — the job runs against the session, not the WS
+    connection — but is accepted to keep the dispatch contract uniform.
+    """
+    from backend.database import get_redis
+
+    session_id = data.get("session_id")
+    if not session_id:
+        return
+
+    correlation_id = data.get("correlation_id") or str(uuid4())
+    event_bus = get_event_bus()
+
+    try:
+        db = get_db()
+        repo = ChatRepository(db)
+
+        session = await repo.get_session(session_id, user_id)
+        if session is None:
+            # Ownership / not-found — silent, no event to route.
+            return
+
+        # Minimum-size check — refuses tiny sessions outright.
+        total_messages = await repo.count_messages(session_id)
+        total_tokens = int(session.get("context_used_tokens") or 0)
+        if total_messages <= 12 or total_tokens < 4000:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="too_small", recoverable=False,
+                user_message="Conversation too short to compact yet.",
+            )
+            return
+
+        # Lower threshold — refuse to compact sessions that haven't filled
+        # at least 30 % of the model's context window yet (no benefit).
+        fill = float(session.get("context_fill_percentage") or 0.0)
+        if fill < 0.30:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="below_threshold", recoverable=False,
+                user_message=(
+                    "Conversation is not large enough to benefit from "
+                    "compaction yet."
+                ),
+            )
+            return
+    except Exception:
+        _log.exception(
+            "Unhandled error in handle_chat_compaction_request for user %s",
+            user_id,
+        )
