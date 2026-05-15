@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { meApi } from '../../../core/api/meApi'
+import { systemApi } from '../../../core/api/systemApi'
 import { useAuthStore } from '../../../core/store/authStore'
 import { useAuth } from '../../../core/hooks/useAuth'
 import { ApiError } from '../../../core/api/client'
@@ -36,6 +37,9 @@ export function AboutMeTab() {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  // --- Chatsune version ---
+  const [version, setVersion] = useState<string | null>(null)
+
   useEffect(() => {
     return () => {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
@@ -52,6 +56,17 @@ export function AboutMeTab() {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    systemApi.getVersion()
+      .then((data) => {
+        const v = data.version?.trim()
+        // The backend's last-resort fallback isn't a useful version to
+        // surface to the user — show "n/a" instead.
+        setVersion(v && v !== '0.0.0-unknown' ? v : null)
+      })
+      .catch(() => setVersion(null))
   }, [])
 
   async function handleSaveDisplayName() {
@@ -118,6 +133,14 @@ export function AboutMeTab() {
 
   return (
     <div className="p-6 max-w-2xl flex flex-col gap-8 overflow-y-auto">
+
+      {/* Chatsune Version */}
+      <div>
+        <span className={LABEL}>Chatsune Version</span>
+        <div className="font-mono text-[13px] text-white/75">
+          {version ?? 'n/a'}
+        </div>
+      </div>
 
       {/* Display Name */}
       <div>
