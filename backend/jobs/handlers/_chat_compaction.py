@@ -178,6 +178,20 @@ async def handle_chat_compaction(
             user_message="The model could not produce a valid briefing. Please try again.",
             recoverable=True,
         )
+    except ValueError as exc:
+        _log.exception(
+            "compaction.stale_prev_checkpoint",
+            session_id=session_id, correlation_id=correlation_id,
+        )
+        await _emit_failed(
+            event_bus, session_id, correlation_id, job.user_id,
+            error_code="stale_prev_checkpoint",
+            user_message=(
+                "The previous compact snapshot references a message that "
+                "no longer exists. Start a new conversation to compact again."
+            ),
+            recoverable=False,
+        )
     except Exception:
         _log.exception("compaction.llm_failed", session_id=session_id)
         await _emit_failed(

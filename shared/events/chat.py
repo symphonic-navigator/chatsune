@@ -318,6 +318,7 @@ class ChatCompactionFailedEvent(BaseModel):
         "already_running",
         "llm_failed",
         "validation_failed",
+        "stale_prev_checkpoint",
         "unknown",
     ]
     user_message: str
