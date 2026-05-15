@@ -197,16 +197,37 @@ def build_compaction_transcript(
 
     On re-compact, prepends the previous checkpoint's markdown as a
     'Previous Story' block so no information is lost across compactions.
+
+    The transcript is wrapped in an XML envelope and followed by an
+    explicit instruction marker. Without the marker the model often
+    treats the transcript as a live chat and answers the last user
+    turn rather than producing the briefing.
     """
-    parts: list[str] = []
+    transcript_lines: list[str] = []
     if previous_summary:
-        parts.append("## Previous Story (from earlier checkpoint)\n\n"
-                     f"{previous_summary.strip()}\n\n"
-                     "---\n\n"
-                     "## Conversation since the previous checkpoint\n")
+        transcript_lines.append("## Previous Story (from earlier checkpoint)")
+        transcript_lines.append("")
+        transcript_lines.append(previous_summary.strip())
+        transcript_lines.append("")
+        transcript_lines.append("---")
+        transcript_lines.append("")
+        transcript_lines.append("## Conversation since the previous checkpoint")
     for m in source_messages:
         role = (m.get("role") or "user").capitalize()
         content = (m.get("content") or "").strip()
         if content:
-            parts.append(f"{role}: {content}")
-    return "\n".join(parts)
+            transcript_lines.append(f"{role}: {content}")
+    transcript = "\n".join(transcript_lines)
+
+    return (
+        "<transcript>\n"
+        f"{transcript}\n"
+        "</transcript>\n\n"
+        "---\n\n"
+        "The conversation above is the input. Do NOT respond to it as if "
+        "you were the assistant. Your job is to produce the structured "
+        "briefing described in the system prompt.\n\n"
+        "Output the briefing now, starting with the heading "
+        "`## Topic & Goal` and including all six required sections in "
+        "order. Output nothing except the markdown briefing itself."
+    )
