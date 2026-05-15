@@ -1,7 +1,10 @@
 services:
   mongodb:
     image: mongodb/mongodb-atlas-local:7.0
-    hostname: mongodb
+    # The atlas-local runner derives the replica-set name from the container
+    # hostname (no flag override available). Pinning hostname to "rs0" makes
+    # the RS name "rs0" — matching MONGODB_URI in .env and CLAUDE.md.
+    hostname: rs0
     ports:
       - "27017:27017"
     volumes:
@@ -17,6 +20,34 @@ services:
       timeout: 5s
       retries: 15
       start_period: 30s
+
+  # Idempotent one-shot reconfig: the initial RS member is registered under
+  # the container hostname ("rs0:27017"), which is not resolvable from the
+  # host where the backend runs locally. Rewriting the member to
+  # "localhost:27017" works from both sides — the mongod container resolves
+  # it to itself, and the host resolves it to the published port.
+  mongodb-init:
+    image: mongodb/mongodb-atlas-local:7.0
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - mongosh
+      - --host
+      - mongodb
+      - --quiet
+      - --eval
+      - |
+        const cfg = rs.conf();
+        if (cfg.members[0].host !== 'localhost:27017') {
+          cfg.members[0].host = 'localhost:27017';
+          cfg.version += 1;
+          rs.reconfig(cfg, { force: true });
+          print('reconfigured RS member -> localhost:27017');
+        } else {
+          print('RS member already localhost:27017, skipping');
+        }
 
   redis:
     image: redis:7-alpine
