@@ -14,6 +14,7 @@ import type {
 import type { ImageRefDto } from '../../core/api/images'
 import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
+import { showCompactionSuccess, showCompactionFailure } from './compaction/toasts'
 import { emitInlineTrigger } from '../integrations/inlineTriggerBus'
 import { useIntegrationsStore } from '../integrations/store'
 import { getActiveGroupForSession, subscribeGroups } from './responseTaskGroup'
@@ -603,13 +604,39 @@ export function handleChatEvent(
         getStore().appendCompactionCheckpoint(sessionId, checkpoint)
       }
       getStore().setCompactionLoading(false)
-      // showCompactionSuccess(event) — wired in Phase 11.
+      // Success toast — narrow the dynamic payload to the shape the toast
+      // helper expects. Skip when the event somehow lacks a checkpoint
+      // (defensive — the backend always sets it).
+      if (checkpoint) {
+        showCompactionSuccess({
+          checkpoint,
+          tokens_saved: Number(p.tokens_saved ?? 0),
+          truncated_message_count:
+            typeof p.truncated_message_count === 'number'
+              ? p.truncated_message_count
+              : 0,
+        })
+      }
       break
     }
     case Topics.CHAT_COMPACTION_FAILED: {
       if (p.session_id !== sessionId) return
       getStore().setCompactionLoading(false)
-      // showCompactionFailure(event) — wired in Phase 11.
+      const recoverable = Boolean(p.recoverable)
+      const userMessage =
+        typeof p.user_message === 'string'
+          ? p.user_message
+          : 'Compaction failed. Please try again.'
+      showCompactionFailure({ user_message: userMessage, recoverable }, () => {
+        // Retry: fire a fresh ``chat.compaction.request`` with a new
+        // correlation id. ``sendMessageFn`` is the WS sender passed by
+        // the hook wrapper — same path the SparkleCompactButton uses.
+        sendMessageFn({
+          type: 'chat.compaction.request',
+          session_id: sessionId,
+          correlation_id: crypto.randomUUID(),
+        })
+      })
       break
     }
   }
