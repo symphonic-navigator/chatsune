@@ -999,6 +999,10 @@ async def run_inference(
     total_tokens_used = system_prompt_tokens + tool_definition_tokens + all_history_tokens
     fill_ratio = total_tokens_used / max_context if max_context > 0 else 1.0
 
+    compact_anchor_index_for_cache: int | None = None
+    if compact_markdown is not None and len(messages) > 1:
+        compact_anchor_index_for_cache = 1
+
     request = CompletionRequest(
         model=model_slug,
         messages=messages,
@@ -1011,6 +1015,7 @@ async def run_inference(
         anthropic_cache_ttl=(
             persona.get("anthropic_cache_ttl", "5m") if persona else "5m"
         ),
+        compact_anchor_index=compact_anchor_index_for_cache,
     )
 
     # Set session state to streaming
