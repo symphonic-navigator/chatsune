@@ -37,3 +37,43 @@ def determine_tail_start_index(
         chosen_idx = i
 
     return max(0, chosen_idx)
+
+
+def select_source_range(
+    messages: list[dict],
+    *,
+    tail_start_index: int,
+    prev_tail_start_id: str | None,
+) -> tuple[list[dict], list[dict]]:
+    """Split messages into source range (to be compacted) and tail.
+
+    When ``prev_tail_start_id`` is provided, the source begins at that
+    message (re-compact case: only the messages added since the previous
+    checkpoint are condensed; the previous compact-markdown is folded in
+    as Previous Story by the prompt builder).
+    """
+    tail = messages[tail_start_index:]
+    if prev_tail_start_id is None:
+        source = messages[:tail_start_index]
+    else:
+        start = next(
+            (i for i, m in enumerate(messages) if m["_id"] == prev_tail_start_id),
+            0,
+        )
+        source = messages[start:tail_start_index]
+    return source, tail
+
+
+def sanitise_source(source: list[dict]) -> list[dict]:
+    """Drop tool-role messages and assistant messages with empty content
+    (which are typically pure tool-call wrappers). Keeps user and
+    text-bearing assistant messages."""
+    cleaned: list[dict] = []
+    for m in source:
+        role = m.get("role")
+        if role == "tool":
+            continue
+        if role == "assistant" and not (m.get("content") or "").strip():
+            continue
+        cleaned.append(m)
+    return cleaned
