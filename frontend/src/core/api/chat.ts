@@ -30,6 +30,27 @@ export interface ChatSessionExtras {
   reasoning_effort: string | null
 }
 
+/**
+ * Snapshot of a chat compaction. Mirrors ``shared/dtos/chat.py::
+ * CompactionCheckpointDto``. Stored inside each ``ChatSessionDto`` and
+ * carried unchanged inside ``chat.compaction.completed`` event payloads.
+ * Append-only: each compaction creates a new checkpoint; the inference
+ * pipeline only ever sees the latest one as ``<conversation_compact>``,
+ * but the chat transcript renders all of them as inline markers.
+ */
+export interface CompactionCheckpoint {
+  id: string
+  created_at: string
+  model_unique_id: string
+  summary_markdown: string
+  last_message_id_before: string
+  tail_start_message_id: string
+  tokens_before: number
+  tokens_after: number
+  tail_token_count: number
+  prev_checkpoint_id: string | null
+}
+
 interface ChatSessionDto {
   id: string
   user_id: string
@@ -40,6 +61,15 @@ interface ChatSessionDto {
   auto_read: boolean
   reasoning_override: boolean | null
   pinned: boolean
+  /**
+   * Append-only history of compact-and-continue snapshots for this
+   * session. Optional because existing sessions and most code paths
+   * (sidebar list, search results) do not load this field. Hydrated on
+   * the active-session detail view; mirrors the backend
+   * ``ChatSessionDocument.compaction_checkpoints`` field. Defaults to an
+   * empty array at call sites that need to iterate.
+   */
+  compaction_checkpoints?: CompactionCheckpoint[]
   /**
    * Mindspace: optional owning project. ``null`` means the session
    * belongs to no project (the legacy / global-history bucket). Mirrors
