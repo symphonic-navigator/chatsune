@@ -51,23 +51,35 @@ def select_source_range(
     message (re-compact case: only the messages added since the previous
     checkpoint are condensed; the previous compact-markdown is folded in
     as Previous Story by the prompt builder).
+
+    Raises ``ValueError`` when ``prev_tail_start_id`` is set but no
+    matching message exists in ``messages`` — that points to a data
+    integrity problem the caller must handle (the previous checkpoint
+    referenced a message that has since been deleted).
     """
     tail = messages[tail_start_index:]
     if prev_tail_start_id is None:
         source = messages[:tail_start_index]
     else:
-        start = next(
-            (i for i, m in enumerate(messages) if m["_id"] == prev_tail_start_id),
-            0,
-        )
+        try:
+            start = next(
+                i for i, m in enumerate(messages)
+                if m["_id"] == prev_tail_start_id
+            )
+        except StopIteration:
+            raise ValueError(
+                f"prev_tail_start_id {prev_tail_start_id!r} not found in messages"
+            )
         source = messages[start:tail_start_index]
     return source, tail
 
 
 def sanitise_source(source: list[dict]) -> list[dict]:
-    """Drop tool-role messages and assistant messages with empty content
-    (which are typically pure tool-call wrappers). Keeps user and
-    text-bearing assistant messages."""
+    """Drop tool-role messages and empty-content assistant messages.
+    Everything else (user, text-bearing assistant, any other role) is
+    passed through. The compact-prompt builder later renders only roles
+    it recognises, so non-standard roles are harmless here.
+    """
     cleaned: list[dict] = []
     for m in source:
         role = m.get("role")

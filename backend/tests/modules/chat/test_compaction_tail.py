@@ -1,6 +1,12 @@
 """Tail determination: 6 turns OR 20% of model context, whichever is larger."""
 
-from backend.modules.chat._compaction import determine_tail_start_index
+import pytest
+
+from backend.modules.chat._compaction import (
+    determine_tail_start_index,
+    sanitise_source,
+    select_source_range,
+)
 
 
 def _msgs(n: int, tokens_per: int = 100) -> list[dict]:
@@ -34,13 +40,6 @@ def test_long_session_uses_floor_token_rule_when_larger():
     assert idx == 0
 
 
-from backend.modules.chat._compaction import (
-    determine_tail_start_index,
-    sanitise_source,
-    select_source_range,
-)
-
-
 def test_select_source_range_no_prev_checkpoint():
     msgs = _msgs(20, tokens_per=10)
     source, tail = select_source_range(msgs, tail_start_index=15, prev_tail_start_id=None)
@@ -67,3 +66,23 @@ def test_sanitise_source_drops_tool_roles_and_tool_call_assistants():
     ]
     cleaned = sanitise_source(msgs)
     assert [m["_id"] for m in cleaned] == ["m-1", "m-2", "m-5"]
+
+
+def test_tail_boundary_when_floor_and_token_budget_coincide():
+    """When the 12-message floor and the 20% token budget are met at
+    the same boundary, the loop must break cleanly. Regression guard
+    for the 'either rule wins' decision in determine_tail_start_index."""
+    # 100 messages of 1000 tokens, model_context = 60_000 → 20% = 12_000
+    # tokens. The 12-message floor accumulates exactly 12_000 tokens —
+    # both rules are satisfied at index 88.
+    msgs = _msgs(100, tokens_per=1000)
+    assert determine_tail_start_index(msgs, model_context=60_000) == 88
+
+
+def test_select_source_range_raises_on_unknown_prev_id():
+    msgs = _msgs(20, tokens_per=10)
+    with pytest.raises(ValueError, match="not found in messages"):
+        select_source_range(
+            msgs, tail_start_index=15,
+            prev_tail_start_id="never-existed",
+        )
