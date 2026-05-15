@@ -757,6 +757,31 @@ async def run_inference(
             update={"reasoning_mode": new_mode, "reasoning_effort": new_effort},
         )
 
+    # Load message history. We do this before assembling the system prompt
+    # because the compact-and-continue checkpoint, when present, supplies
+    # ``compact_markdown`` to the assembler and trims ``history_docs`` to
+    # the tail portion.
+    history_docs = await repo.list_messages(session_id)
+
+    compact_markdown: str | None = None
+    checkpoints = session.get("compaction_checkpoints") or []
+    if checkpoints:
+        latest = checkpoints[-1]
+        tail_start_msg = next(
+            (m for m in history_docs
+             if m["_id"] == latest["tail_start_message_id"]),
+            None,
+        )
+        if tail_start_msg is None:
+            _log.error(
+                "compaction.checkpoint.dangling session_id=%s tail_start=%s",
+                session_id, latest["tail_start_message_id"],
+            )
+        else:
+            cutoff = tail_start_msg["created_at"]
+            history_docs = [m for m in history_docs if m["created_at"] >= cutoff]
+            compact_markdown = latest["summary_markdown"]
+
     # Assemble system prompt — ``extras`` carries both the tools/reasoning
     # modes that the prompt assembler needs (Soft-CoT visibility +
     # tool-availability gating).
@@ -767,6 +792,7 @@ async def run_inference(
         project_id=session.get("project_id"),
         supports_reasoning=supports_reasoning,
         extras=extras,
+        compact_markdown=compact_markdown,
     )
     system_prompt_tokens = count_tokens(system_prompt) if system_prompt else 0
 
@@ -775,8 +801,6 @@ async def run_inference(
     if max_context is None or max_context == 0:
         max_context = _DEFAULT_CONTEXT_WINDOW
 
-    # Load message history
-    history_docs = await repo.list_messages(session_id)
     # Aborted assistant messages pollute the LLM context with
     # half-finished thoughts or truncated code — strip them before
     # context pair selection. The matching user prompts remain in place
