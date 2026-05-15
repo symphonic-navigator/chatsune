@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
@@ -532,7 +532,7 @@ class ChatRepository:
             {"_id": session_id},
             {
                 "$push": {"compaction_checkpoints": checkpoint.model_dump(mode="json")},
-                "$set": {"updated_at": datetime.now(timezone.utc)},
+                "$set": {"updated_at": datetime.now(UTC)},
             },
         )
 
