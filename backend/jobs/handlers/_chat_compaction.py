@@ -96,6 +96,27 @@ async def handle_chat_compaction(
             tail_msgs[0]["_id"] if tail_msgs else all_messages[-1]["_id"]
         )
 
+        # Defence-in-depth: an empty source range (or a near-empty one)
+        # cannot produce a meaningful briefing — the trigger-handler should
+        # have caught this, but a race could still let us through.
+        source_tokens_initial = sum(int(m.get("token_count") or 0) for m in source_msgs)
+        if source_tokens_initial < 200:
+            _log.warning(
+                "compaction.empty_source",
+                session_id=session_id, correlation_id=correlation_id,
+                source_msg_count=len(source_msgs),
+                source_tokens=source_tokens_initial,
+            )
+            await _emit_failed(
+                event_bus, session_id, correlation_id, job.user_id,
+                error_code="too_small", recoverable=False,
+                user_message=(
+                    "Nothing new to compact since the last snapshot — "
+                    "continue the conversation and try again later."
+                ),
+            )
+            return
+
         # Truncation: drop oldest source messages until <= 70% of model context.
         truncation_target = int(model_context * 0.70)
         truncated_count = 0
