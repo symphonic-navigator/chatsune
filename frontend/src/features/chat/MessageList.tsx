@@ -22,6 +22,7 @@ import type { StreamingToolCall } from '../../core/store/chatStore'
 import { ArtefactCard } from '../artefact/ArtefactCard'
 import { InlineImageBlock } from '../images/chat/InlineImageBlock'
 import { CompactedMarkerPill } from './compaction/CompactedMarkerPill'
+import { CompactedSnapshotDrawer } from './compaction/CompactedSnapshotDrawer'
 
 interface MessageListProps {
   sessionId: string | null
@@ -166,12 +167,9 @@ export function MessageList({
     }
     return map
   }, [compactionCheckpoints])
-  // ``openCheckpoint`` drives the read-only snapshot drawer; the drawer
-  // component itself is mounted in a follow-up task (10.4) — for now
-  // clicking a marker stores the checkpoint but renders nothing.
+  // ``openCheckpoint`` drives the read-only snapshot drawer mounted at
+  // the root of this component. ``null`` keeps the drawer unmounted.
   const [openCheckpoint, setOpenCheckpoint] = useState<CompactionCheckpoint | null>(null)
-  // Suppress unused-warning until the drawer lands.
-  void openCheckpoint
 
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
@@ -436,6 +434,15 @@ export function MessageList({
       </div>
 
       </div>
+
+      {/* Compaction snapshot drawer — opened by clicking a CompactedMarkerPill.
+          Renders nothing while ``openCheckpoint`` is null. Mounted at the
+          MessageList root so the open state stays scoped to the message-list
+          lifetime. */}
+      <CompactedSnapshotDrawer
+        checkpoint={openCheckpoint}
+        onClose={() => setOpenCheckpoint(null)}
+      />
 
       {/* Scroll-to-bottom button — centred above input */}
       {showScrollButton && (
