@@ -36,6 +36,34 @@ def _api_key_field(label: str) -> dict:
 
 def _register_builtins() -> None:
     register(PremiumProviderDefinition(
+        id="ollama_cloud",
+        display_name="Ollama Cloud",
+        icon="ollama",
+        base_url="https://ollama.com",
+        capabilities=[Capability.LLM, Capability.WEBSEARCH],
+        config_fields=[_api_key_field("Ollama Cloud API Key")],
+        probe_url="https://ollama.com/api/me",
+        probe_method="POST",
+        linked_integrations=[],
+        sort_priority=10,
+    ))
+
+    register(PremiumProviderDefinition(
+        id="tensorix",
+        display_name="Tensorix",
+        icon="tensorix",
+        base_url="https://api.tensorix.ai/v1",
+        capabilities=[Capability.LLM],
+        config_fields=[_api_key_field("Tensorix API Key")],
+        # /v1/model/info requires a valid Bearer key and 401s on bad
+        # keys, so it's the right probe target.
+        probe_url="https://api.tensorix.ai/v1/model/info",
+        probe_method="GET",
+        linked_integrations=[],
+        sort_priority=20,
+    ))
+
+    register(PremiumProviderDefinition(
         id="xai",
         display_name="xAI",
         icon="xai",
@@ -48,6 +76,7 @@ def _register_builtins() -> None:
         probe_url="https://api.x.ai/v1/models",
         probe_method="GET",
         linked_integrations=["xai_voice"],
+        sort_priority=30,
     ))
 
     register(PremiumProviderDefinition(
@@ -60,18 +89,7 @@ def _register_builtins() -> None:
         probe_url="https://api.mistral.ai/v1/models",
         probe_method="GET",
         linked_integrations=["mistral_voice"],
-    ))
-
-    register(PremiumProviderDefinition(
-        id="ollama_cloud",
-        display_name="Ollama Cloud",
-        icon="ollama",
-        base_url="https://ollama.com",
-        capabilities=[Capability.LLM, Capability.WEBSEARCH],
-        config_fields=[_api_key_field("Ollama Cloud API Key")],
-        probe_url="https://ollama.com/api/me",
-        probe_method="POST",
-        linked_integrations=[],
+        sort_priority=40,
     ))
 
     register(PremiumProviderDefinition(

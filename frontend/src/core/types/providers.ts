@@ -30,6 +30,7 @@ export interface PremiumProviderDefinition {
   capabilities: Capability[]
   config_fields: Array<Record<string, unknown>>
   linked_integrations: string[]
+  sort_priority?: number
 }
 
 export interface PremiumProviderAccount {
