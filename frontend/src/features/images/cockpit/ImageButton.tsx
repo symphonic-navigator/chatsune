@@ -35,10 +35,12 @@ function humanModelLabel(active: ActiveImageConfigDto): string {
  * Three visual states:
  *   - "disabled" — no TTI/ITI connection is configured. Click navigates to
  *     the LLM Providers tab; no panel.
- *   - "idle"     — a TTI connection exists but the per-session Tools toggle
- *     is off, so image generation cannot actually run yet. Panel shows a
- *     hint with an "Enable Tools" action above the existing config UI.
- *   - "active"   — TTI available and Tools on. Behaves as before (purple).
+ *   - "idle"     — a TTI connection exists but either (a) no config has
+ *     been persisted yet (auto-save hasn't fired) or (b) the per-session
+ *     Tools toggle is off, so image generation cannot actually run yet.
+ *     Panel shows a hint with the matching call to action above the
+ *     existing config UI.
+ *   - "active"   — TTI available, config persisted, Tools on. Purple.
  *
  * Uses click-to-toggle (not hover) so the panel stays open while the user
  * adjusts settings. The panel is rendered via a React portal into document.body
@@ -117,15 +119,15 @@ export function ImageButton({ sessionId, onOpenLlmProviders }: Props) {
       : 'Image generation'
 
   // Visual state mapping — colour reflects runtime reality, not panel state:
-  //   - no connection                  → "disabled" (dashed muted)
-  //   - tools on                       → "active" (bright purple)
-  //   - tools off (but TTI available)  → "idle" (white-ish)
-  // Deliberately NOT promoting panelOpen to "active": with tools off the
-  // pipeline cannot run, and a purple button next to a panel saying
-  // "Tools are off" would contradict itself.
+  //   - no connection                       → "disabled" (dashed muted)
+  //   - config persisted AND tools on       → "active" (bright purple)
+  //   - tools off OR no persisted config    → "idle" (white-ish)
+  // Deliberately NOT promoting panelOpen to "active": with tools off (or
+  // without a persisted config) the pipeline cannot run, and a purple
+  // button next to a panel saying otherwise would contradict itself.
   const buttonState = noConnection
     ? 'disabled'
-    : toolsOn
+    : toolsOn && active !== null
       ? 'active'
       : 'idle'
 

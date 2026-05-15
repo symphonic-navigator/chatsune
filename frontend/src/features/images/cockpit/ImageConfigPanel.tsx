@@ -62,8 +62,11 @@ export function ImageConfigPanel() {
 
   const applyConfig = useImagesStore((s) => s.applyConfig)
 
-  // Skip the very first effect run after mount so opening the panel doesn't
-  // trigger a redundant save with the already-active config.
+  // Skip the very first effect run after mount when an existing active config
+  // is hydrated, so opening the panel doesn't trigger a redundant save. When
+  // `active` is null and we hydrate from defaults, we WANT the first save to
+  // run so the chosen defaults get persisted (otherwise the user has to
+  // manually nudge a field to enable image generation).
   const isFirstAfterMount = useRef(true)
 
   // Hydrate exactly once per mount. After the initial population the user owns
@@ -96,6 +99,10 @@ export function ImageConfigPanel() {
       setConfig(defaultConfigForGroup(firstGroup))
     }
 
+    // If we hydrated from an existing config, skip the upcoming first save.
+    // If we hydrated from defaults (active === null), let it run so defaults
+    // get persisted automatically.
+    isFirstAfterMount.current = active !== null
     hydratedRef.current = true
   }, [available, active])
 
