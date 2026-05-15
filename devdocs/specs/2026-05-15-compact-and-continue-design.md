@@ -424,6 +424,31 @@ if checkpoints:
 
 If a user manages to edit a source-range message in the millisecond window between job submission and persistence: the job handler operates on a snapshot of `repo.list_messages()` taken at job start, not on live DB state. The edit handler is also gated by §6.8 against the existing latest checkpoint. Result: no race-window inconsistency.
 
+### 6.10 Anthropic prompt-cache integration
+
+The project already ships an Anthropic prompt-cache strategy (see `backend/modules/llm/_adapters/_anthropic_cache.py`, design at `devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md`). It currently places three markers:
+
+1. **System** marker at message index 0 — always 1 h TTL.
+2. **Block-boundary** marker at the last crossed 8-message-aligned index — always 1 h TTL.
+3. **Rolling tail** marker at `len(messages) - 2` — user's persona-TTL choice.
+
+When a session has at least one compaction checkpoint, the **block-boundary marker is replaced by a compact-anchor marker** placed at the index of the first tail message in the request's `messages` list. TTL remains 1 h. Rationale:
+
+- The block-boundary stride (every 8 messages) is a heuristic without semantic anchor — it drifts as the conversation grows.
+- The tail-start position is **stable between re-compacts**: it changes only when a new checkpoint is created. Between compacts, every inference reuses the exact same cached prefix.
+- This means the entire stable region — system prompt (which carries the `<conversation_compact>` block) plus the unchanging tail-start — is held in cache for an hour. Only the growing tail of recent turns incurs cache-creation cost.
+
+**Implementation outline**:
+
+1. `shared/dtos/inference.CompletionRequest` gains an optional field `compact_anchor_index: int | None = None`. Default `None` preserves the existing block-boundary behaviour for non-compacted sessions.
+2. `run_inference` computes the anchor index as the position of the first tail message in the final `messages` list (system at index 0, tail starts at index 1 in the simple case; the exact index depends on whether `_filter_usable_history` and `select_message_pairs` reshape the list).
+3. `compute_cache_markers(messages, ttl, *, compact_anchor_index=None)` gains the same optional parameter. When set, it emits a `CacheMarker(message_index=compact_anchor_index, ttl="1h")` instead of the block-boundary marker. The system marker and the rolling-tail marker are unchanged. The 4th breakpoint slot remains deliberately unused.
+4. Both adapters that consume the markers (`_openrouter_http.py`, `_nano_gpt_http.py`) pass the new field through; non-Anthropic models simply ignore it.
+
+**Effect after first inference following a compact**: the System + Compact-Anchor prefix is cache-creation once, then cache-read for every subsequent turn for up to one hour. Practical impact at a 128k-context Claude model with ~4k of compact briefing in the system prompt: ~90 % cost reduction on follow-up turns compared to the uncached path.
+
+**Cache-prefix break point**: a fresh re-compact moves the anchor to the new tail-start. The first inference after re-compact is a cold cache; subsequent inferences within 1 h hit the new cache. This is the same cost characteristic as today's block-boundary marker, but the position is semantically stable instead of heuristic.
+
 ---
 
 ## 7. Events & Contracts
@@ -636,15 +661,16 @@ Inside-out; each step lands as its own commit with build verified (`pnpm run bui
 3. **Job handler** — `_chat_compaction.py` modelled on `_memory_consolidation.py`. Isolated test with a manually constructed session payload.
 4. **Inference slicer** — extend `assemble()` signature, add slicing in `run_inference`. Verify that sessions without checkpoints behave exactly as before.
 5. **Edit protection** — guard in `handle_chat_edit` (and `handle_chat_regenerate` where applicable).
-6. **Trigger handler** — `handle_chat_compaction_request`, Redis lock, pre-flight check, source/tail determination.
-7. **Frontend session store** — `compaction_checkpoints` in session state; WS subscriptions for the four compaction topics.
-8. **Frontend sparkly button** — desktop and mobile placements, state table from §5.1, confirm card, loading overlay.
-9. **Frontend suggest-toast** — 60 % crossing detection, voice suppression.
-10. **Frontend compacted marker + drawer** — `TimelineEntry.kind = 'compacted'`, slide-over (desktop) and bottom-sheet (mobile).
-11. **Frontend success/failure toasts** — including the truncation note.
-12. **Manual verification run** — desktop and mobile against §9.
+6. **Anthropic cache integration** — add `compact_anchor_index` to `CompletionRequest`, extend `compute_cache_markers`, pipe through both adapters. Unit-test against the existing `test_anthropic_cache.py` suite to ensure the non-compact case is unchanged.
+7. **Trigger handler** — `handle_chat_compaction_request`, Redis lock, pre-flight check, source/tail determination.
+8. **Frontend session store** — `compaction_checkpoints` in session state; WS subscriptions for the four compaction topics.
+9. **Frontend sparkly button** — desktop and mobile placements, state table from §5.1, confirm card, loading overlay.
+10. **Frontend suggest-toast** — 60 % crossing detection, voice suppression.
+11. **Frontend compacted marker + drawer** — `TimelineEntry.kind = 'compacted'`, slide-over (desktop) and bottom-sheet (mobile).
+12. **Frontend success/failure toasts** — including the truncation note.
+13. **Manual verification run** — desktop and mobile against §9.
 
-Phase 1 covers steps 1–11. Step 12 is the verification gate before merge.
+Phase 1 covers steps 1–12. Step 13 is the verification gate before merge.
 
 ---
 
