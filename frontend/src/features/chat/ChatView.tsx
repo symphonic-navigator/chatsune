@@ -497,9 +497,18 @@ export function ChatView({ persona }: ChatViewProps) {
         // so MessageList can render inline `Compacted` markers between
         // messages on first paint. Falls back to `[]` for legacy backends
         // that pre-date the bundle field.
-        useChatStore.getState().setCompactionCheckpoints(
-          bundle.compaction_checkpoints ?? [],
-        )
+        const cps = bundle.compaction_checkpoints ?? []
+        // TEMP debug: confirm hydration end-to-end. Remove after Phase 12.
+        console.log('[compaction] bundle.compaction_checkpoints', {
+          count: cps.length,
+          tail_start_ids: cps.map((c) => c.tail_start_message_id),
+          message_ids_count: bundle.messages.length,
+          first_message_id: bundle.messages[0]?.id,
+          tail_start_in_messages: cps.length > 0
+            ? bundle.messages.some((m) => m.id === cps[0].tail_start_message_id)
+            : false,
+        })
+        useChatStore.getState().setCompactionCheckpoints(cps)
       })
       .catch((err) => {
         if (cancelled) return
