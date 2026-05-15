@@ -455,6 +455,29 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             )
             return
 
+        # Compaction edit guard — if the target message sits before the
+        # latest compaction checkpoint's tail-start, the message lives in
+        # the immutable compact snapshot and can no longer be edited.
+        # The tail (created_at >= tail_start_msg.created_at) remains
+        # editable. See spec §6.8.
+        checkpoints = session.get("compaction_checkpoints") or []
+        if checkpoints:
+            latest = checkpoints[-1]
+            tail_start_msg = await repo.get_message(latest["tail_start_message_id"])
+            if (
+                tail_start_msg is not None
+                and target["created_at"] < tail_start_msg["created_at"]
+            ):
+                await _reject(
+                    "edit_before_compact",
+                    (
+                        "This message is part of a compact snapshot and "
+                        "can no longer be edited. Start a new session if "
+                        "you need to go back further."
+                    ),
+                )
+                return
+
         text = "".join(
             part.get("text", "") for part in content_parts if part.get("type") == "text"
         ).strip()
