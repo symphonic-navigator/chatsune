@@ -7,11 +7,11 @@ import { useMemo } from 'react'
  * - ``hidden_too_short`` — conversation is shorter than the minimum-size
  *   precondition (≤ 12 messages or ≤ 4000 tokens). Button is not rendered
  *   in the top-bar at all.
- * - ``overflow_only`` — context fill is below 60 %; the action is only
- *   reachable via the settings overflow menu, not the top-bar. Whether the
- *   user can actually trigger the job depends on ``canTrigger`` (false
- *   below 30 %, true between 30–60 %).
- * - ``subtle`` — 60–75 %: visible in the top-bar, no animation.
+ * - ``overflow_only`` — context fill is below 30 %; minimum-size precondition
+ *   is met but compaction would be premature. Button stays hidden from the
+ *   top-bar and ``canTrigger`` is false.
+ * - ``subtle`` — 30–75 %: visible in the top-bar, no animation. Below 60 %
+ *   the suggest-toast does not fire; the button is the only entry-point.
  * - ``sparkle`` — 75–90 %: visible in the top-bar with a pulse animation.
  * - ``warning`` — > 90 %: visible with an orange tint; compaction may fail
  *   due to source-too-large, so the tooltip recommends switching models.
@@ -80,15 +80,6 @@ export function useCompactionState(input: UseCompactionStateInput): CompactionSt
         showSparkle: false,
         showModalHint: false,
         canTrigger: false,
-      }
-    }
-    if (fillPercentage < 0.60) {
-      return {
-        visibility: 'overflow_only',
-        tooltip: 'Compact this conversation',
-        showSparkle: false,
-        showModalHint: false,
-        canTrigger: true,
       }
     }
     if (fillPercentage < 0.75) {

@@ -443,7 +443,7 @@ async def create_imported_session(
     extracts the ``_id`` from it.
     """
     repo = ChatRepository(get_db())
-    return await repo.create_imported_session(
+    session = await repo.create_imported_session(
         user_id=user_id,
         persona_id=persona_id,
         title=title,
@@ -452,6 +452,80 @@ async def create_imported_session(
         imported_model_slug=imported_model_slug,
         original_created_at=original_created_at,
     )
+
+    # Seed context-window metrics from the persona's default model so the
+    # context pill shows a realistic fill on first paint — without this,
+    # the UI displays 0 % until the user sends a follow-up that runs the
+    # orchestrator and populates the metrics for the first time.
+    try:
+        from backend.modules.persona import get_persona
+        from backend.modules.llm import get_effective_context_window
+        from backend.modules.chat._context import get_ampel_status
+
+        persona = await get_persona(persona_id, user_id)
+        persona_model_id = (persona or {}).get("model_unique_id") or ""
+        if persona_model_id:
+            max_tokens = await get_effective_context_window(user_id, persona_model_id) or 0
+            used_tokens = int(session.get("context_used_tokens") or 0)
+            if max_tokens > 0 and used_tokens > 0:
+                fill = used_tokens / max_tokens
+                await repo.update_session_context_metrics(
+                    session["_id"],
+                    status=get_ampel_status(fill),
+                    fill_percentage=fill,
+                    used_tokens=used_tokens,
+                    max_tokens=max_tokens,
+                )
+                session["context_status"] = get_ampel_status(fill)
+                session["context_fill_percentage"] = fill
+                session["context_max_tokens"] = max_tokens
+    except Exception:
+        # The hydrate is a best-effort UX improvement; if persona /
+        # model lookup fails the import still succeeds with metrics
+        # at 0, and the first follow-up send will populate them.
+        import logging
+        logging.getLogger(__name__).exception(
+            "create_imported_session: context-metric seed failed",
+        )
+
+    # Notify the sidebar so the freshly-imported session appears
+    # without a manual refresh. The regular REST session-create path
+    # in ``_handlers.create_session`` does the same; imported sessions
+    # came in via the chatgpt-import job handler, which had no chance
+    # to emit the event itself.
+    try:
+        from backend.ws.event_bus import get_event_bus
+        from datetime import UTC, datetime
+        from shared.events.chat import ChatSessionCreatedEvent
+        from shared.topics import Topics
+
+        event_bus = get_event_bus()
+        correlation_id = str(uuid4())
+        now = datetime.now(UTC)
+        await event_bus.publish(
+            Topics.CHAT_SESSION_CREATED,
+            ChatSessionCreatedEvent(
+                session_id=session["_id"],
+                user_id=user_id,
+                persona_id=persona_id,
+                title=title,
+                project_id=None,
+                created_at=session["created_at"],
+                updated_at=session["updated_at"],
+                correlation_id=correlation_id,
+                timestamp=now,
+            ),
+            scope=f"session:{session['_id']}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "create_imported_session: CHAT_SESSION_CREATED publish failed",
+        )
+
+    return session
 
 
 async def get_session_summaries(session_ids: list[str], user_id: str) -> dict[str, dict]:
