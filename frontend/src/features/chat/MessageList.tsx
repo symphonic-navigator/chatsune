@@ -167,6 +167,21 @@ export function MessageList({
     }
     return map
   }, [compactionCheckpoints])
+  // TEMP debug — remove after Phase 12. Confirms whether the marker map
+  // is being built and whether at least one message id matches a key.
+  if (compactionCheckpoints.length > 0) {
+    const keys = Array.from(checkpointByTailStart.keys())
+    const msgIds = messages.map((m) => m.id)
+    const matches = msgIds.filter((id) => checkpointByTailStart.has(id))
+    console.log('[compaction] MessageList render', {
+      checkpointsInStore: compactionCheckpoints.length,
+      mapSize: checkpointByTailStart.size,
+      mapKeys: keys,
+      messagesCount: msgIds.length,
+      firstThreeMessageIds: msgIds.slice(0, 3),
+      matchingMessageIds: matches,
+    })
+  }
   // ``openCheckpoint`` drives the read-only snapshot drawer mounted at
   // the root of this component. ``null`` keeps the drawer unmounted.
   const [openCheckpoint, setOpenCheckpoint] = useState<CompactionCheckpoint | null>(null)
