@@ -335,7 +335,9 @@ def _build_chat_payload(
         and is_anthropic_model(request.model)
     ):
         for marker in compute_cache_markers(
-            request.messages, request.anthropic_cache_ttl,
+            request.messages,
+            request.anthropic_cache_ttl,
+            compact_anchor_index=request.compact_anchor_index,
         ):
             cc_by_index[marker.message_index] = _to_cache_control(marker.ttl)
 
