@@ -22,6 +22,9 @@ class ChatSessionDocument(BaseModel):
     # from model capability on first cockpit interaction" — legacy
     # sessions created before this field deserialise that way too.
     extras: ChatSessionExtras | None = None
+    # Chat compaction checkpoints — append-only. Default [] keeps pre-feature
+    # sessions deserialising without error. See devdocs/specs/2026-05-15-compact-and-continue-design.md.
+    compaction_checkpoints: list[CompactionCheckpoint] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
