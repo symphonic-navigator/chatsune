@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from backend.modules.chat._models import CompactionCheckpoint
+from backend.token_counter import count_tokens
 from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
@@ -339,7 +341,7 @@ class ChatRepository:
                     "role": m.role,
                     "content": m.content,
                     "thinking": None,
-                    "token_count": 0,
+                    "token_count": count_tokens(m.content),
                     "created_at": m.created_at,
                     "status": "completed",
                     "correlation_id": None,
@@ -348,6 +350,16 @@ class ChatRepository:
                 for m in messages
             ]
             await self._messages.insert_many(message_docs)
+            # Seed the session-level context counters so the UI shows a
+            # realistic fill before the first follow-up inference. We
+            # can't compute fill % yet (no model bound), but absolute
+            # counts are useful as an estimate and unblock the compaction
+            # min-size precondition.
+            total_tokens = sum(doc["token_count"] for doc in message_docs)
+            await self._sessions.update_one(
+                {"_id": session_id},
+                {"$set": {"context_used_tokens": total_tokens}},
+            )
 
         return session_doc
 
@@ -522,6 +534,18 @@ class ChatRepository:
             {"$set": {"pinned": pinned, "updated_at": now}},
         )
         return await self._sessions.find_one({"_id": session_id})
+
+    async def append_compaction_checkpoint(
+        self, session_id: str, checkpoint: "CompactionCheckpoint",
+    ) -> None:
+        """Append a compaction checkpoint to a session document."""
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {
+                "$push": {"compaction_checkpoints": checkpoint.model_dump(mode="json")},
+                "$set": {"updated_at": datetime.now(UTC)},
+            },
+        )
 
     async def update_session_reasoning_override(
         self, session_id: str, reasoning_override: bool | None,
@@ -943,6 +967,10 @@ class ChatRepository:
             {"_id": message_id},
             {"$set": {"content": content, "token_count": token_count}},
         )
+        return await self._messages.find_one({"_id": message_id})
+
+    async def get_message(self, message_id: str) -> dict | None:
+        """Fetch a single message document by id."""
         return await self._messages.find_one({"_id": message_id})
 
     async def get_last_message(self, session_id: str) -> dict | None:

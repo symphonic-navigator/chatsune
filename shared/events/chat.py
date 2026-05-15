@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from shared.dtos.chat import ArtefactRefDto, ChatSessionExtras
+from shared.dtos.chat import ArtefactRefDto, ChatSessionExtras, CompactionCheckpointDto
 from shared.dtos.images import ImageRefDto
 
 
@@ -274,4 +274,53 @@ class ChatVisionDescriptionEvent(BaseModel):
     status: Literal["pending", "success", "error"]
     text: str | None = None
     error: str | None = None
+    timestamp: datetime
+
+
+class ChatCompactionStartedEvent(BaseModel):
+    type: str = "chat.compaction.started"
+    session_id: str
+    correlation_id: str
+    tokens_before: int
+    estimated_tokens_after: int
+    tail_message_count: int
+    timestamp: datetime
+
+
+class ChatCompactionProgressEvent(BaseModel):
+    type: str = "chat.compaction.progress"
+    session_id: str
+    correlation_id: str
+    stage: Literal["preparing", "calling_model", "validating", "persisting"]
+    timestamp: datetime
+
+
+class ChatCompactionCompletedEvent(BaseModel):
+    type: str = "chat.compaction.completed"
+    session_id: str
+    correlation_id: str
+    checkpoint: CompactionCheckpointDto
+    tokens_saved: int
+    new_context_used_tokens: int
+    new_context_fill_percentage: float
+    truncated_message_count: int = 0
+    timestamp: datetime
+
+
+class ChatCompactionFailedEvent(BaseModel):
+    type: str = "chat.compaction.failed"
+    session_id: str
+    correlation_id: str
+    error_code: Literal[
+        "compaction_source_too_large",
+        "below_threshold",
+        "too_small",
+        "already_running",
+        "llm_failed",
+        "validation_failed",
+        "stale_prev_checkpoint",
+        "unknown",
+    ]
+    user_message: str
+    recoverable: bool
     timestamp: datetime

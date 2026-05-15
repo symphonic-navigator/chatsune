@@ -56,3 +56,9 @@ class CompletionRequest(BaseModel):
     # default is only the fallback for ad-hoc callers (e.g. the LLM test
     # harness). See devdocs/specs/2026-05-08-claude-router-cache-breakpoints-design.md.
     anthropic_cache_ttl: Literal["off", "5m", "1h"] = "5m"
+    # Position (0-based index into ``messages``) of the first tail message
+    # after a compaction. When set, the Anthropic-cache marker strategy
+    # places its 2nd marker here instead of at the heuristic block boundary,
+    # so the System + Compact-Anchor prefix is held in cache for 1h between
+    # turns of an unchanged checkpoint.
+    compact_anchor_index: int | None = None

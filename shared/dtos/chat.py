@@ -216,13 +216,21 @@ class ChatMessagesBundleDto(BaseModel):
 
     Carries the persisted message list plus the last-known context
     metrics so the frontend can hydrate the context pill without
-    waiting for the next inference.
+    waiting for the next inference. Also carries the session's
+    ``compaction_checkpoints`` so the timeline renderer can drop
+    `Compacted` markers between messages on initial load — without
+    this the frontend would need a second round-trip to GET
+    ``/sessions/{id}`` to hydrate them, and the marker would race
+    against the first paint of the message list.
     """
     messages: list[ChatMessageDto]
     context_status: Literal["green", "yellow", "orange", "red"] = "green"
     context_fill_percentage: float = 0.0
     context_used_tokens: int = 0
     context_max_tokens: int = 0
+    compaction_checkpoints: list["CompactionCheckpointDto"] = Field(
+        default_factory=list,
+    )
 
 
 # --- Imported-session contracts (ChatGPT import) --------------------------
@@ -254,3 +262,22 @@ class CreateImportedSessionRequest(BaseModel):
     imported_from: Literal["chatgpt"]
     imported_model_slug: str | None
     original_created_at: datetime
+
+
+class CompactionCheckpointDto(BaseModel):
+    """Snapshot of a chat compaction. Stored inside ChatSessionDocument
+    and exposed unchanged in events. Append-only: each compact creates a
+    new checkpoint; the model only ever sees the latest one as
+    `<conversation_compact>`, but the UI renders all of them as markers.
+    """
+
+    id: str
+    created_at: datetime
+    model_unique_id: str
+    summary_markdown: str
+    last_message_id_before: str
+    tail_start_message_id: str
+    tokens_before: int
+    tokens_after: int
+    tail_token_count: int
+    prev_checkpoint_id: str | None = None

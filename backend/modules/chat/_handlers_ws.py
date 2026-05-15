@@ -455,6 +455,29 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             )
             return
 
+        # Compaction edit guard — if the target message sits before the
+        # latest compaction checkpoint's tail-start, the message lives in
+        # the immutable compact snapshot and can no longer be edited.
+        # The tail (created_at >= tail_start_msg.created_at) remains
+        # editable. See spec §6.8.
+        checkpoints = session.get("compaction_checkpoints") or []
+        if checkpoints:
+            latest = checkpoints[-1]
+            tail_start_msg = await repo.get_message(latest["tail_start_message_id"])
+            if (
+                tail_start_msg is not None
+                and target["created_at"] < tail_start_msg["created_at"]
+            ):
+                await _reject(
+                    "edit_before_compact",
+                    (
+                        "This message is part of a compact snapshot and "
+                        "can no longer be edited. Start a new session if "
+                        "you need to go back further."
+                    ),
+                )
+                return
+
         text = "".join(
             part.get("text", "") for part in content_parts if part.get("type") == "text"
         ).strip()
@@ -815,3 +838,255 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
                 )
     except Exception:
         _log.exception("Unhandled error in handle_incognito_send for user %s", user_id)
+
+
+async def _emit_compaction_failed(
+    event_bus,
+    session_id: str,
+    correlation_id: str,
+    user_id: str,
+    *,
+    error_code: str,
+    user_message: str,
+    recoverable: bool,
+) -> None:
+    """Publish a ChatCompactionFailedEvent — used by the trigger handler.
+
+    Deferred imports mirror the rest of this file's pattern (heavy chat /
+    shared modules are pulled in lazily where they would otherwise cause
+    circular imports through ``backend.modules.chat.__init__``).
+    """
+    from shared.events.chat import ChatCompactionFailedEvent
+
+    await event_bus.publish(
+        Topics.CHAT_COMPACTION_FAILED,
+        ChatCompactionFailedEvent(
+            session_id=session_id,
+            correlation_id=correlation_id,
+            error_code=error_code,
+            user_message=user_message,
+            recoverable=recoverable,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+
+async def handle_chat_compaction_request(
+    user_id: str, data: dict, *, connection_id: str | None = None,
+) -> None:
+    """Handle a chat.compaction.request WebSocket message — trigger a
+    compaction job. See spec §6.1.
+
+    Signature mirrors the other ``handle_chat_*`` handlers in this file so
+    the WS router can dispatch all of them uniformly. ``connection_id`` is
+    currently unused — the job runs against the session, not the WS
+    connection — but is accepted to keep the dispatch contract uniform.
+    """
+    from backend.database import get_redis
+
+    session_id = data.get("session_id")
+    if not session_id:
+        return
+
+    correlation_id = data.get("correlation_id") or str(uuid4())
+    event_bus = get_event_bus()
+
+    try:
+        db = get_db()
+        repo = ChatRepository(db)
+
+        session = await repo.get_session(session_id, user_id)
+        if session is None:
+            # Ownership / not-found — silent, no event to route.
+            return
+
+        # Minimum-size check — refuses tiny sessions outright.
+        total_messages = await repo.count_messages(session_id)
+        total_tokens = int(session.get("context_used_tokens") or 0)
+        if total_messages <= 12 or total_tokens < 4000:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="too_small", recoverable=False,
+                user_message="Conversation too short to compact yet.",
+            )
+            return
+
+        # Lower threshold — refuse to compact sessions that haven't filled
+        # at least 30 % of the model's context window yet (no benefit).
+        fill = float(session.get("context_fill_percentage") or 0.0)
+        if fill < 0.30:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="below_threshold", recoverable=False,
+                user_message=(
+                    "Conversation is not large enough to benefit from "
+                    "compaction yet."
+                ),
+            )
+            return
+
+        # Idempotency lock — refuses concurrent compactions for the same
+        # session. The job handler releases the lock in its ``finally``
+        # block; the trigger handler does NOT release on success.
+        redis = get_redis()
+        lock_key = f"compaction:lock:{session_id}"
+        acquired = await redis.set(lock_key, correlation_id, nx=True, ex=600)
+        if not acquired:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="already_running", recoverable=True,
+                user_message=(
+                    "A compaction is already running for this conversation."
+                ),
+            )
+            return
+
+        # Pre-flight: compute the source range using the same helpers the
+        # job handler uses, so a session that cannot possibly compact is
+        # rejected up front (without paying for a queued job that would
+        # then fail at the LLM boundary). On any error path past this
+        # point the lock must be released — see ``await redis.delete(...)``
+        # calls below.
+        from backend.modules.chat._compaction import (
+            COMPACTION_MAX_OUTPUT_TOKENS,
+            COMPACTION_SAFETY_MARGIN,
+            COMPACTION_SYSTEM_PROMPT_TOKENS,
+            determine_tail_start_index,
+            sanitise_source,
+            select_source_range,
+        )
+        from backend.modules.llm import get_effective_context_window
+
+        model_unique_id = session.get("model_unique_id") or ""
+        if not model_unique_id:
+            # Session has no per-session model override — fall back to
+            # the persona's default model.
+            from backend.modules.persona import get_persona
+
+            persona = await get_persona(session.get("persona_id"), user_id)
+            model_unique_id = (persona or {}).get("model_unique_id", "")
+
+        model_context = (
+            await get_effective_context_window(user_id, model_unique_id)
+            or 8192
+        )
+
+        all_messages = await repo.list_messages(session_id)
+
+        checkpoints = session.get("compaction_checkpoints") or []
+        prev_checkpoint_id = checkpoints[-1]["id"] if checkpoints else None
+        prev_tail_start_id = (
+            checkpoints[-1]["tail_start_message_id"] if checkpoints else None
+        )
+
+        try:
+            tail_start_idx = determine_tail_start_index(
+                all_messages, model_context=model_context,
+            )
+            source_raw, tail_msgs = select_source_range(
+                all_messages,
+                tail_start_index=tail_start_idx,
+                prev_tail_start_id=prev_tail_start_id,
+            )
+        except ValueError:
+            # Previous checkpoint references a message that no longer
+            # exists. Same condition the job handler reports — surface
+            # it now to avoid queueing a doomed job.
+            await redis.delete(lock_key)
+            _log.exception(
+                "compaction.stale_prev_checkpoint session=%s correlation_id=%s",
+                session_id, correlation_id,
+            )
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="stale_prev_checkpoint", recoverable=False,
+                user_message=(
+                    "The previous compact snapshot references a message "
+                    "that no longer exists. Start a new conversation to "
+                    "compact again."
+                ),
+            )
+            return
+
+        source_msgs = sanitise_source(source_raw)
+        source_tokens = sum(
+            int(m.get("token_count") or 0) for m in source_msgs
+        )
+
+        # Re-compact guard: when the conversation hasn't grown since the
+        # last checkpoint, source_msgs is empty and there is nothing
+        # meaningful to summarise. Reject the trigger with a clear
+        # message instead of running the LLM on an empty transcript.
+        if prev_checkpoint_id and source_tokens < 200:
+            await redis.delete(lock_key)
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="too_small", recoverable=False,
+                user_message=(
+                    "Nothing new to compact since the last snapshot — "
+                    "continue the conversation and try again later."
+                ),
+            )
+            return
+
+        overhead = (
+            COMPACTION_SYSTEM_PROMPT_TOKENS
+            + COMPACTION_MAX_OUTPUT_TOKENS
+            + COMPACTION_SAFETY_MARGIN
+        )
+        if source_tokens + overhead > model_context:
+            await redis.delete(lock_key)
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="compaction_source_too_large", recoverable=False,
+                user_message=(
+                    "Conversation is too large for the current model to "
+                    "compact. Switch to a model with a larger context "
+                    "window or start a new session."
+                ),
+            )
+            return
+
+        # Submit the job. Heuristic for the estimated post-compact size:
+        # compaction targets 5–10 % of source token count, floored at 500
+        # so the UI does not show 0 for tiny sessions.
+        from backend.jobs._models import JobType
+        from backend.jobs._submit import submit as submit_job
+        from shared.events.chat import ChatCompactionStartedEvent
+
+        estimated_after = max(500, int(source_tokens * 0.08))
+
+        await submit_job(
+            job_type=JobType.CHAT_COMPACTION,
+            user_id=user_id,
+            model_unique_id=model_unique_id,
+            payload={
+                "session_id": session_id,
+                "correlation_id": correlation_id,
+                "prev_checkpoint_id": prev_checkpoint_id,
+            },
+            correlation_id=correlation_id,
+        )
+
+        await event_bus.publish(
+            Topics.CHAT_COMPACTION_STARTED,
+            ChatCompactionStartedEvent(
+                session_id=session_id,
+                correlation_id=correlation_id,
+                tokens_before=source_tokens,
+                estimated_tokens_after=estimated_after,
+                tail_message_count=len(tail_msgs),
+                timestamp=datetime.now(timezone.utc),
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
+    except Exception:
+        _log.exception(
+            "Unhandled error in handle_chat_compaction_request for user %s",
+            user_id,
+        )

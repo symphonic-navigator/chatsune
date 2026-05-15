@@ -90,6 +90,12 @@ class Topics:
     CHAT_TOOL_CALL_DELTA = "chat.tool_call.delta"
     CHAT_CLIENT_TOOL_DISPATCH = "chat.client_tool.dispatch"
     CHAT_WEB_SEARCH_CONTEXT = "chat.web_search.context"
+    # Chat compaction
+    CHAT_COMPACTION_REQUEST = "chat.compaction.request"
+    CHAT_COMPACTION_STARTED = "chat.compaction.started"
+    CHAT_COMPACTION_PROGRESS = "chat.compaction.progress"
+    CHAT_COMPACTION_COMPLETED = "chat.compaction.completed"
+    CHAT_COMPACTION_FAILED = "chat.compaction.failed"
     # Session toggles (tools_enabled, auto_read, reasoning_override)
     CHAT_SESSION_TOGGLES_UPDATED = "chat.session.toggles_updated"
     # Session extras (tools_enabled, reasoning_mode, reasoning_effort) — broadcast

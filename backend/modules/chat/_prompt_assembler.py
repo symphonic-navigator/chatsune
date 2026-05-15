@@ -82,6 +82,7 @@ async def assemble(
     project_id: str | None = None,
     supports_reasoning: bool = False,
     extras: ChatSessionExtras | None = None,
+    compact_markdown: str | None = None,
 ) -> str:
     """Assemble the full XML system prompt for LLM consumption.
 
@@ -162,6 +163,20 @@ async def assemble(
         memory_xml = await get_memory_context(user_id, persona_id)
         if memory_xml:
             parts.append(memory_xml)
+
+    # Compact-and-Continue: when the session carries an active compaction
+    # checkpoint, the caller passes its markdown here so the model sees
+    # the older portion of the conversation as a condensed briefing.
+    if compact_markdown:
+        parts.append(
+            '<conversation_compact>\n'
+            'The earlier portion of this conversation has been compacted '
+            'into the briefing below. Use it as authoritative context. '
+            'Do not refer to it explicitly unless the user asks about '
+            'earlier topics.\n\n'
+            f'{compact_markdown.strip()}\n'
+            '</conversation_compact>'
+        )
 
     # Layer: Integration prompt extensions (active integrations for this persona).
     # An extension whose integration has tools is gated on tools_enabled —

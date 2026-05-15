@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChatMessageDto,
+  CompactionCheckpoint,
   KnowledgeContextItem,
   PtiOverflow,
   TimelineEntry,
   TimelineEntryKnowledgeSearch,
   ToolCallRef,
 } from '../../core/api/chat'
-import { type LiveVisionDescription } from '../../core/store/chatStore'
+import { type LiveVisionDescription, useChatStore } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 import { useReportBounds } from '../voice/infrastructure/useReportBounds'
@@ -20,6 +21,8 @@ import { ToolCallPill } from './ToolCallPill'
 import type { StreamingToolCall } from '../../core/store/chatStore'
 import { ArtefactCard } from '../artefact/ArtefactCard'
 import { InlineImageBlock } from '../images/chat/InlineImageBlock'
+import { CompactedMarkerPill } from './compaction/CompactedMarkerPill'
+import { CompactedSnapshotDrawer } from './compaction/CompactedSnapshotDrawer'
 
 interface MessageListProps {
   sessionId: string | null
@@ -150,6 +153,35 @@ export function MessageList({
   visionDescriptions, streamingCorrelationId, streamingSlow,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
 }: MessageListProps) {
+  // Compact-and-continue checkpoints for the active session, hydrated
+  // from the messages bundle on session-switch and extended on
+  // ``chat.compaction.completed`` WS events. Indexed by the tail-start
+  // message id so the renderer can drop a `Compacted` marker BEFORE the
+  // first message of the tail range — visually separating the source
+  // (now condensed into the briefing) from the verbatim tail.
+  const compactionCheckpoints = useChatStore((s) => s.compactionCheckpoints)
+  const checkpointByTailStart = useMemo(() => {
+    const map = new Map<string, CompactionCheckpoint>()
+    for (const cp of compactionCheckpoints) {
+      map.set(cp.tail_start_message_id, cp)
+    }
+    return map
+  }, [compactionCheckpoints])
+  // The earliest tail-start across all checkpoints — used to grey out
+  // the edit button on source-range messages (the backend already
+  // rejects edits before this cutoff with ``edit_before_compact``;
+  // disabling the UI keeps the rejection from being a surprise).
+  const earliestTailStartIdx = useMemo(() => {
+    if (compactionCheckpoints.length === 0) return -1
+    const tailStartIds = new Set(
+      compactionCheckpoints.map((cp) => cp.tail_start_message_id),
+    )
+    return messages.findIndex((m) => tailStartIds.has(m.id))
+  }, [compactionCheckpoints, messages])
+  // ``openCheckpoint`` drives the read-only snapshot drawer mounted at
+  // the root of this component. ``null`` keeps the drawer unmounted.
+  const [openCheckpoint, setOpenCheckpoint] = useState<CompactionCheckpoint | null>(null)
+
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
   const canRegenerate =
@@ -259,9 +291,30 @@ export function MessageList({
 
         {messages.map((msg, i) => {
           const isBm = bookmarkedMessageIds.has(msg.id)
+          // Compact-and-continue: drop a `Compacted` marker BEFORE the
+          // tail-start message so the divider visually separates the
+          // source range (now folded into the briefing) from the verbatim
+          // tail. ``checkpointByTailStart`` is the indexed view of the
+          // session's checkpoint list — see hydration at the top of the
+          // component.
+          const checkpointHere = checkpointByTailStart.get(msg.id) ?? null
+          const marker = checkpointHere ? (
+            <CompactedMarkerPill
+              key={`compacted-${checkpointHere.id}`}
+              checkpoint={checkpointHere}
+              onOpen={() => setOpenCheckpoint(checkpointHere)}
+            />
+          ) : null
+          // Edits to messages before the earliest tail-start are rejected
+          // by the backend with ``edit_before_compact``. Grey out the
+          // pencil button up-front so the user doesn't hit a backend
+          // rejection.
+          const isBeforeCompact =
+            earliestTailStartIdx > 0 && i < earliestTailStartIdx
           if (msg.role === 'user') {
             return (
               <div key={msg.id}>
+                {marker}
                 <div id={`msg-${msg.id}`} />
                 <UserBubble
                   content={msg.content}
@@ -276,8 +329,10 @@ export function MessageList({
                   // every existing user message gains/loses its action row at
                   // once. The Edit button is disabled (greyed out) while a
                   // stream is in flight to preserve the prior behaviour of
-                  // forbidding mid-stream edits.
-                  isEditable={!msg.id.startsWith('optimistic-')}
+                  // forbidding mid-stream edits. Messages before the
+                  // compaction tail-start are also un-editable — the
+                  // backend would reject the request anyway.
+                  isEditable={!msg.id.startsWith('optimistic-') && !isBeforeCompact}
                   editDisabled={isStreaming}
                   isBookmarked={isBm}
                   onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}
@@ -302,6 +357,7 @@ export function MessageList({
             )
             return (
               <div key={msg.id}>
+                {marker}
                 <div id={`msg-${msg.id}`} />
                 {events.map((entry) =>
                   renderTimelineEntry(entry, sessionId ?? '', msg.id),
@@ -397,6 +453,15 @@ export function MessageList({
       </div>
 
       </div>
+
+      {/* Compaction snapshot drawer — opened by clicking a CompactedMarkerPill.
+          Renders nothing while ``openCheckpoint`` is null. Mounted at the
+          MessageList root so the open state stays scoped to the message-list
+          lifetime. */}
+      <CompactedSnapshotDrawer
+        checkpoint={openCheckpoint}
+        onClose={() => setOpenCheckpoint(null)}
+      />
 
       {/* Scroll-to-bottom button — centred above input */}
       {showScrollButton && (

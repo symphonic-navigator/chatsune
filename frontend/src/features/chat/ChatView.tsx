@@ -16,6 +16,10 @@ import { CockpitBar } from './cockpit/CockpitBar'
 import type { ToolGroup } from './cockpit/buttons/ToolsButton'
 import { useCockpitStore } from './cockpit/cockpitStore'
 import { ContextStatusPill } from './ContextStatusPill'
+import { SparkleCompactButton } from './compaction/SparkleCompactButton'
+import { CompactConfirmCard } from './compaction/CompactConfirmCard'
+import { SuggestCompactToast } from './compaction/SuggestCompactToast'
+import { useSuggestToast } from './compaction/useSuggestToast'
 import { useAttachments } from './useAttachments'
 import { AttachmentStrip } from './AttachmentStrip'
 import { UploadBrowserPanel } from './UploadBrowserPanel'
@@ -295,6 +299,23 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
   const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
+  // Compact-and-continue: read the loading flag fired by useChatStream on
+  // chat.compaction.started / .completed / .failed, plus local UI state for
+  // the inline confirm card. The send helper mirrors the existing
+  // `chat.regenerate` shape — fire the WS request with a fresh correlation
+  // id and let the started event flip the store flag.
+  const compactionLoading = useChatStore((s) => s.compactionLoading)
+  const [showCompactConfirm, setShowCompactConfirm] = useState(false)
+  const [showSuggestToast, setShowSuggestToast] = useState(false)
+  const sendCompactionRequest = useCallback((sid: string) => {
+    setShowCompactConfirm(false)
+    setShowSuggestToast(false)
+    sendMessage({
+      type: 'chat.compaction.request',
+      session_id: sid,
+      correlation_id: crypto.randomUUID(),
+    })
+  }, [])
   const error = useChatStore((s) => s.error)
   const sessionTitle = useChatStore((s) => s.sessionTitle)
   const [sessionPinned, setSessionPinned] = useState<boolean>(false)
@@ -471,6 +492,13 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setContextTokens(
           bundle.context_used_tokens ?? 0,
           bundle.context_max_tokens ?? 0,
+        )
+        // Compact-and-continue: hydrate the active session's checkpoints
+        // so MessageList can render inline `Compacted` markers between
+        // messages on first paint. Falls back to `[]` for legacy backends
+        // that pre-date the bundle field.
+        useChatStore.getState().setCompactionCheckpoints(
+          bundle.compaction_checkpoints ?? [],
         )
       })
       .catch((err) => {
@@ -711,6 +739,36 @@ export function ChatView({ persona }: ChatViewProps) {
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
   const enterConversationMode = useConversationModeStore((s) => s.enter)
   const exitConversationMode = useConversationModeStore((s) => s.exit)
+
+  // Suggest-toast: fire once when the conversation crosses 60 % context fill
+  // for the first time. Hard-suppressed in continuous-voice mode — see
+  // ``devdocs/specs/2026-05-15-compact-and-continue-design.md`` §5.3.
+  useSuggestToast({
+    fillPercentage: contextFillPercentage,
+    isContinuousVoice: conversationActive,
+    onCross: () => setShowSuggestToast(true),
+  })
+
+  // 90 s soft-timeout on the compaction loading overlay. If no
+  // ``chat.compaction.completed`` / ``.failed`` event arrives within
+  // that window, drop the input lock and surface a soft notification.
+  // The backend job is NOT marked failed at this point — it may still
+  // complete in the background. See spec §5.7.
+  useEffect(() => {
+    if (!compactionLoading) return
+    const timer = setTimeout(() => {
+      useChatStore.getState().setCompactionLoading(false)
+      useNotificationStore.getState().addNotification({
+        level: 'info',
+        title: 'Compaction running long',
+        message:
+          "Compaction is taking longer than expected. " +
+          "Reload the page if it doesn't complete soon.",
+        duration: 6000,
+      })
+    }, 90_000)
+    return () => clearTimeout(timer)
+  }, [compactionLoading])
 
   // Voice lifecycle — gates HoldToKeepTalking (only visible while the
   // companion is actively listening) and feeds the top-bar pill so a click
@@ -1505,6 +1563,27 @@ export function ChatView({ persona }: ChatViewProps) {
             usedTokens={contextUsedTokens}
             maxTokens={contextMaxTokens}
           />
+          {effectiveSessionId && (
+            <div className="relative">
+              <SparkleCompactButton
+                totalMessages={messages.length}
+                totalTokens={contextUsedTokens}
+                fillPercentage={contextFillPercentage}
+                isLoading={compactionLoading}
+                onClick={() => setShowCompactConfirm((v) => !v)}
+              />
+              {showCompactConfirm && (
+                <div className="absolute right-0 top-full mt-2 z-50">
+                  <CompactConfirmCard
+                    contextUsed={contextUsedTokens}
+                    contextMax={contextMaxTokens}
+                    onConfirm={() => sendCompactionRequest(effectiveSessionId)}
+                    onCancel={() => setShowCompactConfirm(false)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Mobile topbar indicators — compact icon-only pills */}
@@ -1554,8 +1633,31 @@ export function ChatView({ persona }: ChatViewProps) {
             </svg>
             {contextStatus === 'green' ? '' : `${Math.round(contextFillPercentage * 100)}%`}
           </span>
+          {effectiveSessionId && (
+            <SparkleCompactButton
+              totalMessages={messages.length}
+              totalTokens={contextUsedTokens}
+              fillPercentage={contextFillPercentage}
+              isLoading={compactionLoading}
+              onClick={() => setShowCompactConfirm((v) => !v)}
+            />
+          )}
         </div>
       </div>
+      {/* Mobile confirm-card overlay — anchored below the indicator row.
+          For MVP this reuses the inline card rather than a dedicated
+          bottom-sheet primitive; the card is small and the chat area
+          remains visible behind it. See plan Phase 8 task 8.5. */}
+      {showCompactConfirm && effectiveSessionId && (
+        <div className="lg:hidden flex justify-end px-3 pb-2">
+          <CompactConfirmCard
+            contextUsed={contextUsedTokens}
+            contextMax={contextMaxTokens}
+            onConfirm={() => sendCompactionRequest(effectiveSessionId)}
+            onCancel={() => setShowCompactConfirm(false)}
+          />
+        </div>
+      )}
 
       {error && (
         <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-[13px]">
@@ -1665,9 +1767,38 @@ export function ChatView({ persona }: ChatViewProps) {
               onHoldEnd={() => setConversationHolding(false)}
             />
           )}
+          {/* Compaction loading overlay — covers the composer while the job
+              runs (set by useChatStream on chat.compaction.started, cleared
+              on .completed / .failed). The composer beneath stays mounted
+              so any in-progress text is preserved; ``disabled`` blocks input
+              interaction and the overlay covers it visually. */}
+          {compactionLoading && (
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex items-center justify-center px-4 pb-24 pt-2 text-center text-[12px] text-amber-200/90 font-mono"
+              role="status"
+              aria-live="polite"
+            >
+              <span className="rounded-full border border-amber-400/30 bg-[#0b0a08]/85 backdrop-blur-sm px-3 py-1">
+                <span aria-hidden>{'✨ '}</span>
+                Compacting your conversation — one moment
+              </span>
+            </div>
+          )}
+          {/* Suggest-toast — shown once when the conversation first crosses
+              60 % context fill. Hidden during compaction (no point asking
+              again while a job is in flight) and during continuous-voice
+              mode (see ``useSuggestToast`` — the detector itself also
+              hard-suppresses, this is a defence-in-depth render gate). */}
+          {showSuggestToast && effectiveSessionId && !compactionLoading && !conversationActive && (
+            <SuggestCompactToast
+              fillPct={contextFillPercentage}
+              onCompact={() => sendCompactionRequest(effectiveSessionId)}
+              onLater={() => setShowSuggestToast(false)}
+            />
+          )}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={handleFilesSelected}
-            isStreaming={isStreaming} disabled={isLoading} hasPendingUploads={attachments.hasPending}
+            isStreaming={isStreaming} disabled={isLoading || compactionLoading} hasPendingUploads={attachments.hasPending}
             sttEnabled={sttEnabled}
             voicePhase={pipelineState.phase}
             volumeLevel={0}

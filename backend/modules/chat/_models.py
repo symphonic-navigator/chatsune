@@ -3,7 +3,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.chat import ChatSessionExtras, CompactionCheckpointDto
+
+
+# The document and the DTO are structurally identical — we reuse the
+# DTO directly inside the document model to keep both shapes guaranteed
+# in lock-step. Each new checkpoint is appended; the inference path
+# only ever uses the latest entry.
+CompactionCheckpoint = CompactionCheckpointDto
 
 
 class ChatSessionDocument(BaseModel):
@@ -22,6 +29,9 @@ class ChatSessionDocument(BaseModel):
     # from model capability on first cockpit interaction" — legacy
     # sessions created before this field deserialise that way too.
     extras: ChatSessionExtras | None = None
+    # Chat compaction checkpoints — append-only. Default [] keeps pre-feature
+    # sessions deserialising without error. See devdocs/specs/2026-05-15-compact-and-continue-design.md.
+    compaction_checkpoints: list[CompactionCheckpoint] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
