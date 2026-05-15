@@ -49,3 +49,29 @@ def test_unclosed_code_fence_raises():
     bad = _GOOD_OUTPUT + "\n```\nleftover"
     with pytest.raises(CompactionValidationError):
         validate_compact_markdown(bad)
+
+
+def test_accepts_heading_variations_from_real_models():
+    """Real models paraphrase headings — single hash, ``and`` instead of
+    ``&``, trailing colons, bold-only. We accept any rendering that
+    surfaces all six section topics."""
+    relaxed = """\
+# Topic and Goal:
+Talk about something.
+
+# Established Facts:
+- a
+
+# Open Thread:
+- b
+
+**User Preferences:**
+- terse
+
+# Pending References
+- file.txt
+
+# Tone and Persona Adherence
+Friendly.
+"""
+    validate_compact_markdown(relaxed)

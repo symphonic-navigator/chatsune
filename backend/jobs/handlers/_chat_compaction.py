@@ -329,11 +329,19 @@ async def _call_llm_with_retry(
         try:
             validate_compact_markdown(markdown)
             return markdown
-        except CompactionValidationError:
-            if attempt == 2:
-                raise
+        except CompactionValidationError as exc:
+            # Log the raw output preview so we can iterate on validation
+            # tolerance without re-running the LLM. Cap at 800 chars to
+            # keep log lines manageable for long briefings.
+            preview = markdown[:800] if markdown else "<empty>"
             _log.warning(
                 "compaction.validation_retry",
                 correlation_id=correlation_id,
+                attempt=attempt,
+                reason=str(exc),
+                markdown_preview=preview,
+                markdown_total_chars=len(markdown),
             )
+            if attempt == 2:
+                raise
     raise CompactionValidationError("exhausted retries")

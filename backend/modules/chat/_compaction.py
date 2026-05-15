@@ -91,13 +91,21 @@ def sanitise_source(source: list[dict]) -> list[dict]:
     return cleaned
 
 
-_REQUIRED_SECTIONS = (
-    "## Topic & Goal",
-    "## Established Facts",
-    "## Open Threads",
-    "## User Preferences Observed",
-    "## Pending References",
-    "## Tone & Persona Adherence",
+import re
+
+# Each entry is a regex that matches the section heading in any of the
+# common renderings a model might emit: ``## Topic & Goal``, ``# Topic
+# and Goal``, ``**Topic & Goal**``, with or without trailing colon, any
+# case. We match the *keywords* rather than the literal heading string,
+# which is robust to GPT-4o-style paraphrasing while still rejecting
+# garbage output that misses entire sections.
+_REQUIRED_SECTION_PATTERNS = (
+    ("topic.+goal", "Topic & Goal"),
+    ("established.+facts?", "Established Facts"),
+    ("open.+threads?", "Open Threads"),
+    ("(user.+preferences?|preferences? observed)", "User Preferences Observed"),
+    ("pending.+references?", "Pending References"),
+    ("(tone.+persona|persona.+adherence)", "Tone & Persona Adherence"),
 )
 
 
@@ -108,14 +116,19 @@ class CompactionValidationError(Exception):
 def validate_compact_markdown(markdown: str) -> None:
     """Raise CompactionValidationError if markdown is not a valid briefing.
 
-    Checks: non-empty, all six required headings present, code fences
-    balanced. The model's prose may otherwise vary freely.
+    Checks: non-empty, all six required section topics present (matched
+    case-insensitively and tolerant of heading-style variations such as
+    ``# Topic and Goal`` or ``**Topic & Goal:**``), code fences balanced.
+    The model's prose may otherwise vary freely.
     """
     text = (markdown or "").strip()
     if not text:
         raise CompactionValidationError("compact markdown was empty")
 
-    missing = [s for s in _REQUIRED_SECTIONS if s not in text]
+    missing: list[str] = []
+    for pattern, label in _REQUIRED_SECTION_PATTERNS:
+        if not re.search(pattern, text, flags=re.IGNORECASE):
+            missing.append(label)
     if missing:
         raise CompactionValidationError(
             f"compact markdown missing required sections: {missing}",
