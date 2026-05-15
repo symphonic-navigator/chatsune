@@ -77,3 +77,38 @@ def sanitise_source(source: list[dict]) -> list[dict]:
             continue
         cleaned.append(m)
     return cleaned
+
+
+_REQUIRED_SECTIONS = (
+    "## Topic & Goal",
+    "## Established Facts",
+    "## Open Threads",
+    "## User Preferences Observed",
+    "## Pending References",
+    "## Tone & Persona Adherence",
+)
+
+
+class CompactionValidationError(Exception):
+    """Raised when a compact-markdown output fails structural checks."""
+
+
+def validate_compact_markdown(markdown: str) -> None:
+    """Raise CompactionValidationError if markdown is not a valid briefing.
+
+    Checks: non-empty, all six required headings present, code fences
+    balanced. The model's prose may otherwise vary freely.
+    """
+    text = (markdown or "").strip()
+    if not text:
+        raise CompactionValidationError("compact markdown was empty")
+
+    missing = [s for s in _REQUIRED_SECTIONS if s not in text]
+    if missing:
+        raise CompactionValidationError(
+            f"compact markdown missing required sections: {missing}",
+        )
+
+    fence_count = sum(1 for line in text.splitlines() if line.strip().startswith("```"))
+    if fence_count % 2 != 0:
+        raise CompactionValidationError("compact markdown has unbalanced code fence")
