@@ -18,6 +18,8 @@ import { useCockpitStore } from './cockpit/cockpitStore'
 import { ContextStatusPill } from './ContextStatusPill'
 import { SparkleCompactButton } from './compaction/SparkleCompactButton'
 import { CompactConfirmCard } from './compaction/CompactConfirmCard'
+import { SuggestCompactToast } from './compaction/SuggestCompactToast'
+import { useSuggestToast } from './compaction/useSuggestToast'
 import { useAttachments } from './useAttachments'
 import { AttachmentStrip } from './AttachmentStrip'
 import { UploadBrowserPanel } from './UploadBrowserPanel'
@@ -304,8 +306,10 @@ export function ChatView({ persona }: ChatViewProps) {
   // id and let the started event flip the store flag.
   const compactionLoading = useChatStore((s) => s.compactionLoading)
   const [showCompactConfirm, setShowCompactConfirm] = useState(false)
+  const [showSuggestToast, setShowSuggestToast] = useState(false)
   const sendCompactionRequest = useCallback((sid: string) => {
     setShowCompactConfirm(false)
+    setShowSuggestToast(false)
     sendMessage({
       type: 'chat.compaction.request',
       session_id: sid,
@@ -728,6 +732,15 @@ export function ChatView({ persona }: ChatViewProps) {
   const setConversationHolding = useConversationModeStore((s) => s.setHolding)
   const enterConversationMode = useConversationModeStore((s) => s.enter)
   const exitConversationMode = useConversationModeStore((s) => s.exit)
+
+  // Suggest-toast: fire once when the conversation crosses 60 % context fill
+  // for the first time. Hard-suppressed in continuous-voice mode — see
+  // ``devdocs/specs/2026-05-15-compact-and-continue-design.md`` §5.3.
+  useSuggestToast({
+    fillPercentage: contextFillPercentage,
+    isContinuousVoice: conversationActive,
+    onCross: () => setShowSuggestToast(true),
+  })
 
   // Voice lifecycle — gates HoldToKeepTalking (only visible while the
   // companion is actively listening) and feeds the top-bar pill so a click
@@ -1742,6 +1755,18 @@ export function ChatView({ persona }: ChatViewProps) {
                 Compacting your conversation — one moment
               </span>
             </div>
+          )}
+          {/* Suggest-toast — shown once when the conversation first crosses
+              60 % context fill. Hidden during compaction (no point asking
+              again while a job is in flight) and during continuous-voice
+              mode (see ``useSuggestToast`` — the detector itself also
+              hard-suppresses, this is a defence-in-depth render gate). */}
+          {showSuggestToast && effectiveSessionId && !compactionLoading && !conversationActive && (
+            <SuggestCompactToast
+              fillPct={contextFillPercentage}
+              onCompact={() => sendCompactionRequest(effectiveSessionId)}
+              onLater={() => setShowSuggestToast(false)}
+            />
           )}
           <ChatInput ref={chatInputRef} onSend={handleSend} onCancel={handleCancel}
             onFilesSelected={handleFilesSelected}
