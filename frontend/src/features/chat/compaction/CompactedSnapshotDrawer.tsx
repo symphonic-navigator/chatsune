@@ -20,9 +20,15 @@ function formatTime(iso: string): string {
  * artefact preview) with prose styling that matches the chat's
  * vocabulary.
  *
- * Layout (Task 10.4): right-side slide-over, 480 px wide, full height,
- * anchored to the viewport's right edge. The mobile full-screen variant
- * is added in a follow-up task (10.5).
+ * Layout:
+ *   - Mobile (``< lg``): full-screen overlay (inset-0).
+ *   - Desktop (``lg`` and up): right-side slide-over, 480 px wide,
+ *     anchored to the viewport's right edge.
+ *
+ * Both modes share the same DOM tree; only the positioning / sizing
+ * classes differ. There is no portal — ``fixed`` positioning ignores
+ * the DOM-tree parent for layout anyway, and the ``z-50`` puts the
+ * drawer above the chat scroll area.
  *
  * Escape key dismisses; the close button does the same. See
  * ``devdocs/specs/2026-05-15-compact-and-continue-design.md`` §5.4.
@@ -48,7 +54,7 @@ export function CompactedSnapshotDrawer({ checkpoint, onClose }: Props) {
     <aside
       role="dialog"
       aria-label="Compaction snapshot"
-      className="fixed top-0 right-0 z-50 flex h-full w-[480px] max-w-full flex-col border-l border-white/10 bg-[#0b0a08] shadow-[0_8px_24px_rgba(0,0,0,0.5)]"
+      className="fixed inset-0 z-50 flex flex-col border-l border-white/10 bg-[#0b0a08] shadow-[0_8px_24px_rgba(0,0,0,0.5)] lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[480px]"
     >
       <header className="flex items-start justify-between border-b border-white/10 p-4">
         <div className="min-w-0 pr-4">
