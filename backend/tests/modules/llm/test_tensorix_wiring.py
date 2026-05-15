@@ -22,3 +22,14 @@ def test_get_adapter_class_resolves_tensorix():
 def test_resolver_premium_map_includes_tensorix():
     from backend.modules.llm._resolver import _PREMIUM_ADAPTER_TYPE
     assert _PREMIUM_ADAPTER_TYPE["tensorix"] == "tensorix_http"
+
+
+def test_tensorix_is_a_reserved_slug():
+    # RESERVED_SLUGS gates two things: rejecting user-created Connections
+    # whose slug would shadow the Premium Provider, and routing the
+    # persona model_unique_id validator through the Premium Account
+    # check rather than the Connection repository. Both must include
+    # tensorix, otherwise saving a persona with a Tensorix model fails
+    # with "Unknown or unowned connection 'tensorix'".
+    from backend.modules.llm._connections import RESERVED_SLUGS
+    assert "tensorix" in RESERVED_SLUGS

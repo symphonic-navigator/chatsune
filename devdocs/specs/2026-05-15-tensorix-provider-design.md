@@ -8,6 +8,51 @@ sort priority in the AddConnectionWizard. Text generation only.
 
 ---
 
+## Revision 2026-05-15 (post-empirical)
+
+After implementing the spec as originally written we probed all seven
+curated models against the live Tensorix API and discovered that the
+`binary` / `stepped` classification below does not match runtime
+behaviour. The findings:
+
+- Tensorix routes models through two heterogeneous internal backends,
+  visible in `GET /v1/model/info` as `litellm_params.model`:
+  - **OpenRouter proxy** (`openrouter/...` prefix) — deepseek-v4-pro,
+    deepseek-v3.2, kimi-k2.6, glm-5, glm-4.6. These honour the OpenAI
+    `reasoning_effort` field properly.
+  - **Direct in-house engines** (`openai/...` prefix on
+    95.133.253.*:8002 hosts) — deepseek-v4-flash and glm-5.1. These
+    don't honour `reasoning_effort` consistently: glm-5.1 ignores
+    `"none"` and reasons anyway; deepseek-v4-flash exposes no
+    separate `reasoning_content` channel at all (thinking surfaces
+    inline in `content`).
+
+Because the two routes don't agree, our adapter can't pretend it
+controls reasoning on every model. The classification was therefore
+recut to two cases only:
+
+| Model | Capability | Wire payload |
+|---|---|---|
+| `deepseek-v3-2` | `optional`, `default_on=False` | `reasoning_effort: "high"` when on, `"none"` when off |
+| `deepseek-v4-pro` | `always_on` | (field omitted) |
+| `deepseek-v4-flash` | `always_on` | (field omitted) |
+| `kimi-k2-6` | `always_on` | (field omitted) |
+| `glm-4-6` | `always_on` | (field omitted) |
+| `glm-5` | `always_on` | (field omitted) |
+| `glm-5-1` | `always_on` | (field omitted) |
+
+The six `always_on` models render a disabled-but-visible reasoning
+toggle in the UI (reusing the same treatment Mistral and others
+already apply). Only `deepseek-v3-2` gets a live toggle. The
+``ReasoningEffortDropdown`` stepped-selector component originally
+proposed in §3.1 was therefore never built, and §5.3 / §7 below are
+superseded by this revision. Documented as INSIGHTS INS-046.
+
+The rest of this spec — provider ordering, drift-canary, sub-router,
+error handling — remains accurate.
+
+---
+
 ## 1. Goal
 
 Bring Tensorix online as Chatsune's first GDPR/ZDR/EU-compute upstream
@@ -112,15 +157,22 @@ class _TensorixModelEntry:
 
 ### 4.1 The seven curated entries
 
-| `model_slug` | `upstream_slug` | Display name | Ctx | Out | Tools | Vision | Reasoning |
+> Note: the `Reasoning` column below is **superseded by the
+> 2026-05-15 revision** at the top of this document. The current
+> classification is `always_on` for six models and `off_on_toggle`
+> for `deepseek-v3-2`. The table is preserved as-is for historical
+> context; the live truth lives in
+> `backend/modules/llm/_adapters/_tensorix_http.py::_TENSORIX_MODELS`.
+
+| `model_slug` | `upstream_slug` | Display name | Ctx | Out | Tools | Vision | Reasoning (original) |
 |---|---|---|---|---|---|---|---|
-| `deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash | 1 048 576 | 384 000 | yes | no | **binary** |
-| `deepseek-v4-pro` | `deepseek/deepseek-v4-pro` | DeepSeek V4 Pro | 1 048 576 | 384 000 | yes | no | **stepped** |
-| `kimi-k2-6` | `moonshotai/Kimi-K2.6` | Kimi K2.6 | 262 144 | 262 144 | yes | yes | **binary** |
-| `glm-5-1` | `z-ai/glm-5.1` | GLM 5.1 | 202 752 | 202 752 | yes | no | **stepped** |
-| `glm-5` | `z-ai/glm-5` | GLM 5 | 202 752 | 202 752 | yes | no | **stepped** |
-| `deepseek-v3-2` | `deepseek/deepseek-v3.2` | DeepSeek V3.2 | 163 840 | 163 840 | yes | no | **binary** |
-| `glm-4-6` | `z-ai/glm-4.6` | GLM 4.6 | 203 000 | 131 000 | yes | no | **binary** |
+| `deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | DeepSeek V4 Flash | 1 048 576 | 384 000 | yes | no | ~~binary~~ |
+| `deepseek-v4-pro` | `deepseek/deepseek-v4-pro` | DeepSeek V4 Pro | 1 048 576 | 384 000 | yes | no | ~~stepped~~ |
+| `kimi-k2-6` | `moonshotai/Kimi-K2.6` | Kimi K2.6 | 262 144 | 262 144 | yes | yes | ~~binary~~ |
+| `glm-5-1` | `z-ai/glm-5.1` | GLM 5.1 | 202 752 | 202 752 | yes | no | ~~stepped~~ |
+| `glm-5` | `z-ai/glm-5` | GLM 5 | 202 752 | 202 752 | yes | no | ~~stepped~~ |
+| `deepseek-v3-2` | `deepseek/deepseek-v3.2` | DeepSeek V3.2 | 163 840 | 163 840 | yes | no | binary (still applies) |
+| `glm-4-6` | `z-ai/glm-4.6` | GLM 4.6 | 203 000 | 131 000 | yes | no | ~~binary~~ |
 
 `upstream_slug` is what we send to Tensorix; `model_slug` is the
 user-facing identifier used in `<connection_id>:<model_slug>`. The
@@ -173,13 +225,12 @@ Tensorix account on demand. No user action.
      `temperature`, `max_tokens`, `tools`, `stream: true`).
    - `stream_options: {"include_usage": true}` always set, so we get
      usage in the final SSE chunk.
-   - **Reasoning injection** (driven by `reasoning_mode`):
-     - `binary` mode + reasoning toggle ON → `reasoning_effort: "high"`.
-     - `binary` mode + reasoning toggle OFF → field omitted.
-     - `stepped` mode + effort `"off"` → field omitted.
-     - `stepped` mode + effort `<low|medium|high>` → `reasoning_effort`
-       set to that value.
-     - `reasoning_mode is None` → field omitted unconditionally.
+   - **Reasoning injection** (driven by `reasoning_mode`, post the
+     2026-05-15 revision — see top of this document):
+     - `off_on_toggle` mode + toggle ON  → `reasoning_effort: "high"`.
+     - `off_on_toggle` mode + toggle OFF → `reasoning_effort: "none"`.
+     - `always_on` mode → field omitted unconditionally; Tensorix
+       either ignores the field or reasons regardless.
 4. POST to `https://api.tensorix.ai/v1/chat/completions`, stream the
    response.
 5. SSE parser handles three delta shapes:
@@ -233,24 +284,22 @@ sort logic on the client.
 
 ## 7. Reasoning UI
 
-The frontend already has a Mistral on/off toggle for reasoning. For
-Tensorix we wire it as follows:
+The frontend already supports the two capability shapes we need —
+no new component lands as part of this provider.
 
-- `ModelMetaDto.reasoning_mode == "binary"` → render existing toggle.
-- `ModelMetaDto.reasoning_mode == "stepped"` → render new
-  `<ReasoningEffortDropdown />` with four options
-  (Off / Low / Medium / High). "Off" omits the field on the wire;
-  the others set `reasoning_effort` accordingly. Default value is
-  whatever the user last picked for the same model; fresh choices
-  default to **Medium**.
-- `ModelMetaDto.reasoning_mode == null` → no control rendered.
+- `ReasoningCapability.kind == "optional"` (only deepseek-v3.2) →
+  render the existing on/off toggle. ON sends
+  `reasoning_effort: "high"`; OFF sends `"none"` (this mirrors the
+  Mistral and xAI surface).
+- `ReasoningCapability.kind == "always_on"` (the other six) → render
+  the existing always-on treatment (disabled-but-visible toggle with
+  the "always on" hint). No wire-side `reasoning_effort` is sent.
 
-The dropdown component is small, generic, and not Tensorix-specific —
-it's the natural place to land when another provider also wants
-stepped control later.
-
-The chosen value is carried on the chat request and unpacked by the
-adapter exactly as described in §5.3.
+The `<ReasoningEffortDropdown />` proposed in §3.1 was never built —
+the empirical findings (see top revision) made the stepped surface
+moot before the component landed. If a future Tensorix model lands
+that genuinely honours stepped effort buckets, revisit this section
+then.
 
 ---
 

@@ -4,6 +4,5 @@
   "messages": [
     {"role": "user", "content": "Estimate how many tennis balls fit in a school bus. Show working."}
   ],
-  "reasoning": true,
-  "reasoning_effort": "medium"
+  "reasoning": true
 }

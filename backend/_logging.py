@@ -117,7 +117,12 @@ def configure_logging(
     logging.getLogger("uvicorn.access").setLevel(
         logging.getLevelName(uvicorn_access_level.upper())
     )
-    for noisy in ("httpx", "httpcore", "pymongo"):
+    # `watchfiles` is included here for a non-obvious reason: its INFO-level
+    # "N changes detected" message gets written to the log file, which is
+    # itself in the watched tree — creating a self-triggering loop where
+    # every log write spawns a new "change detected" line that triggers
+    # another write. Keeping it at WARNING breaks the cycle.
+    for noisy in ("httpx", "httpcore", "pymongo", "watchfiles"):
         logging.getLogger(noisy).setLevel(
             logging.getLevelName(third_party_level.upper())
         )

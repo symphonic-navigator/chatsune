@@ -47,7 +47,7 @@ class SlugAlreadyExistsError(ValueError):
 
 
 RESERVED_SLUGS: frozenset[str] = frozenset({
-    "xai", "mistral", "ollama_cloud", "nano_gpt", "openrouter", "novita",
+    "xai", "mistral", "tensorix", "ollama_cloud", "nano_gpt", "openrouter", "novita",
 })
 
 

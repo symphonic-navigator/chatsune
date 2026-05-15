@@ -4,11 +4,18 @@ Hosts a curated seven-model list (DeepSeek V4 Flash/Pro/V3.2, Kimi K2.6,
 GLM 4.6/5/5.1) against the Tensorix Cloud API. Tensorix is OpenAI-
 compatible (litellm-backed) and offers GDPR/ZDR/EU-compute guarantees.
 
-Reasoning is per-model:
-- ``binary`` models accept a simple on/off toggle. ON sends
-  ``reasoning_effort="high"``; OFF omits the field.
-- ``stepped`` models accept ``reasoning_effort`` in {"low","medium","high"}
-  with an explicit "off" that omits the field.
+Reasoning surface is per-model and was decided empirically against
+the live API (see INSIGHTS.md INS-046). Tensorix routes models through two
+heterogeneous internal backends — an OpenRouter proxy and a set of
+direct in-house engines — and the two don't honour reasoning controls
+uniformly. The classification therefore is:
+
+- ``off_on_toggle`` — exactly one model (deepseek-v3.2) exposes a
+  working on/off toggle. ON sends ``reasoning_effort="high"``; OFF
+  sends ``reasoning_effort="none"``.
+- ``always_on`` — six models. Tensorix either ignores the field or
+  thinks anyway; we omit ``reasoning_effort`` entirely and surface a
+  disabled-but-visible "always on" toggle in the UI.
 
 See devdocs/specs/2026-05-15-tensorix-provider-design.md.
 """
@@ -52,7 +59,6 @@ from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import (
     ModelMetaDto,
     ReasoningCapability,
-    ReasoningEffortSpec,
     ToolCapability,
 )
 
@@ -81,10 +87,12 @@ class _TensorixModelEntry:
     max_output_tokens: int
     supports_tool_calls: bool
     supports_vision: bool
-    # ``binary`` -> on/off toggle (sends ``reasoning_effort="high"`` when on).
-    # ``stepped`` -> low/medium/high selector with explicit off.
-    # ``None`` -> the model has no reasoning surface.
-    reasoning_mode: Literal["binary", "stepped"] | None
+    # ``off_on_toggle`` -> the user toggles reasoning. ON sends
+    # ``reasoning_effort="high"``; OFF sends ``reasoning_effort="none"``.
+    # ``always_on``     -> Tensorix reasons unconditionally for this
+    # model; we omit ``reasoning_effort`` on the wire and show a
+    # disabled "always on" toggle in the UI.
+    reasoning_mode: Literal["off_on_toggle", "always_on"]
     first_class_support: bool
 
 
@@ -97,7 +105,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=384_000,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="binary",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -108,7 +116,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=384_000,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="stepped",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -119,7 +127,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=262_144,
         supports_tool_calls=True,
         supports_vision=True,
-        reasoning_mode="binary",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -130,7 +138,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=202_752,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="stepped",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -141,7 +149,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=202_752,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="stepped",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -152,7 +160,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=163_840,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="binary",
+        reasoning_mode="off_on_toggle",
         first_class_support=True,
     ),
     _TensorixModelEntry(
@@ -163,7 +171,7 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
         max_output_tokens=131_000,
         supports_tool_calls=True,
         supports_vision=False,
-        reasoning_mode="binary",
+        reasoning_mode="always_on",
         first_class_support=True,
     ),
 )
@@ -171,10 +179,6 @@ _TENSORIX_MODELS: tuple[_TensorixModelEntry, ...] = (
 _TENSORIX_MODELS_BY_ID: dict[str, _TensorixModelEntry] = {
     m.model_id: m for m in _TENSORIX_MODELS
 }
-
-
-_STEPPED_BUCKETS: frozenset[str] = frozenset({"low", "medium", "high"})
-_STEPPED_DEFAULT: str = "medium"
 
 
 class _ToolCallAccumulator:
@@ -337,24 +341,16 @@ def _select_reasoning_effort(
 ) -> str | None:
     """Return the ``reasoning_effort`` value for this request, or ``None``.
 
-    Rules (see spec §5.3):
-      - ``reasoning_mode != "on"`` -> always None (field omitted).
-      - ``binary`` model + on -> "high".
-      - ``stepped`` model + on + valid bucket -> that bucket.
-      - ``stepped`` model + on + missing/invalid bucket -> "medium" default.
-      - Model with ``reasoning_mode is None`` -> None.
+    Rules (see spec §5.3, revision 2026-05-15):
+      - ``always_on`` model -> always None (field omitted; Tensorix
+        either ignores ``reasoning_effort`` on this route or thinks
+        regardless, so we don't pretend to control it).
+      - ``off_on_toggle`` model + toggle on  -> ``"high"``.
+      - ``off_on_toggle`` model + toggle off -> ``"none"``.
     """
-    if request.extras.reasoning_mode != "on":
+    if entry.reasoning_mode == "always_on":
         return None
-    if entry.reasoning_mode is None:
-        return None
-    if entry.reasoning_mode == "binary":
-        return "high"
-    # stepped
-    bucket = request.extras.reasoning_effort
-    if bucket in _STEPPED_BUCKETS:
-        return bucket
-    return _STEPPED_DEFAULT
+    return "high" if request.extras.reasoning_mode == "on" else "none"
 
 
 def _build_chat_payload(request: CompletionRequest) -> dict:
@@ -478,23 +474,16 @@ class TensorixHttpAdapter(BaseAdapter):
         if entry is None:
             return None
 
-        if entry.reasoning_mode is None:
+        if entry.reasoning_mode == "always_on":
             reasoning = ReasoningCapability(
-                kind="no_reasoning", default_on=False,
+                kind="always_on",
+                effort=None,
+                default_on=True,
             )
-        elif entry.reasoning_mode == "binary":
+        else:  # "off_on_toggle" — only deepseek-v3.2 today
             reasoning = ReasoningCapability(
                 kind="optional",
                 effort=None,
-                default_on=False,
-            )
-        else:  # "stepped"
-            reasoning = ReasoningCapability(
-                kind="optional",
-                effort=ReasoningEffortSpec(
-                    buckets=["low", "medium", "high"],
-                    default_bucket="medium",
-                ),
                 default_on=False,
             )
 

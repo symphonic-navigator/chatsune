@@ -1883,3 +1883,65 @@ the boundary discipline that has paid off elsewhere.
 features, major for breaking changes. The `-pre.N` suffix is automatic
 on master and means "what's currently on master, build N"; it is *not*
 a stable identifier — only tagged `v*.*.*` builds are.
+
+---
+
+## INS-046 — Tensorix uses heterogeneous backend routing; reasoning surface varies per-model (2026-05-15)
+
+**Date:** 2026-05-15
+
+**Context:** When integrating Tensorix as a Premium provider we
+initially classified each of the seven curated models as either
+`binary` (on/off reasoning) or `stepped` (low/medium/high), based on
+Tensorix's marketing and standard OpenAI-compatible expectations.
+Empirical probing of the live API against all seven models showed
+this is wrong.
+
+**Discovery:** `GET /v1/model/info` exposes each model's underlying
+route in `litellm_params.model`. Tensorix uses two routes:
+
+- **OpenRouter proxy** (`openrouter/...` prefix) — deepseek-v4-pro,
+  deepseek-v3.2, kimi-k2.6, glm-5, glm-4.6.
+- **Direct in-house engines** (`openai/...` prefix, `api_base` to
+  internal IPs like `95.133.253.142:8002`) — deepseek-v4-flash,
+  glm-5.1.
+
+The two routes don't agree about the OpenAI `reasoning_effort` field:
+
+- OpenRouter-proxied models honour it the way OpenAI documents.
+- glm-5.1 (direct) ignores `reasoning_effort="none"` — it thinks
+  regardless.
+- deepseek-v4-flash (direct) is reasoning-capable but Tensorix's
+  direct backend doesn't emit a separate `reasoning_content` SSE
+  channel for it; the model demonstrably thinks inline in the
+  `content` stream. There is also no `completion_tokens_details`
+  block in the terminal usage on this route. This is a Tensorix-side
+  shape problem, not ours.
+
+**Decision:** Classify each Tensorix model's reasoning surface
+empirically (probe it), not from provider documentation. The
+adapter now exposes only two shapes:
+
+- `off_on_toggle` — only `deepseek-v3-2` today. ON sends
+  `reasoning_effort="high"`, OFF sends `"none"`. Same shape as
+  Mistral and xAI.
+- `always_on` — the other six models. We omit `reasoning_effort`
+  entirely (no point sending a field the backend ignores or
+  contradicts) and surface a disabled-but-visible "always on" toggle
+  in the UI.
+
+**Why not just send the field everywhere:** lying to the upstream
+about what we're controlling makes debugging harder and pollutes
+the request logs we'd otherwise rely on to spot real regressions.
+Better to be honest in the wire shape and honest in the UI.
+
+**Re-probe trigger:** if Tensorix unifies their backend routing
+(everything via OpenRouter, or everything via in-house) then the
+empirical classification should be re-checked end-to-end. The
+adapter's `/test` sub-router still validates only the curated slug
+intersection, not per-model reasoning behaviour — capability drift
+in *this* dimension is silent.
+
+**Related:** INS-004 / INS-019 (model_unique_id format — slug-based
+identity is what lets us route per-model logic in the adapter
+without leaking provider plumbing to other modules).

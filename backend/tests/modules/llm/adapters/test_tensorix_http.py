@@ -71,14 +71,20 @@ def test_tensorix_models_all_first_class():
 
 
 def test_tensorix_models_reasoning_mode_assignments():
+    # Post-empirical classification (2026-05-15): only deepseek-v3.2
+    # exposes a working off/on toggle. The other six are always_on
+    # because Tensorix's two-backend routing (OpenRouter proxy vs
+    # in-house engines) is inconsistent about ``reasoning_effort``;
+    # we surface them as "always on" rather than pretending to
+    # control them. See INSIGHTS INS-046.
     by_id = {m.model_id: m.reasoning_mode for m in _TENSORIX_MODELS}
-    assert by_id["deepseek-v4-flash"] == "binary"
-    assert by_id["deepseek-v4-pro"] == "stepped"
-    assert by_id["kimi-k2-6"] == "binary"
-    assert by_id["glm-5-1"] == "stepped"
-    assert by_id["glm-5"] == "stepped"
-    assert by_id["deepseek-v3-2"] == "binary"
-    assert by_id["glm-4-6"] == "binary"
+    assert by_id["deepseek-v4-flash"] == "always_on"
+    assert by_id["deepseek-v4-pro"] == "always_on"
+    assert by_id["kimi-k2-6"] == "always_on"
+    assert by_id["glm-5-1"] == "always_on"
+    assert by_id["glm-5"] == "always_on"
+    assert by_id["deepseek-v3-2"] == "off_on_toggle"
+    assert by_id["glm-4-6"] == "always_on"
 
 
 def test_tensorix_models_vision_only_for_kimi():
@@ -103,24 +109,35 @@ def test_tensorix_models_by_id_lookup_consistent():
 # ---------------------------------------------------------------------------
 
 
-def test_capability_hint_binary_model_has_no_effort_buckets():
-    hint = TensorixHttpAdapter().capability_hint("deepseek-v4-flash")
+def test_capability_hint_toggle_model_is_optional_without_buckets():
+    # deepseek-v3.2 is the only model that exposes a working off/on
+    # toggle (no effort buckets — the wire takes either "high" or
+    # "none", with nothing in between worth surfacing).
+    hint = TensorixHttpAdapter().capability_hint("deepseek-v3-2")
     assert hint is not None
     assert hint.reasoning.kind == "optional"
-    assert hint.reasoning.effort is None  # binary -> no bucket selector
+    assert hint.reasoning.effort is None
     assert hint.reasoning.default_on is False
     assert hint.tools.supported is True
     assert hint.first_class_support is True
 
 
-def test_capability_hint_stepped_model_has_three_effort_buckets():
-    hint = TensorixHttpAdapter().capability_hint("deepseek-v4-pro")
-    assert hint is not None
-    assert hint.reasoning.kind == "optional"
-    assert hint.reasoning.effort is not None
-    assert hint.reasoning.effort.buckets == ["low", "medium", "high"]
-    assert hint.reasoning.effort.default_bucket == "medium"
-    assert hint.reasoning.default_on is False
+def test_capability_hint_always_on_models_are_always_on():
+    always_on_ids = (
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "kimi-k2-6",
+        "glm-5-1",
+        "glm-5",
+        "glm-4-6",
+    )
+    adapter = TensorixHttpAdapter()
+    for mid in always_on_ids:
+        hint = adapter.capability_hint(mid)
+        assert hint is not None, mid
+        assert hint.reasoning.kind == "always_on", mid
+        assert hint.reasoning.effort is None, mid
+        assert hint.reasoning.default_on is True, mid
 
 
 def test_capability_hint_unknown_model_returns_none():
@@ -133,8 +150,8 @@ def test_capability_hint_kimi_advertises_vision_via_meta_not_hint():
     # expected reasoning/tools shape for Kimi.
     hint = TensorixHttpAdapter().capability_hint("kimi-k2-6")
     assert hint is not None
-    assert hint.reasoning.kind == "optional"
-    assert hint.reasoning.effort is None  # Kimi is binary
+    assert hint.reasoning.kind == "always_on"
+    assert hint.reasoning.effort is None
 
 
 # ---------------------------------------------------------------------------
@@ -228,63 +245,42 @@ def test_payload_sets_stream_and_include_usage():
     assert payload["stream_options"] == {"include_usage": True}
 
 
-def test_payload_binary_reasoning_off_omits_effort():
+def test_payload_toggle_model_off_sets_effort_none():
+    # deepseek-v3.2 is the off/on toggle model — OFF sends an explicit
+    # ``"none"`` (mirrors Mistral/xAI), not an omitted field.
     payload = _build_chat_payload(
-        _make_request(model_id="deepseek-v4-flash", reasoning_mode="off"),
+        _make_request(model_id="deepseek-v3-2", reasoning_mode="off"),
     )
-    assert "reasoning_effort" not in payload
+    assert payload["reasoning_effort"] == "none"
 
 
-def test_payload_binary_reasoning_on_sets_effort_high():
+def test_payload_toggle_model_on_sets_effort_high():
     payload = _build_chat_payload(
-        _make_request(model_id="deepseek-v4-flash", reasoning_mode="on"),
+        _make_request(model_id="deepseek-v3-2", reasoning_mode="on"),
     )
     assert payload["reasoning_effort"] == "high"
 
 
-def test_payload_stepped_reasoning_off_omits_effort():
+@pytest.mark.parametrize("model_id", [
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "kimi-k2-6",
+    "glm-5-1",
+    "glm-5",
+    "glm-4-6",
+])
+@pytest.mark.parametrize("reasoning_mode", ["on", "off"])
+def test_payload_always_on_models_never_emit_reasoning_effort(
+    model_id: str, reasoning_mode: str,
+):
+    # The six always_on models must NEVER send ``reasoning_effort`` —
+    # Tensorix either ignores it on their direct backends or routes via
+    # OpenRouter and reasons regardless. Either way, the field is
+    # omitted on the wire so the upstream isn't lied to.
     payload = _build_chat_payload(
-        _make_request(model_id="deepseek-v4-pro", reasoning_mode="off"),
+        _make_request(model_id=model_id, reasoning_mode=reasoning_mode),
     )
     assert "reasoning_effort" not in payload
-
-
-def test_payload_stepped_reasoning_passes_through_low():
-    payload = _build_chat_payload(_make_request(
-        model_id="deepseek-v4-pro",
-        reasoning_mode="on",
-        reasoning_effort="low",
-    ))
-    assert payload["reasoning_effort"] == "low"
-
-
-def test_payload_stepped_reasoning_passes_through_medium():
-    payload = _build_chat_payload(_make_request(
-        model_id="deepseek-v4-pro",
-        reasoning_mode="on",
-        reasoning_effort="medium",
-    ))
-    assert payload["reasoning_effort"] == "medium"
-
-
-def test_payload_stepped_reasoning_passes_through_high():
-    payload = _build_chat_payload(_make_request(
-        model_id="deepseek-v4-pro",
-        reasoning_mode="on",
-        reasoning_effort="high",
-    ))
-    assert payload["reasoning_effort"] == "high"
-
-
-def test_payload_stepped_with_no_effort_falls_back_to_default_bucket():
-    # ``reasoning_mode=on`` with no explicit bucket -> use the model's
-    # default_bucket ("medium").
-    payload = _build_chat_payload(_make_request(
-        model_id="deepseek-v4-pro",
-        reasoning_mode="on",
-        reasoning_effort=None,
-    ))
-    assert payload["reasoning_effort"] == "medium"
 
 
 def test_payload_unknown_model_falls_back_to_deepseek_v3_2():
