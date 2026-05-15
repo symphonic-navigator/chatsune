@@ -13,6 +13,7 @@ from backend.database import get_db
 from backend.modules.chat._handlers import router
 from backend.modules.chat._handlers_ws import (
     handle_chat_cancel,
+    handle_chat_compaction_request,
     handle_chat_edit,
     handle_chat_regenerate,
     handle_chat_retract,
@@ -471,6 +472,7 @@ __all__ = [
     "router", "init_indexes",
     "handle_chat_send", "handle_chat_edit", "handle_chat_regenerate",
     "handle_chat_cancel", "handle_chat_retract",
+    "handle_chat_compaction_request",
     "handle_incognito_send", "update_session_title",
     "trigger_disconnect_extraction", "cancel_all_for_user",
     "cancel_inflight_for_session",

@@ -12,6 +12,7 @@ _STREAM_ID_RE = re.compile(r"^\d+-\d+$")
 from backend.database import get_db, get_redis
 from backend.modules.chat import (
     handle_chat_cancel,
+    handle_chat_compaction_request,
     handle_chat_edit,
     handle_chat_regenerate,
     handle_chat_retract,
@@ -302,6 +303,10 @@ async def websocket_endpoint(
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.regenerate":
                 task = asyncio.create_task(handle_chat_regenerate(user_id, data, connection_id=connection_id))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+            elif msg_type == "chat.compaction.request":
+                task = asyncio.create_task(handle_chat_compaction_request(user_id, data, connection_id=connection_id))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
             elif msg_type == "chat.incognito.send":
