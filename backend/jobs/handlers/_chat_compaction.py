@@ -170,9 +170,20 @@ async def handle_chat_compaction(
         )
         await repo.append_compaction_checkpoint(session_id, checkpoint)
 
-        # Recompute session-context numbers after compact.
+        # Recompute session-context numbers after compact and persist
+        # them so a reload picks up the new (much lower) fill without
+        # waiting for the next inference to update the metrics.
         new_used = tokens_after + tail_token_count
         new_fill = new_used / model_context if model_context else 0.0
+        from backend.modules.chat._context import get_ampel_status
+        new_status = get_ampel_status(new_fill)
+        await repo.update_session_context_metrics(
+            session_id,
+            status=new_status,
+            fill_percentage=new_fill,
+            used_tokens=new_used,
+            max_tokens=model_context,
+        )
 
         completed = ChatCompactionCompletedEvent(
             session_id=session_id,
