@@ -178,7 +178,7 @@ async def handle_chat_compaction(
             user_message="The model could not produce a valid briefing. Please try again.",
             recoverable=True,
         )
-    except ValueError as exc:
+    except ValueError:
         _log.exception(
             "compaction.stale_prev_checkpoint",
             session_id=session_id, correlation_id=correlation_id,
