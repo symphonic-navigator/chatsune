@@ -749,6 +749,27 @@ export function ChatView({ persona }: ChatViewProps) {
     onCross: () => setShowSuggestToast(true),
   })
 
+  // 90 s soft-timeout on the compaction loading overlay. If no
+  // ``chat.compaction.completed`` / ``.failed`` event arrives within
+  // that window, drop the input lock and surface a soft notification.
+  // The backend job is NOT marked failed at this point — it may still
+  // complete in the background. See spec §5.7.
+  useEffect(() => {
+    if (!compactionLoading) return
+    const timer = setTimeout(() => {
+      useChatStore.getState().setCompactionLoading(false)
+      useNotificationStore.getState().addNotification({
+        level: 'info',
+        title: 'Compaction running long',
+        message:
+          "Compaction is taking longer than expected. " +
+          "Reload the page if it doesn't complete soon.",
+        duration: 6000,
+      })
+    }, 90_000)
+    return () => clearTimeout(timer)
+  }, [compactionLoading])
+
   // Voice lifecycle — gates HoldToKeepTalking (only visible while the
   // companion is actively listening) and feeds the top-bar pill so a click
   // while paused resumes instead of exiting live mode.
