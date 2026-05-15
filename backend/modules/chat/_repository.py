@@ -1,10 +1,11 @@
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Literal
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from backend.modules.chat._models import CompactionCheckpoint
 from shared.dtos.chat import (
     ArtefactRefDto,
     ChatMessageDto,
@@ -523,6 +524,18 @@ class ChatRepository:
         )
         return await self._sessions.find_one({"_id": session_id})
 
+    async def append_compaction_checkpoint(
+        self, session_id: str, checkpoint: "CompactionCheckpoint",
+    ) -> None:
+        """Append a compaction checkpoint to a session document."""
+        await self._sessions.update_one(
+            {"_id": session_id},
+            {
+                "$push": {"compaction_checkpoints": checkpoint.model_dump(mode="json")},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+        )
+
     async def update_session_reasoning_override(
         self, session_id: str, reasoning_override: bool | None,
     ) -> dict | None:
@@ -943,6 +956,10 @@ class ChatRepository:
             {"_id": message_id},
             {"$set": {"content": content, "token_count": token_count}},
         )
+        return await self._messages.find_one({"_id": message_id})
+
+    async def get_message(self, message_id: str) -> dict | None:
+        """Fetch a single message document by id."""
         return await self._messages.find_one({"_id": message_id})
 
     async def get_last_message(self, session_id: str) -> dict | None:
