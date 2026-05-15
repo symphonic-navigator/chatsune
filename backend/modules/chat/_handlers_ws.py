@@ -1016,6 +1016,22 @@ async def handle_chat_compaction_request(
             int(m.get("token_count") or 0) for m in source_msgs
         )
 
+        # Re-compact guard: when the conversation hasn't grown since the
+        # last checkpoint, source_msgs is empty and there is nothing
+        # meaningful to summarise. Reject the trigger with a clear
+        # message instead of running the LLM on an empty transcript.
+        if prev_checkpoint_id and source_tokens < 200:
+            await redis.delete(lock_key)
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="too_small", recoverable=False,
+                user_message=(
+                    "Nothing new to compact since the last snapshot — "
+                    "continue the conversation and try again later."
+                ),
+            )
+            return
+
         overhead = (
             COMPACTION_SYSTEM_PROMPT_TOKENS
             + COMPACTION_MAX_OUTPUT_TOKENS
