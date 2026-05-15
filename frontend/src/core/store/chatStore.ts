@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatMessageDto, TimelineEntry } from '../api/chat'
+import type { ChatMessageDto, CompactionCheckpoint, TimelineEntry } from '../api/chat'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -103,6 +103,26 @@ interface ChatState {
    */
   activeProjectId: string | null
   activeSessionId: string | null
+  /**
+   * Append-only history of compact-and-continue snapshots for the active
+   * session. Hydrated from ``chatApi.getSession`` on session switch and
+   * extended on ``chat.compaction.completed`` WS events. Phase 10 renders
+   * each entry as a `compacted` timeline marker between messages.
+   */
+  compactionCheckpoints: CompactionCheckpoint[]
+  /**
+   * True while a compaction job is in flight for the active session.
+   * Flips to true on ``chat.compaction.started``, back to false on
+   * ``chat.compaction.completed`` / ``chat.compaction.failed``. Drives
+   * the SparkleCompactButton's loading state and the input-area overlay.
+   */
+  compactionLoading: boolean
+  /**
+   * Correlation id of the in-flight compaction request, kept for diagnostic
+   * use (matching follow-up progress / completion / failure events to the
+   * triggering click). ``null`` whenever ``compactionLoading`` is false.
+   */
+  compactionCorrelationId: string | null
 
   // Read accessors
   getStreamFor: (sessionId: string) => SessionStreamingState | null
@@ -174,6 +194,20 @@ interface ChatState {
   setContextTokens: (used: number, max: number) => void
   setReasoningOverride: (override: boolean | null) => void
   setActiveProjectId: (projectId: string | null) => void
+  /**
+   * Hydrate the active session's compaction checkpoints from the
+   * persisted ``ChatSessionDto.compaction_checkpoints`` (or `[]` if the
+   * field is absent on legacy sessions). Wipes any prior checkpoints in
+   * the store — call on session-switch only.
+   */
+  setCompactionCheckpoints: (checkpoints: CompactionCheckpoint[]) => void
+  /**
+   * Append a checkpoint received from a ``chat.compaction.completed``
+   * event. The ``sessionId`` guard prevents stale events from a previously
+   * active session from polluting the current session's checkpoint list.
+   */
+  appendCompactionCheckpoint: (sessionId: string, checkpoint: CompactionCheckpoint) => void
+  setCompactionLoading: (loading: boolean, correlationId?: string | null) => void
   reset: (sessionId?: string) => void
 }
 
@@ -191,6 +225,9 @@ const INITIAL_NON_STREAMING = {
   reasoningOverride: null as boolean | null,
   activeProjectId: null as string | null,
   activeSessionId: null as string | null,
+  compactionCheckpoints: [] as CompactionCheckpoint[],
+  compactionLoading: false,
+  compactionCorrelationId: null as string | null,
 }
 
 function withStream(
@@ -468,6 +505,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setContextTokens: (used, max) => set({ contextUsedTokens: used, contextMaxTokens: max }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
   setActiveProjectId: (projectId) => set({ activeProjectId: projectId }),
+
+  setCompactionCheckpoints: (checkpoints) =>
+    set({ compactionCheckpoints: checkpoints }),
+  appendCompactionCheckpoint: (sessionId, checkpoint) =>
+    set((s) => {
+      // Guard against stale events from a previously active session that
+      // arrive after the user has navigated away. The compaction event's
+      // session_id is the authoritative scope; we only mutate when it
+      // matches the currently active session.
+      if (s.activeSessionId !== sessionId) return s
+      return { compactionCheckpoints: [...s.compactionCheckpoints, checkpoint] }
+    }),
+  setCompactionLoading: (loading, correlationId) =>
+    set({
+      compactionLoading: loading,
+      compactionCorrelationId: loading ? (correlationId ?? null) : null,
+    }),
 
   // reset(sessionId) — switch to a session and reset its non-streaming
   // session-load state. DOES NOT touch streamsBySession: stream slots
