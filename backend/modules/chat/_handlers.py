@@ -209,12 +209,22 @@ async def list_messages(
         )
     except RuntimeError:
         pass
+    # Compact-and-continue: carry checkpoints inside the bundle so the
+    # frontend renders inline `Compacted` markers on first paint without a
+    # second round-trip. Legacy sessions lack the field entirely; default
+    # to an empty list and skip serialisation for the cheap path.
+    from shared.dtos.chat import CompactionCheckpointDto
+    raw_checkpoints = session.get("compaction_checkpoints") or []
+    checkpoints = [
+        CompactionCheckpointDto.model_validate(cp) for cp in raw_checkpoints
+    ]
     return ChatMessagesBundleDto(
         messages=[ChatRepository.message_to_dto(m) for m in messages],
         context_status=session.get("context_status", "green"),
         context_fill_percentage=float(session.get("context_fill_percentage", 0.0)),
         context_used_tokens=int(session.get("context_used_tokens", 0)),
         context_max_tokens=int(session.get("context_max_tokens", 0)),
+        compaction_checkpoints=checkpoints,
     )
 
 

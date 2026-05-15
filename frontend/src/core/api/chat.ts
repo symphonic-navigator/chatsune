@@ -289,6 +289,13 @@ export const chatApi = {
       context_fill_percentage: number
       context_used_tokens?: number
       context_max_tokens?: number
+      /**
+       * Append-only history of compact-and-continue snapshots. Optional
+       * because legacy backends may not include the field; treat as
+       * ``[]`` at call sites. Mirrors the backend
+       * ``ChatMessagesBundleDto.compaction_checkpoints``.
+       */
+      compaction_checkpoints?: CompactionCheckpoint[]
     }>(`/api/chat/sessions/${sessionId}/messages`),
 
   deleteSession: (sessionId: string) =>

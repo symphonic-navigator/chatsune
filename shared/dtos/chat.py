@@ -216,13 +216,21 @@ class ChatMessagesBundleDto(BaseModel):
 
     Carries the persisted message list plus the last-known context
     metrics so the frontend can hydrate the context pill without
-    waiting for the next inference.
+    waiting for the next inference. Also carries the session's
+    ``compaction_checkpoints`` so the timeline renderer can drop
+    `Compacted` markers between messages on initial load — without
+    this the frontend would need a second round-trip to GET
+    ``/sessions/{id}`` to hydrate them, and the marker would race
+    against the first paint of the message list.
     """
     messages: list[ChatMessageDto]
     context_status: Literal["green", "yellow", "orange", "red"] = "green"
     context_fill_percentage: float = 0.0
     context_used_tokens: int = 0
     context_max_tokens: int = 0
+    compaction_checkpoints: list["CompactionCheckpointDto"] = Field(
+        default_factory=list,
+    )
 
 
 # --- Imported-session contracts (ChatGPT import) --------------------------

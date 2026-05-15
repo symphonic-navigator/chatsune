@@ -493,6 +493,13 @@ export function ChatView({ persona }: ChatViewProps) {
           bundle.context_used_tokens ?? 0,
           bundle.context_max_tokens ?? 0,
         )
+        // Compact-and-continue: hydrate the active session's checkpoints
+        // so MessageList can render inline `Compacted` markers between
+        // messages on first paint. Falls back to `[]` for legacy backends
+        // that pre-date the bundle field.
+        useChatStore.getState().setCompactionCheckpoints(
+          bundle.compaction_checkpoints ?? [],
+        )
       })
       .catch((err) => {
         if (cancelled) return

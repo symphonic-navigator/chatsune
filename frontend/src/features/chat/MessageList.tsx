@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChatMessageDto,
+  CompactionCheckpoint,
   KnowledgeContextItem,
   PtiOverflow,
   TimelineEntry,
   TimelineEntryKnowledgeSearch,
   ToolCallRef,
 } from '../../core/api/chat'
-import { type LiveVisionDescription } from '../../core/store/chatStore'
+import { type LiveVisionDescription, useChatStore } from '../../core/store/chatStore'
 import type { Highlighter } from 'shiki'
 import type { PersonaDto } from '../../core/types/persona'
 import { useReportBounds } from '../voice/infrastructure/useReportBounds'
@@ -20,6 +21,7 @@ import { ToolCallPill } from './ToolCallPill'
 import type { StreamingToolCall } from '../../core/store/chatStore'
 import { ArtefactCard } from '../artefact/ArtefactCard'
 import { InlineImageBlock } from '../images/chat/InlineImageBlock'
+import { CompactedMarkerPill } from './compaction/CompactedMarkerPill'
 
 interface MessageListProps {
   sessionId: string | null
@@ -150,6 +152,27 @@ export function MessageList({
   visionDescriptions, streamingCorrelationId, streamingSlow,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
 }: MessageListProps) {
+  // Compact-and-continue checkpoints for the active session, hydrated
+  // from the messages bundle on session-switch and extended on
+  // ``chat.compaction.completed`` WS events. Indexed by the tail-start
+  // message id so the renderer can drop a `Compacted` marker BEFORE the
+  // first message of the tail range — visually separating the source
+  // (now condensed into the briefing) from the verbatim tail.
+  const compactionCheckpoints = useChatStore((s) => s.compactionCheckpoints)
+  const checkpointByTailStart = useMemo(() => {
+    const map = new Map<string, CompactionCheckpoint>()
+    for (const cp of compactionCheckpoints) {
+      map.set(cp.tail_start_message_id, cp)
+    }
+    return map
+  }, [compactionCheckpoints])
+  // ``openCheckpoint`` drives the read-only snapshot drawer; the drawer
+  // component itself is mounted in a follow-up task (10.4) — for now
+  // clicking a marker stores the checkpoint but renders nothing.
+  const [openCheckpoint, setOpenCheckpoint] = useState<CompactionCheckpoint | null>(null)
+  // Suppress unused-warning until the drawer lands.
+  void openCheckpoint
+
   const lastAssistantIdx = messages.findLastIndex((m) => m.role === 'assistant')
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null
   const canRegenerate =
@@ -259,9 +282,24 @@ export function MessageList({
 
         {messages.map((msg, i) => {
           const isBm = bookmarkedMessageIds.has(msg.id)
+          // Compact-and-continue: drop a `Compacted` marker BEFORE the
+          // tail-start message so the divider visually separates the
+          // source range (now folded into the briefing) from the verbatim
+          // tail. ``checkpointByTailStart`` is the indexed view of the
+          // session's checkpoint list — see hydration at the top of the
+          // component.
+          const checkpointHere = checkpointByTailStart.get(msg.id) ?? null
+          const marker = checkpointHere ? (
+            <CompactedMarkerPill
+              key={`compacted-${checkpointHere.id}`}
+              checkpoint={checkpointHere}
+              onOpen={() => setOpenCheckpoint(checkpointHere)}
+            />
+          ) : null
           if (msg.role === 'user') {
             return (
               <div key={msg.id}>
+                {marker}
                 <div id={`msg-${msg.id}`} />
                 <UserBubble
                   content={msg.content}
@@ -302,6 +340,7 @@ export function MessageList({
             )
             return (
               <div key={msg.id}>
+                {marker}
                 <div id={`msg-${msg.id}`} />
                 {events.map((entry) =>
                   renderTimelineEntry(entry, sessionId ?? '', msg.id),

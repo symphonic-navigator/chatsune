@@ -14,7 +14,14 @@ vi.mock('../../artefact/ArtefactCard', () => ({
 }))
 
 vi.mock('../../../core/store/chatStore', () => {
-  const state = { messagePillContents: {}, activeSessionId: null }
+  // ``compactionCheckpoints`` is read by MessageList to drop inline
+  // `Compacted` markers; tests don't exercise that path so an empty
+  // array is sufficient.
+  const state = {
+    messagePillContents: {},
+    activeSessionId: null,
+    compactionCheckpoints: [] as unknown[],
+  }
   const useChatStore = ((selector: (s: typeof state) => unknown) => selector(state)) as unknown as {
     (selector: (s: typeof state) => unknown): unknown
     getState: () => typeof state
