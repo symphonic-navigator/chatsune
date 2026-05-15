@@ -1033,6 +1033,42 @@ async def handle_chat_compaction_request(
                 ),
             )
             return
+
+        # Submit the job. Heuristic for the estimated post-compact size:
+        # compaction targets 5–10 % of source token count, floored at 500
+        # so the UI does not show 0 for tiny sessions.
+        from backend.jobs._models import JobType
+        from backend.jobs._submit import submit as submit_job
+        from shared.events.chat import ChatCompactionStartedEvent
+
+        estimated_after = max(500, int(source_tokens * 0.08))
+
+        await submit_job(
+            job_type=JobType.CHAT_COMPACTION,
+            user_id=user_id,
+            model_unique_id=model_unique_id,
+            payload={
+                "session_id": session_id,
+                "correlation_id": correlation_id,
+                "prev_checkpoint_id": prev_checkpoint_id,
+            },
+            correlation_id=correlation_id,
+        )
+
+        await event_bus.publish(
+            Topics.CHAT_COMPACTION_STARTED,
+            ChatCompactionStartedEvent(
+                session_id=session_id,
+                correlation_id=correlation_id,
+                tokens_before=source_tokens,
+                estimated_tokens_after=estimated_after,
+                tail_message_count=len(tail_msgs),
+                timestamp=datetime.now(timezone.utc),
+            ),
+            scope=f"session:{session_id}",
+            target_user_ids=[user_id],
+            correlation_id=correlation_id,
+        )
     except Exception:
         _log.exception(
             "Unhandled error in handle_chat_compaction_request for user %s",
