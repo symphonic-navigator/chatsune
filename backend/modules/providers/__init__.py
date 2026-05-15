@@ -45,6 +45,10 @@ class PremiumProviderService:
         self._repo = repo
 
     async def catalogue(self) -> list[dict]:
+        defs = sorted(
+            get_all_definitions().values(),
+            key=lambda d: d.sort_priority,
+        )
         return [
             PremiumProviderDefinitionDto(
                 id=d.id,
@@ -54,8 +58,9 @@ class PremiumProviderService:
                 capabilities=list(d.capabilities),
                 config_fields=list(d.config_fields),
                 linked_integrations=list(d.linked_integrations),
+                sort_priority=d.sort_priority,
             ).model_dump()
-            for d in get_all_definitions().values()
+            for d in defs
         ]
 
     async def list_for_user(self, user_id: str) -> list[dict]:
