@@ -167,20 +167,20 @@ export function MessageList({
     }
     return map
   }, [compactionCheckpoints])
-  // TEMP debug — remove after Phase 12. Confirms whether the marker map
-  // is being built and whether at least one message id matches a key.
+  // TEMP debug — remove after Phase 12.
   if (compactionCheckpoints.length > 0) {
-    const keys = Array.from(checkpointByTailStart.keys())
+    const key = compactionCheckpoints[0].tail_start_message_id
     const msgIds = messages.map((m) => m.id)
-    const matches = msgIds.filter((id) => checkpointByTailStart.has(id))
-    console.log('[compaction] MessageList render', {
-      checkpointsInStore: compactionCheckpoints.length,
-      mapSize: checkpointByTailStart.size,
-      mapKeys: keys,
-      messagesCount: msgIds.length,
-      firstThreeMessageIds: msgIds.slice(0, 3),
-      matchingMessageIds: matches,
-    })
+    const matchIdx = msgIds.indexOf(key)
+    console.log('[compaction] MAP_KEY:', JSON.stringify(key))
+    console.log('[compaction] MATCH_INDEX:', matchIdx)
+    console.log('[compaction] MATCHING_MSG_TYPE:', typeof key)
+    if (matchIdx >= 0) {
+      const m = messages[matchIdx]
+      console.log('[compaction] MATCHING_MSG_ROLE:', m.role, 'STATUS:', m.status)
+    } else {
+      console.log('[compaction] FIRST_5_IDS:', JSON.stringify(msgIds.slice(0, 5)))
+    }
   }
   // ``openCheckpoint`` drives the read-only snapshot drawer mounted at
   // the root of this component. ``null`` keeps the drawer unmounted.
