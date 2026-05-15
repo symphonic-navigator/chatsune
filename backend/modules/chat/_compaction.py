@@ -112,3 +112,76 @@ def validate_compact_markdown(markdown: str) -> None:
     fence_count = sum(1 for line in text.splitlines() if line.strip().startswith("```"))
     if fence_count % 2 != 0:
         raise CompactionValidationError("compact markdown has unbalanced code fence")
+
+
+COMPACTION_SYSTEM_PROMPT_TOKENS = 380   # rough estimate, used by pre-flight
+COMPACTION_MAX_OUTPUT_TOKENS = 2000
+COMPACTION_SAFETY_MARGIN = 1000
+
+
+COMPACTION_RETRY_REMINDER = (
+    "\n\nIMPORTANT: The previous attempt was missing required sections. "
+    "Output MUST contain all six headings exactly as specified, in the "
+    "order shown."
+)
+
+
+def build_compaction_system_prompt() -> str:
+    """Verbatim system prompt for compaction jobs. See spec §6.4."""
+    return (
+        "You are a conversation-compaction assistant. Below is a transcript "
+        "of a conversation between a user and an AI assistant. Your job is "
+        "to extract a structured briefing that allows another AI to "
+        "seamlessly continue this conversation in a new context window.\n\n"
+        "Output rules:\n"
+        "- Output Markdown only. No preamble, no \"I have summarised\", no "
+        "meta-commentary.\n"
+        "- Use the exact section headings shown below, in order.\n"
+        "- Be terse but complete. Aim for 5–10 % of the original token count.\n"
+        "- Preserve the user's language preferences, name, and any "
+        "established facts about them.\n"
+        "- Quote critical user phrasings verbatim if they carry intent "
+        "(e.g. preferences, decisions).\n"
+        "- Do not invent information. If a section has no content, write "
+        "\"_(none)_\".\n\n"
+        "Required sections:\n\n"
+        "## Topic & Goal\n"
+        "What is this conversation about? What is the user trying to achieve?\n\n"
+        "## Established Facts\n"
+        "Concrete facts, decisions, names, numbers, conclusions reached. Bullet list.\n\n"
+        "## Open Threads\n"
+        "Questions left unanswered, things the user said they would come back to.\n\n"
+        "## User Preferences Observed\n"
+        "Communication style, expertise level, language preferences, "
+        "anything that should shape how the next AI responds.\n\n"
+        "## Pending References\n"
+        "Files, URLs, artefacts, tools that the user mentioned and that "
+        "the next assistant should know about. Do not paste their content "
+        "— just reference them by name.\n\n"
+        "## Tone & Persona Adherence\n"
+        "One sentence on how the persona has been speaking (formal/informal, etc.).\n"
+    )
+
+
+def build_compaction_transcript(
+    source_messages: list[dict],
+    *,
+    previous_summary: str | None,
+) -> str:
+    """Render the user-prompt content for a compaction call.
+
+    On re-compact, prepends the previous checkpoint's markdown as a
+    'Previous Story' block so no information is lost across compactions.
+    """
+    parts: list[str] = []
+    if previous_summary:
+        parts.append("## Previous Story (from earlier checkpoint)\n\n"
+                     f"{previous_summary.strip()}\n\n"
+                     "---\n\n"
+                     "## Conversation since the previous checkpoint\n")
+    for m in source_messages:
+        role = (m.get("role") or "user").capitalize()
+        content = (m.get("content") or "").strip()
+        if content:
+            parts.append(f"{role}: {content}")
+    return "\n".join(parts)
