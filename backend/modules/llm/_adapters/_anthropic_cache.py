@@ -68,24 +68,17 @@ class CacheMarker:
 
 
 def compute_cache_markers(
-    messages: list[CompletionMessage], ttl: CacheTtl,
+    messages: list[CompletionMessage],
+    ttl: CacheTtl,
+    *,
+    compact_anchor_index: int | None = None,
 ) -> list[CacheMarker]:
     """Compute marker positions for an Anthropic-compatible request.
 
-    Strategy (see spec §5.2):
-
-    * **System** marker at index 0 if the first message is a system
-      message — always 1h, regardless of the user's TTL choice.
-    * **Block-boundary** marker at the last crossed BLOCK_SIZE-aligned
-      message index — always 1h. Provides a long-pause fallback that
-      survives 5m idle periods even in 5m-mode.
-    * **Rolling tail** marker at ``len(messages) - 2`` (the last
-      stable assistant turn boundary) — TTL = the user's choice.
-
-    The 4th breakpoint slot is deliberately unused (spec §11).
-
-    Returns an empty list for ``ttl == "off"`` or empty inputs. Marker
-    list is in ascending message-index order.
+    When ``compact_anchor_index`` is set (i.e. the session carries an
+    active compaction checkpoint), marker 2 sits at that index instead
+    of the heuristic block boundary. See spec
+    devdocs/specs/2026-05-15-compact-and-continue-design.md §6.10.
     """
     if ttl == "off" or not messages:
         return []
@@ -95,14 +88,19 @@ def compute_cache_markers(
     if messages[0].role == "system":
         markers.append(CacheMarker(message_index=0, ttl="1h"))
 
-    n = len(messages)
-    last_block_end = (n // BLOCK_SIZE) * BLOCK_SIZE - 1
-    if last_block_end > 0 and last_block_end < n - 1:
-        if not any(m.message_index == last_block_end for m in markers):
-            markers.append(
-                CacheMarker(message_index=last_block_end, ttl="1h"),
-            )
+    if compact_anchor_index is not None and 0 <= compact_anchor_index < len(messages):
+        if not any(m.message_index == compact_anchor_index for m in markers):
+            markers.append(CacheMarker(message_index=compact_anchor_index, ttl="1h"))
+    else:
+        n = len(messages)
+        last_block_end = (n // BLOCK_SIZE) * BLOCK_SIZE - 1
+        if last_block_end > 0 and last_block_end < n - 1:
+            if not any(m.message_index == last_block_end for m in markers):
+                markers.append(
+                    CacheMarker(message_index=last_block_end, ttl="1h"),
+                )
 
+    n = len(messages)
     if n >= 2:
         tail_index = n - 2
         if tail_index > 0 and not any(

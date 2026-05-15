@@ -144,6 +144,36 @@ def test_compute_markers_no_system_message() -> None:
     ]
 
 
+def test_compact_anchor_replaces_block_boundary():
+    msgs = [
+        CompletionMessage(
+            role=("system" if i == 0 else "user" if i % 2 else "assistant"),
+            content=[ContentPart(type="text", text=f"m{i}")],
+        )
+        for i in range(20)
+    ]
+    result = compute_cache_markers(msgs, "5m", compact_anchor_index=3)
+    indices = sorted(m.message_index for m in result)
+    assert indices == [0, 3, 18]
+    by_idx = {m.message_index: m for m in result}
+    assert by_idx[0].ttl == "1h"
+    assert by_idx[3].ttl == "1h"
+    assert by_idx[18].ttl == "5m"
+
+
+def test_compact_anchor_none_keeps_block_boundary():
+    msgs = [
+        CompletionMessage(
+            role=("system" if i == 0 else "user" if i % 2 else "assistant"),
+            content=[ContentPart(type="text", text=f"m{i}")],
+        )
+        for i in range(20)
+    ]
+    result = compute_cache_markers(msgs, "5m", compact_anchor_index=None)
+    indices = sorted(m.message_index for m in result)
+    assert 15 in indices
+
+
 def test_block_size_is_eight() -> None:
     assert BLOCK_SIZE == 8
 
