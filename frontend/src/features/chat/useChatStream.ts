@@ -5,7 +5,12 @@ import { useNotificationStore } from '../../core/store/notificationStore'
 import { Topics } from '../../core/types/events'
 import type { BaseEvent } from '../../core/types/events'
 import { sendMessage } from '../../core/websocket/connection'
-import type { ArtefactRef, KnowledgeContextItem, PtiOverflow } from '../../core/api/chat'
+import type {
+  ArtefactRef,
+  CompactionCheckpoint,
+  KnowledgeContextItem,
+  PtiOverflow,
+} from '../../core/api/chat'
 import type { ImageRefDto } from '../../core/api/images'
 import type { TimelineEntry } from '../../core/api/chat'
 import { ResponseTagBuffer, type PendingEffect } from '../integrations/responseTagProcessor'
@@ -575,6 +580,36 @@ export function handleChatEvent(
         const ro = p.reasoning_override
         getStore().setReasoningOverride(typeof ro === 'boolean' ? ro : null)
       }
+      break
+    }
+    // Compact-and-continue — flip the loading flag and append the new
+    // checkpoint when the job completes. Toast wiring is added in Phase 11
+    // (see ``devdocs/plans/2026-05-15-compact-and-continue.md`` §11).
+    case Topics.CHAT_COMPACTION_STARTED: {
+      if (p.session_id !== sessionId) return
+      getStore().setCompactionLoading(true, event.correlation_id)
+      break
+    }
+    case Topics.CHAT_COMPACTION_PROGRESS: {
+      // MVP: stage details are intentionally ignored. The loading overlay
+      // already covers the visible state and the success/failed events
+      // are authoritative for the final outcome.
+      break
+    }
+    case Topics.CHAT_COMPACTION_COMPLETED: {
+      if (p.session_id !== sessionId) return
+      const checkpoint = p.checkpoint as CompactionCheckpoint | undefined
+      if (checkpoint) {
+        getStore().appendCompactionCheckpoint(sessionId, checkpoint)
+      }
+      getStore().setCompactionLoading(false)
+      // showCompactionSuccess(event) — wired in Phase 11.
+      break
+    }
+    case Topics.CHAT_COMPACTION_FAILED: {
+      if (p.session_id !== sessionId) return
+      getStore().setCompactionLoading(false)
+      // showCompactionFailure(event) — wired in Phase 11.
       break
     }
   }

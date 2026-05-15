@@ -84,6 +84,15 @@ export const Topics = {
   CHAT_SESSION_EXTRAS_UPDATED: "chat.session.extras.updated",
   CHAT_SESSION_PINNED_UPDATED: "chat.session.pinned_updated",
   CHAT_SESSION_PROJECT_UPDATED: "chat.session.project.updated",
+  // Compact-and-continue (devdocs/specs/2026-05-15-compact-and-continue-design.md).
+  // Started/progress drive the loading overlay; completed appends the new
+  // checkpoint to the session and surfaces a success toast (Phase 11);
+  // failed clears the loading state and surfaces a failure toast.
+  CHAT_COMPACTION_REQUEST: "chat.compaction.request",
+  CHAT_COMPACTION_STARTED: "chat.compaction.started",
+  CHAT_COMPACTION_PROGRESS: "chat.compaction.progress",
+  CHAT_COMPACTION_COMPLETED: "chat.compaction.completed",
+  CHAT_COMPACTION_FAILED: "chat.compaction.failed",
   PROJECT_CREATED: "project.created",
   PROJECT_UPDATED: "project.updated",
   PROJECT_DELETED: "project.deleted",
