@@ -1,4 +1,4 @@
-"""Tail determination: 6 turns OR 20% of model context, whichever is larger."""
+"""Tail determination — 6 turns (min) ≤ 20% of model context ≤ 18 turns (max)."""
 
 import pytest
 
@@ -23,21 +23,35 @@ def test_short_session_returns_index_zero():
 
 
 def test_long_session_uses_12_message_floor():
+    # 100 msgs * 100 tok = 10k total; 20% of 200k = 40k budget > all
+    # tokens, would expand to whole list — but 36-msg cap clamps it.
     msgs = _msgs(100, tokens_per=100)
     idx = determine_tail_start_index(msgs, model_context=200_000)
-    assert idx == 0
+    assert idx == 100 - 36
 
 
 def test_long_session_uses_token_budget_when_larger():
+    # 100 msgs * 1000 tok; 20% of 50k = 10k budget — accumulates after
+    # 12 msgs (the floor) just at the boundary, so tail starts at 88.
     msgs = _msgs(100, tokens_per=1000)
     idx = determine_tail_start_index(msgs, model_context=50_000)
     assert idx == 88
 
 
 def test_long_session_uses_floor_token_rule_when_larger():
+    # 100 msgs * 100 tok = 10k total; 20% of 100k = 20k budget > all
+    # tokens — would expand to whole list, but 36-msg cap clamps.
     msgs = _msgs(100, tokens_per=100)
     idx = determine_tail_start_index(msgs, model_context=100_000)
-    assert idx == 0
+    assert idx == 100 - 36
+
+
+def test_hard_cap_kicks_in_on_wide_context_windows():
+    # 200 msgs * 200 tok = 40k total. 20% of 128k = 25.6k budget which
+    # would otherwise pull in ~128 messages — the 36-msg cap clamps it.
+    msgs = _msgs(200, tokens_per=200)
+    idx = determine_tail_start_index(msgs, model_context=128_000)
+    assert idx == 200 - 36
 
 
 def test_select_source_range_no_prev_checkpoint():

@@ -7,8 +7,12 @@ these functions with the repository, the LLM client, and the event bus.
 from __future__ import annotations
 
 
-_MIN_TAIL_MESSAGES = 12      # 6 turns
-_TAIL_TOKEN_FRACTION = 0.20  # 20 % of model context
+_MIN_TAIL_MESSAGES = 12      # 6 turns — coherence floor
+_MAX_TAIL_MESSAGES = 36      # 18 turns — beyond this, older detail is
+                             # unlikely to matter and the source range
+                             # ends up too small to compact usefully
+_TAIL_TOKEN_FRACTION = 0.20  # 20 % of model context (clamped to the
+                             # min/max bounds above)
 
 
 def determine_tail_start_index(
@@ -16,9 +20,15 @@ def determine_tail_start_index(
 ) -> int:
     """Return the index of the first message that must stay in the tail.
 
-    Walks newest → oldest, accumulating ``token_count``. The tail extends
-    until BOTH the 6-turn floor (12 messages) AND the 20% token rule are
-    satisfied — i.e. whichever rule yields the LARGER tail wins.
+    Walks newest → oldest, accumulating ``token_count``. The tail size
+    is determined by three rules in priority order:
+
+    1. **Hard cap**: never more than ``_MAX_TAIL_MESSAGES`` (36 / 18 turns).
+       This stops the tail from eating modern wide-context windows
+       where 20 % would otherwise be tens of turns of stale chatter.
+    2. **Token budget**: at least 20 % of ``model_context``, *up to* the cap.
+    3. **Coherence floor**: at least ``_MIN_TAIL_MESSAGES`` (12 / 6 turns),
+       even if 20 % of the context window is fewer tokens than that.
     """
     if not messages:
         return 0
@@ -31,6 +41,11 @@ def determine_tail_start_index(
     for i in range(total - 1, -1, -1):
         tail_tokens += int(messages[i].get("token_count") or 0)
         tail_messages = total - i
+        # Hard cap takes precedence — once we've assembled 18 turns of
+        # tail, stop regardless of how much context budget remains.
+        if tail_messages >= _MAX_TAIL_MESSAGES:
+            chosen_idx = i
+            break
         if tail_messages >= _MIN_TAIL_MESSAGES and tail_tokens >= token_budget:
             chosen_idx = i
             break

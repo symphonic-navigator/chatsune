@@ -240,12 +240,13 @@ Steps:
 
 ### 6.3 Tail determination
 
-Walk messages from newest to oldest, accumulating `token_count`. Stop when **either** of these is satisfied — whichever yields the **larger** tail:
+Walk messages from newest to oldest, accumulating `token_count`. Three rules in priority order shape the tail:
 
-- 6 turns (12 messages, paired user+assistant) reached, **or**
-- 20 % of `model_context_window` accumulated.
+1. **Hard cap — 18 turns (36 messages)**: never more, regardless of how much room the model still has. Beyond 18 turns the older context rarely matters for coherence, and an oversized tail just shrinks the source range we can usefully compact.
+2. **Token budget — 20 % of `model_context_window`**: expand the tail up to this size, *capped by rule 1*.
+3. **Coherence floor — 6 turns (12 messages)**: at minimum, even if 20 % of the context window is fewer tokens.
 
-Return the `_id` of the oldest message that should remain in the tail (= `tail_start_message_id`).
+So in practice: `clamp( max(6 turns, 20 % of context), 6 turns, 18 turns )`. Return the `_id` of the oldest message that should remain in the tail (= `tail_start_message_id`).
 
 ### 6.4 Compaction prompt
 
