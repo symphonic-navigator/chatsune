@@ -167,21 +167,17 @@ export function MessageList({
     }
     return map
   }, [compactionCheckpoints])
-  // TEMP debug — remove after Phase 12.
-  if (compactionCheckpoints.length > 0) {
-    const key = compactionCheckpoints[0].tail_start_message_id
-    const msgIds = messages.map((m) => m.id)
-    const matchIdx = msgIds.indexOf(key)
-    console.log('[compaction] MAP_KEY:', JSON.stringify(key))
-    console.log('[compaction] MATCH_INDEX:', matchIdx)
-    console.log('[compaction] MATCHING_MSG_TYPE:', typeof key)
-    if (matchIdx >= 0) {
-      const m = messages[matchIdx]
-      console.log('[compaction] MATCHING_MSG_ROLE:', m.role, 'STATUS:', m.status)
-    } else {
-      console.log('[compaction] FIRST_5_IDS:', JSON.stringify(msgIds.slice(0, 5)))
-    }
-  }
+  // The earliest tail-start across all checkpoints — used to grey out
+  // the edit button on source-range messages (the backend already
+  // rejects edits before this cutoff with ``edit_before_compact``;
+  // disabling the UI keeps the rejection from being a surprise).
+  const earliestTailStartIdx = useMemo(() => {
+    if (compactionCheckpoints.length === 0) return -1
+    const tailStartIds = new Set(
+      compactionCheckpoints.map((cp) => cp.tail_start_message_id),
+    )
+    return messages.findIndex((m) => tailStartIds.has(m.id))
+  }, [compactionCheckpoints, messages])
   // ``openCheckpoint`` drives the read-only snapshot drawer mounted at
   // the root of this component. ``null`` keeps the drawer unmounted.
   const [openCheckpoint, setOpenCheckpoint] = useState<CompactionCheckpoint | null>(null)
@@ -309,6 +305,12 @@ export function MessageList({
               onOpen={() => setOpenCheckpoint(checkpointHere)}
             />
           ) : null
+          // Edits to messages before the earliest tail-start are rejected
+          // by the backend with ``edit_before_compact``. Grey out the
+          // pencil button up-front so the user doesn't hit a backend
+          // rejection.
+          const isBeforeCompact =
+            earliestTailStartIdx > 0 && i < earliestTailStartIdx
           if (msg.role === 'user') {
             return (
               <div key={msg.id}>
@@ -327,8 +329,10 @@ export function MessageList({
                   // every existing user message gains/loses its action row at
                   // once. The Edit button is disabled (greyed out) while a
                   // stream is in flight to preserve the prior behaviour of
-                  // forbidding mid-stream edits.
-                  isEditable={!msg.id.startsWith('optimistic-')}
+                  // forbidding mid-stream edits. Messages before the
+                  // compaction tail-start are also un-editable — the
+                  // backend would reject the request anyway.
+                  isEditable={!msg.id.startsWith('optimistic-') && !isBeforeCompact}
                   editDisabled={isStreaming}
                   isBookmarked={isBm}
                   onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}
