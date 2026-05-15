@@ -943,6 +943,96 @@ async def handle_chat_compaction_request(
                 ),
             )
             return
+
+        # Pre-flight: compute the source range using the same helpers the
+        # job handler uses, so a session that cannot possibly compact is
+        # rejected up front (without paying for a queued job that would
+        # then fail at the LLM boundary). On any error path past this
+        # point the lock must be released — see ``await redis.delete(...)``
+        # calls below.
+        from backend.modules.chat._compaction import (
+            COMPACTION_MAX_OUTPUT_TOKENS,
+            COMPACTION_SAFETY_MARGIN,
+            COMPACTION_SYSTEM_PROMPT_TOKENS,
+            determine_tail_start_index,
+            sanitise_source,
+            select_source_range,
+        )
+        from backend.modules.llm import get_effective_context_window
+
+        model_unique_id = session.get("model_unique_id") or ""
+        if not model_unique_id:
+            # Session has no per-session model override — fall back to
+            # the persona's default model.
+            from backend.modules.persona import get_persona
+
+            persona = await get_persona(session.get("persona_id"), user_id)
+            model_unique_id = (persona or {}).get("model_unique_id", "")
+
+        model_context = (
+            await get_effective_context_window(user_id, model_unique_id)
+            or 8192
+        )
+
+        all_messages = await repo.list_messages(session_id)
+
+        checkpoints = session.get("compaction_checkpoints") or []
+        prev_checkpoint_id = checkpoints[-1]["id"] if checkpoints else None
+        prev_tail_start_id = (
+            checkpoints[-1]["tail_start_message_id"] if checkpoints else None
+        )
+
+        try:
+            tail_start_idx = determine_tail_start_index(
+                all_messages, model_context=model_context,
+            )
+            source_raw, tail_msgs = select_source_range(
+                all_messages,
+                tail_start_index=tail_start_idx,
+                prev_tail_start_id=prev_tail_start_id,
+            )
+        except ValueError:
+            # Previous checkpoint references a message that no longer
+            # exists. Same condition the job handler reports — surface
+            # it now to avoid queueing a doomed job.
+            await redis.delete(lock_key)
+            _log.exception(
+                "compaction.stale_prev_checkpoint session=%s correlation_id=%s",
+                session_id, correlation_id,
+            )
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="stale_prev_checkpoint", recoverable=False,
+                user_message=(
+                    "The previous compact snapshot references a message "
+                    "that no longer exists. Start a new conversation to "
+                    "compact again."
+                ),
+            )
+            return
+
+        source_msgs = sanitise_source(source_raw)
+        source_tokens = sum(
+            int(m.get("token_count") or 0) for m in source_msgs
+        )
+
+        overhead = (
+            COMPACTION_SYSTEM_PROMPT_TOKENS
+            + COMPACTION_MAX_OUTPUT_TOKENS
+            + COMPACTION_SAFETY_MARGIN
+        )
+        if source_tokens + overhead > model_context:
+            await redis.delete(lock_key)
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="compaction_source_too_large", recoverable=False,
+                user_message=(
+                    "Conversation is too large for the current model to "
+                    "compact. Switch to a model with a larger context "
+                    "window or start a new session."
+                ),
+            )
+            return
     except Exception:
         _log.exception(
             "Unhandled error in handle_chat_compaction_request for user %s",
