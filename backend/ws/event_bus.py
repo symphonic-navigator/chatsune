@@ -107,6 +107,11 @@ _FANOUT: dict[str, tuple[list[str], bool]] = {
     Topics.CHAT_SESSION_TITLE_UPDATED: ([], True),
     Topics.CHAT_SESSION_CREATED: ([], True),
     Topics.CHAT_SESSION_DELETED: ([], True),
+    # Chat compaction — target user only (session-scoped state).
+    Topics.CHAT_COMPACTION_STARTED: ([], True),
+    Topics.CHAT_COMPACTION_PROGRESS: ([], True),
+    Topics.CHAT_COMPACTION_COMPLETED: ([], True),
+    Topics.CHAT_COMPACTION_FAILED: ([], True),
     Topics.CHAT_SESSION_RESTORED: ([], True),
     Topics.CHAT_SESSION_PINNED_UPDATED: ([], True),
     # Bookmarks — target user only
