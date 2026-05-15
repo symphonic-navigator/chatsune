@@ -604,6 +604,23 @@ export function handleChatEvent(
         getStore().appendCompactionCheckpoint(sessionId, checkpoint)
       }
       getStore().setCompactionLoading(false)
+      // Refresh the context pill so the user immediately sees the new
+      // (much lower) fill. Backend includes the post-compact metrics on
+      // the event so we don't need a follow-up REST call.
+      const newUsed = Number(p.new_context_used_tokens ?? 0)
+      const newFill = Number(p.new_context_fill_percentage ?? 0)
+      if (newUsed > 0) {
+        const store = getStore()
+        const max = store.contextMaxTokens ?? 0
+        store.setContextTokens(newUsed, max)
+        store.setContextFillPercentage(newFill)
+        const status: 'green' | 'yellow' | 'orange' | 'red' =
+          newFill >= 0.80 ? 'red'
+          : newFill >= 0.65 ? 'orange'
+          : newFill >= 0.50 ? 'yellow'
+          : 'green'
+        store.setContextStatus(status)
+      }
       // Success toast — narrow the dynamic payload to the shape the toast
       // helper expects. Skip when the event somehow lacks a checkpoint
       // (defensive — the backend always sets it).

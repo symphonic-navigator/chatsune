@@ -511,10 +511,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
   appendCompactionCheckpoint: (sessionId, checkpoint) =>
     set((s) => {
       // Guard against stale events from a previously active session that
-      // arrive after the user has navigated away. The compaction event's
-      // session_id is the authoritative scope; we only mutate when it
-      // matches the currently active session.
-      if (s.activeSessionId !== sessionId) return s
+      // arrive after the user has navigated away. The caller (useChatStream)
+      // already filters by ``event.session_id === sessionId`` before
+      // dispatching, so we only need to skip when the user has navigated
+      // to a DIFFERENT session in the meantime. A null activeSessionId
+      // is benign — the user is mid-load and will receive a fresh hydrate.
+      if (s.activeSessionId !== null && s.activeSessionId !== sessionId) {
+        return s
+      }
+      // Idempotency: ignore duplicate checkpoints that arrive twice (e.g.
+      // catch-up replay after reconnect).
+      if (s.compactionCheckpoints.some((cp) => cp.id === checkpoint.id)) {
+        return s
+      }
       return { compactionCheckpoints: [...s.compactionCheckpoints, checkpoint] }
     }),
   setCompactionLoading: (loading, correlationId) =>
