@@ -11,17 +11,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from backend.jobs._models import JobConfig, JobEntry
-from backend.modules.chat._compaction import (
-    COMPACTION_MAX_OUTPUT_TOKENS,
-    COMPACTION_RETRY_REMINDER,
-    CompactionValidationError,
-    build_compaction_system_prompt,
-    build_compaction_transcript,
-    determine_tail_start_index,
-    sanitise_source,
-    select_source_range,
-    validate_compact_markdown,
-)
+# NB: imports from backend.modules.chat.* are deferred into functions because
+# backend.modules.chat.__init__ → _handlers → backend.jobs forms a circular
+# import at module-load time (this file is itself imported by
+# backend.jobs._registry). All other job handlers follow the same pattern.
 from shared.events.chat import (
     ChatCompactionCompletedEvent,
     ChatCompactionFailedEvent,
@@ -43,6 +36,12 @@ async def handle_chat_compaction(
 ) -> None:
     """Run the compaction job. See devdocs/specs/2026-05-15-compact-and-continue-design.md §6.2."""
     from backend.database import get_db
+    from backend.modules.chat._compaction import (
+        CompactionValidationError,
+        determine_tail_start_index,
+        sanitise_source,
+        select_source_range,
+    )
     from backend.modules.chat._repository import ChatRepository
     from backend.modules.llm import get_effective_context_window
 
@@ -238,6 +237,13 @@ async def _call_llm_with_retry(
     positional ``user_id, model_unique_id, request`` plus ``source=``;
     there is no ``correlation_id=`` kwarg, so we only log it locally.
     """
+    from backend.modules.chat._compaction import (
+        COMPACTION_RETRY_REMINDER,
+        CompactionValidationError,
+        build_compaction_system_prompt,
+        build_compaction_transcript,
+        validate_compact_markdown,
+    )
     from backend.modules.llm import (
         ContentDelta,
         StreamDone,
