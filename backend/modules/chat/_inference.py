@@ -21,6 +21,7 @@ from backend.modules.llm import (
     ThinkingDelta,
     ToolCallEvent,
 )
+from backend.modules.llm._adapters._events import ToolCallArgsDelta
 from backend.modules.tools import ToolNotFoundError
 from shared.dtos.chat import (
     ArtefactRefDto,
@@ -36,7 +37,7 @@ from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
     ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
-    ChatToolCallCompletedEvent, ChatToolCallStartedEvent,
+    ChatToolCallCompletedEvent, ChatToolCallDeltaEvent, ChatToolCallStartedEvent,
     ChatWebSearchContextEvent, WebSearchContextItem,
 )
 
@@ -284,6 +285,12 @@ class InferenceRunner:
                     cancelled = False
                     stream_end_reason: str = "unknown"
 
+                    # Per-iteration buffer for tool-call delta events whose tool_call_id is
+                    # not yet known. Keys are the OpenAI-style index. Backfilled when the id
+                    # arrives in a later fragment, or in the finally-block drain if it never
+                    # arrives mid-stream (e.g. xAI synthesises ids only at finalisation).
+                    tool_call_id_buffer: dict[int, dict] = {}
+
                     if settings.inference_logging:
                         _log.info(
                             "inference.stream.begin session=%s correlation_id=%s iteration=%d",
@@ -332,6 +339,38 @@ class InferenceRunner:
                                     await emit_fn(ChatThinkingDeltaEvent(
                                         correlation_id=correlation_id, delta=delta,
                                     ))
+
+                                case ToolCallArgsDelta(index=idx, id=tc_id, name=tc_name, arguments_delta=frag):
+                                    slot = tool_call_id_buffer.setdefault(idx, {
+                                        "id": None, "name": None, "pending_events": [],
+                                        "chars": 0, "deltas": 0,
+                                    })
+                                    if tc_id and slot["id"] is None:
+                                        slot["id"] = tc_id
+                                        # Backfill all previously-queued events for this index.
+                                        for pending in slot["pending_events"]:
+                                            pending.tool_call_id = tc_id
+                                            await emit_fn(pending)
+                                        slot["pending_events"] = []
+                                    if tc_name and slot["name"] is None:
+                                        slot["name"] = tc_name
+
+                                    resolved_id = slot["id"] or tc_id
+                                    slot["chars"] += len(frag)
+                                    slot["deltas"] += 1
+
+                                    event_out = ChatToolCallDeltaEvent(
+                                        correlation_id=correlation_id,
+                                        tool_call_id=resolved_id or "",
+                                        tool_index=idx,
+                                        tool_name=slot["name"],
+                                        args_delta=frag,
+                                        timestamp=datetime.now(timezone.utc),
+                                    )
+                                    if resolved_id:
+                                        await emit_fn(event_out)
+                                    else:
+                                        slot["pending_events"].append(event_out)
 
                                 case ToolCallEvent() as tc:
                                     iter_tool_calls.append(tc)
@@ -412,6 +451,27 @@ class InferenceRunner:
                         full_content += iter_content
                         if iter_thinking:
                             full_thinking += iter_thinking
+
+                        # Pending-Drain: any deltas emitted before the provider supplied an id
+                        # are now matchable against iter_tool_calls (which carries the
+                        # accumulator's index). Backfill and emit them in order.
+                        for tc in iter_tool_calls:
+                            slot = tool_call_id_buffer.get(tc.index)
+                            if slot and slot["pending_events"]:
+                                for pending in slot["pending_events"]:
+                                    pending.tool_call_id = tc.id
+                                    await emit_fn(pending)
+                                slot["pending_events"] = []
+
+                        if settings.inference_logging:
+                            for tc in iter_tool_calls:
+                                slot = tool_call_id_buffer.get(tc.index, {})
+                                _log.info(
+                                    "inference.tool_call.stream session=%s correlation_id=%s "
+                                    "tool_call_id=%s tool=%s args_chars=%d deltas=%d",
+                                    session_id, correlation_id, tc.id, tc.name,
+                                    slot.get("chars", 0), slot.get("deltas", 0),
+                                )
 
                     if settings.inference_logging:
                         _log.info(
@@ -697,6 +757,25 @@ class InferenceRunner:
                                 knowledge_items_for_entry = list(parsed["results"])
                         except (json.JSONDecodeError, TypeError):
                             pass
+
+                    # generate_image is the only tool that produces a non-
+                    # tool_call typed entry AND requires a separate tool_call
+                    # entry for the pill. Prepend a TimelineEntryToolCall so
+                    # the pill renders above the image block. Failure path is
+                    # already covered: make_timeline_entry collapses any
+                    # failed call to TimelineEntryToolCall regardless of
+                    # tool name — adding another here would double-render.
+                    if tc.name == "generate_image" and tool_success:
+                        events.append(TimelineEntryToolCall(
+                            seq=next_seq,
+                            tool_call_id=tc.id,
+                            tool_name=tc.name,
+                            arguments=arguments,
+                            success=True,
+                            moderated_count=moderated_count,
+                            result_content=result_str,
+                        ))
+                        next_seq += 1
 
                     # Map this completed tool call to one timeline entry.
                     events.append(make_timeline_entry(

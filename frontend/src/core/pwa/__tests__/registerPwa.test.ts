@@ -14,7 +14,7 @@ const STREAMING_SLOT: SessionStreamingState = {
   streamingThinking: '',
   streamingEvents: [],
   streamingRefusalText: null,
-  activeToolCalls: [],
+  streamingToolCalls: new Map(),
   visionDescriptions: {},
   streamingSlow: false,
 }

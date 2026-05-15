@@ -557,12 +557,13 @@ class OllamaHttpAdapter(BaseAdapter):
                                     content = message.get("content", "")
                                     if content:
                                         yield ContentDelta(delta=content)
-                                    for tc in message.get("tool_calls", []):
+                                    for i, tc in enumerate(message.get("tool_calls", [])):
                                         fn = tc.get("function", {})
                                         yield ToolCallEvent(
                                             id=f"call_{uuid4().hex[:12]}",
                                             name=fn.get("name", ""),
                                             arguments=json.dumps(fn.get("arguments", {})),
+                                            index=i,
                                         )
                             except asyncio.CancelledError:
                                 if pending_next is not None and not pending_next.done():

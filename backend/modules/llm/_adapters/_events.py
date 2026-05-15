@@ -20,12 +20,30 @@ class ThinkingDelta(BaseModel):
     delta: str
 
 
+class ToolCallArgsDelta(BaseModel):
+    """Provider-stream event: a fragment of a not-yet-finalised tool call.
+
+    Streaming adapters emit one of these per upstream fragment for each tool
+    call still being assembled. ``id`` and ``name`` are filled in as soon as
+    the provider supplies them; deltas emitted before either field is known
+    carry ``None`` and the inference loop performs late backfill.
+
+    ``arguments_delta`` is NOT cumulative — it is the new fragment only.
+    """
+    index: int
+    id: str | None = None
+    name: str | None = None
+    arguments_delta: str
+
+
 class ToolCallEvent(BaseModel):
     """A tool call emitted by the model during a streaming response."""
 
     id: str       # tool-call ID (from provider where available, else synthesised)
     name: str
     arguments: str  # JSON-encoded argument object
+    index: int      # OpenAI-style index for parallel calls; used by the
+                    # inference loop for late-id backfill
 
 
 class StreamDone(BaseModel):
@@ -85,6 +103,7 @@ ProviderStreamEvent = (
     ContentDelta
     | ThinkingDelta
     | ToolCallEvent
+    | ToolCallArgsDelta
     | StreamDone
     | StreamError
     | StreamSlow

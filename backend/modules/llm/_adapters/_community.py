@@ -85,6 +85,7 @@ def _frame_to_event(frame):
                 id=str(tc.get("id") or ""),
                 name=str(fn.get("name") or ""),
                 arguments=str(fn.get("arguments") or "{}"),
+                index=0,
             )
         return None
     if isinstance(frame, StreamEndFrame):

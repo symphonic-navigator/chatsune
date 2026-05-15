@@ -373,10 +373,12 @@ def test_tool_call_accumulator_finalises_on_finish_reason():
             "finish_reason": "tool_calls",
         }],
     }, acc)
-    assert events == [ToolCallEvent(
+    finals = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert finals == [ToolCallEvent(
         id="call_abc",
         name="get_weather",
         arguments='{"loc":"Tokyo"}',
+        index=0,
     )]
 
 
@@ -575,3 +577,35 @@ async def test_adapter_test_endpoint_zero_curated_slugs_returns_drift_error(monk
     )
     assert result["valid"] is False
     assert "curated" in (result["error"] or "").lower()
+
+
+def test_streaming_tool_call_emits_args_deltas_tensorix():
+    """Streaming a tool call should emit one ToolCallArgsDelta per
+    fragment, followed by exactly one finalised ToolCallEvent."""
+    from backend.modules.llm._adapters._tensorix_http import (
+        _ToolCallAccumulator, _chunk_to_events,
+    )
+    from backend.modules.llm._adapters._events import (
+        ToolCallArgsDelta, ToolCallEvent,
+    )
+    acc = _ToolCallAccumulator()
+    chunk1 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "id": "call_x",
+         "function": {"name": "search", "arguments": '{"q'}},
+    ]}, "finish_reason": None}]}
+    chunk2 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "function": {"arguments": '":"x"}'}},
+    ]}, "finish_reason": None}]}
+    chunk3 = {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}
+    events: list = []
+    events.extend(_chunk_to_events(chunk1, acc))
+    events.extend(_chunk_to_events(chunk2, acc))
+    events.extend(_chunk_to_events(chunk3, acc))
+    deltas = [e for e in events if isinstance(e, ToolCallArgsDelta)]
+    finals = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(deltas) == 2
+    assert deltas[0].arguments_delta == '{"q'
+    assert deltas[1].arguments_delta == '":"x"}'
+    assert len(finals) == 1
+    assert finals[0].arguments == '{"q":"x"}'
+    assert finals[0].index == 0

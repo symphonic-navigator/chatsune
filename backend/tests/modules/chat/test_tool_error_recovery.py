@@ -105,7 +105,7 @@ async def test_unknown_tool_recovers_and_continues_loop() -> None:
     iter_one = [
         ContentDelta(delta="Hello, "),
         ContentDelta(delta="I will use a tool."),
-        ToolCallEvent(id="call_1", name="xyz_unknown", arguments='{"q":"x"}'),
+        ToolCallEvent(id="call_1", name="xyz_unknown", arguments='{"q":"x"}', index=0),
         StreamDone(input_tokens=10, output_tokens=20),
     ]
     iter_two = [
@@ -172,7 +172,7 @@ async def test_malformed_tool_args_recovers_and_continues_loop() -> None:
     iter_one = [
         ContentDelta(delta="Trying tool now."),
         # Deliberately broken JSON — missing closing brace.
-        ToolCallEvent(id="call_2", name="web_search", arguments='{"q":"x"'),
+        ToolCallEvent(id="call_2", name="web_search", arguments='{"q":"x"', index=0),
         StreamDone(input_tokens=5, output_tokens=4),
     ]
     iter_two = [

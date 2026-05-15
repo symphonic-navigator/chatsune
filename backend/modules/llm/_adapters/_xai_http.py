@@ -129,13 +129,14 @@ class _ToolCallAccumulator:
                 slot["args"] += fn["arguments"]
 
     def finalised(self) -> list[dict]:
-        """Return accumulated calls as [{id, name, arguments}, ...]."""
+        """Return accumulated calls as [{id, name, arguments, index}, ...]."""
         calls: list[dict] = []
-        for _, slot in sorted(self._by_index.items()):
+        for idx, slot in sorted(self._by_index.items()):
             calls.append({
                 "id": slot["id"] or f"call_{uuid4().hex[:12]}",
                 "name": slot["name"],
                 "arguments": slot["args"] or "{}",
+                "index": idx,
             })
         return calls
 
@@ -184,7 +185,10 @@ def _chunk_to_events(
 
     tool_frags = delta.get("tool_calls") or []
     if tool_frags:
-        acc.ingest(tool_frags)
+        from backend.modules.llm._adapters._tool_call_streaming import (
+            fragments_to_delta_events,
+        )
+        events.extend(fragments_to_delta_events(tool_frags, acc))
 
     finish = choice.get("finish_reason")
     if finish is None:
@@ -197,6 +201,7 @@ def _chunk_to_events(
             events.append(ToolCallEvent(
                 id=call["id"], name=call["name"],
                 arguments=call["arguments"],
+                index=call["index"],
             ))
     elif finish in _REFUSAL_REASONS:
         events.append(StreamRefused(

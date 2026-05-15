@@ -72,22 +72,6 @@ describe('chatStore — streaming events and refusal slices', () => {
     expect(useChatStore.getState().getStreamFor(SESSION_ID)?.streamingRefusalText).toBe('declined')
   })
 
-  it('addToolCall is idempotent on tool_call_id', () => {
-    const tc = {
-      id: 'call_abc',
-      toolName: 'lookup',
-      arguments: { q: 'first' },
-      status: 'running' as const,
-    }
-    useChatStore.getState().addToolCall(tc, opts)
-    // Same id, different arguments — represents a duplicate
-    // ToolCallStarted event from a misbehaving upstream stream.
-    useChatStore.getState().addToolCall({ ...tc, arguments: { q: 'second' } }, opts)
-    const calls = useChatStore.getState().getStreamFor(SESSION_ID)?.activeToolCalls ?? []
-    expect(calls).toHaveLength(1)
-    expect(calls[0].arguments).toEqual({ q: 'second' })
-  })
-
   it('finishStreaming clears the slot (and thus streamingEvents/refusalText)', () => {
     useChatStore.getState().appendStreamingEvent({
       kind: 'artefact',
@@ -125,5 +109,102 @@ describe('chatStore — streaming events and refusal slices', () => {
     }, opts)
     useChatStore.getState().cancelStreaming(opts)
     expect(useChatStore.getState().getStreamFor(SESSION_ID)).toBeNull()
+  })
+})
+
+describe('appendToolCallDelta', () => {
+  it('creates a new streaming slot on first delta', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('corr-1', { sessionId: 'sess-1' })
+    store.appendToolCallDelta(
+      'call_x', 0, 'search', '{"q', { sessionId: 'sess-1' },
+    )
+    const slot = store.getStreamFor('sess-1')!.streamingToolCalls.get('call_x')
+    expect(slot).toBeDefined()
+    expect(slot!.toolName).toBe('search')
+    expect(slot!.argsBuffer).toBe('{"q')
+    expect(slot!.charCount).toBe(3)
+    expect(slot!.phase).toBe('streaming')
+  })
+
+  it('appends to existing slot and updates counters', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('corr-2', { sessionId: 'sess-2' })
+    store.appendToolCallDelta('call_y', 0, 'f', '{"a', { sessionId: 'sess-2' })
+    store.appendToolCallDelta('call_y', 0, null, '":"b"}', { sessionId: 'sess-2' })
+    const slot = store.getStreamFor('sess-2')!.streamingToolCalls.get('call_y')!
+    expect(slot.argsBuffer).toBe('{"a":"b"}')
+    expect(slot.charCount).toBe(9)
+    expect(slot.toolName).toBe('f')
+  })
+
+  it('sets toolName when supplied in a later delta', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('corr-3', { sessionId: 'sess-3' })
+    store.appendToolCallDelta('call_z', 0, null, '', { sessionId: 'sess-3' })
+    store.appendToolCallDelta('call_z', 0, 'lateName', 'x', { sessionId: 'sess-3' })
+    const slot = store.getStreamFor('sess-3')!.streamingToolCalls.get('call_z')!
+    expect(slot.toolName).toBe('lateName')
+  })
+})
+
+describe('promoteToolCallToExecuting', () => {
+  it('promotes an existing streaming slot to executing', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('c1', { sessionId: 's1' })
+    store.appendToolCallDelta('call_x', 0, 'search', '{}', { sessionId: 's1' })
+    store.promoteToolCallToExecuting(
+      'call_x', 'search', { q: 'hi' }, { sessionId: 's1' },
+    )
+    const slot = store.getStreamFor('s1')!.streamingToolCalls.get('call_x')!
+    expect(slot.phase).toBe('executing')
+    expect(slot.parsedArguments).toEqual({ q: 'hi' })
+  })
+
+  it('creates a new executing slot when streaming slot is absent (Ollama path)', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('c2', { sessionId: 's2' })
+    store.promoteToolCallToExecuting(
+      'call_y', 'lookup', { id: 42 }, { sessionId: 's2' },
+    )
+    const slot = store.getStreamFor('s2')!.streamingToolCalls.get('call_y')!
+    expect(slot.phase).toBe('executing')
+    expect(slot.toolName).toBe('lookup')
+    expect(slot.argsBuffer).toBe('')
+    expect(slot.parsedArguments).toEqual({ id: 42 })
+  })
+})
+
+describe('removeStreamingToolCall', () => {
+  it('removes the slot for the given tool_call_id', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('c1', { sessionId: 's1' })
+    store.appendToolCallDelta('call_x', 0, 'search', '{}', { sessionId: 's1' })
+    expect(store.getStreamFor('s1')!.streamingToolCalls.has('call_x')).toBe(true)
+    store.removeStreamingToolCall('call_x', { sessionId: 's1' })
+    expect(store.getStreamFor('s1')!.streamingToolCalls.has('call_x')).toBe(false)
+  })
+
+  it('is a no-op when the id does not exist', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('c2', { sessionId: 's2' })
+    expect(() => store.removeStreamingToolCall('nope', { sessionId: 's2' }))
+      .not.toThrow()
+  })
+})
+
+describe('streamingToolCalls cleanup on cancel', () => {
+  it('cancelStreaming clears streamingToolCalls', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('c1', { sessionId: 's1' })
+    store.appendToolCallDelta('call_x', 0, 'f', '{}', { sessionId: 's1' })
+    store.cancelStreaming({ sessionId: 's1' })
+    // cancelStreaming fully removes the slot; getStreamFor returns null and
+    // therefore streamingToolCalls is no longer retained. This is a
+    // regression guard — if the cancel path ever switches to a partial
+    // reset, the slot would still exist and we'd want streamingToolCalls
+    // empty, hence the dual-branch assertion.
+    const slot = store.getStreamFor('s1')
+    expect(slot?.streamingToolCalls.size ?? 0).toBe(0)
   })
 })

@@ -46,15 +46,16 @@ class ToolCallAccumulator:
             if fn.get("arguments"):
                 slot["args"] += fn["arguments"]
 
-    def finalised(self) -> list[dict[str, str]]:
+    def finalised(self) -> list[dict[str, Any]]:
         if self._finalised:
             return []
         self._finalised = True
-        calls: list[dict[str, str]] = []
-        for _, slot in sorted(self._by_index.items()):
+        calls: list[dict[str, Any]] = []
+        for idx, slot in sorted(self._by_index.items()):
             calls.append({
                 "id": slot["id"] or f"call_{uuid4().hex[:12]}",
                 "name": slot["name"],
                 "arguments": slot["args"] or "{}",
+                "index": idx,
             })
         return calls

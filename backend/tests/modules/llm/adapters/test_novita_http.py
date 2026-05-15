@@ -171,6 +171,7 @@ def test_accumulator_collects_tool_call_across_fragments():
     finalised = acc.finalised()
     assert finalised == [{
         "id": "call_1", "name": "lookup", "arguments": '{"q":"hello"}',
+        "index": 0,
     }]
 
 
@@ -973,3 +974,35 @@ async def test_stream_completion_connect_error_yields_provider_unavailable():
     assert len(errs) == 1
     assert errs[0].error_code == "provider_unavailable"
     assert "Novita" in errs[0].message
+
+
+def test_streaming_tool_call_emits_args_deltas_novita():
+    """Streaming a tool call should emit one ToolCallArgsDelta per
+    fragment, followed by exactly one finalised ToolCallEvent."""
+    from backend.modules.llm._adapters._novita_http import (
+        _ToolCallAccumulator, _chunk_to_events,
+    )
+    from backend.modules.llm._adapters._events import (
+        ToolCallArgsDelta, ToolCallEvent,
+    )
+    acc = _ToolCallAccumulator()
+    chunk1 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "id": "call_x",
+         "function": {"name": "search", "arguments": '{"q'}},
+    ]}, "finish_reason": None}]}
+    chunk2 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "function": {"arguments": '":"x"}'}},
+    ]}, "finish_reason": None}]}
+    chunk3 = {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}
+    events: list = []
+    events.extend(_chunk_to_events(chunk1, acc))
+    events.extend(_chunk_to_events(chunk2, acc))
+    events.extend(_chunk_to_events(chunk3, acc))
+    deltas = [e for e in events if isinstance(e, ToolCallArgsDelta)]
+    finals = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(deltas) == 2
+    assert deltas[0].arguments_delta == '{"q'
+    assert deltas[1].arguments_delta == '":"x"}'
+    assert len(finals) == 1
+    assert finals[0].arguments == '{"q":"x"}'
+    assert finals[0].index == 0

@@ -48,7 +48,7 @@ describe('MessageList — persisted timeline rendering', () => {
     streamingContent: '',
     streamingThinking: '',
     streamingEvents: [] as TimelineEntry[],
-    activeToolCalls: [],
+    streamingToolCalls: new Map(),
     isWaitingForResponse: false,
     isStreaming: false,
     visionDescriptions: {},

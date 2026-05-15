@@ -158,6 +158,7 @@ def _parse_chunk_novita(
                     id=call["id"],
                     name=call["name"],
                     arguments=call["arguments"],
+                    index=call["index"],
                 ))
 
     # Terminal usage block; skip when a StreamRefused was already

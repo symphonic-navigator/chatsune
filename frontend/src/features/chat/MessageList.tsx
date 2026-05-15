@@ -16,17 +16,10 @@ import { AssistantMessage } from './AssistantMessage'
 import { StreamingIndicator } from './StreamingIndicator'
 import { WebSearchPills } from './WebSearchPills'
 import { KnowledgePills } from './KnowledgePills'
-import { ToolCallPills } from './ToolCallPills'
-import { ToolCallActivity } from './ToolCallActivity'
+import { ToolCallPill } from './ToolCallPill'
+import type { StreamingToolCall } from '../../core/store/chatStore'
 import { ArtefactCard } from '../artefact/ArtefactCard'
 import { InlineImageBlock } from '../images/chat/InlineImageBlock'
-
-interface ActiveToolCall {
-  id: string
-  toolName: string
-  arguments: Record<string, unknown>
-  status: 'running' | 'done'
-}
 
 interface MessageListProps {
   sessionId: string | null
@@ -34,7 +27,7 @@ interface MessageListProps {
   streamingContent: string
   streamingThinking: string
   streamingEvents: TimelineEntry[]
-  activeToolCalls: ActiveToolCall[]
+  streamingToolCalls: Map<string, StreamingToolCall>
   isWaitingForResponse: boolean
   isStreaming: boolean
   /**
@@ -118,8 +111,6 @@ function renderTimelineEntry(
     case 'web_search':
       return <WebSearchPills key={k} items={entry.items} />
     case 'tool_call': {
-      // ToolCallPills consumes the ToolCallRef shape — the timeline entry
-      // already carries the same identifying fields, just re-wrapped.
       const ref: ToolCallRef = {
         tool_call_id: entry.tool_call_id,
         tool_name: entry.tool_name,
@@ -128,7 +119,7 @@ function renderTimelineEntry(
         moderated_count: entry.moderated_count,
         result_content: entry.result_content ?? null,
       }
-      return <ToolCallPills key={k} toolCalls={[ref]} />
+      return <ToolCallPill key={k} phase={{ kind: 'completed', ref }} />
     }
     case 'artefact':
       return (
@@ -154,7 +145,7 @@ function renderTimelineEntry(
 }
 
 export function MessageList({
-  sessionId, messages, streamingContent, streamingThinking, streamingEvents, activeToolCalls,
+  sessionId, messages, streamingContent, streamingThinking, streamingEvents, streamingToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
   visionDescriptions, streamingCorrelationId, streamingSlow,
   containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
@@ -353,8 +344,26 @@ export function MessageList({
               completes, the activity indicator vanishes at the same moment
               the corresponding pill appears above it.
             */}
-            {activeToolCalls.filter((tc) => tc.status === 'running').map((tc) => (
-              <ToolCallActivity key={tc.id} toolName={tc.toolName} arguments={tc.arguments} />
+            {Array.from(streamingToolCalls.values()).map((tc) => (
+              <ToolCallPill
+                key={tc.toolCallId}
+                phase={
+                  tc.phase === 'streaming'
+                    ? {
+                        kind: 'streaming',
+                        toolName: tc.toolName,
+                        charCount: tc.charCount,
+                        argsBuffer: tc.argsBuffer,
+                        toolCallId: tc.toolCallId,
+                      }
+                    : {
+                        kind: 'executing',
+                        toolName: tc.toolName ?? 'tool',
+                        arguments: tc.parsedArguments ?? {},
+                        toolCallId: tc.toolCallId,
+                      }
+                }
+              />
             ))}
             {(streamingThinking || streamingContent) ? (
               <AssistantMessage content={streamingContent} thinking={streamingThinking || null}

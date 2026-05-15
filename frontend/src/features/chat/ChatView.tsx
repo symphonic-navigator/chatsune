@@ -290,7 +290,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const streamingContent = stream?.streamingContent ?? ''
   const streamingThinking = stream?.streamingThinking ?? ''
   const streamingEvents = stream?.streamingEvents ?? []
-  const activeToolCalls = stream?.activeToolCalls ?? []
+  const streamingToolCalls = stream?.streamingToolCalls ?? new Map()
   const contextStatus = useChatStore((s) => s.contextStatus)
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
@@ -1630,7 +1630,7 @@ export function ChatView({ persona }: ChatViewProps) {
             <MessageList
               sessionId={effectiveSessionId ?? null}
               messages={messages} streamingContent={streamingContent} streamingThinking={streamingThinking}
-              streamingEvents={streamingEvents} activeToolCalls={activeToolCalls}
+              streamingEvents={streamingEvents} streamingToolCalls={streamingToolCalls}
               isWaitingForResponse={isWaitingForResponse}
               isStreaming={isStreaming} accentColour={accentColour} highlighter={highlighter}
               visionDescriptions={stream?.visionDescriptions ?? {}}

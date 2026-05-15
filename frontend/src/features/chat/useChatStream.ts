@@ -130,21 +130,32 @@ export function handleChatEvent(
       }, writeOpts)
       break
     }
+    case Topics.CHAT_TOOL_CALL_DELTA: {
+      const slot = getStore().getStreamFor(sessionId)
+      if (event.correlation_id !== slot?.correlationId) return
+      getStore().appendToolCallDelta(
+        p.tool_call_id as string,
+        p.tool_index as number,
+        (p.tool_name as string | null) ?? null,
+        p.args_delta as string,
+        writeOpts,
+      )
+      break
+    }
     case Topics.CHAT_TOOL_CALL_STARTED: {
       const slot = getStore().getStreamFor(sessionId)
       if (event.correlation_id !== slot?.correlationId) return
-      getStore().addToolCall({
-        id: p.tool_call_id as string,
-        toolName: p.tool_name as string,
-        arguments: p.arguments as Record<string, unknown>,
-        status: 'running',
-      }, writeOpts)
+      getStore().promoteToolCallToExecuting(
+        p.tool_call_id as string,
+        p.tool_name as string,
+        p.arguments as Record<string, unknown>,
+        writeOpts,
+      )
       break
     }
     case Topics.CHAT_TOOL_CALL_COMPLETED: {
       const slot = getStore().getStreamFor(sessionId)
       if (event.correlation_id !== slot?.correlationId) return
-      getStore().completeToolCall(p.tool_call_id as string, writeOpts)
       const artefactRef = p.artefact_ref as ArtefactRef | null | undefined
       const imageRefsRaw = p.image_refs as unknown
       const moderatedCount = (p.moderated_count as number | undefined) ?? 0
@@ -216,6 +227,10 @@ export function handleChatEvent(
         }
         getStore().appendStreamingEvent(entry, writeOpts)
       }
+      // Remove the streaming slot AFTER the timeline entry has been appended.
+      // React batches both updates into the same render, so no empty frame
+      // appears at the pill's position.
+      getStore().removeStreamingToolCall(p.tool_call_id as string, writeOpts)
       break
     }
     case Topics.CHAT_WEB_SEARCH_CONTEXT: {

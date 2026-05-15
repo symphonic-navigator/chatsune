@@ -46,7 +46,7 @@ function seedStream(patch: Partial<SessionStreamingState>): void {
     streamingThinking: '',
     streamingEvents: [],
     streamingRefusalText: null,
-    activeToolCalls: [],
+    streamingToolCalls: new Map(),
     visionDescriptions: {},
     streamingSlow: false,
   }

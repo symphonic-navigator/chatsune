@@ -178,7 +178,7 @@ class TestPredicate:
         )
 
     def test_non_empty_tool_calls_never_retries(self) -> None:
-        tc = ToolCallEvent(id="t1", name="web_search", arguments="{}")
+        tc = ToolCallEvent(id="t1", name="web_search", arguments="{}", index=0)
         assert (
             _should_retry_empty_response(
                 **self._kwargs(iter_tool_calls=[tc]),

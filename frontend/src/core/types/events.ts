@@ -74,6 +74,7 @@ export const Topics = {
   CHAT_SESSION_RESTORED: "chat.session.restored",
   CHAT_TOOL_CALL_STARTED: "chat.tool_call.started",
   CHAT_TOOL_CALL_COMPLETED: "chat.tool_call.completed",
+  CHAT_TOOL_CALL_DELTA: "chat.tool_call.delta",
   CHAT_WEB_SEARCH_CONTEXT: "chat.web_search.context",
   CHAT_SESSION_TOOLS_UPDATED: "chat.session.tools_updated",
   CHAT_SESSION_TOGGLES_UPDATED: "chat.session.toggles_updated",

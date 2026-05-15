@@ -94,6 +94,7 @@ def parse_chunk_openrouter(
                     id=call["id"],
                     name=call["name"],
                     arguments=call["arguments"],
+                    index=call["index"],
                 ))
 
     # Terminal usage block (chunk with finish_reason or final usage info).
@@ -148,12 +149,13 @@ def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEve
     # (one chunk holds the complete list of tool-calls; no incremental
     # accumulation across chunks). See
     # devdocs/research/ollama-cloud-tool-calls.md.
-    for tc in message.get("tool_calls") or []:
+    for i, tc in enumerate(message.get("tool_calls") or []):
         fn = tc.get("function") or {}
         events.append(ToolCallEvent(
             id=tc.get("id") or f"call_{uuid4().hex[:12]}",
             name=fn.get("name", ""),
             arguments=json.dumps(fn.get("arguments") or {}),
+            index=i,
         ))
 
     # Terminal handling
@@ -232,6 +234,7 @@ def parse_chunk_novita(
                     id=call["id"],
                     name=call["name"],
                     arguments=call["arguments"],
+                    index=call["index"],
                 ))
 
     # Terminal usage block. Same StreamRefused-co-emit guard as OR.

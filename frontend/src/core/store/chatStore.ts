@@ -9,11 +9,15 @@ interface ChatError {
   userMessage: string
 }
 
-interface ActiveToolCall {
-  id: string
-  toolName: string
-  arguments: Record<string, unknown>
-  status: 'running' | 'done'
+export interface StreamingToolCall {
+  toolCallId: string
+  toolIndex: number
+  toolName: string | null
+  argsBuffer: string
+  charCount: number
+  phase: 'streaming' | 'executing'
+  startedAt: number
+  parsedArguments: Record<string, unknown> | null
 }
 
 export interface LiveVisionDescription {
@@ -45,7 +49,7 @@ export interface SessionStreamingState {
    */
   streamingEvents: TimelineEntry[]
   streamingRefusalText: string | null
-  activeToolCalls: ActiveToolCall[]
+  streamingToolCalls: Map<string /* tool_call_id */, StreamingToolCall>
   visionDescriptions: Record<string, LiveVisionDescription>
   streamingSlow: boolean
 }
@@ -58,7 +62,7 @@ const EMPTY_STREAM: SessionStreamingState = {
   streamingThinking: '',
   streamingEvents: [],
   streamingRefusalText: null,
-  activeToolCalls: [],
+  streamingToolCalls: new Map(),
   visionDescriptions: {},
   streamingSlow: false,
 }
@@ -124,8 +128,20 @@ interface ChatState {
    */
   appendStreamingEvent: (entry: TimelineEntry, opts: { sessionId: string }) => void
   setStreamingRefusalText: (text: string | null, opts: { sessionId: string }) => void
-  addToolCall: (tc: ActiveToolCall, opts: { sessionId: string }) => void
-  completeToolCall: (toolCallId: string, opts: { sessionId: string }) => void
+  appendToolCallDelta: (
+    toolCallId: string,
+    toolIndex: number,
+    toolName: string | null,
+    argsDelta: string,
+    opts: { sessionId: string },
+  ) => void
+  promoteToolCallToExecuting: (
+    toolCallId: string,
+    toolName: string,
+    parsedArguments: Record<string, unknown>,
+    opts: { sessionId: string },
+  ) => void
+  removeStreamingToolCall: (toolCallId: string, opts: { sessionId: string }) => void
   upsertVisionDescription: (
     correlationId: string,
     payload: LiveVisionDescription,
@@ -274,33 +290,70 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }),
     })),
 
-  addToolCall: (tc, { sessionId }) =>
-    // Idempotent on tool_call_id: some upstream providers (notably
-    // DeepSeek via OpenRouter) emit two finish_reason="tool_calls"
-    // chunks for the same call, which used to surface as a duplicated
-    // ToolCallStarted event and a React duplicate-key warning. Replace
-    // an existing entry with the same id instead of appending.
+  appendToolCallDelta: (toolCallId, toolIndex, toolName, argsDelta, { sessionId }) =>
     set((s) => {
       const prev = s.streamsBySession.get(sessionId) ?? EMPTY_STREAM
-      const idx = prev.activeToolCalls.findIndex((x) => x.id === tc.id)
-      const nextCalls = idx >= 0
-        ? prev.activeToolCalls.map((x, i) => (i === idx ? tc : x))
-        : [...prev.activeToolCalls, tc]
+      const existing = prev.streamingToolCalls.get(toolCallId)
+      const next: StreamingToolCall = existing
+        ? {
+            ...existing,
+            toolName: existing.toolName ?? toolName,
+            argsBuffer: existing.argsBuffer + argsDelta,
+            charCount: existing.charCount + argsDelta.length,
+          }
+        : {
+            toolCallId,
+            toolIndex,
+            toolName,
+            argsBuffer: argsDelta,
+            charCount: argsDelta.length,
+            phase: 'streaming',
+            startedAt: performance.now(),
+            parsedArguments: null,
+          }
+      const nextMap = new Map(prev.streamingToolCalls)
+      nextMap.set(toolCallId, next)
       return {
         streamsBySession: withStream(s.streamsBySession, sessionId, {
-          activeToolCalls: nextCalls,
+          streamingToolCalls: nextMap,
         }),
       }
     }),
 
-  completeToolCall: (toolCallId, { sessionId }) =>
+  promoteToolCallToExecuting: (toolCallId, toolName, parsedArguments, { sessionId }) =>
     set((s) => {
       const prev = s.streamsBySession.get(sessionId) ?? EMPTY_STREAM
+      const existing = prev.streamingToolCalls.get(toolCallId)
+      const next: StreamingToolCall = existing
+        ? { ...existing, phase: 'executing', toolName, parsedArguments }
+        : {
+            toolCallId,
+            toolIndex: 0,
+            toolName,
+            argsBuffer: '',
+            charCount: 0,
+            phase: 'executing',
+            startedAt: performance.now(),
+            parsedArguments,
+          }
+      const nextMap = new Map(prev.streamingToolCalls)
+      nextMap.set(toolCallId, next)
       return {
         streamsBySession: withStream(s.streamsBySession, sessionId, {
-          activeToolCalls: prev.activeToolCalls.map((tc) =>
-            tc.id === toolCallId ? { ...tc, status: 'done' as const } : tc,
-          ),
+          streamingToolCalls: nextMap,
+        }),
+      }
+    }),
+
+  removeStreamingToolCall: (toolCallId, { sessionId }) =>
+    set((s) => {
+      const prev = s.streamsBySession.get(sessionId) ?? EMPTY_STREAM
+      if (!prev.streamingToolCalls.has(toolCallId)) return s
+      const nextMap = new Map(prev.streamingToolCalls)
+      nextMap.delete(toolCallId)
+      return {
+        streamsBySession: withStream(s.streamsBySession, sessionId, {
+          streamingToolCalls: nextMap,
         }),
       }
     }),

@@ -61,12 +61,13 @@ def parse_chunk_ollama_cloud(*, chunk: dict[str, Any]) -> list[ProviderStreamEve
         events.append(ThinkingDelta(delta=thinking))
 
     # Atomic tool-calls (no incremental accumulation across chunks).
-    for tc in message.get("tool_calls") or []:
+    for i, tc in enumerate(message.get("tool_calls") or []):
         fn = tc.get("function") or {}
         events.append(ToolCallEvent(
             id=tc.get("id") or f"call_{uuid4().hex[:12]}",
             name=fn.get("name", ""),
             arguments=json.dumps(fn.get("arguments") or {}),
+            index=i,
         ))
 
     # Terminal handling: StreamRefused / StreamDone are mutually exclusive.
@@ -137,6 +138,7 @@ def parse_chunk_novita(
                     id=call["id"],
                     name=call["name"],
                     arguments=call["arguments"],
+                    index=call["index"],
                 ))
 
     usage = chunk.get("usage")

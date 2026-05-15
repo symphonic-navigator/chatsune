@@ -258,7 +258,7 @@ def test_tool_call_accumulator_merges_fragments():
     acc.ingest([{"index": 0, "id": "c_1", "function": {"name": "sum", "arguments": '{"a":1'}}])
     acc.ingest([{"index": 0, "function": {"arguments": ',"b":2}'}}])
     calls = acc.finalised()
-    assert calls == [{"id": "c_1", "name": "sum", "arguments": '{"a":1,"b":2}'}]
+    assert calls == [{"id": "c_1", "name": "sum", "arguments": '{"a":1,"b":2}', "index": 0}]
 
 
 def test_chunk_to_events_content_delta():
@@ -318,7 +318,7 @@ def test_chunk_to_events_tool_call_finish():
     events = _chunk_to_events({"choices": [{
         "delta": {}, "finish_reason": "tool_calls",
     }]}, acc)
-    assert events == [ToolCallEvent(id="c1", name="f", arguments='{"x":1}')]
+    assert events == [ToolCallEvent(id="c1", name="f", arguments='{"x":1}', index=0)]
 
 
 def test_chunk_to_events_refusal():
@@ -871,3 +871,35 @@ async def test_stream_completion_none_mode_with_reasoning_on_omits_flag(
     assert "reasoning" not in fake.posted_payload
     assert "reasoning_effort" not in fake.posted_payload
     assert fake.posted_payload["model"] == "free/phi-small"
+
+
+def test_streaming_tool_call_emits_args_deltas_nano_gpt():
+    """Streaming a tool call should emit one ToolCallArgsDelta per
+    fragment, followed by exactly one finalised ToolCallEvent."""
+    from backend.modules.llm._adapters._nano_gpt_http import (
+        _ToolCallAccumulator, _chunk_to_events,
+    )
+    from backend.modules.llm._adapters._events import (
+        ToolCallArgsDelta, ToolCallEvent,
+    )
+    acc = _ToolCallAccumulator()
+    chunk1 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "id": "call_x",
+         "function": {"name": "search", "arguments": '{"q'}},
+    ]}, "finish_reason": None}]}
+    chunk2 = {"choices": [{"delta": {"tool_calls": [
+        {"index": 0, "function": {"arguments": '":"x"}'}},
+    ]}, "finish_reason": None}]}
+    chunk3 = {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}
+    events: list = []
+    events.extend(_chunk_to_events(chunk1, acc))
+    events.extend(_chunk_to_events(chunk2, acc))
+    events.extend(_chunk_to_events(chunk3, acc))
+    deltas = [e for e in events if isinstance(e, ToolCallArgsDelta)]
+    finals = [e for e in events if isinstance(e, ToolCallEvent)]
+    assert len(deltas) == 2
+    assert deltas[0].arguments_delta == '{"q'
+    assert deltas[1].arguments_delta == '":"x"}'
+    assert len(finals) == 1
+    assert finals[0].arguments == '{"q":"x"}'
+    assert finals[0].index == 0

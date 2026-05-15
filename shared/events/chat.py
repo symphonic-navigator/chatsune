@@ -185,6 +185,16 @@ class ChatToolCallCompletedEvent(BaseModel):
     timestamp: datetime
 
 
+class ChatToolCallDeltaEvent(BaseModel):
+    type: str = "chat.tool_call.delta"
+    correlation_id: str
+    tool_call_id: str
+    tool_index: int
+    tool_name: str | None = None
+    args_delta: str
+    timestamp: datetime
+
+
 class ChatClientToolDispatchEvent(BaseModel):
     """Server → client: please execute this tool call and reply with chat.client_tool.result."""
     type: str = "chat.client_tool.dispatch"
