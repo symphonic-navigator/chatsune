@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from shared.dtos.chat import ChatSessionExtras
+from shared.dtos.chat import ChatSessionExtras, CompactionCheckpointDto
 
 
 class ChatSessionDocument(BaseModel):
@@ -41,3 +41,10 @@ class ChatMessageDocument(BaseModel):
     created_at: datetime
 
     model_config = {"populate_by_name": True}
+
+
+# The document and the DTO are structurally identical — we reuse the
+# DTO directly inside the document model to keep both shapes guaranteed
+# in lock-step. Each new checkpoint is appended; the inference path
+# only ever uses the latest entry.
+CompactionCheckpoint = CompactionCheckpointDto
