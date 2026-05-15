@@ -11,6 +11,7 @@ class JobType(StrEnum):
     TITLE_GENERATION = "title_generation"
     MEMORY_EXTRACTION = "memory_extraction"
     MEMORY_CONSOLIDATION = "memory_consolidation"
+    CHAT_COMPACTION = "chat_compaction"
     CHATGPT_IMPORT_PARSE = "chatgpt_import_parse"
     CHATGPT_IMPORT_CONVERSATION = "chatgpt_import_conversation"
     CHATGPT_IMPORT_MEMORY_BATCH = "chatgpt_import_memory_batch"
