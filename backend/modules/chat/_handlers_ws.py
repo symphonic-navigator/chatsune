@@ -927,6 +927,22 @@ async def handle_chat_compaction_request(
                 ),
             )
             return
+
+        # Idempotency lock — refuses concurrent compactions for the same
+        # session. The job handler releases the lock in its ``finally``
+        # block; the trigger handler does NOT release on success.
+        redis = get_redis()
+        lock_key = f"compaction:lock:{session_id}"
+        acquired = await redis.set(lock_key, correlation_id, nx=True, ex=600)
+        if not acquired:
+            await _emit_compaction_failed(
+                event_bus, session_id, correlation_id, user_id,
+                error_code="already_running", recoverable=True,
+                user_message=(
+                    "A compaction is already running for this conversation."
+                ),
+            )
+            return
     except Exception:
         _log.exception(
             "Unhandled error in handle_chat_compaction_request for user %s",
