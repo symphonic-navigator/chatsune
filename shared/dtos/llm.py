@@ -83,6 +83,7 @@ class ModelMetaDto(BaseModel):
     # pre-existing cached documents readable — see CLAUDE.md
     # §Data-Model Migrations.
     remarks: str | None = None
+    is_privacy_preserving: bool = False
 
     @computed_field
     @property
