@@ -528,6 +528,7 @@ class TensorixHttpAdapter(BaseAdapter):
                 supports_tool_calls=entry.supports_tool_calls,
                 is_deprecated=False,
                 billing_category="pay_per_token",
+                is_privacy_preserving=True,
             ))
         return metas
 
