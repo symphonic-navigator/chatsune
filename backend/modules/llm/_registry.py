@@ -14,6 +14,7 @@ import inspect
 from redis.asyncio import Redis
 
 from backend.modules.llm._adapters._base import BaseAdapter
+from backend.modules.llm._adapters._chutes_http import ChutesHttpAdapter
 from backend.modules.llm._adapters._community import CommunityAdapter
 from backend.modules.llm._adapters._mistral_http import MistralHttpAdapter
 from backend.modules.llm._adapters._nano_gpt_http import NanoGptHttpAdapter
@@ -26,6 +27,7 @@ from backend.modules.llm._adapters._xai_http import XaiHttpAdapter
 ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "ollama_http": OllamaHttpAdapter,
     "community": CommunityAdapter,
+    "chutes_http": ChutesHttpAdapter,
 }
 
 # Premium-only adapter types — not user-createable, but instantiable by the
