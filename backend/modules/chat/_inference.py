@@ -198,6 +198,8 @@ class InferenceRunner:
         model_name: str | None = None,
         adapter_type: str = "",
         model_slug: str = "",
+        total_session_tokens: int | None = None,
+        tokens_actually_sent: int | None = None,
     ) -> None:
         lock = get_user_lock(user_id)
         async with lock:
@@ -206,6 +208,7 @@ class InferenceRunner:
                 cancel_event, context_status, context_fill_percentage,
                 context_used_tokens, context_max_tokens,
                 tool_executor_fn, connection_display_name, model_name, adapter_type, model_slug,
+                total_session_tokens, tokens_actually_sent,
             )
 
     async def _run_locked(
@@ -226,6 +229,8 @@ class InferenceRunner:
         model_name: str | None = None,
         adapter_type: str = "",
         model_slug: str = "",
+        total_session_tokens: int | None = None,
+        tokens_actually_sent: int | None = None,
     ) -> None:
         now = datetime.now(timezone.utc)
         await emit_fn(ChatStreamStartedEvent(
@@ -874,6 +879,8 @@ class InferenceRunner:
             context_fill_percentage=context_fill_percentage,
             context_used_tokens=context_used_tokens,
             context_max_tokens=context_max_tokens,
+            total_session_tokens=total_session_tokens,
+            tokens_actually_sent=tokens_actually_sent,
             time_to_first_token_ms=ttft_ms,
             tokens_per_second=tps,
             generation_duration_ms=gen_duration_ms,

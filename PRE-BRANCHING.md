@@ -793,8 +793,14 @@ correctness, then ergonomics.**
 12. ~~**Bump compaction validation-retry temperature to 0.5** (c-13).~~ **(done)**
     `backend/jobs/handlers/_chat_compaction.py`. Attempt 1 stays at
     0.3; attempt 2 uses 0.5 with the reminder appendix.
-13. **Track separate `total_session_tokens` and `tokens_actually_sent` in `ChatStreamEndedEvent`** (a-11).
-    Additive DTO change in `shared/events/chat.py` + UI tweak. ~50 LoC.
+13. ~~**Track separate `total_session_tokens` and `tokens_actually_sent` in `ChatStreamEndedEvent`** (a-11).~~ **(done)**
+    `shared/events/chat.py` — both fields added as optional ints
+    (additive, no breaking change to existing `context_used_tokens`).
+    Orchestrator captures the pair-selection result so it can emit
+    both numbers. Frontend `ContextStatusPill` shows the second line
+    only when divergence > 5 % to avoid pill-noise. Backend test
+    `test_inference_token_metrics.py` (2 tests) covers the additive
+    contract.
 
 ### Frontend — safety & correctness
 
@@ -840,9 +846,13 @@ correctness, then ergonomics.**
     `markCompactionTimedOut` / `consumeCompactionTimedOut`. The
     150-s timer marks the in-flight correlation; the COMPLETED handler
     consumes and skips the toast. 4 store tests + handler test.
-22. **Replace `optimistic-` prefix sniff with explicit `is_optimistic` flag** (d-14).
-    Cross-stack: add field to DTO + use it in
-    `frontend/src/features/chat/MessageList.tsx:319`. ~20 LoC.
+22. ~~**Replace `optimistic-` prefix sniff with explicit `is_optimistic` flag** (d-14).~~ **(done)**
+    `frontend/src/core/api/chat.ts` adds optional `is_optimistic?:
+    boolean` to `ChatMessageDto`. `ChatView.insertOptimisticAndSend`
+    sets it; `useChatStream` clears it on `CHAT_MESSAGE_CREATED`.
+    Consumers `MessageList.tsx:335` and `ChatView.handleEdit` now
+    gate on the flag instead of `id.startsWith('optimistic-')`. The
+    id prefix itself stays — it is still the swap key.
 23. ~~**Throttle autoscroll pin to one per 16 ms** (d-10).~~ **(done)**
     `frontend/src/features/chat/useAutoScroll.ts:48-118`. Added
     `lastPinAtRef`; inside the rAF callback, skip if elapsed < 16 ms.

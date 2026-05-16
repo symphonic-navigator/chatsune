@@ -16,14 +16,33 @@ interface ContextStatusPillProps {
   fillPercentage: number
   usedTokens?: number
   maxTokens?: number
+  /**
+   * Tokens actually sent upstream on the last turn (after pair-selection).
+   * Surfaced as a secondary tooltip line whenever it diverges from
+   * ``usedTokens`` (the total) by more than 5 %. ``null`` on older
+   * backends that do not emit the field — tooltip then falls back to the
+   * single-number form.
+   */
+  tokensActuallySent?: number | null
 }
 
-export function ContextStatusPill({ status, fillPercentage, usedTokens = 0, maxTokens = 0 }: ContextStatusPillProps) {
+export function ContextStatusPill({
+  status, fillPercentage, usedTokens = 0, maxTokens = 0, tokensActuallySent = null,
+}: ContextStatusPillProps) {
   const pct = Math.round(fillPercentage * 100)
   const { isMobile } = useViewport()
   const [open, setOpen] = useState(false)
 
   const showTokens = usedTokens > 0 && maxTokens > 0
+  // Only surface the second line when pair-selection actually dropped
+  // meaningful context — a small divergence is noise (different counting
+  // paths for system prompt, tool defs, new message) that would confuse
+  // users rather than inform them.
+  const showActuallySent =
+    showTokens
+    && tokensActuallySent !== null
+    && tokensActuallySent > 0
+    && Math.abs(usedTokens - tokensActuallySent) / usedTokens > 0.05
   const interactionProps = isMobile
     ? { onClick: () => setOpen((v) => !v) }
     : { onMouseEnter: () => setOpen(true), onMouseLeave: () => setOpen(false) }
@@ -45,6 +64,11 @@ export function ContextStatusPill({ status, fillPercentage, usedTokens = 0, maxT
           {showTokens && (
             <div className="text-white/55">
               {usedTokens.toLocaleString()} of {maxTokens.toLocaleString()} tokens
+            </div>
+          )}
+          {showActuallySent && (
+            <div className="text-white/45 mt-1">
+              {tokensActuallySent!.toLocaleString()} actually sent this turn
             </div>
           )}
         </div>

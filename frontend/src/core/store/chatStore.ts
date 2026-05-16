@@ -97,6 +97,14 @@ interface ChatState {
   contextFillPercentage: number
   contextUsedTokens: number
   contextMaxTokens: number
+  /**
+   * Tokens actually sent upstream on the last completed turn (system prompt
+   * + tool definitions + pair-selected history + new user message). May be
+   * lower than ``contextUsedTokens`` in long sessions where pair-selection
+   * dropped older turns to fit the model's context window. ``null`` when the
+   * backend did not supply this number — older events do not carry it.
+   */
+  contextTokensActuallySent: number | null
   error: ChatError | null
   sessionTitle: string | null
   toolsEnabled: boolean
@@ -209,6 +217,7 @@ interface ChatState {
   setContextStatus: (status: ContextStatus) => void
   setContextFillPercentage: (percentage: number) => void
   setContextTokens: (used: number, max: number) => void
+  setContextTokensActuallySent: (tokens: number | null) => void
   setReasoningOverride: (override: boolean | null) => void
   setActiveProjectId: (projectId: string | null) => void
   /**
@@ -248,6 +257,7 @@ const INITIAL_NON_STREAMING = {
   contextFillPercentage: 0,
   contextUsedTokens: 0,
   contextMaxTokens: 0,
+  contextTokensActuallySent: null as number | null,
   error: null as ChatError | null,
   sessionTitle: null as string | null,
   toolsEnabled: false,
@@ -534,6 +544,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setContextStatus: (status) => set({ contextStatus: status }),
   setContextFillPercentage: (percentage) => set({ contextFillPercentage: percentage }),
   setContextTokens: (used, max) => set({ contextUsedTokens: used, contextMaxTokens: max }),
+  setContextTokensActuallySent: (tokens) => set({ contextTokensActuallySent: tokens }),
   setReasoningOverride: (override) => set({ reasoningOverride: override }),
   setActiveProjectId: (projectId) => set({ activeProjectId: projectId }),
 

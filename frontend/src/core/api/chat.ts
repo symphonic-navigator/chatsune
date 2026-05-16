@@ -213,6 +213,14 @@ interface ChatMessageDto {
   generation_duration_ms?: number | null
   provider_name?: string | null
   model_name?: string | null
+  /**
+   * Frontend-only flag: true while a message bubble is locally inserted
+   * and awaiting server confirmation. Cleared on ``swapMessageId`` once
+   * the backend acknowledges the message. Never sent to or set by the
+   * backend — behaviour gates (e.g. edit affordance) should rely on this
+   * flag rather than sniffing the ``optimistic-`` id prefix.
+   */
+  is_optimistic?: boolean
 }
 
 interface ToolGroupDto {

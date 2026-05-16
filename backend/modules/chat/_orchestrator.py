@@ -844,7 +844,9 @@ async def run_inference(
 
     # Pair-based backread: select history pairs (exclude last user message)
     history_for_pairs = history_docs[:-1] if history_docs else []
-    selected_history, _ = select_message_pairs(history_for_pairs, budget.available_for_chat)
+    selected_history, selected_history_tokens = select_message_pairs(
+        history_for_pairs, budget.available_for_chat,
+    )
 
     # Build messages for the LLM
     messages: list[CompletionMessage] = []
@@ -1005,6 +1007,17 @@ async def run_inference(
     total_tokens_used = system_prompt_tokens + tool_definition_tokens + all_history_tokens
     fill_ratio = total_tokens_used / max_context if max_context > 0 else 1.0
 
+    # Tokens we are actually sending upstream this turn: system prompt +
+    # tool definitions + pair-selected history + the new user message. May
+    # be lower than ``total_tokens_used`` in long sessions where
+    # ``select_message_pairs`` dropped older turns to fit the budget.
+    tokens_actually_sent = (
+        system_prompt_tokens
+        + tool_definition_tokens
+        + selected_history_tokens
+        + new_msg_tokens
+    )
+
     compact_anchor_index_for_cache: int | None = None
     if compact_markdown is not None and len(messages) > 1:
         compact_anchor_index_for_cache = 1
@@ -1111,6 +1124,8 @@ async def run_inference(
             model_name=model_slug,
             adapter_type=adapter_type,
             model_slug=model_slug,
+            total_session_tokens=total_tokens_used,
+            tokens_actually_sent=tokens_actually_sent,
         )
         # Persist the latest context-window utilisation on the session so
         # that opening the chat later can hydrate the indicator without

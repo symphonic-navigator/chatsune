@@ -332,7 +332,7 @@ export function MessageList({
                   // forbidding mid-stream edits. Messages before the
                   // compaction tail-start are also un-editable — the
                   // backend would reject the request anyway.
-                  isEditable={!msg.id.startsWith('optimistic-') && !isBeforeCompact}
+                  isEditable={!msg.is_optimistic && !isBeforeCompact}
                   editDisabled={isStreaming}
                   isBookmarked={isBm}
                   onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}

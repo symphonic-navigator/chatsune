@@ -300,7 +300,19 @@ export function handleChatEvent(
       }
       const contextStatus = (p.context_status as 'green' | 'yellow' | 'orange' | 'red') ?? 'green'
       const fillPercentage = (p.context_fill_percentage as number) ?? 0
-      const usedTokens = (p.context_used_tokens as number | undefined) ?? 0
+      // ``total_session_tokens`` is the new authoritative "how full is the
+      // conversation" figure (matches what context_used_tokens has always
+      // encoded). Older backends only send ``context_used_tokens`` — fall
+      // back to it so the pill keeps working through the rollout.
+      const usedTokens =
+        (p.total_session_tokens as number | null | undefined) ??
+        (p.context_used_tokens as number | undefined) ??
+        0
+      // ``tokens_actually_sent`` is what was sent upstream this turn after
+      // pair-selection. May be lower than the total in long sessions.
+      // Absent on legacy events.
+      const tokensActuallySent =
+        (p.tokens_actually_sent as number | null | undefined) ?? null
       const maxTokens = (p.context_max_tokens as number | undefined) ?? 0
       const rawStatus = (p.status as string | undefined) ?? 'completed'
       const messageStatus: 'completed' | 'aborted' | 'refused' =
@@ -380,6 +392,14 @@ export function handleChatEvent(
       // transcript (that comes from getMessages on next session switch).
       const isIncognitoSession = eventSessionId.startsWith('incognito-')
       if (backendMessageId || isIncognitoSession) {
+        // Mirror ``tokens_actually_sent`` onto the store before
+        // finishStreaming swaps in the new active-session metrics, so the
+        // pill tooltip can compare it against the total. Only for the
+        // active session — a background completion must not overwrite the
+        // metric the user is currently looking at.
+        if (isActiveSession) {
+          getStore().setContextTokensActuallySent(tokensActuallySent)
+        }
         getStore().finishStreaming(
           {
             id: backendMessageId ?? crypto.randomUUID(),
@@ -537,6 +557,7 @@ export function handleChatEvent(
           getStore().swapMessageId(clientId, p.message_id as string, {
             knowledge_context: knowledgeContext,
             pti_overflow: ptiOverflow,
+            is_optimistic: false,
           })
           break
         }

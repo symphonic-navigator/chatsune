@@ -299,6 +299,7 @@ export function ChatView({ persona }: ChatViewProps) {
   const contextFillPercentage = useChatStore((s) => s.contextFillPercentage)
   const contextUsedTokens = useChatStore((s) => s.contextUsedTokens)
   const contextMaxTokens = useChatStore((s) => s.contextMaxTokens)
+  const contextTokensActuallySent = useChatStore((s) => s.contextTokensActuallySent)
   // Compact-and-continue: read the loading flag fired by useChatStream on
   // chat.compaction.started / .completed / .failed, plus local UI state for
   // the inline confirm card. The send helper mirrors the existing
@@ -934,6 +935,7 @@ export function ChatView({ persona }: ChatViewProps) {
         web_search_context: null,
         knowledge_context: null,
         created_at: new Date().toISOString(),
+        is_optimistic: true,
       }
       useChatStore.getState().appendMessage(optimisticMsg)
       useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
@@ -1045,7 +1047,10 @@ export function ChatView({ persona }: ChatViewProps) {
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
       if (!effectiveSessionId) return
-      if (messageId.startsWith('optimistic-')) {
+      const target = useChatStore
+        .getState()
+        .messages.find((m) => m.id === messageId)
+      if (target?.is_optimistic) {
         // The server has not yet confirmed this message, so we cannot reference
         // it by its final ID. The edit affordance is normally disabled in this
         // state (see UserBubble), but surface a visible notice as a safety net.
@@ -1607,6 +1612,7 @@ export function ChatView({ persona }: ChatViewProps) {
             fillPercentage={contextFillPercentage}
             usedTokens={contextUsedTokens}
             maxTokens={contextMaxTokens}
+            tokensActuallySent={contextTokensActuallySent}
           />
           {effectiveSessionId && (
             <div className="relative">

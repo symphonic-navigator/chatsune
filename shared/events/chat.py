@@ -62,6 +62,16 @@ class ChatStreamEndedEvent(BaseModel):
     context_fill_percentage: float = 0.0
     context_used_tokens: int = 0
     context_max_tokens: int = 0
+    # Total tokens across every persisted message in the session — feeds
+    # the user-facing "how full is the conversation" pill. Mirrors the
+    # existing ``context_used_tokens`` semantic; kept as a separate field so
+    # the two numbers can diverge without breaking older clients.
+    total_session_tokens: int | None = None
+    # Tokens actually sent upstream this turn (system prompt + tool
+    # definitions + pair-selected history + new user message). May be lower
+    # than ``total_session_tokens`` in long sessions where pair-selection
+    # dropped older turns.
+    tokens_actually_sent: int | None = None
     time_to_first_token_ms: int | None = None
     tokens_per_second: float | None = None
     generation_duration_ms: int | None = None
