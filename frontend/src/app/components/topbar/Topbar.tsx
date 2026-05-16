@@ -10,6 +10,7 @@ import { useDrawerStore } from "../../../core/store/drawerStore"
 import { ProjectSwitcher } from "../../../features/projects/ProjectSwitcher"
 import { PROJECTS_ENABLED } from "../../../core/config/featureGates"
 import { useChatStore } from "../../../core/store/chatStore"
+import { PrivacyBadge } from "../../../core/components/PrivacyBadge"
 
 const SECTION_TITLES: Record<string, string> = {
   "/personas": "Personas",
@@ -57,6 +58,11 @@ function ModelPill({ modelUniqueId }: { modelUniqueId: string }) {
               label="Context"
               value={`${model.context_window.toLocaleString()} tokens`}
             />
+          )}
+          {model?.is_privacy_preserving && (
+            <div className="mt-1">
+              <PrivacyBadge />
+            </div>
           )}
         </div>
       )}
