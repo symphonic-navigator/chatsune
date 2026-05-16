@@ -28,7 +28,7 @@ from backend.modules.chat._orchestrator import (
     reset_disconnect_extraction_guard,
     trigger_disconnect_extraction,
 )
-from backend.modules.chat._prompt_assembler import assemble_preview
+from backend.modules.chat._prompt_assembler import assemble, assemble_preview
 from backend.modules.chat._repository import ChatRepository
 from shared.dtos.chat import ImportedMessageInput
 from shared.dtos.export import (
@@ -551,7 +551,8 @@ __all__ = [
     "trigger_disconnect_extraction", "cancel_all_for_user",
     "cancel_inflight_for_session",
     "maybe_trigger_disconnect_extraction", "reset_disconnect_extraction_guard",
-    "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions", "assemble_preview",
+    "cleanup_stale_empty_sessions", "cleanup_soft_deleted_sessions",
+    "assemble", "assemble_preview",
     "find_sessions_for_extraction", "list_unextracted_messages_for_session",
     "get_latest_user_messages_for_persona", "mark_messages_extracted",
     "get_session_summaries", "delete_by_persona",

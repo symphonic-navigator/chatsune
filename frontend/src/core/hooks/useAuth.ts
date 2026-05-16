@@ -5,6 +5,7 @@ import type { LoginResult, SetupResult } from "../api/auth"
 import { meApi } from "../api/meApi"
 import { disconnect } from "../websocket/connection"
 import { logout as coordinatorLogout } from "../auth/logoutCoordinator"
+import { clearPersistedSequenceFor, useEventStore } from "../store/eventStore"
 import { useIntegrationsStore } from "../../features/integrations/store"
 import { useProjectsStore } from "../../features/projects/useProjectsStore"
 import type { LoginRequest, SetupRequest } from "../types/auth"
@@ -128,6 +129,9 @@ export function useAuth() {
       try {
         const res = await authApi.deleteAccount(confirmUsername)
         disconnect()
+        const userId = useAuthStore.getState().user?.id ?? null
+        clearPersistedSequenceFor(userId)
+        useEventStore.getState().setLastSequence(null)
         clear()
         return res
       } catch (err) {

@@ -45,6 +45,12 @@ export function useAutoScroll() {
   // synchronously without re-creating the observer on every flip.
   const followingRef = useRef(true)
 
+  // Timestamp of the last completed pin, used to throttle mutation-driven
+  // pins to at most one per ~16 ms (~60 fps). Shiki highlighting passes
+  // can fire dozens of MutationRecords per frame on large code blocks;
+  // without this gate every burst causes a synchronous layout write.
+  const lastPinAtRef = useRef(0)
+
   const setContainerRef = useCallback((node: HTMLDivElement | null) => {
     containerRef.current = node
     if (node) setMounted((n) => n + 1)
@@ -105,6 +111,9 @@ export function useAutoScroll() {
       rafId = requestAnimationFrame(() => {
         rafId = 0
         if (!followingRef.current) return
+        // Throttle gate: skip if a pin already ran within the last frame.
+        if (performance.now() - lastPinAtRef.current < 16) return
+        lastPinAtRef.current = performance.now()
         pinToBottom()
       })
     }

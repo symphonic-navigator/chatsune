@@ -10,8 +10,10 @@ import pytest
 from backend.modules.llm._adapters._ollama_http import (
     OllamaHttpAdapter,
     _billing_category_for_url,
+    _translate_message,
 )
 from backend.modules.llm._adapters._types import ResolvedConnection
+from shared.dtos.inference import CompletionMessage, ContentPart
 
 
 # ---------------------------------------------------------------------------
@@ -137,3 +139,34 @@ async def test_fetch_models_labels_cloud_connection_as_subscription(monkeypatch)
     assert metas
     for m in metas:
         assert m.billing_category == "subscription"
+
+
+# ---------------------------------------------------------------------------
+# _translate_message — tool-role tool_call_id propagation
+# ---------------------------------------------------------------------------
+
+
+def test_translate_tool_message_preserves_tool_call_id():
+    """A tool-role CompletionMessage must carry ``tool_call_id`` through
+    translation so Ollama can correlate the result back to its tool call.
+    Without this the upstream tool-call loop breaks silently."""
+    msg = CompletionMessage(
+        role="tool",
+        content=[ContentPart(type="text", text="42")],
+        tool_call_id="abc",
+    )
+    result = _translate_message(msg)
+    assert result["role"] == "tool"
+    assert result["content"] == "42"
+    assert result["tool_call_id"] == "abc"
+
+
+def test_translate_user_message_omits_tool_call_id():
+    """Non-tool messages never carry a ``tool_call_id``, and the translator
+    must not invent one."""
+    msg = CompletionMessage(
+        role="user",
+        content=[ContentPart(type="text", text="hello")],
+    )
+    result = _translate_message(msg)
+    assert "tool_call_id" not in result

@@ -1,6 +1,7 @@
 import { authApi } from "../api/auth"
 import { disconnect } from "../websocket/connection"
 import { useAuthStore } from "../store/authStore"
+import { clearPersistedSequenceFor, useEventStore } from "../store/eventStore"
 import { useNotificationStore } from "../store/notificationStore"
 
 type ForceLogoutReason =
@@ -26,6 +27,11 @@ async function _doLogout(): Promise<void> {
     // locally. The user is leaving the session either way.
   }
   disconnect()
+  // Capture the user id BEFORE clearing the auth store — otherwise we
+  // would have no way to scope the cursor cleanup to the right key.
+  const userId = useAuthStore.getState().user?.id ?? null
+  clearPersistedSequenceFor(userId)
+  useEventStore.getState().setLastSequence(null)
   useAuthStore.getState().clear()
   if (_navigate) _navigate("/login")
 }

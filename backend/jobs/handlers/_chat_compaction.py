@@ -10,7 +10,12 @@ import structlog
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from backend.jobs._errors import UnrecoverableJobError
 from backend.jobs._models import JobConfig, JobEntry
+from backend.jobs.handlers._budget_helpers import (
+    check_and_reserve_budget,
+    record_handler_tokens,
+)
 # NB: imports from backend.modules.chat.* are deferred into functions because
 # backend.modules.chat.__init__ → _handlers → backend.jobs forms a circular
 # import at module-load time (this file is itself imported by
@@ -73,15 +78,28 @@ async def handle_chat_compaction(
             or 8192
         )
 
+        # Always trust the session document as the source of truth for the
+        # previous checkpoint — the payload's ``prev_checkpoint_id`` was
+        # captured when the job was scheduled and may be stale if another
+        # compaction landed in between. Compare it to ``checkpoints[-1].id``
+        # as a sanity check; mismatch is logged but not fatal.
         prev_tail_start_id = None
         previous_summary = None
+        prev_checkpoint_id_actual: str | None = None
         checkpoints = session.get("compaction_checkpoints") or []
-        if prev_checkpoint_id:
-            for cp in checkpoints:
-                if cp["id"] == prev_checkpoint_id:
-                    prev_tail_start_id = cp["tail_start_message_id"]
-                    previous_summary = cp["summary_markdown"]
-                    break
+        if checkpoints:
+            latest_cp = checkpoints[-1]
+            prev_tail_start_id = latest_cp["tail_start_message_id"]
+            previous_summary = latest_cp["summary_markdown"]
+            prev_checkpoint_id_actual = latest_cp["id"]
+            if prev_checkpoint_id and prev_checkpoint_id != prev_checkpoint_id_actual:
+                _log.warning(
+                    "compaction.prev_checkpoint_mismatch",
+                    session_id=session_id,
+                    correlation_id=correlation_id,
+                    payload_prev=prev_checkpoint_id,
+                    actual_prev=prev_checkpoint_id_actual,
+                )
 
         tail_start_idx = determine_tail_start_index(
             all_messages, model_context=model_context,
@@ -142,12 +160,44 @@ async def handle_chat_compaction(
 
         await _emit_progress(event_bus, session_id, correlation_id, "calling_model", job.user_id)
 
-        markdown = await _call_llm_with_retry(
+        # Build the prompt up front so we can both reserve the SG-002
+        # daily budget against the real input cost and reuse the same
+        # text inside ``_call_llm_with_retry`` without re-running the
+        # transcript builder.
+        from backend.modules.chat._compaction import (
+            build_compaction_system_prompt,
+            build_compaction_transcript,
+        )
+        system_prompt_text = build_compaction_system_prompt()
+        transcript_text = build_compaction_transcript(
+            source_msgs, previous_summary=previous_summary,
+        )
+        prompt_text_for_budget = system_prompt_text + transcript_text
+
+        # SG-002: reserve budget before the LLM spend. Raises
+        # ``UnrecoverableJobError`` when the user has exhausted their
+        # daily allowance — caught below and surfaced as a
+        # ``budget_exceeded`` failure.
+        await check_and_reserve_budget(redis, job.user_id, prompt_text_for_budget)
+
+        markdown, real_input_tokens, real_output_tokens = await _call_llm_with_retry(
             user_id=job.user_id,
             model_unique_id=job.model_unique_id,
-            source_msgs=source_msgs,
-            previous_summary=previous_summary,
+            system_prompt=system_prompt_text,
+            transcript=transcript_text,
             correlation_id=correlation_id,
+        )
+
+        # Record the real spend so the daily counter reflects what we
+        # actually consumed. Non-fatal if it fails — the LLM call has
+        # already succeeded.
+        await record_handler_tokens(
+            redis,
+            job.user_id,
+            prompt_text=prompt_text_for_budget,
+            output_text=markdown,
+            input_tokens=real_input_tokens,
+            output_tokens=real_output_tokens,
         )
 
         await _emit_progress(event_bus, session_id, correlation_id, "persisting", job.user_id)
@@ -173,9 +223,53 @@ async def handle_chat_compaction(
         # Recompute session-context numbers after compact and persist
         # them so a reload picks up the new (much lower) fill without
         # waiting for the next inference to update the metrics.
-        new_used = tokens_after + tail_token_count
-        new_fill = new_used / model_context if model_context else 0.0
+        #
+        # The bare ``tokens_after + tail_token_count`` formula
+        # systematically undercounts because it omits admin prompt,
+        # persona, memory, integration extensions, and the
+        # ``<conversation_compact>`` envelope around the new markdown.
+        # Calling ``assemble()`` with the same arguments inference will
+        # use gives the real system-prompt token cost; failure
+        # (missing persona, integration error, etc.) falls back to the
+        # legacy estimate so the metric write never crashes the job.
+        from backend.modules.chat import assemble
         from backend.modules.chat._context import get_ampel_status
+        from backend.token_counter import count_tokens as _count_tokens
+
+        extras_obj: ChatSessionExtras | None = None
+        try:
+            extras_dict = session.get("extras") or {}
+            if extras_dict:
+                extras_obj = ChatSessionExtras(**extras_dict)
+        except Exception:
+            _log.warning(
+                "compaction.metrics_extras_parse_failed",
+                session_id=session_id, correlation_id=correlation_id,
+            )
+
+        system_prompt_tokens: int
+        try:
+            assembled_system_prompt = await assemble(
+                user_id=job.user_id,
+                persona_id=session.get("persona_id"),
+                model_unique_id=job.model_unique_id,
+                project_id=session.get("project_id"),
+                supports_reasoning=False,
+                extras=extras_obj,
+                compact_markdown=markdown,
+            )
+            system_prompt_tokens = _count_tokens(assembled_system_prompt)
+        except Exception:
+            _log.exception(
+                "compaction.metrics_assemble_failed",
+                session_id=session_id, correlation_id=correlation_id,
+            )
+            # Fallback to the old optimistic estimate so the write
+            # still happens; next real inference will correct it.
+            system_prompt_tokens = tokens_after
+
+        new_used = system_prompt_tokens + tail_token_count
+        new_fill = new_used / model_context if model_context else 0.0
         new_status = get_ampel_status(new_fill)
         await repo.update_session_context_metrics(
             session_id,
@@ -201,6 +295,21 @@ async def handle_chat_compaction(
             scope=f"session:{session_id}",
             target_user_ids=[job.user_id],
             correlation_id=correlation_id,
+        )
+    except UnrecoverableJobError as exc:
+        _log.warning(
+            "compaction.budget_exceeded",
+            session_id=session_id, correlation_id=correlation_id,
+            reason=str(exc),
+        )
+        await _emit_failed(
+            event_bus, session_id, correlation_id, job.user_id,
+            error_code="budget_exceeded",
+            user_message=(
+                "You have exhausted your daily AI usage budget. "
+                "Compaction will be available again tomorrow."
+            ),
+            recoverable=False,
         )
     except CompactionValidationError:
         _log.exception("compaction.validation_failed", session_id=session_id)
@@ -272,7 +381,7 @@ async def _emit_failed(
 
 
 async def _call_llm_with_retry(
-    *, user_id, model_unique_id, source_msgs, previous_summary, correlation_id,
+    *, user_id, model_unique_id, system_prompt, transcript, correlation_id,
 ):
     """Call the LLM and validate the markdown. Retry once on validation failure.
 
@@ -282,12 +391,15 @@ async def _call_llm_with_retry(
     duck-typing on a ``delta`` attribute. ``stream_completion`` takes
     positional ``user_id, model_unique_id, request`` plus ``source=``;
     there is no ``correlation_id=`` kwarg, so we only log it locally.
+
+    Returns ``(markdown, input_tokens, output_tokens)`` where the token
+    counts come from the adapter's ``StreamDone`` event and may be
+    ``None`` for adapters that do not surface them. The caller uses
+    these for SG-002 budget accounting.
     """
     from backend.modules.chat._compaction import (
         COMPACTION_RETRY_REMINDER,
         CompactionValidationError,
-        build_compaction_system_prompt,
-        build_compaction_transcript,
         validate_compact_markdown,
     )
     from backend.modules.llm import (
@@ -297,10 +409,8 @@ async def _call_llm_with_retry(
         stream_completion,
     )
 
-    system_prompt = build_compaction_system_prompt()
-    transcript = build_compaction_transcript(
-        source_msgs, previous_summary=previous_summary,
-    )
+    last_input_tokens: int | None = None
+    last_output_tokens: int | None = None
 
     for attempt in (1, 2):
         sp = system_prompt + (
@@ -310,10 +420,15 @@ async def _call_llm_with_retry(
             CompletionMessage(role="system", content=[ContentPart(type="text", text=sp)]),
             CompletionMessage(role="user", content=[ContentPart(type="text", text=transcript)]),
         ]
+        # Bump retry temperature: the first attempt's rigid 0.3 may have
+        # produced a near-identical malformed output on the retry. A
+        # touch more variation gives small instruction-following models
+        # a real chance to re-emit the missing headings.
+        attempt_temperature = 0.3 if attempt == 1 else 0.5
         request = CompletionRequest(
             model=model_unique_id.split(":", 1)[1],
             messages=messages,
-            temperature=0.3,
+            temperature=attempt_temperature,
             reasoning=ReasoningCapability(kind="no_reasoning"),
             tools_capability=ToolCapability(supported=False),
             extras=ChatSessionExtras(
@@ -330,7 +445,9 @@ async def _call_llm_with_retry(
             match event:
                 case ContentDelta(delta=delta):
                     collected.append(delta)
-                case StreamDone():
+                case StreamDone() as done:
+                    last_input_tokens = done.input_tokens
+                    last_output_tokens = done.output_tokens
                     break
                 case StreamError() as err:
                     raise RuntimeError(
@@ -339,7 +456,7 @@ async def _call_llm_with_retry(
         markdown = "".join(collected).strip()
         try:
             validate_compact_markdown(markdown)
-            return markdown
+            return markdown, last_input_tokens, last_output_tokens
         except CompactionValidationError as exc:
             # Log the raw output preview so we can iterate on validation
             # tolerance without re-running the LLM. Cap at 800 chars to

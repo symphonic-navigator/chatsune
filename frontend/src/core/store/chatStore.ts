@@ -83,6 +83,14 @@ interface ChatState {
    *
    * F5 / history-load do NOT populate this — the on-disk message has raw
    * tags so the persisted-render path reconstructs the map by re-parsing.
+   *
+   * INVARIANT — unique message id per session: this cache is keyed by
+   * message id and `swapMessageId` / `truncateAfter` / `deleteMessage`
+   * all assume ids do not collide. When branching ships, the backend
+   * MUST guarantee that every message id is unique within the loaded
+   * session (e.g. by treating each branch as a separate session, or by
+   * minting fresh ids per branch). Reusing an id across branches would
+   * silently mix pill caches between divergent histories.
    */
   messagePillContents: Record<string, Map<string, string>>
   contextStatus: ContextStatus
@@ -123,6 +131,15 @@ interface ChatState {
    * triggering click). ``null`` whenever ``compactionLoading`` is false.
    */
   compactionCorrelationId: string | null
+  /**
+   * Correlation ids of compaction requests whose 90 s soft-timeout fired
+   * (ChatView.tsx) before the matching ``chat.compaction.completed`` /
+   * ``.failed`` arrived. The completion handler consumes this set to
+   * suppress the normal success toast — by the time it eventually fires
+   * the user has already seen the "running long" notification and a
+   * cheerful "Saved Xk tokens" toast on top would be confusing.
+   */
+  compactionTimedOutCorrelationIds: Set<string>
 
   // Read accessors
   getStreamFor: (sessionId: string) => SessionStreamingState | null
@@ -208,6 +225,19 @@ interface ChatState {
    */
   appendCompactionCheckpoint: (sessionId: string, checkpoint: CompactionCheckpoint) => void
   setCompactionLoading: (loading: boolean, correlationId?: string | null) => void
+  /**
+   * Mark a compaction correlation id as having had its 90 s soft-timeout
+   * fire. The completion handler consumes the entry via
+   * ``consumeCompactionTimedOut`` to decide whether to suppress the
+   * regular success toast.
+   */
+  markCompactionTimedOut: (correlationId: string) => void
+  /**
+   * Test-and-clear: returns ``true`` if the correlation id was previously
+   * flagged via ``markCompactionTimedOut`` and removes the entry. Returns
+   * ``false`` (and is a no-op) otherwise.
+   */
+  consumeCompactionTimedOut: (correlationId: string) => boolean
   reset: (sessionId?: string) => void
 }
 
@@ -228,6 +258,7 @@ const INITIAL_NON_STREAMING = {
   compactionCheckpoints: [] as CompactionCheckpoint[],
   compactionLoading: false,
   compactionCorrelationId: null as string | null,
+  compactionTimedOutCorrelationIds: new Set<string>(),
 }
 
 function withStream(
@@ -531,6 +562,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       compactionLoading: loading,
       compactionCorrelationId: loading ? (correlationId ?? null) : null,
     }),
+  markCompactionTimedOut: (correlationId) =>
+    set((s) => {
+      if (s.compactionTimedOutCorrelationIds.has(correlationId)) return s
+      const next = new Set(s.compactionTimedOutCorrelationIds)
+      next.add(correlationId)
+      return { compactionTimedOutCorrelationIds: next }
+    }),
+  consumeCompactionTimedOut: (correlationId) => {
+    const cur = useChatStore.getState().compactionTimedOutCorrelationIds
+    if (!cur.has(correlationId)) return false
+    const next = new Set(cur)
+    next.delete(correlationId)
+    set({ compactionTimedOutCorrelationIds: next })
+    return true
+  },
 
   // reset(sessionId) — switch to a session and reset its non-streaming
   // session-load state. DOES NOT touch streamsBySession: stream slots

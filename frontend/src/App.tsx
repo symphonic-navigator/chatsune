@@ -9,6 +9,7 @@ import { startHealthMonitor, stopHealthMonitor } from "./core/health/healthMonit
 import { registerClientToolHandler } from "./features/code-execution/clientToolHandler"
 import { registerSecretsEventHandler } from "./features/integrations/secretsEventHandler"
 import { registerIntegrationsEventHandler } from "./features/integrations/integrationsEventHandler"
+import { registerGenericErrorHandler } from "./core/websocket/genericErrorHandler"
 import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import './features/integrations/plugins/mistral_voice'
@@ -94,11 +95,13 @@ function AppRoutes() {
     const unregisterClientTool = registerClientToolHandler()
     const unregisterSecrets = registerSecretsEventHandler()
     const unregisterIntegrations = registerIntegrationsEventHandler()
+    const unregisterGenericError = registerGenericErrorHandler()
     const cleanupPluginLifecycle = initPluginLifecycle()
     return () => {
       unregisterClientTool()
       unregisterSecrets()
       unregisterIntegrations()
+      unregisterGenericError()
       cleanupPluginLifecycle()
       unregisterCoreBuiltins()
     }

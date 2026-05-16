@@ -632,6 +632,37 @@ export function ChatView({ persona }: ChatViewProps) {
     return unsub
   }, [sessionId, isIncognito, navigate])
 
+  // Mirror of the deleted handler above for the restore path. When a
+  // session that the user is currently viewing is restored from another
+  // tab/device, refresh the session metadata so any state that flipped
+  // server-side during the deletion window (title, project, extras, ...)
+  // is reflected here. The global sidebar list is handled by the
+  // useChatSessions handler — we only act when the restored session is
+  // the active one. Non-active restores are a no-op.
+  useEffect(() => {
+    if (isIncognito) return
+    if (!sessionId) return
+    const unsub = eventBus.on(Topics.CHAT_SESSION_RESTORED, (event: BaseEvent) => {
+      const restoredId = (event.payload.session_id as string | undefined)
+        ?? ((event.payload.session as { id?: string } | undefined)?.id)
+      if (restoredId !== sessionId) return
+      chatApi
+        .getSession(sessionId)
+        .then((session) => {
+          useChatStore.getState().setSessionTitle(session.title)
+          setSessionPinned(session.pinned ?? false)
+          useChatStore.getState().setToolsEnabled(session.tools_enabled ?? false)
+          useChatStore.getState().setAutoRead(session.auto_read ?? false)
+          useChatStore.getState().setReasoningOverride(session.reasoning_override ?? null)
+          useChatStore.getState().setActiveProjectId(session.project_id ?? null)
+        })
+        .catch((err) => {
+          console.warn('Failed to refresh restored session metadata', err)
+        })
+    })
+    return unsub
+  }, [sessionId, isIncognito])
+
   // When navigated here from the global Artefacts tab with a pendingArtefactId,
   // fetch the artefact detail and open the overlay once the session is ready.
   useEffect(() => {
@@ -749,14 +780,28 @@ export function ChatView({ persona }: ChatViewProps) {
     onCross: () => setShowSuggestToast(true),
   })
 
-  // 90 s soft-timeout on the compaction loading overlay. If no
+  // 150 s soft-timeout on the compaction loading overlay. If no
   // ``chat.compaction.completed`` / ``.failed`` event arrives within
   // that window, drop the input lock and surface a soft notification.
   // The backend job is NOT marked failed at this point — it may still
   // complete in the background. See spec §5.7.
+  //
+  // The backend job's ``execution_timeout_seconds`` is 120 s (see
+  // ``backend/jobs/_registry.py``); the 30 s buffer here keeps the UI
+  // locked until the backend has definitively given up, so a chat-send
+  // can't race against pre-compact state.
   useEffect(() => {
     if (!compactionLoading) return
+    // Snapshot the in-flight correlation id at the start of the loading
+    // window so a late COMPLETED event can be matched back to this
+    // timeout and the post-timeout success toast suppressed. Reading
+    // through the store handles the (currently impossible) case of the
+    // correlation id changing while the timer is pending.
+    const correlationIdAtStart = useChatStore.getState().compactionCorrelationId
     const timer = setTimeout(() => {
+      if (correlationIdAtStart) {
+        useChatStore.getState().markCompactionTimedOut(correlationIdAtStart)
+      }
       useChatStore.getState().setCompactionLoading(false)
       useNotificationStore.getState().addNotification({
         level: 'info',
@@ -766,7 +811,7 @@ export function ChatView({ persona }: ChatViewProps) {
           "Reload the page if it doesn't complete soon.",
         duration: 6000,
       })
-    }, 90_000)
+    }, 150_000)
     return () => clearTimeout(timer)
   }, [compactionLoading])
 

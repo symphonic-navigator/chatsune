@@ -761,7 +761,13 @@ async def run_inference(
     # because the compact-and-continue checkpoint, when present, supplies
     # ``compact_markdown`` to the assembler and trims ``history_docs`` to
     # the tail portion.
-    history_docs = await repo.list_messages(session_id)
+    #
+    # Use ``list_messages_tail`` (not ``list_messages``) so very long
+    # sessions keep the NEWEST messages within the cap instead of silently
+    # dropping the most recent turns. Inference needs the tail; the
+    # title-generation path further down still uses ``list_messages``
+    # because it wants the first user/assistant pair.
+    history_docs = await repo.list_messages_tail(session_id)
 
     compact_markdown: str | None = None
     checkpoints = session.get("compaction_checkpoints") or []

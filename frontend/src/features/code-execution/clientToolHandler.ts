@@ -11,8 +11,13 @@ import { mcpToolsCall } from '../mcp/mcpClient'
 import { useMcpStore } from '../mcp/mcpStore'
 import { getAllPlugins } from '../integrations/registry'
 import { useIntegrationsStore } from '../integrations/store'
+import { useChatStore } from '../../core/store/chatStore'
 
 const MAX_OUTPUT_BYTES = 4096
+// Defensive cap: if the backend ever sends a missing/zero/negative
+// timeout_ms we still want the race to fire eventually rather than wait
+// forever. 60s comfortably exceeds any sane interactive tool call.
+const DEFAULT_TIMEOUT_MS = 60_000
 
 interface DispatchPayload {
   session_id: string
@@ -34,12 +39,70 @@ function sendResult(
   })
 }
 
+/** Resolve the effective timeout for a dispatch — falls back to a
+ *  sensible default if the payload omits or zeroes the field. */
+function effectiveTimeout(ms: number): number {
+  return Number.isFinite(ms) && ms > 0 ? ms : DEFAULT_TIMEOUT_MS
+}
+
+type RaceOutcome<T> = { kind: 'value'; value: T } | { kind: 'error'; error: unknown } | { kind: 'timeout' }
+
+/** Race a promise against a timeout. The inner promise is NOT cancelled
+ *  (integration plugins do not currently expose AbortSignal); on timeout
+ *  it keeps running in the background and any late result is ignored.
+ *  The backend's tool-result handler tolerates the late duplicate.
+ */
+function raceWithTimeout<T>(
+  inner: Promise<T>,
+  timeoutMs: number,
+): Promise<RaceOutcome<T>> {
+  return new Promise<RaceOutcome<T>>((resolve) => {
+    let settled = false
+    const settle = (outcome: RaceOutcome<T>): void => {
+      if (settled) return
+      settled = true
+      resolve(outcome)
+    }
+    const handle = setTimeout(() => settle({ kind: 'timeout' }), timeoutMs)
+    inner.then(
+      (value) => {
+        clearTimeout(handle)
+        settle({ kind: 'value', value })
+      },
+      (error: unknown) => {
+        clearTimeout(handle)
+        settle({ kind: 'error', error })
+      },
+    )
+  })
+}
+
 export function registerClientToolHandler(): () => void {
   return eventBus.on('chat.client_tool.dispatch', (event: BaseEvent) => {
     // eventBus callbacks are sync — we start the async work but do not
     // await it here. The handler sends the result via sendMessage when
     // the sandbox resolves.
-    void handleDispatch(event.payload as unknown as DispatchPayload)
+    const payload = event.payload as unknown as DispatchPayload
+
+    // Session-mismatch handling: we EXECUTE regardless and only emit a
+    // structured warning. Rationale — the backend dispatched this tool
+    // call because it believes the user (this WS connection) should run
+    // it; the session_id is informational. Dropping it would orphan the
+    // tool call server-side (no result event, the assistant turn hangs).
+    // Strict cross-session isolation is a future concern (per-session WS
+    // multiplexing); for now we just want visibility of mismatches.
+    const activeSessionId = useChatStore.getState().activeSessionId
+    if (payload.session_id && activeSessionId && payload.session_id !== activeSessionId) {
+      console.warn(
+        '[client-tool] session mismatch — dispatch for session=%s while active=%s tool=%s tool_call_id=%s',
+        payload.session_id,
+        activeSessionId,
+        payload.tool_name,
+        payload.tool_call_id,
+      )
+    }
+
+    void handleDispatch(payload)
   })
 }
 
@@ -104,16 +167,35 @@ async function tryIntegrationDispatch(ev: DispatchPayload): Promise<boolean> {
     }
 
     console.debug('[integration-dispatch] executing tool=%s config=%o args=%o', ev.tool_name, config.config, ev.arguments)
-    try {
-      const output = await plugin.executeTool(ev.tool_name, ev.arguments, config.config)
-      console.debug('[integration-dispatch] tool=%s result=%s', ev.tool_name, output.slice(0, 200))
-      sendResult(ev.tool_call_id, { stdout: output, error: null })
-    } catch (e) {
+    // Integration plugins do not yet honour an AbortSignal, so we wrap
+    // executeTool in a timeout race. On expiry the inner promise keeps
+    // running (we cannot cancel it) but its eventual result is discarded.
+    const timeoutMs = effectiveTimeout(ev.timeout_ms)
+    const outcome = await raceWithTimeout(
+      plugin.executeTool(ev.tool_name, ev.arguments, config.config),
+      timeoutMs,
+    )
+    if (outcome.kind === 'timeout') {
+      console.warn(
+        '[client-tool] timeout tool=%s tool_call_id=%s timeout_ms=%d',
+        ev.tool_name,
+        ev.tool_call_id,
+        timeoutMs,
+      )
+      sendResult(ev.tool_call_id, {
+        stdout: '',
+        error: `client_tool_timeout: integration tool '${ev.tool_name}' did not respond within ${timeoutMs}ms`,
+      })
+    } else if (outcome.kind === 'error') {
+      const e = outcome.error
       console.error('[integration-dispatch] tool=%s error:', ev.tool_name, e)
       sendResult(ev.tool_call_id, {
         stdout: '',
         error: `Integration tool failed: ${e instanceof Error ? e.message : String(e)}`,
       })
+    } else {
+      console.debug('[integration-dispatch] tool=%s result=%s', ev.tool_name, outcome.value.slice(0, 200))
+      sendResult(ev.tool_call_id, { stdout: outcome.value, error: null })
     }
     return true
   }

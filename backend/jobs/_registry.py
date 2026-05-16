@@ -76,14 +76,18 @@ JOB_REGISTRY: dict[JobType, JobConfig] = {
         notify=False,
         notify_error=True,
     ),
+    # Retries are user-driven via the Retry toast; the handler captures all
+    # failures and emits CHAT_COMPACTION_FAILED itself, so the consumer never
+    # sees a retryable failure and ``notify_error`` would only fire on a
+    # crash inside the handler — noise the user cannot act on.
     JobType.CHAT_COMPACTION: JobConfig(
         handler=handle_chat_compaction,
-        max_retries=1,
-        retry_delay_seconds=30.0,
+        max_retries=0,
+        retry_delay_seconds=0.0,
         queue_timeout_seconds=3600.0,
         execution_timeout_seconds=120.0,
         reasoning_enabled=False,
         notify=True,
-        notify_error=True,
+        notify_error=False,
     ),
 }

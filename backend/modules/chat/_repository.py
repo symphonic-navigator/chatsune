@@ -1,9 +1,18 @@
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+
+_log = logging.getLogger(__name__)
+
+# Hard cap on the number of messages a single ``list_messages`` /
+# ``list_messages_tail`` call will return. Sessions beyond this size
+# trigger a warning log on ``list_messages`` and silently keep the
+# newest ``LIST_MESSAGES_CAP`` entries on ``list_messages_tail``.
+LIST_MESSAGES_CAP = 5000
 
 from backend.modules.chat._models import CompactionCheckpoint
 from backend.token_counter import count_tokens
@@ -916,8 +925,44 @@ class ChatRepository:
         return result.modified_count
 
     async def list_messages(self, session_id: str) -> list[dict]:
+        """Return messages for a session, oldest first, capped at
+        ``LIST_MESSAGES_CAP``.
+
+        WARNING: with the default ascending sort this silently drops the
+        NEWEST messages once a session exceeds the cap. For inference
+        history-loading use ``list_messages_tail`` instead, which keeps
+        the most recent ``max_count`` messages.
+        """
         cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
-        return await cursor.to_list(length=5000)
+        docs = await cursor.to_list(length=LIST_MESSAGES_CAP)
+        if len(docs) == LIST_MESSAGES_CAP:
+            _log.warning(
+                "chat.list_messages.cap_hit session_id=%s cap=%d "
+                "(oldest %d returned, newest entries dropped)",
+                session_id, LIST_MESSAGES_CAP, LIST_MESSAGES_CAP,
+            )
+        return docs
+
+    async def list_messages_tail(
+        self, session_id: str, max_count: int = LIST_MESSAGES_CAP,
+    ) -> list[dict]:
+        """Return the most recent ``max_count`` messages, ascending by
+        ``created_at``.
+
+        This is what inference history-loading wants: when a session
+        exceeds the cap, the newest turns (the ones the model needs to
+        continue the conversation) are preserved and the oldest are
+        dropped. The query sorts descending and reverses the result so
+        callers see the same ascending order as ``list_messages``.
+        """
+        cursor = (
+            self._messages.find({"session_id": session_id})
+            .sort("created_at", -1)
+            .limit(max_count)
+        )
+        docs = await cursor.to_list(length=max_count)
+        docs.reverse()
+        return docs
 
     async def list_unextracted_user_messages(
         self, session_id: str, limit: int = 20,

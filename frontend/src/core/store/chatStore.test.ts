@@ -208,3 +208,30 @@ describe('streamingToolCalls cleanup on cancel', () => {
     expect(slot?.streamingToolCalls.size ?? 0).toBe(0)
   })
 })
+
+describe('compaction soft-timeout sentinel', () => {
+  beforeEach(() => useChatStore.getState().reset())
+
+  it('markCompactionTimedOut records the correlation id', () => {
+    useChatStore.getState().markCompactionTimedOut('corr-A')
+    expect(useChatStore.getState().compactionTimedOutCorrelationIds.has('corr-A')).toBe(true)
+  })
+
+  it('consumeCompactionTimedOut returns true once and clears the flag', () => {
+    useChatStore.getState().markCompactionTimedOut('corr-A')
+    expect(useChatStore.getState().consumeCompactionTimedOut('corr-A')).toBe(true)
+    // Second call returns false — the flag has been consumed.
+    expect(useChatStore.getState().consumeCompactionTimedOut('corr-A')).toBe(false)
+    expect(useChatStore.getState().compactionTimedOutCorrelationIds.has('corr-A')).toBe(false)
+  })
+
+  it('consumeCompactionTimedOut returns false for an unknown correlation id', () => {
+    expect(useChatStore.getState().consumeCompactionTimedOut('never-marked')).toBe(false)
+  })
+
+  it('markCompactionTimedOut is idempotent', () => {
+    useChatStore.getState().markCompactionTimedOut('corr-A')
+    useChatStore.getState().markCompactionTimedOut('corr-A')
+    expect(useChatStore.getState().compactionTimedOutCorrelationIds.size).toBe(1)
+  })
+})

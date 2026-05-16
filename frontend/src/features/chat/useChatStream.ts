@@ -102,14 +102,23 @@ export function handleChatEvent(
       break
     }
     case Topics.CHAT_CONTENT_DELTA: {
-      const g = getActiveGroupForSession(sessionId)
-      if (!g || g.id !== event.correlation_id) {
-        console.debug(`[useChatStream] drop CHAT_CONTENT_DELTA (no matching group, id=${event.correlation_id})`)
-        return
-      }
+      // Uniform slot-based gating across every delta handler in this
+      // switch — keeps a single source of truth (the streaming slot's
+      // correlation id) instead of mixing slot- and Group-based gates.
+      // The Group is still the rendering sink for content via its
+      // children, so we look it up after the gate and skip writing when
+      // no matching Group is registered (e.g. a fast race where the
+      // delta arrives before the Group is created for this session).
+      const slot = getStore().getStreamFor(sessionId)
+      if (!slot || slot.correlationId !== event.correlation_id) return
       const rawDelta = p.delta as string
       // Tag buffer still lives here — it transforms deltas before storage.
       const visibleDelta = activeTagBuffer ? activeTagBuffer.process(rawDelta) : rawDelta
+      const g = getActiveGroupForSession(sessionId)
+      if (!g || g.id !== event.correlation_id) {
+        console.debug(`[useChatStream] drop CHAT_CONTENT_DELTA render (no matching group, id=${event.correlation_id})`)
+        return
+      }
       g.onDelta(visibleDelta)
       break
     }
@@ -536,7 +545,7 @@ export function handleChatEvent(
       // (e.g. another tab, or a server-initiated user message).
       getStore().appendMessage({
         id: p.message_id as string,
-        session_id: sessionId ?? '',
+        session_id: p.session_id as string,
         role: p.role as 'user' | 'assistant',
         content: p.content as string,
         thinking: null,
@@ -623,8 +632,14 @@ export function handleChatEvent(
       }
       // Success toast — narrow the dynamic payload to the shape the toast
       // helper expects. Skip when the event somehow lacks a checkpoint
-      // (defensive — the backend always sets it).
-      if (checkpoint) {
+      // (defensive — the backend always sets it). Also suppress the
+      // success toast when the 90 s soft-timeout had already fired for
+      // this correlation id — the user already saw a "running long"
+      // notification and a follow-up cheerful "Saved Xk tokens" toast
+      // would be confusing. ``consumeCompactionTimedOut`` is a
+      // test-and-clear so the flag does not leak across retries.
+      const timedOut = getStore().consumeCompactionTimedOut(event.correlation_id)
+      if (checkpoint && !timedOut) {
         showCompactionSuccess({
           checkpoint,
           tokens_saved: Number(p.tokens_saved ?? 0),

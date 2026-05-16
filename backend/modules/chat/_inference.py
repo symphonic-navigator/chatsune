@@ -816,14 +816,39 @@ class InferenceRunner:
                 else "aborted" if status == "aborted"
                 else "completed"
             )
-            message_id = await save_fn(
-                content=full_content,
-                thinking=full_thinking or None,
-                usage=usage,
-                events=events or None,
-                refusal_text=iter_refusal_text,
-                status=resolved_status,
-            )
+            # Persistence is best-effort: a DB blip or validation failure must
+            # not crash the runner, otherwise the terminal ChatStreamEndedEvent
+            # never fires and the frontend "thinking" indicator hangs forever.
+            # On failure we surface a non-recoverable error event to the user
+            # and fall through to the normal stream-ended path with status=error
+            # and message_id=None so the UI releases its streaming state.
+            try:
+                message_id = await save_fn(
+                    content=full_content,
+                    thinking=full_thinking or None,
+                    usage=usage,
+                    events=events or None,
+                    refusal_text=iter_refusal_text,
+                    status=resolved_status,
+                )
+            except Exception as exc:
+                _log.exception(
+                    "inference.save.failed session=%s correlation_id=%s "
+                    "message_id=%s exc_type=%s exc_message=%s",
+                    session_id, correlation_id, message_id,
+                    type(exc).__name__, exc,
+                )
+                status = "error"
+                message_id = None
+                await emit_fn(ChatStreamErrorEvent(
+                    correlation_id=correlation_id,
+                    error_code="persistence_failed",
+                    recoverable=False,
+                    user_message=(
+                        "The response could not be saved. Please regenerate."
+                    ),
+                    timestamp=datetime.now(timezone.utc),
+                ))
 
         t_stream_end = time.monotonic()
         total_duration = t_stream_end - t_stream_start

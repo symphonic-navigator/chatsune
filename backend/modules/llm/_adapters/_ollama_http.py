@@ -146,6 +146,8 @@ def _translate_message(msg: CompletionMessage) -> dict:
             {"function": {"name": tc.name, "arguments": json.loads(tc.arguments)}}
             for tc in msg.tool_calls
         ]
+    if msg.tool_call_id:
+        result["tool_call_id"] = msg.tool_call_id
     return result
 
 

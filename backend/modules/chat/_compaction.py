@@ -230,8 +230,43 @@ def build_compaction_transcript(
     for m in source_messages:
         role = (m.get("role") or "user").capitalize()
         content = (m.get("content") or "").strip()
-        if content:
-            transcript_lines.append(f"{role}: {content}")
+        if not content:
+            continue
+        transcript_lines.append(f"{role}: {content}")
+
+        # Surface attachment / image / artefact metadata so the model can
+        # populate the briefing's "Pending References" section. Without
+        # these lines the model only sees plain text and silently drops
+        # every file the user shared.
+        attachment_refs = m.get("attachment_refs") or []
+        if attachment_refs:
+            names = [
+                r.get("display_name") or r.get("file_id") or "?"
+                for r in attachment_refs
+                if isinstance(r, dict)
+            ]
+            if names:
+                transcript_lines.append(f"[Attachments: {', '.join(names)}]")
+
+        image_refs = m.get("image_refs") or []
+        if image_refs:
+            names = [
+                (r.get("prompt") or r.get("id") or "?")
+                for r in image_refs
+                if isinstance(r, dict)
+            ]
+            if names:
+                transcript_lines.append(f"[Generated: {', '.join(names)}]")
+
+        artefact_refs = m.get("artefact_refs") or []
+        if artefact_refs:
+            names = [
+                (r.get("title") or r.get("handle") or r.get("artefact_id") or "?")
+                for r in artefact_refs
+                if isinstance(r, dict)
+            ]
+            if names:
+                transcript_lines.append(f"[Artefacts: {', '.join(names)}]")
     transcript = "\n".join(transcript_lines)
 
     return (

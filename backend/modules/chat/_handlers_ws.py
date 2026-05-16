@@ -26,10 +26,11 @@ from backend.modules.chat._orchestrator import (
 from backend.modules.chat._prompt_assembler import assemble
 from backend.modules.chat._repository import ChatRepository
 from backend.token_counter import count_tokens
-from backend.database import get_db
+from backend.database import get_db, get_redis
 from backend.modules.bookmark import delete_bookmarks_for_message
 from backend.modules.llm import (
     stream_completion as llm_stream_completion,
+    get_effective_context_window,
     get_model_metadata,
     LlmConnectionNotFoundError,
 )
@@ -88,6 +89,85 @@ def _consume_retract(user_id: str, correlation_id: str) -> tuple[bool, str | Non
         return False, None
     _pending_retracts.pop(correlation_id, None)
     return True, session_id
+
+
+# Threshold mirrors the orchestrator's defence-in-depth check in
+# ``_orchestrator.run_inference``: 80 % fill is the same red-ampel cutoff
+# defined in ``_context.get_ampel_status``.
+_CONTEXT_FULL_FILL_RATIO = 0.80
+_DEFAULT_CONTEXT_WINDOW = 8192
+
+
+async def _emit_stream_error(
+    *,
+    user_id: str,
+    session_id: str,
+    correlation_id: str,
+    error_code: str,
+    user_message: str,
+    recoverable: bool,
+) -> None:
+    """Publish a ChatStreamErrorEvent under the session scope."""
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_STREAM_ERROR,
+        ChatStreamErrorEvent(
+            correlation_id=correlation_id,
+            error_code=error_code,
+            recoverable=recoverable,
+            user_message=user_message,
+            timestamp=datetime.now(timezone.utc),
+        ),
+        scope=f"session:{session_id}",
+        target_user_ids=[user_id],
+        correlation_id=correlation_id,
+    )
+
+
+async def _compaction_lock_held(session_id: str) -> bool:
+    """Return True iff a compaction job currently holds the session lock."""
+    redis = get_redis()
+    value = await redis.get(f"compaction:lock:{session_id}")
+    return value is not None
+
+
+async def _is_context_window_full(
+    user_id: str,
+    session: dict,
+    new_message_tokens: int,
+) -> bool:
+    """Cheap pre-flight check — would adding this message push fill to >= 80 %.
+
+    Uses ``session.context_used_tokens`` as the basis: that value is
+    persisted at the end of each inference and already accounts for
+    system prompt + history tokens at the previous turn. Adding the
+    new user message tokens gives a conservative upper bound. The
+    orchestrator runs the precise check after assembly as
+    defence-in-depth — this one exists only to avoid persisting a
+    user message that can never be answered.
+    """
+    persisted_used = int(session.get("context_used_tokens") or 0)
+    if persisted_used <= 0:
+        # Fresh session or pre-metric session — cannot evaluate. The
+        # orchestrator's check still runs after history assembly.
+        return False
+
+    session_model = session.get("model_unique_id")
+    if not session_model:
+        persona_id = session.get("persona_id")
+        if persona_id:
+            persona = await get_persona(persona_id, user_id)
+            session_model = (persona or {}).get("model_unique_id") or ""
+    if not session_model:
+        return False
+
+    max_context = await get_effective_context_window(user_id, session_model)
+    if not max_context:
+        max_context = _DEFAULT_CONTEXT_WINDOW
+
+    projected = persisted_used + max(0, int(new_message_tokens))
+    fill_ratio = projected / max_context if max_context > 0 else 1.0
+    return fill_ratio >= _CONTEXT_FULL_FILL_RATIO
 
 
 async def _resolve_attachment_ids(
@@ -236,6 +316,24 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
                 cancelled, session_id, user_id,
             )
 
+        # Compaction lock — refuse to persist while a compaction job
+        # holds the session's lock. Doing so would race against the
+        # checkpoint write and could send the LLM either pre- or
+        # post-compact history depending on timing.
+        if await _compaction_lock_held(session_id):
+            await _emit_stream_error(
+                user_id=user_id,
+                session_id=session_id,
+                correlation_id=correlation_id,
+                error_code="compaction_in_progress",
+                user_message=(
+                    "A compaction is currently summarising this conversation. "
+                    "Please retry in a moment."
+                ),
+                recoverable=True,
+            )
+            return
+
         # Resolve attachments if provided
         attachment_ids = data.get("attachment_ids")
         attachment_refs = None
@@ -244,6 +342,26 @@ async def handle_chat_send(user_id: str, data: dict, *, connection_id: str | Non
             attachment_refs = refs if refs else None
 
         token_count = count_tokens(text)
+
+        # Context-window pre-flight — fire BEFORE persisting the user
+        # message so a refusal does not leave an orphan turn at the tail
+        # (which would then break pair-matching for every subsequent
+        # attempt). The orchestrator's check stays in place as
+        # defence-in-depth.
+        if await _is_context_window_full(user_id, session, token_count):
+            await _emit_stream_error(
+                user_id=user_id,
+                session_id=session_id,
+                correlation_id=correlation_id,
+                error_code="context_window_full",
+                user_message=(
+                    "This conversation has reached the model's context "
+                    "limit. Compact the conversation or switch to a model "
+                    "with a larger context window."
+                ),
+                recoverable=False,
+            )
+            return
 
         # PTI: inject any documents whose trigger phrases match this message.
         # Persona library IDs come from the persona doc; session library IDs
@@ -429,6 +547,17 @@ async def handle_chat_edit(user_id: str, data: dict, *, connection_id: str | Non
             await emit_session_expired(user_id, session_id)
             return
 
+        # Compaction lock — same reason as ``handle_chat_send``: refuse
+        # to mutate history while a compaction job is rewriting the
+        # checkpoint chain.
+        if await _compaction_lock_held(session_id):
+            await _reject(
+                "compaction_in_progress",
+                "A compaction is currently summarising this conversation. "
+                "Please retry in a moment.",
+            )
+            return
+
         # Per-session single-stream policy: a new user action cancels
         # the in-flight inference for *this session only*. Inferences
         # in other sessions (e.g. the user's other persona) keep
@@ -546,6 +675,25 @@ async def handle_chat_regenerate(user_id: str, data: dict, *, connection_id: str
         session = await repo.get_session(session_id, user_id)
         if not session:
             await emit_session_expired(user_id, session_id)
+            return
+
+        # Compaction lock — refuse regenerate while compaction is in
+        # flight. A regenerate would delete the last assistant message
+        # which may be part of the source range the compaction job is
+        # currently summarising. Use the caller's correlation_id if
+        # supplied so the optimistic frontend bubble clears cleanly.
+        if await _compaction_lock_held(session_id):
+            await _emit_stream_error(
+                user_id=user_id,
+                session_id=session_id,
+                correlation_id=data.get("correlation_id") or str(uuid4()),
+                error_code="compaction_in_progress",
+                user_message=(
+                    "A compaction is currently summarising this conversation. "
+                    "Please retry in a moment."
+                ),
+                recoverable=True,
+            )
             return
 
         # Per-session single-stream policy: a new user action cancels
@@ -894,6 +1042,14 @@ async def handle_chat_compaction_request(
     correlation_id = data.get("correlation_id") or str(uuid4())
     event_bus = get_event_bus()
 
+    # Sentinels for the lock-leak safety net at the bottom of this
+    # function. ``lock_key`` is only set once we have actually acquired
+    # the lock; ``lock_handed_off`` flips to ``True`` once the job is
+    # successfully queued so the outer except knows the job's
+    # ``finally`` will release the lock instead.
+    lock_key: str | None = None
+    lock_handed_off = False
+
     try:
         db = get_db()
         repo = ChatRepository(db)
@@ -932,8 +1088,8 @@ async def handle_chat_compaction_request(
         # session. The job handler releases the lock in its ``finally``
         # block; the trigger handler does NOT release on success.
         redis = get_redis()
-        lock_key = f"compaction:lock:{session_id}"
-        acquired = await redis.set(lock_key, correlation_id, nx=True, ex=600)
+        candidate_lock_key = f"compaction:lock:{session_id}"
+        acquired = await redis.set(candidate_lock_key, correlation_id, nx=True, ex=600)
         if not acquired:
             await _emit_compaction_failed(
                 event_bus, session_id, correlation_id, user_id,
@@ -943,6 +1099,10 @@ async def handle_chat_compaction_request(
                 ),
             )
             return
+        # Lock is now ours — promote it to the outer-scope sentinel so
+        # the bottom-of-function safety net knows there is a lock to
+        # release if anything below raises before ``submit_job`` lands.
+        lock_key = candidate_lock_key
 
         # Pre-flight: compute the source range using the same helpers the
         # job handler uses, so a session that cannot possibly compact is
@@ -1070,6 +1230,8 @@ async def handle_chat_compaction_request(
             },
             correlation_id=correlation_id,
         )
+        # Job is queued — its ``finally`` block now owns lock release.
+        lock_handed_off = True
 
         await event_bus.publish(
             Topics.CHAT_COMPACTION_STARTED,
@@ -1090,3 +1252,14 @@ async def handle_chat_compaction_request(
             "Unhandled error in handle_chat_compaction_request for user %s",
             user_id,
         )
+        # Safety net: if anything between lock acquisition and a
+        # successful ``submit_job`` raised, release the lock so the
+        # user can retry without waiting for the 600 s TTL to expire.
+        if lock_key and not lock_handed_off:
+            try:
+                await get_redis().delete(lock_key)
+            except Exception:
+                _log.exception(
+                    "compaction.lock_release_failed session=%s",
+                    session_id,
+                )
