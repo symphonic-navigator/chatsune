@@ -432,9 +432,8 @@ class ChutesHttpAdapter(BaseAdapter):
         ]
 
     @classmethod
-    def router(cls) -> APIRouter | None:
-        # Sub-router lands in Task 6.
-        return None
+    def router(cls) -> APIRouter:
+        return _build_adapter_router()
 
     async def fetch_models(
         self, c: ResolvedConnection,
@@ -658,3 +657,39 @@ class ChutesHttpAdapter(BaseAdapter):
                 # Retry path — sleep with the stream context closed.
                 assert retry_delay is not None
                 await asyncio.sleep(retry_delay)
+
+
+def _build_adapter_router() -> APIRouter:
+    from fastapi import Depends
+
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    router = APIRouter()
+
+    @router.post("/test")
+    async def test_connection(
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> dict:
+        api_key = c.config.get("api_key") or ""
+        if not api_key:
+            return {"valid": False, "error": "No API key configured."}
+
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+            try:
+                resp = await client.get(
+                    f"{_MANAGEMENT_BASE_URL}/users/me",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+            except httpx.HTTPError as exc:
+                return {"valid": False, "error": f"Cannot reach Chutes: {exc}"}
+
+        if resp.status_code == 200:
+            return {"valid": True, "error": None}
+        if resp.status_code in (401, 403):
+            return {"valid": False, "error": "Chutes rejected the API key."}
+        return {
+            "valid": False,
+            "error": f"Chutes management API returned {resp.status_code}.",
+        }
+
+    return router
