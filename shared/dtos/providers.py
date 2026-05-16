@@ -15,6 +15,7 @@ class Capability(str, Enum):
     WEBSEARCH = "websearch"
     TTI = "tti"
     ITI = "iti"
+    PRIVACY = "privacy"
 
 
 CAPABILITY_META: dict[Capability, dict[str, str]] = {
