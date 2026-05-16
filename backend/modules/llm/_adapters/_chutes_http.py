@@ -33,7 +33,7 @@ from backend.modules.llm._adapters._types import (
     ResolvedConnection,
 )
 from shared.dtos.inference import CompletionRequest
-from shared.dtos.llm import ModelMetaDto
+from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
 
@@ -56,6 +56,82 @@ _INFERENCE_BASE_URL = "https://llm.chutes.ai/v1"
 _MANAGEMENT_BASE_URL = "https://api.chutes.ai"
 
 
+def _supports(features: list[str], *names: str) -> bool:
+    return any(n in features for n in names)
+
+
+def _billing_category(pricing: dict) -> str:
+    """Map Chutes pricing into Chatsune billing_category.
+
+    Chutes serves prices as strings ("0.28") or numeric. Treat 0 / "0"
+    as free; anything else as pay_per_token. Subscription is not a
+    Chutes concept (no platform plan tier exposed via the catalogue).
+    """
+    if not isinstance(pricing, dict):
+        return "pay_per_token"
+    prompt = pricing.get("prompt")
+    completion = pricing.get("completion")
+    free_values: frozenset = frozenset({0, 0.0, "0", "0.0"})
+    if prompt in free_values and completion in free_values:
+        return "free"
+    return "pay_per_token"
+
+
+def _entry_to_meta(
+    entry: dict, c: ResolvedConnection, *, adapter: "ChutesHttpAdapter",
+) -> ModelMetaDto | None:
+    """Map one Chutes catalogue entry to a ``ModelMetaDto`` or ``None``.
+
+    Hard filter — all three must hold:
+    1. ``confidential_compute is True`` (TEE-only; trust the flag, not the suffix)
+    2. ``context_length >= 80_000`` (mirrors OpenRouter / nano-gpt floor)
+    3. ``output_modalities == ["text"]`` (Phase 1 text-output only)
+    """
+    from backend.modules.llm._capabilities import resolve_capabilities
+
+    if entry.get("confidential_compute") is not True:
+        return None
+
+    context_length = int(entry.get("context_length") or 0)
+    if context_length < MIN_CONTEXT_TOKENS:
+        return None
+
+    if entry.get("output_modalities") != ["text"]:
+        return None
+
+    features = list(entry.get("supported_features") or [])
+    sampling_params = list(entry.get("supported_sampling_parameters") or [])
+    input_mods = entry.get("input_modalities") or []
+    pricing = entry.get("pricing") or {}
+
+    # Stash per-model heuristic inputs for later request-build steps.
+    adapter._features_by_model_id[entry["id"]] = features
+    adapter._sampling_params_by_model_id[entry["id"]] = sampling_params
+
+    resolved = resolve_capabilities(
+        adapter_type=adapter.adapter_type,
+        model_id=entry["id"],
+        adapter=adapter,
+    )
+
+    return ModelMetaDto(
+        connection_id=c.id,
+        connection_slug=c.slug,
+        connection_display_name=c.display_name,
+        model_id=entry["id"],
+        display_name=entry.get("name") or entry["id"],
+        context_window=context_length,
+        reasoning=resolved.reasoning,
+        tools=resolved.tools,
+        first_class_support=resolved.first_class_support,
+        supports_vision="image" in input_mods,
+        supports_tool_calls=_supports(features, "tools"),
+        is_deprecated=False,
+        billing_category=_billing_category(pricing),
+        is_moderated=None,
+    )
+
+
 class ChutesHttpAdapter(BaseAdapter):
     adapter_type = "chutes_http"
     display_name = "Chutes AI"
@@ -67,6 +143,30 @@ class ChutesHttpAdapter(BaseAdapter):
         # request-build time (capability_hint and whitelist filter).
         self._features_by_model_id: dict[str, list[str]] = {}
         self._sampling_params_by_model_id: dict[str, list[str]] = {}
+
+    def capability_hint(self, model_id: str):
+        """Heuristic capability hint from cached ``supported_features``.
+
+        Returns ``first_class_support=False`` — Chutes integration is
+        catalogue-driven, not curated. Falls through to the universal
+        default if ``fetch_models`` has not populated the features map
+        for this model_id yet.
+        """
+        from backend.modules.llm._capabilities import CapabilityHint
+
+        features = self._features_by_model_id.get(model_id)
+        if features is None:
+            return None
+        if _supports(features, "reasoning"):
+            reasoning = ReasoningCapability(kind="optional")
+        else:
+            reasoning = ReasoningCapability(kind="no_reasoning")
+        tools = ToolCapability(supported=_supports(features, "tools"))
+        return CapabilityHint(
+            reasoning=reasoning,
+            tools=tools,
+            first_class_support=False,
+        )
 
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
