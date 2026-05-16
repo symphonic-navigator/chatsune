@@ -155,6 +155,7 @@ def _entry_to_meta(
         is_deprecated=False,
         billing_category=_billing_category(pricing),
         is_moderated=None,
+        is_privacy_preserving=bool(entry.get("confidential_compute")),
     )
 
 
