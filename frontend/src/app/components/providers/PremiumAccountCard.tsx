@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { SECRET_INPUT_STYLE, SECRET_INPUT_NO_AUTOFILL } from '../../../core/utils/secretInputStyle'
 import { CAPABILITY_META } from '../../../core/types/providers'
+import { PrivacyBadge } from '../../../core/components/PrivacyBadge'
 import type {
   PremiumProviderDefinition,
   PremiumProviderAccount,
@@ -44,9 +45,12 @@ export function PremiumAccountCard({
   return (
     <div className="rounded-lg border border-white/8 bg-white/[0.02] p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <span className="text-[13px] font-semibold text-white/90">
-          {definition.display_name}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold text-white/90">
+            {definition.display_name}
+          </span>
+          {definition.capabilities.includes('privacy') && <PrivacyBadge />}
+        </div>
         <span className="text-[11px] font-mono text-white/50">{status}</span>
       </div>
 
@@ -114,23 +118,25 @@ export function PremiumAccountCard({
       )}
 
       <div className="flex flex-wrap gap-1.5">
-        {definition.capabilities.map((cap) => {
-          const meta = CAPABILITY_META[cap]
-          return (
-            <span
-              key={cap}
-              title={meta.tooltip}
-              className={[
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono',
-                configured
-                  ? 'bg-violet-500/15 text-violet-200 border border-violet-500/30'
-                  : 'bg-white/5 text-white/30 border border-white/10',
-              ].join(' ')}
-            >
-              {meta.label}
-            </span>
-          )
-        })}
+        {definition.capabilities
+          .filter((cap) => cap !== 'privacy')
+          .map((cap) => {
+            const meta = CAPABILITY_META[cap]
+            return (
+              <span
+                key={cap}
+                title={meta.tooltip}
+                className={[
+                  'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-mono',
+                  configured
+                    ? 'bg-violet-500/15 text-violet-200 border border-violet-500/30'
+                    : 'bg-white/5 text-white/30 border border-white/10',
+                ].join(' ')}
+              >
+                {meta.label}
+              </span>
+            )
+          })}
       </div>
     </div>
   )
