@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Sheet } from '../../../core/components/Sheet'
+import { PrivacyBadge } from '../../../core/components/PrivacyBadge'
 import { llmApi } from '../../../core/api/llm'
 import type { EnrichedModelDto, SetUserModelConfigRequest } from '../../../core/types/llm'
 
@@ -87,7 +88,10 @@ export function ModelConfigModal({ model, onClose, onSaved }: ModelConfigModalPr
     <Sheet isOpen onClose={onClose} size="lg" ariaLabel={`Configuration for ${model.display_name}`} className="bg-surface p-5 space-y-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
-          <h3 className="text-lg text-white/90">{model.display_name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg text-white/90">{model.display_name}</h3>
+            {model.is_privacy_preserving && <PrivacyBadge />}
+          </div>
           <p className="text-[11px] font-mono text-white/40">{model.unique_id}</p>
         </div>
         <button
