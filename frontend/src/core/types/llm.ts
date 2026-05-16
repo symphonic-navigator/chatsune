@@ -157,6 +157,14 @@ export interface ModelMetaDto {
    * Optional/null for every model that has nothing to disclose.
    */
   remarks?: string | null
+  /**
+   * True when the model is hosted under a privacy-preserving guarantee
+   * (e.g. confidential compute, no logging). Adapter-set on the backend
+   * (`shared/dtos/llm.py::ModelMetaDto.is_privacy_preserving`). Optional
+   * for backwards compat with older cached payloads — treat missing as
+   * false.
+   */
+  is_privacy_preserving?: boolean
   unique_id: string
 }
 
