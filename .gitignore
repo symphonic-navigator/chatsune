@@ -18,6 +18,7 @@ build/
 .novita-test-key
 .or-test-key
 .tensorix-test-key
+.chutes-test-key
 
 # Docker
 docker-compose.override.yml
