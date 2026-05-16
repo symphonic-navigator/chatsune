@@ -5,6 +5,7 @@ export const Capability = {
   WEBSEARCH: 'websearch',
   TTI: 'tti',
   ITI: 'iti',
+  PRIVACY: 'privacy',
 } as const
 export type Capability = (typeof Capability)[keyof typeof Capability]
 
@@ -20,6 +21,7 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   websearch: { label: 'Web search',    tooltip: 'Provides web search during chats, regardless of which model you use.' },
   tti:       { label: 'Text to Image', tooltip: 'Creates images from a text prompt during chats.' },
   iti:       { label: 'Image to Image', tooltip: 'Edits or transforms an uploaded image based on a prompt.' },
+  privacy:   { label: 'Privacy',       tooltip: 'Privacy-preserving — runs in confidential compute or with guaranteed zero data retention.' },
 }
 
 export interface PremiumProviderDefinition {
