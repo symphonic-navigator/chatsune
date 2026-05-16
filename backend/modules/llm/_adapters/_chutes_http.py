@@ -92,7 +92,14 @@ def _entry_to_meta(
     if entry.get("confidential_compute") is not True:
         return None
 
-    context_length = int(entry.get("context_length") or 0)
+    try:
+        context_length = int(entry.get("context_length") or 0)
+    except (ValueError, TypeError):
+        _log.warning(
+            "chutes_http.entry_to_meta: non-numeric context_length on %s",
+            entry.get("id"),
+        )
+        return None
     if context_length < MIN_CONTEXT_TOKENS:
         return None
 

@@ -146,3 +146,14 @@ def test_no_reasoning_feature_yields_no_reasoning():
     meta = _entry_to_meta(_entry(), _conn(), adapter=adapter)  # default features = [tools, json_mode]
     assert meta is not None
     assert meta.reasoning.kind == "no_reasoning"
+
+
+def test_display_name_uses_name_field_when_present():
+    adapter = ChutesHttpAdapter()
+    meta = _entry_to_meta(
+        _entry(name="DeepSeek V3.2 (TEE-secured)"),
+        _conn(), adapter=adapter,
+    )
+    assert meta is not None
+    assert meta.display_name == "DeepSeek V3.2 (TEE-secured)"
+    assert meta.model_id == "deepseek-ai/DeepSeek-V3.2-TEE"  # id unchanged
