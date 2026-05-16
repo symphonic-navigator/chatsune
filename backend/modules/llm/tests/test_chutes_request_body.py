@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from backend.modules.llm._adapters._chutes_http import (
+    _filter_to_whitelist,
     _translate_message,
     build_request_body,
 )
@@ -175,9 +176,6 @@ def test_image_part_without_media_type_is_dropped():
     translated = _translate_message(msg)
     # Only the text part survives — falls back to the plain-string content path.
     assert translated == {"role": "user", "content": "describe"}
-
-
-from backend.modules.llm._adapters._chutes_http import _filter_to_whitelist
 
 
 def _full_body() -> dict:
