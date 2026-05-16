@@ -27,7 +27,6 @@ from backend.modules.llm._adapters._xai_http import XaiHttpAdapter
 ADAPTER_REGISTRY: dict[str, type[BaseAdapter]] = {
     "ollama_http": OllamaHttpAdapter,
     "community": CommunityAdapter,
-    "chutes_http": ChutesHttpAdapter,
 }
 
 # Premium-only adapter types — not user-createable, but instantiable by the
@@ -42,6 +41,7 @@ _PREMIUM_ONLY_ADAPTERS: dict[str, type[BaseAdapter]] = {
     "nano_gpt_http": NanoGptHttpAdapter,
     "openrouter_http": OpenRouterHttpAdapter,
     "novita_http": NovitaHttpAdapter,
+    "chutes_http": ChutesHttpAdapter,
 }
 
 

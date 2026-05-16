@@ -1,12 +1,13 @@
 """Chutes AI HTTP adapter — OpenAI-compatible Chat Completions, TEE-only.
 
-BYOK adapter: users supply their own ``cpk_...`` API key per Connection.
-Surfaces only models with ``confidential_compute == true`` and
-``context_length >= 80_000`` so the connection is a pure "ultra privacy"
-inference option. Structurally a slim clone of OpenRouter — same SSE
-parser, tool-call accumulator, gutter timer, and retry policy — but
-without Anthropic cache markers or driver hooks (no first-class model
-curating in MVP).
+Premium-Provider adapter: instantiated by the Premium Provider resolver
+when a user has configured a Chutes account (encrypted ``cpk_...`` key
+in :class:`PremiumProviderAccountRepository`). Surfaces only models
+with ``confidential_compute == true`` and ``context_length >= 80_000``
+so the integration is a pure "ultra privacy" inference option.
+Structurally a slim clone of OpenRouter — same SSE parser, tool-call
+accumulator, gutter timer, and retry policy — but without Anthropic
+cache markers or driver hooks (no first-class model curating in MVP).
 
 Drift-resistance: Chutes' catalogue exposes per-model
 ``supported_sampling_parameters``. The adapter filters the final request
@@ -48,11 +49,7 @@ from backend.modules.llm._adapters._events import (
     ThinkingDelta,
     ToolCallEvent,
 )
-from backend.modules.llm._adapters._types import (
-    AdapterTemplate,
-    ConfigFieldHint,
-    ResolvedConnection,
-)
+from backend.modules.llm._adapters._types import ResolvedConnection
 from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
@@ -411,29 +408,11 @@ class ChutesHttpAdapter(BaseAdapter):
         )
 
     @classmethod
-    def templates(cls) -> list[AdapterTemplate]:
-        return [
-            AdapterTemplate(
-                id="chutes_ai",
-                display_name="Chutes AI (TEE-only)",
-                slug_prefix="chutes",
-                config_defaults={"api_key": ""},
-                required_config_fields=("api_key",),
-            ),
-        ]
-
-    @classmethod
-    def config_schema(cls) -> list[ConfigFieldHint]:
-        return [
-            ConfigFieldHint(
-                name="api_key", type="secret", label="API Key",
-                required=True, placeholder="cpk_...",
-            ),
-        ]
-
-    @classmethod
-    def router(cls) -> APIRouter:
-        return _build_adapter_router()
+    def router(cls) -> APIRouter | None:
+        # Premium-Provider connections do not expose adapter sub-routes:
+        # key validation runs through the generic /api/providers/accounts
+        # probe endpoint (see backend.modules.providers._probe).
+        return None
 
     async def fetch_models(
         self, c: ResolvedConnection,
@@ -657,39 +636,3 @@ class ChutesHttpAdapter(BaseAdapter):
                 # Retry path — sleep with the stream context closed.
                 assert retry_delay is not None
                 await asyncio.sleep(retry_delay)
-
-
-def _build_adapter_router() -> APIRouter:
-    from fastapi import Depends
-
-    from backend.modules.llm._resolver import resolve_connection_for_user
-
-    router = APIRouter()
-
-    @router.post("/test")
-    async def test_connection(
-        c: ResolvedConnection = Depends(resolve_connection_for_user),
-    ) -> dict:
-        api_key = c.config.get("api_key") or ""
-        if not api_key:
-            return {"valid": False, "error": "No API key configured."}
-
-        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
-            try:
-                resp = await client.get(
-                    f"{_MANAGEMENT_BASE_URL}/users/me",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-            except httpx.HTTPError as exc:
-                return {"valid": False, "error": f"Cannot reach Chutes: {exc}"}
-
-        if resp.status_code == 200:
-            return {"valid": True, "error": None}
-        if resp.status_code in (401, 403):
-            return {"valid": False, "error": "Chutes rejected the API key."}
-        return {
-            "valid": False,
-            "error": f"Chutes management API returned {resp.status_code}.",
-        }
-
-    return router

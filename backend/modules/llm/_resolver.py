@@ -31,13 +31,14 @@ from backend.modules.llm._connections import ConnectionRepository
 # will fall through to the "no LLM adapter mapping" branch in
 # :func:`_resolve_premium` (e.g. a voice-only premium provider).
 _PREMIUM_ADAPTER_TYPE: dict[str, str] = {
-    "xai": "xai_http",
+    "chutes": "chutes_http",
     "mistral": "mistral_http",
-    "tensorix": "tensorix_http",
-    "ollama_cloud": "ollama_http",
     "nano_gpt": "nano_gpt_http",
-    "openrouter": "openrouter_http",
     "novita": "novita_http",
+    "ollama_cloud": "ollama_http",
+    "openrouter": "openrouter_http",
+    "tensorix": "tensorix_http",
+    "xai": "xai_http",
 }
 
 

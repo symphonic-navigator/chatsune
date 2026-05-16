@@ -64,6 +64,23 @@ def _register_builtins() -> None:
     ))
 
     register(PremiumProviderDefinition(
+        id="chutes",
+        display_name="Chutes AI",
+        icon="chutes",
+        base_url="https://llm.chutes.ai/v1",
+        capabilities=[Capability.LLM],
+        config_fields=[_api_key_field("Chutes AI API Key")],
+        # /v1/models on the inference host is public — it would 200 even
+        # for an invalid key. The management API at api.chutes.ai requires
+        # auth on /users/me and 401s on bad keys, so it is the correct
+        # probe target.
+        probe_url="https://api.chutes.ai/users/me",
+        probe_method="GET",
+        linked_integrations=[],
+        sort_priority=25,
+    ))
+
+    register(PremiumProviderDefinition(
         id="xai",
         display_name="xAI",
         icon="xai",
