@@ -159,3 +159,19 @@ def test_tool_result_message_preserves_tool_call_id():
     )
     translated = _translate_message(msg)
     assert translated["tool_call_id"] == "c1"
+
+
+def test_image_part_without_media_type_is_dropped():
+    """A malformed image part (missing media_type) must not produce a
+    `data:None;base64,...` URL — drop it silently rather than send
+    nonsense to the upstream."""
+    msg = CompletionMessage(
+        role="user",
+        content=[
+            ContentPart(type="text", text="describe"),
+            ContentPart(type="image", media_type=None, data="aGVsbG8="),
+        ],
+    )
+    translated = _translate_message(msg)
+    # Only the text part survives — falls back to the plain-string content path.
+    assert translated == {"role": "user", "content": "describe"}

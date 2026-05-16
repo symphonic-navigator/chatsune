@@ -141,7 +141,9 @@ def _entry_to_meta(
 
 def _translate_message(msg: CompletionMessage) -> dict:
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
-    image_parts = [p for p in msg.content if p.type == "image" and p.data]
+    image_parts = [
+        p for p in msg.content if p.type == "image" and p.data and p.media_type
+    ]
 
     if not image_parts:
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
