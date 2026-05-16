@@ -53,7 +53,7 @@ def _register_builtins() -> None:
         display_name="Tensorix",
         icon="tensorix",
         base_url="https://api.tensorix.ai/v1",
-        capabilities=[Capability.LLM],
+        capabilities=[Capability.LLM, Capability.PRIVACY],
         config_fields=[_api_key_field("Tensorix API Key")],
         # /v1/model/info requires a valid Bearer key and 401s on bad
         # keys, so it's the right probe target.
@@ -68,7 +68,7 @@ def _register_builtins() -> None:
         display_name="Chutes AI",
         icon="chutes",
         base_url="https://llm.chutes.ai/v1",
-        capabilities=[Capability.LLM],
+        capabilities=[Capability.LLM, Capability.PRIVACY],
         config_fields=[_api_key_field("Chutes AI API Key")],
         # /v1/models on the inference host is public — it would 200 even
         # for an invalid key. The management API at api.chutes.ai requires
