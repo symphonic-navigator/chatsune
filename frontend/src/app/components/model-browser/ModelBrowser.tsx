@@ -60,13 +60,14 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
           applyModelFilters(g.models, effectiveFilters),
           { field: 'name', direction: 'asc' },
         )
-        return { connection: g.connection, models, sourceEmpty }
+        return { connection: g.connection, status: g.status, error: g.error, models, sourceEmpty }
       })
-      // Keep groups whose source had models *or* whose source was already
-      // empty — the latter stay visible with a refresh affordance, which is
-      // how a just-attached upstream (e.g. a freshly-paired sidecar) gets
-      // its model list populated.
-      .filter((g) => g.models.length > 0 || g.sourceEmpty)
+      // Keep groups that:
+      //   • are not yet ready (loading/error — always shown regardless of model count), OR
+      //   • are ready and have at least one model after filtering, OR
+      //   • are ready with an empty source (upstream returned zero models —
+      //     shown with a refresh affordance so users can re-pull).
+      .filter((g) => g.status !== 'ready' || g.models.length > 0 || g.sourceEmpty)
   }, [groups, effectiveFilters, providerFilter])
 
   async function toggleFavourite(model: EnrichedModelDto) {
@@ -74,10 +75,6 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
     const currentFav = !!model.user_config?.is_favourite
     await llmApi.setUserModelConfig(model.connection_id, slug, { is_favourite: !currentFav })
     // Event flow (LLM_USER_MODEL_CONFIG_UPDATED) triggers a refresh automatically
-  }
-
-  if (loading) {
-    return <div className="p-6 text-sm text-white/60">Loading models…</div>
   }
 
   if (error) {
@@ -91,6 +88,21 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
         >
           Try again
         </button>
+      </div>
+    )
+  }
+
+  if (groups.length === 0 && loading) {
+    return (
+      <div
+        data-testid="model-browser-phase-a"
+        className="p-6 flex items-center gap-2 text-sm text-white/60"
+      >
+        <span
+          className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white/80"
+          aria-hidden
+        />
+        <span>Lädt Verbindungen…</span>
       </div>
     )
   }
@@ -195,6 +207,8 @@ export function ModelBrowser({ onSelect, currentModelId, lockedFilters }: ModelB
             connectionId={group.connection.id}
             displayName={group.connection.display_name}
             slug={group.connection.slug}
+            status={group.status}
+            error={group.error}
             models={group.models}
             currentModelId={currentModelId}
             onSelect={onSelect}
@@ -222,6 +236,8 @@ interface ConnectionGroupProps {
   connectionId: string
   displayName: string
   slug: string
+  status: 'loading' | 'ready' | 'error'
+  error?: string
   models: EnrichedModelDto[]
   currentModelId?: string | null
   onSelect?: (model: EnrichedModelDto) => void
@@ -233,6 +249,8 @@ function ConnectionGroup({
   connectionId,
   displayName,
   slug,
+  status,
+  error,
   models,
   currentModelId,
   onSelect,
@@ -301,7 +319,28 @@ function ConnectionGroup({
         </button>
       </header>
       {!isCollapsed && (
-        models.length === 0 ? (
+        status === 'loading' ? (
+          <div
+            data-testid={`group-loading-${connectionId}`}
+            className="flex items-center gap-2 px-3 py-3 text-[12px] text-white/55"
+          >
+            <span
+              className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/25 border-t-white/75"
+              aria-hidden
+            />
+            <span>Lädt Modelle…</span>
+          </div>
+        ) : status === 'error' ? (
+          <div
+            data-testid={`group-error-${connectionId}`}
+            className="px-3 py-3 text-[12px] text-red-300"
+          >
+            {error ?? 'Could not load models.'}{' '}
+            <span className="text-white/45">
+              Click <span className="font-mono text-white/65">⟳</span> to retry.
+            </span>
+          </div>
+        ) : models.length === 0 ? (
           <p className="px-3 py-3 text-[12px] text-white/45">
             No models listed for this connection yet. Click{' '}
             <span className="font-mono text-white/65">⟳</span> to fetch from the

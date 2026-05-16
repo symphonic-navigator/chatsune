@@ -47,6 +47,7 @@ function groupWithOneModel(): ConnectionModelGroup {
   // connection/model payload is irrelevant — cast to the expected types.
   return {
     connection: { id: 'conn-1' } as ConnectionModelGroup['connection'],
+    status: 'ready',
     models: [{ unique_id: 'conn-1:m' } as ConnectionModelGroup['models'][number]],
   }
 }
@@ -160,6 +161,7 @@ describe('UserModal', () => {
     // This must still count as "no usable LLM".
     const emptyGroup: ConnectionModelGroup = {
       connection: { id: 'premium:fake' } as ConnectionModelGroup['connection'],
+      status: 'ready',
       models: [],
     }
     mockedUseEnrichedModels.mockReturnValue(

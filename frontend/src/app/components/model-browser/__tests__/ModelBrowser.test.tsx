@@ -32,7 +32,12 @@ vi.mock('../../../../core/api/providers', () => ({
 }))
 
 const hubState: {
-  groups: Array<{ connection: Connection; models: EnrichedModelDto[] }>
+  groups: Array<{
+    connection: Connection
+    status: 'loading' | 'ready' | 'error'
+    error?: string
+    models: EnrichedModelDto[]
+  }>
   loading: boolean
   error: string | null
 } = {
@@ -119,6 +124,7 @@ describe('ModelBrowser — first-class badge', () => {
     hubState.groups = [
       {
         connection: makeConnection(),
+        status: 'ready',
         models: [
           makeModel('conn:m1', 'Model One', true),
           makeModel('conn:m2', 'Model Two', false),
@@ -143,6 +149,7 @@ describe('ModelBrowser — first-class filter', () => {
     hubState.groups = [
       {
         connection: makeConnection(),
+        status: 'ready',
         models: [
           makeModel('conn:m1', 'First Class Model', true),
           makeModel('conn:m2', 'Best Effort Model', false),
@@ -161,5 +168,121 @@ describe('ModelBrowser — first-class filter', () => {
 
     expect(screen.getByText('First Class Model')).toBeInTheDocument()
     expect(screen.queryByText('Best Effort Model')).toBeNull()
+  })
+})
+
+describe('ModelBrowser — per-group loading', () => {
+  it('renders a spinner inside a group whose status is loading', async () => {
+    hubState.groups = [
+      {
+        connection: makeConnection({ id: 'c1', display_name: 'Slow Co', slug: 'slow' }),
+        status: 'loading',
+        models: [],
+      },
+    ]
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.getByTestId('group-loading-c1')).toBeInTheDocument()
+    expect(screen.queryByText(/No models listed/i)).toBeNull()
+  })
+})
+
+describe('ModelBrowser — per-group error', () => {
+  it('renders the error message and retry hint when a group has status error', async () => {
+    hubState.groups = [
+      {
+        connection: makeConnection({ id: 'c1', display_name: 'Broken' }),
+        status: 'error',
+        error: 'upstream 503',
+        models: [],
+      },
+    ]
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    const node = screen.getByTestId('group-error-c1')
+    expect(node).toBeInTheDocument()
+    expect(node).toHaveTextContent('upstream 503')
+    expect(node).toHaveTextContent(/retry/i)
+  })
+})
+
+describe('ModelBrowser — filter pipeline keeps non-ready groups', () => {
+  it('keeps a loading group visible even when models are empty', async () => {
+    hubState.groups = [
+      {
+        connection: makeConnection({ id: 'c1', display_name: 'LoadingCo' }),
+        status: 'loading',
+        models: [],
+      },
+      {
+        connection: makeConnection({ id: 'c2', display_name: 'ErrorCo' }),
+        status: 'error',
+        error: 'oops',
+        models: [],
+      },
+    ]
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.getByTestId('group-loading-c1')).toBeInTheDocument()
+    expect(screen.getByTestId('group-error-c2')).toBeInTheDocument()
+  })
+})
+
+describe('ModelBrowser — filter bar gating', () => {
+  it('hides the filter bar during phase A', async () => {
+    hubState.groups = []
+    hubState.loading = true
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.queryByPlaceholderText(/search model name/i)).toBeNull()
+  })
+
+  it('shows the filter bar once groups are present', async () => {
+    hubState.groups = [
+      {
+        connection: makeConnection({ id: 'c1' }),
+        status: 'ready',
+        models: [],
+      },
+    ]
+    hubState.loading = false
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.getByPlaceholderText(/search model name/i)).toBeInTheDocument()
+  })
+})
+
+describe('ModelBrowser — phase A placeholder', () => {
+  it('shows a spinner placeholder while groups are still being listed', async () => {
+    hubState.groups = []
+    hubState.loading = true
+    hubState.error = null
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.getByTestId('model-browser-phase-a')).toBeInTheDocument()
+  })
+
+  it('shows the empty-connections hint only when not loading and no groups', async () => {
+    hubState.groups = []
+    hubState.loading = false
+    hubState.error = null
+
+    const { ModelBrowser } = await import('../ModelBrowser')
+    render(<ModelBrowser />)
+
+    expect(screen.queryByTestId('model-browser-phase-a')).toBeNull()
+    expect(screen.getByText(/No LLM connection configured/i)).toBeInTheDocument()
   })
 })

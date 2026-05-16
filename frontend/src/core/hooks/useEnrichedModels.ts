@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { llmApi } from '../api/llm'
 import { providersApi } from '../api/providers'
 import type {
@@ -17,6 +17,8 @@ import { Topics } from '../types/events'
 export interface ConnectionModelGroup {
   connection: Connection
   models: EnrichedModelDto[]
+  status: 'loading' | 'ready' | 'error'
+  error?: string
 }
 
 export interface UseEnrichedModels {
@@ -77,13 +79,15 @@ export function useEnrichedModels(): UseEnrichedModels {
   const [groups, setGroups] = useState<ConnectionModelGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const generationRef = useRef(0)
 
   const refresh = useCallback(async () => {
     setError(null)
+    setLoading(true)
+    const myGeneration = ++generationRef.current
+    const isLive = () => generationRef.current === myGeneration
     try {
-      // Load Connections, Premium accounts+catalogue, and user-model configs
-      // in parallel. Premium accounts may be empty — that's fine, the
-      // resulting loop just skips them.
+      // Phase A: list providers
       const [connections, userConfigs, catalogue, accounts] = await Promise.all([
         llmApi.listConnections(),
         llmApi.listUserModelConfigs(),
@@ -91,82 +95,96 @@ export function useEnrichedModels(): UseEnrichedModels {
         providersApi.listAccounts().catch(() => [] as PremiumProviderAccount[]),
       ])
 
+      // A superseded refresh may have started while this one was awaiting Phase A.
+      if (!isLive()) return
+
       const configByUid = new Map<string, UserModelConfigDto>()
-      for (const cfg of userConfigs) {
-        configByUid.set(cfg.model_unique_id, cfg)
-      }
+      for (const cfg of userConfigs) configByUid.set(cfg.model_unique_id, cfg)
 
       const sortedConns = [...connections].sort(
         (a, b) => a.created_at.localeCompare(b.created_at),
       )
 
-      // Build the premium pseudo-connections: one entry per configured
-      // account whose provider exists in the catalogue.
-      const cataloguebyId = new Map(catalogue.map((d) => [d.id, d]))
+      const catalogueById = new Map(catalogue.map((d) => [d.id, d]))
       const premiumConns: Connection[] = []
       for (const acct of accounts) {
-        const defn = cataloguebyId.get(acct.provider_id)
+        const defn = catalogueById.get(acct.provider_id)
         if (!defn) continue
         premiumConns.push(toPseudoConnection(defn, acct))
       }
 
-      // Fetch models for every group. Premium providers use the providers
-      // API; user connections use the llm API. Catch-per-request so a
-      // single broken provider never blanks the whole hub.
-      const [premiumModels, userModels] = await Promise.all([
-        Promise.all(
-          premiumConns.map((c) =>
-            providersApi.listProviderModels(c.slug).catch((err) => {
-              console.warn('listProviderModels failed', c.slug, err)
-              return [] as ModelMetaDto[]
-            }),
-          ),
-        ),
-        Promise.all(
-          sortedConns.map((c) =>
-            llmApi.listConnectionModels(c.id).catch((err) => {
-              console.warn('listConnectionModels failed', c.id, err)
-              return [] as ModelMetaDto[]
-            }),
-          ),
-        ),
-      ])
+      // Commit the skeleton immediately so the UI can render group headers
+      // with loading indicators before any per-group model fetch completes.
+      const skeleton: ConnectionModelGroup[] = [
+        ...premiumConns.map<ConnectionModelGroup>((c) => ({
+          connection: c, status: 'loading', models: [],
+        })),
+        ...sortedConns.map<ConnectionModelGroup>((c) => ({
+          connection: c, status: 'loading', models: [],
+        })),
+      ]
+      setGroups(skeleton)
 
-      const premiumGroups: ConnectionModelGroup[] = premiumConns.map(
-        (connection, idx) => ({
-          connection,
-          models: premiumModels[idx]
-            .map<EnrichedModelDto>((m) => {
-              const cfg = configByUid.get(m.unique_id) ?? null
-              const supports_reasoning =
-                cfg?.custom_supports_reasoning ?? m.supports_reasoning
-              return { ...m, supports_reasoning, user_config: cfg }
-            })
-            .sort((a, b) => a.display_name.localeCompare(b.display_name)),
-        }),
-      )
+      // loading stays true until every group reaches a terminal status.
+      const total = premiumConns.length + sortedConns.length
+      if (total === 0) {
+        if (isLive()) setLoading(false)
+        return
+      }
+      let settled = 0
+      const markSettled = () => {
+        settled += 1
+        if (settled >= total && isLive()) setLoading(false)
+      }
 
-      const userGroups: ConnectionModelGroup[] = sortedConns.map(
-        (connection, idx) => ({
-          connection,
-          models: userModels[idx]
-            .map<EnrichedModelDto>((m) => {
-              const cfg = configByUid.get(m.unique_id) ?? null
-              // Apply the per-user reasoning override so every consumer of
-              // ``supports_reasoning`` (filters, persona editor, badges) sees
-              // the effective value without a separate lookup.
-              const supports_reasoning =
-                cfg?.custom_supports_reasoning ?? m.supports_reasoning
-              return { ...m, supports_reasoning, user_config: cfg }
-            })
-            .sort((a, b) => a.display_name.localeCompare(b.display_name)),
-        }),
-      )
+      // Phase B: per-group fetches — each .then writes only its own group.
+      const enrichModels = (models: ModelMetaDto[]): EnrichedModelDto[] =>
+        models
+          .map<EnrichedModelDto>((m) => {
+            const cfg = configByUid.get(m.unique_id) ?? null
+            // Apply the per-user reasoning override so every consumer of
+            // ``supports_reasoning`` (filters, persona editor, badges) sees
+            // the effective value without a separate lookup.
+            const supports_reasoning =
+              cfg?.custom_supports_reasoning ?? m.supports_reasoning
+            return { ...m, supports_reasoning, user_config: cfg }
+          })
+          .sort((a, b) => a.display_name.localeCompare(b.display_name))
 
-      setGroups([...premiumGroups, ...userGroups])
+      const fetchOne = (c: Connection): Promise<ModelMetaDto[]> =>
+        c.id.startsWith('premium:')
+          ? providersApi.listProviderModels(c.slug)
+          : llmApi.listConnectionModels(c.id)
+
+      for (const c of [...premiumConns, ...sortedConns]) {
+        void fetchOne(c)
+          .then((models) => {
+            if (!isLive()) return
+            setGroups((prev) =>
+              prev.map((g) =>
+                g.connection.id === c.id
+                  ? { ...g, status: 'ready', models: enrichModels(models), error: undefined }
+                  : g,
+              ),
+            )
+            markSettled()
+          })
+          .catch((err) => {
+            if (!isLive()) return
+            const message = err instanceof Error ? err.message : 'Could not load models.'
+            setGroups((prev) =>
+              prev.map((g) =>
+                g.connection.id === c.id
+                  ? { ...g, status: 'error', error: message }
+                  : g,
+              ),
+            )
+            markSettled()
+          })
+      }
     } catch (err) {
+      if (!isLive()) return
       setError(err instanceof Error ? err.message : 'Could not load models.')
-    } finally {
       setLoading(false)
     }
   }, [])
