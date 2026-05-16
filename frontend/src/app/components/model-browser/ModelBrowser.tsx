@@ -3,6 +3,7 @@ import { llmApi } from '../../../core/api/llm'
 import { providersApi } from '../../../core/api/providers'
 import { useEnrichedModels } from '../../../core/hooks/useEnrichedModels'
 import type { EnrichedModelDto } from '../../../core/types/llm'
+import { PrivacyBadge } from '../../../core/components/PrivacyBadge'
 import { applyModelFilters, slugWithoutConnection, sortModels, type BillingFilter, type ModelFilters } from './modelFilters'
 import { ModelConfigModal } from './ModelConfigModal'
 import { useCollapsedGroups, useModelBrowserFilters } from './modelBrowserStore'
@@ -463,6 +464,7 @@ function ModelRow({ model, isCurrent, onSelect, onEdit, onToggleFavourite }: Mod
         {model.supports_reasoning && <CapBadge label="R" title="Reasoning" />}
         {model.supports_vision && <CapBadge label="V" title="Vision" />}
         {model.supports_tool_calls && <CapBadge label="T" title="Tools" />}
+        {model.is_privacy_preserving && <PrivacyBadge />}
       </div>
       <button
         type="button"
