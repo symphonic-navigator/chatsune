@@ -130,7 +130,7 @@ The non-TEE Chutes models are legacy slugs kept alive for users with old configu
 
 Capabilities pass through `backend.modules.llm._capabilities.resolve_capabilities(adapter_type, model_id, adapter=self)`, matching the OpenRouter pattern. The adapter's `capability_hint(model_id)` returns a `CapabilityHint` with `first_class_support=False` — heuristic, not curated. Reasoning becomes `optional` when `"reasoning"` appears in `supported_features`; otherwise `no_reasoning`. Tools follow `"tools" in supported_features`.
 
-To enable the heuristic the adapter stashes the per-model `supported_features` list on `self._features_by_model_id` during `_entry_to_meta`, identical to OpenRouter's `_params_by_model_id` pattern.
+To enable the heuristic the adapter stashes the per-model `supported_features` list on `self._features_by_model_id` during `_entry_to_meta`, identical to OpenRouter's `_params_by_model_id` pattern. The adapter also stashes the per-model `supported_sampling_parameters` whitelist on `self._sampling_params_by_model_id`, used at request-build time for drift-resistant payload filtering (see §6.1).
 
 ### 5.5 Caching
 
@@ -156,11 +156,13 @@ To enable the heuristic the adapter stashes the per-model `supported_features` l
 ```
 
 Reasoning rules:
-- `request.reasoning.kind == "optional"` and `request.extras.reasoning_mode == "on"`: send `reasoning_effort` using the OpenAI-standard values (`low`/`medium`/`high`).
+- `request.reasoning.kind == "optional"` and `request.extras.reasoning_mode == "on"`: send `reasoning_effort` using the OpenAI-standard values (`low`/`medium`/`high`). This is the most common convention across the OpenAI-compat / vLLM / SGLang landscape that Chutes runs.
 - `reasoning_mode == "off"`: omit `reasoning_effort` entirely.
 - Other `reasoning.kind` values (`no_reasoning`, `always_on`): omit. The backend either does not support the toggle or has no effort axis.
 
-If an individual Chutes model turns out to require a different reasoning toggle, that is solved by a Driver, not by branching here. None are planned for MVP.
+**Drift-resistance via `supported_sampling_parameters`.** Chutes' catalogue gives each model a `supported_sampling_parameters` whitelist (vLLM and SGLang accept different parameter sets, and individual models further narrow that). The build path stashes this whitelist alongside `supported_features` during `_entry_to_meta`, and immediately before sending the request body the adapter filters out any keys not present in the whitelist for the chosen model. This applies to `temperature`, `reasoning_effort`, and any other non-mandatory sampling parameter. Required fields (`model`, `messages`, `stream`, `stream_options`, `tools`) are not filtered. Effect: we ship the common-case body shape and let the per-model whitelist quietly drop fields the engine cannot consume, so model drift never causes a hard 400.
+
+If a model later requires a fundamentally different reasoning shape (e.g. `reasoning: {enabled, effort}` instead of `reasoning_effort`), a Driver handles it. None planned for MVP.
 
 ### 6.2 Message translation
 
@@ -179,7 +181,7 @@ Per-chunk event extraction (`_chunk_to_events`) produces:
 - `ThinkingDelta` from `delta.reasoning_content` *or* `delta.reasoning` (both shapes seen across vendors).
 - `ContentDelta` from `delta.content`.
 - `ToolCallEvent` from finalised accumulator output at `finish_reason == "tool_calls"`.
-- `StreamRefused` at `finish_reason == "refusal"`. We do **not** treat `content_filter` as refusal — Chutes' lead has confirmed no platform-level censorship, so a `content_filter` finish would be a model-level decision worth surfacing as content, not a refusal event. (If this turns out to bite us in practice, revisit.)
+- `StreamRefused` at `finish_reason in {"refusal", "content_filter"}`. Models themselves emit refusal either via the `refusal` field on the delta (Claude's pattern) or simply as content text — they do not raise `content_filter` for their own decisions. `content_filter` is reserved for platform-level moderation middleware, of which Chutes runs none (confirmed by their lead). We therefore do not expect to see `content_filter` from Chutes in practice; defensively mapping it to `StreamRefused` if it ever appears is harmless and gives the user a clean recoverable error instead of a confusing stop.
 - `StreamDone` carrying `prompt_tokens` / `completion_tokens` / `reasoning_tokens` from `usage`. Usage may arrive either in a separate usage-only chunk or attached to the final content chunk; both paths are handled.
 
 The `_ToolCallAccumulator` is identical to OpenRouter's — gathers fragments by `index`, finalises once.
@@ -284,14 +286,18 @@ All log records use the `chutes_http` prefix so `grep chutes_http` is precise:
 - `output_modalities: ["text", "image"]` → skipped (Phase 1 text-output only)
 - Valid TEE entry → `ModelMetaDto` populated correctly, including capabilities derived from `supported_features` and `supports_vision` from `input_modalities`
 
-`test_chutes_request_body.py` — covers `build_request_body`:
+`test_chutes_request_body.py` — covers `build_request_body` and the whitelist filter:
 
 - Minimal request: only `model`, `messages`, `stream`, `stream_options`
-- Request with `temperature` set → field present
+- Request with `temperature` set → field present (pre-filter)
 - `request.tools` set but `tools_enabled = False` → `tools` omitted
 - `reasoning.kind = "optional"`, `reasoning_mode = "on"`, `reasoning_effort = "high"` → `reasoning_effort: "high"` in body
 - `reasoning.kind = "optional"`, `reasoning_mode = "off"` → no `reasoning_effort`
 - Vision message with an image part → `image_url` data-URL correctly embedded; text part remains text
+- Whitelist filter: whitelist omits `reasoning_effort` → field dropped from final body even when reasoning is on
+- Whitelist filter: whitelist omits `temperature` → field dropped from final body
+- Whitelist filter: `model`, `messages`, `stream`, `stream_options`, `tools` always preserved regardless of whitelist contents
+- Whitelist filter: empty / missing whitelist → body unchanged (no filtering applied)
 
 No integration tests against the live Chutes endpoint in the automated suite. A manual smoke checklist (§8.3) covers that.
 
