@@ -68,10 +68,11 @@ GUTTER_ABORT_SECONDS: float = float(
 # headroom once history and tool definitions stack up.
 MIN_CONTEXT_TOKENS = 80_000
 
-# Hardcoded endpoints — Chutes runs a single public managed endpoint.
-# Adapter does not expose a ``url`` config field.
+# Hardcoded endpoint — Chutes runs a single public managed inference
+# endpoint. Key probing for Premium Provider validation hits a different
+# host (``api.chutes.ai/users/me``) and is configured on the Premium
+# Provider definition's ``probe_url`` field, not here.
 _INFERENCE_BASE_URL = "https://llm.chutes.ai/v1"
-_MANAGEMENT_BASE_URL = "https://api.chutes.ai"
 
 
 def _supports(features: list[str], *names: str) -> bool:
