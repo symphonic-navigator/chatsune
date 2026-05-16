@@ -18,15 +18,36 @@ See ``devdocs/superpowers/specs/2026-05-16-chutes-integration-design.md``.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 import os
+import time
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter
 
+from backend._retry import (
+    MAX_RETRY_ATTEMPTS,
+    compute_retry_delay,
+    log_retry,
+    parse_retry_after,
+    should_retry_status,
+)
 from backend.modules.llm._adapters._base import BaseAdapter
-from backend.modules.llm._adapters._events import ProviderStreamEvent
+from backend.modules.llm._adapters._events import (
+    ContentDelta,
+    ProviderStreamEvent,
+    StreamAborted,
+    StreamDone,
+    StreamError,
+    StreamRefused,
+    StreamSlow,
+    ThinkingDelta,
+    ToolCallEvent,
+)
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
@@ -233,6 +254,126 @@ def _filter_to_whitelist(
     return {k: v for k, v in payload.items() if k in allowed}
 
 
+_SSE_DONE = object()
+_REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
+
+
+class _ToolCallAccumulator:
+    """Gathers OpenAI-style tool_call fragments across SSE chunks.
+
+    ``finalised()`` is idempotent: subsequent calls return an empty list.
+    Mirrors OpenRouter's implementation — kept as a separate copy because
+    the shared-helper extract refactor is tracked separately.
+    """
+
+    def __init__(self) -> None:
+        self._by_index: dict[int, dict] = {}
+        self._finalised = False
+
+    def ingest(self, fragments: list[dict]) -> None:
+        for frag in fragments:
+            idx = frag.get("index")
+            if idx is None:
+                continue
+            slot = self._by_index.setdefault(idx, {"id": None, "name": "", "args": ""})
+            if frag.get("id"):
+                slot["id"] = frag["id"]
+            fn = frag.get("function") or {}
+            if fn.get("name"):
+                slot["name"] = fn["name"]
+            if fn.get("arguments"):
+                slot["args"] += fn["arguments"]
+
+    def finalised(self) -> list[dict]:
+        if self._finalised:
+            return []
+        self._finalised = True
+        out: list[dict] = []
+        for idx, slot in sorted(self._by_index.items()):
+            out.append({
+                "id": slot["id"] or f"call_{uuid4().hex[:12]}",
+                "name": slot["name"],
+                "arguments": slot["args"] or "{}",
+                "index": idx,
+            })
+        return out
+
+
+def _parse_sse_line(line: str) -> dict | object | None:
+    line = line.strip()
+    if not line or not line.startswith("data:"):
+        return None
+    payload = line[len("data:"):].strip()
+    if payload == "[DONE]":
+        return _SSE_DONE
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        _log.warning("Skipping malformed SSE JSON: %s", payload[:200])
+        return None
+
+
+def _chunk_to_events(
+    chunk: dict, acc: _ToolCallAccumulator,
+) -> list[ProviderStreamEvent]:
+    events: list[ProviderStreamEvent] = []
+    choices = chunk.get("choices") or []
+    usage = chunk.get("usage") or {}
+
+    if usage and not choices:
+        details = usage.get("completion_tokens_details") or {}
+        events.append(StreamDone(
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+            reasoning_tokens=details.get("reasoning_tokens"),
+        ))
+        return events
+
+    if not choices:
+        return events
+
+    choice = choices[0]
+    delta = choice.get("delta") or {}
+
+    # Some upstreams stream thinking under reasoning_content, others
+    # under bare ``reasoning``. Emit ThinkingDelta for whichever appears.
+    reasoning_content = delta.get("reasoning_content") or ""
+    if reasoning_content:
+        events.append(ThinkingDelta(delta=reasoning_content))
+    reasoning = delta.get("reasoning") or ""
+    if reasoning:
+        events.append(ThinkingDelta(delta=reasoning))
+
+    content = delta.get("content") or ""
+    if content:
+        events.append(ContentDelta(delta=content))
+
+    tool_frags = delta.get("tool_calls") or []
+    if tool_frags:
+        from backend.modules.llm._adapters._tool_call_streaming import (
+            fragments_to_delta_events,
+        )
+        events.extend(fragments_to_delta_events(tool_frags, acc))
+
+    finish = choice.get("finish_reason")
+    if finish is None:
+        return events
+
+    if finish == "tool_calls":
+        for call in acc.finalised():
+            events.append(ToolCallEvent(
+                id=call["id"], name=call["name"],
+                arguments=call["arguments"], index=call["index"],
+            ))
+    elif finish in _REFUSAL_REASONS:
+        events.append(StreamRefused(
+            reason=finish,
+            refusal_text=delta.get("refusal") or None,
+        ))
+
+    return events
+
+
 class ChutesHttpAdapter(BaseAdapter):
     adapter_type = "chutes_http"
     display_name = "Chutes AI"
@@ -298,14 +439,222 @@ class ChutesHttpAdapter(BaseAdapter):
     async def fetch_models(
         self, c: ResolvedConnection,
     ) -> list[ModelMetaDto]:
-        # Implemented in Task 5.
-        return []
+        api_key = c.config.get("api_key") or ""
+        headers = {"Authorization": f"Bearer {api_key}"}
+        metas: list[ModelMetaDto] = []
+        page = 0
+        limit = 100  # Chutes default is 25; bump to reduce round-trips.
+
+        async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT) as client:
+            while True:
+                try:
+                    resp = await client.get(
+                        f"{_INFERENCE_BASE_URL}/models",
+                        params={"page": page, "limit": limit},
+                        headers=headers,
+                    )
+                except httpx.HTTPError as exc:
+                    _log.warning("chutes_http.fetch_models transport: %s", exc)
+                    return metas
+
+                if resp.status_code in (401, 403):
+                    _log.warning(
+                        "chutes_http.fetch_models auth failure: status=%d",
+                        resp.status_code,
+                    )
+                    return metas
+                if resp.status_code != 200:
+                    _log.warning(
+                        "chutes_http.fetch_models upstream %d: %s",
+                        resp.status_code, resp.text[:200],
+                    )
+                    return metas
+
+                try:
+                    body = resp.json()
+                except ValueError:
+                    _log.warning("chutes_http.fetch_models malformed JSON")
+                    return metas
+
+                entries = body.get("data") or []
+                if not isinstance(entries, list):
+                    return metas
+
+                for entry in entries:
+                    if not isinstance(entry, dict) or not entry.get("id"):
+                        continue
+                    meta = _entry_to_meta(entry, c, adapter=self)
+                    if meta is not None:
+                        metas.append(meta)
+
+                if len(entries) < limit:
+                    return metas
+                page += 1
 
     async def stream_completion(
         self, c: ResolvedConnection, request: CompletionRequest,
     ) -> AsyncIterator[ProviderStreamEvent]:
-        # Implemented in Task 5. Trailing yield after raise makes Python
-        # recognise this as an async generator so the AsyncIterator
-        # return type matches the BaseAdapter signature.
-        raise NotImplementedError("stream_completion lands in Task 5")
-        yield  # pragma: no cover
+        api_key = c.config.get("api_key") or ""
+
+        payload = build_request_body(request)
+        whitelist = self._sampling_params_by_model_id.get(request.model)
+        payload = _filter_to_whitelist(payload, whitelist)
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        if _TRACE_PAYLOADS:
+            _log.info(
+                "LLM_TRACE path=chutes-out url=%s payload=%s",
+                _INFERENCE_BASE_URL,
+                json.dumps(payload, default=str, sort_keys=True),
+            )
+
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                retry_delay: float | None = None
+                try:
+                    async with client.stream(
+                        "POST", f"{_INFERENCE_BASE_URL}/chat/completions",
+                        json=payload, headers=headers,
+                    ) as resp:
+                        if (
+                            should_retry_status(resp.status_code)
+                            and attempt < MAX_RETRY_ATTEMPTS
+                        ):
+                            retry_delay = compute_retry_delay(
+                                attempt, parse_retry_after(resp.headers),
+                            )
+                            log_retry(
+                                _log,
+                                operation="chutes_http",
+                                attempt=attempt,
+                                delay_seconds=retry_delay,
+                                status_code=resp.status_code,
+                                extra={"model": payload.get("model")},
+                            )
+                        elif resp.status_code in (401, 403):
+                            yield StreamError(
+                                error_code="invalid_api_key",
+                                message="Chutes rejected the API key",
+                            )
+                            return
+                        elif should_retry_status(resp.status_code):
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=(
+                                    f"Chutes returned {resp.status_code}; "
+                                    f"gave up after {MAX_RETRY_ATTEMPTS + 1} attempts"
+                                ),
+                            )
+                            return
+                        elif resp.status_code != 200:
+                            body = await resp.aread()
+                            detail = body.decode("utf-8", errors="replace")[:500]
+                            _log.error(
+                                "chutes_http upstream %d: %s",
+                                resp.status_code, detail,
+                            )
+                            yield StreamError(
+                                error_code="provider_unavailable",
+                                message=f"Chutes returned {resp.status_code}: {detail}",
+                            )
+                            return
+                        else:
+                            acc = _ToolCallAccumulator()
+                            seen_done = False
+                            last_usage: dict = {}
+                            pending_next: asyncio.Task | None = None
+                            try:
+                                stream_iter = resp.aiter_lines().__aiter__()
+                                line_start = time.monotonic()
+                                slow_fired = False
+
+                                while True:
+                                    elapsed = time.monotonic() - line_start
+                                    budget = (
+                                        GUTTER_ABORT_SECONDS - elapsed if slow_fired
+                                        else GUTTER_SLOW_SECONDS - elapsed
+                                    )
+                                    if budget <= 0:
+                                        if not slow_fired:
+                                            _log.info(
+                                                "chutes_http.gutter_slow "
+                                                "model=%s idle=%.1fs",
+                                                payload.get("model"), elapsed,
+                                            )
+                                            yield StreamSlow()
+                                            slow_fired = True
+                                            continue
+                                        _log.warning(
+                                            "chutes_http.gutter_abort "
+                                            "model=%s idle=%.1fs",
+                                            payload.get("model"), elapsed,
+                                        )
+                                        if pending_next is not None:
+                                            pending_next.cancel()
+                                        yield StreamAborted(reason="gutter_timeout")
+                                        return
+                                    if pending_next is None:
+                                        pending_next = asyncio.ensure_future(
+                                            stream_iter.__anext__(),
+                                        )
+                                    done, _pending = await asyncio.wait(
+                                        {pending_next}, timeout=budget,
+                                    )
+                                    if not done:
+                                        continue
+                                    task = done.pop()
+                                    pending_next = None
+                                    try:
+                                        line = task.result()
+                                    except StopAsyncIteration:
+                                        break
+                                    line_start = time.monotonic()
+                                    slow_fired = False
+
+                                    parsed = _parse_sse_line(line)
+                                    if parsed is None:
+                                        continue
+                                    if parsed is _SSE_DONE:
+                                        break
+                                    if (
+                                        isinstance(parsed, dict)
+                                        and parsed.get("usage")
+                                    ):
+                                        last_usage = parsed["usage"]
+
+                                    for event in _chunk_to_events(parsed, acc):
+                                        if isinstance(event, StreamDone):
+                                            seen_done = True
+                                        yield event
+                                        if isinstance(event, (StreamDone,
+                                                               StreamRefused,
+                                                               StreamError)):
+                                            return
+                            except asyncio.CancelledError:
+                                if pending_next is not None and not pending_next.done():
+                                    pending_next.cancel()
+                                raise
+                            if not seen_done:
+                                _details = (
+                                    last_usage.get("completion_tokens_details") or {}
+                                )
+                                yield StreamDone(
+                                    input_tokens=last_usage.get("prompt_tokens"),
+                                    output_tokens=last_usage.get("completion_tokens"),
+                                    reasoning_tokens=_details.get("reasoning_tokens"),
+                                )
+                            return
+                except httpx.ConnectError:
+                    yield StreamError(
+                        error_code="provider_unavailable",
+                        message="Cannot connect to Chutes",
+                    )
+                    return
+
+                # Retry path — sleep with the stream context closed.
+                assert retry_delay is not None
+                await asyncio.sleep(retry_delay)
