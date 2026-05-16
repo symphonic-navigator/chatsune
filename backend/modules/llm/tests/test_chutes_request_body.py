@@ -175,3 +175,58 @@ def test_image_part_without_media_type_is_dropped():
     translated = _translate_message(msg)
     # Only the text part survives — falls back to the plain-string content path.
     assert translated == {"role": "user", "content": "describe"}
+
+
+from backend.modules.llm._adapters._chutes_http import _filter_to_whitelist
+
+
+def _full_body() -> dict:
+    return {
+        "model": "deepseek-ai/DeepSeek-V3.2-TEE",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "tools": [{"type": "function", "function": {"name": "t"}}],
+        "temperature": 0.5,
+        "reasoning_effort": "high",
+        "top_p": 0.9,
+    }
+
+
+def test_whitelist_drops_disallowed_sampling_params():
+    body = _filter_to_whitelist(_full_body(), ["temperature"])
+    # temperature stays (in whitelist), reasoning_effort and top_p go.
+    assert body["temperature"] == 0.5
+    assert "reasoning_effort" not in body
+    assert "top_p" not in body
+
+
+def test_whitelist_preserves_structural_keys_even_if_absent():
+    body = _filter_to_whitelist(_full_body(), [])
+    # No sampling param survives, but structural keys always do.
+    assert body["model"] == "deepseek-ai/DeepSeek-V3.2-TEE"
+    assert body["messages"] == [{"role": "user", "content": "hi"}]
+    assert body["stream"] is True
+    assert body["stream_options"] == {"include_usage": True}
+    assert body["tools"] == [{"type": "function", "function": {"name": "t"}}]
+    assert "temperature" not in body
+    assert "reasoning_effort" not in body
+    assert "top_p" not in body
+
+
+def test_whitelist_none_means_no_filtering():
+    body = _filter_to_whitelist(_full_body(), None)
+    assert body == _full_body()
+
+
+def test_whitelist_keeps_reasoning_effort_when_listed():
+    body = _filter_to_whitelist(_full_body(), ["reasoning_effort"])
+    assert body["reasoning_effort"] == "high"
+    assert "temperature" not in body
+
+
+def test_whitelist_filter_does_not_mutate_input():
+    original = _full_body()
+    snapshot = dict(original)
+    _filter_to_whitelist(original, [])
+    assert original == snapshot

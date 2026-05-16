@@ -209,6 +209,30 @@ def build_request_body(request: CompletionRequest) -> dict:
     return payload
 
 
+# Keys always preserved regardless of the per-model sampling whitelist —
+# these are structural (request envelope) not sampling parameters.
+_ALWAYS_KEEP: frozenset[str] = frozenset({
+    "model", "messages", "stream", "stream_options", "tools",
+})
+
+
+def _filter_to_whitelist(
+    payload: dict, whitelist: list[str] | None,
+) -> dict:
+    """Drop sampling parameters not in the per-model whitelist.
+
+    Returns a new dict — does not mutate the input. ``whitelist=None``
+    means "no catalogue data, send everything" — the adapter has not yet
+    seen this model_id (e.g. cache miss with a transient catalogue
+    glitch); better to attempt the request than to fabricate a hard
+    filter.
+    """
+    if whitelist is None:
+        return dict(payload)
+    allowed = _ALWAYS_KEEP | set(whitelist)
+    return {k: v for k, v in payload.items() if k in allowed}
+
+
 class ChutesHttpAdapter(BaseAdapter):
     adapter_type = "chutes_http"
     display_name = "Chutes AI"
