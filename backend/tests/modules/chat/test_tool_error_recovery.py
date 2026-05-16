@@ -11,11 +11,11 @@ In both cases the loop must:
 - feed a short, actionable error back as the tool result;
 - emit a ``ChatToolCallCompletedEvent`` with ``success=False``;
 - record a generic ``tool_call`` timeline entry with ``success=False``;
-- persist whatever content / thinking the user already saw — even when
-  the per-iteration content reset zeroed ``full_content``.
+- persist the full cumulative content the user saw streamed live —
+  both the iter-1 preamble and the iter-2 recovery answer.
 
-Also covers the persistence guard's new ``full_thinking``-only branch
-and the existing ``full_content``-with-error branch.
+Also covers the persistence guard's ``full_thinking``-only branch and
+the ``full_content``-with-error branch.
 """
 
 import asyncio
@@ -132,9 +132,13 @@ async def test_unknown_tool_recovers_and_continues_loop() -> None:
         tool_executor_fn=tool_executor,
     )
 
-    # The follow-up iteration's content is the user-visible answer.
+    # Cumulative content: both the iter-1 preamble (which the user saw
+    # streamed live) and the iter-2 recovery answer are persisted.
     assert saved.get("called"), "save_fn must be invoked after recovery"
-    assert saved["content"] == "Sorry, I cannot do that — final answer."
+    assert saved["content"] == (
+        "Hello, I will use a tool."
+        "Sorry, I cannot do that — final answer."
+    )
 
     # Recovered tool call shows up as a generic, failed timeline entry.
     timeline = saved["events"] or []
@@ -207,8 +211,12 @@ async def test_malformed_tool_args_recovers_and_continues_loop() -> None:
     # tool-result message and the loop continues.
     assert executor_called["count"] == 0
 
+    # Cumulative content: iter-1 preamble + iter-2 recovery answer.
     assert saved.get("called")
-    assert saved["content"] == "Falling back to a direct answer."
+    assert saved["content"] == (
+        "Trying tool now."
+        "Falling back to a direct answer."
+    )
 
     completed = [e for e in emitted if isinstance(e, ChatToolCallCompletedEvent)]
     assert len(completed) == 1
