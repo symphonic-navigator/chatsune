@@ -32,7 +32,7 @@ from backend.modules.llm._adapters._types import (
     ConfigFieldHint,
     ResolvedConnection,
 )
-from shared.dtos.inference import CompletionRequest
+from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
@@ -137,6 +137,74 @@ def _entry_to_meta(
         billing_category=_billing_category(pricing),
         is_moderated=None,
     )
+
+
+def _translate_message(msg: CompletionMessage) -> dict:
+    text_parts = [p for p in msg.content if p.type == "text" and p.text]
+    image_parts = [p for p in msg.content if p.type == "image" and p.data]
+
+    if not image_parts:
+        content: str | list[dict] = "".join(p.text or "" for p in text_parts)
+    else:
+        content = []
+        for p in text_parts:
+            content.append({"type": "text", "text": p.text or ""})
+        for p in image_parts:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:{p.media_type};base64,{p.data}"},
+            })
+
+    result: dict = {"role": msg.role, "content": content}
+    if msg.tool_calls:
+        result["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            for tc in msg.tool_calls
+        ]
+    if msg.tool_call_id is not None:
+        result["tool_call_id"] = msg.tool_call_id
+    return result
+
+
+def build_request_body(request: CompletionRequest) -> dict:
+    """Translate a CompletionRequest into the Chutes ``/chat/completions`` body.
+
+    Whitelist filtering against ``supported_sampling_parameters`` happens in
+    a separate step (see ``_filter_to_whitelist`` in Task 4), invoked by
+    ``stream_completion`` immediately before sending. This function emits
+    the common-case body shape only.
+    """
+    payload: dict = {
+        "model": request.model,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+        "messages": [_translate_message(m) for m in request.messages],
+    }
+    if request.temperature is not None:
+        payload["temperature"] = request.temperature
+    if request.tools and request.extras.tools_enabled:
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in request.tools
+        ]
+    if (
+        request.reasoning.kind == "optional"
+        and request.extras.reasoning_mode == "on"
+        and request.extras.reasoning_effort
+    ):
+        payload["reasoning_effort"] = request.extras.reasoning_effort
+    return payload
 
 
 class ChutesHttpAdapter(BaseAdapter):
