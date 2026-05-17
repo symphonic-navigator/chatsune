@@ -37,14 +37,18 @@ field takes precedence) so the adapter works against either.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
 import time
+import uuid
 from collections.abc import AsyncIterator
+from typing import ClassVar
 from uuid import uuid4
 
 import httpx
+from PIL import Image
 from redis.asyncio import Redis
 
 from backend._retry import (
@@ -72,11 +76,25 @@ from backend.modules.llm._adapters._events import (
     ToolCallEvent,
 )
 from backend.modules.llm._adapters._nano_gpt_catalog import build_catalogue
+from backend.modules.llm._adapters._nano_gpt_image_groups import (
+    SEEDREAM_GROUP_ID,
+    ZIMAGE_GROUP_ID,
+    seedream_payload,
+    zimage_payload,
+)
 from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
     ResolvedConnection,
+)
+from shared.dtos.images import (
+    GeneratedImageResult,
+    ImageGenItem,
+    ImageGroupConfig,
+    ModeratedRejection,
+    SeedreamConfig,
+    ZImageConfig,
 )
 from shared.dtos.inference import CompletionMessage, CompletionRequest
 from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
@@ -105,6 +123,15 @@ _STREAM_TIMEOUT = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
 _REFUSAL_REASONS: frozenset[str] = frozenset({"content_filter", "refusal"})
 
 _SSE_DONE = object()  # sentinel — distinct from any JSON-decodable value
+
+
+def _probe_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
+    """Return (width, height) from image bytes, or None if unparseable."""
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as im:
+            return im.size
+    except Exception:
+        return None
 
 
 class _ToolCallAccumulator:
@@ -619,6 +646,7 @@ class NanoGptHttpAdapter(BaseAdapter):
     display_name = "Nano-GPT"
     view_id = "nano_gpt_http"
     secret_fields = frozenset({"api_key"})
+    supports_image_generation: ClassVar[bool] = True
 
     def __init__(self, *, redis: Redis | None = None) -> None:
         self._redis = redis
@@ -1011,3 +1039,89 @@ class NanoGptHttpAdapter(BaseAdapter):
                 # Sleep with the stream context closed.
                 assert retry_delay is not None
                 await asyncio.sleep(retry_delay)
+
+    async def image_groups(self, connection: ResolvedConnection) -> list[str]:
+        return [ZIMAGE_GROUP_ID, SEEDREAM_GROUP_ID]
+
+    async def generate_images(
+        self,
+        connection: ResolvedConnection,
+        group_id: str,
+        config: ImageGroupConfig,
+        prompt: str,
+    ) -> list[ImageGenItem]:
+        if group_id == ZIMAGE_GROUP_ID:
+            if not isinstance(config, ZImageConfig):
+                raise ValueError(
+                    f"expected ZImageConfig, got {type(config).__name__}"
+                )
+            body = zimage_payload(config, prompt)
+            model_id = body["model"]
+        elif group_id == SEEDREAM_GROUP_ID:
+            if not isinstance(config, SeedreamConfig):
+                raise ValueError(
+                    f"expected SeedreamConfig, got {type(config).__name__}"
+                )
+            body = seedream_payload(config, prompt)
+            model_id = body["model"]
+        else:
+            raise ValueError(
+                f"unknown image group {group_id!r} for nano-gpt adapter"
+            )
+
+        base_url = connection.config["url"].rstrip("/")
+        api_key = connection.config.get("api_key") or ""
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{base_url}/images/generations",
+                headers=headers, json=body,
+            )
+            if resp.status_code >= 400:
+                _log.error(
+                    "nano_gpt.generate_images failed status=%d body=%s",
+                    resp.status_code, resp.text[:500],
+                )
+                raise RuntimeError(
+                    f"nano-gpt image generation failed: "
+                    f"{resp.status_code} {resp.text[:200]}"
+                )
+            payload = resp.json()
+            cost = payload.get("cost")
+            if cost is not None:
+                _log.debug("nano_gpt.generate_images cost_usd=%s", cost)
+
+            items: list[ImageGenItem] = []
+            for entry in payload.get("data", []):
+                image_url = entry.get("url") if isinstance(entry, dict) else None
+                if not image_url:
+                    items.append(ModeratedRejection(reason="no_url"))
+                    continue
+
+                # IMPORTANT: nano-gpt returns Cloudflare R2 signed URLs;
+                # sending the Bearer header collides with the AWS-V4
+                # signature, so we issue a bare GET on a fresh client.
+                async with httpx.AsyncClient(timeout=60.0) as blob_client:
+                    blob_resp = await blob_client.get(image_url)
+                    if blob_resp.status_code >= 400:
+                        items.append(ModeratedRejection(reason="fetch_failed"))
+                        continue
+                    content_type = blob_resp.headers.get(
+                        "content-type", "image/jpeg",
+                    )
+                    dims = _probe_dimensions(blob_resp.content)
+                    width, height = dims if dims else (0, 0)
+                    image_id = f"img_{uuid.uuid4().hex[:12]}"
+                    items.append(GeneratedImageResult(
+                        id=image_id,
+                        width=width,
+                        height=height,
+                        model_id=model_id,
+                        data=blob_resp.content,
+                        content_type=content_type,
+                    ))
+        return items

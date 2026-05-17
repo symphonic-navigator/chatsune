@@ -903,3 +903,193 @@ def test_streaming_tool_call_emits_args_deltas_nano_gpt():
     assert len(finals) == 1
     assert finals[0].arguments == '{"q":"x"}'
     assert finals[0].index == 0
+
+
+# ---------------------------------------------------------------------------
+# Image generation tests
+# ---------------------------------------------------------------------------
+
+import io
+
+from PIL import Image as _PILImage
+
+from backend.modules.llm._adapters._nano_gpt_image_groups import (
+    SEEDREAM_GROUP_ID,
+    ZIMAGE_GROUP_ID,
+)
+from shared.dtos.images import (
+    GeneratedImageResult,
+    SeedreamConfig,
+    ZImageConfig,
+)
+
+
+def _resolved_nano_conn() -> ResolvedConnection:
+    return ResolvedConnection(
+        id="conn_nano",
+        user_id="u1",
+        slug="nano",
+        display_name="nano-gpt",
+        adapter_type="nano_gpt_http",
+        config={"url": "https://nano-gpt.com/api/v1", "api_key": "sk-test"},
+    )
+
+
+def _fake_image_bytes() -> bytes:
+    buf = io.BytesIO()
+    _PILImage.new("RGB", (64, 32), (10, 20, 30)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_nano_gpt_supports_image_generation_flag():
+    assert NanoGptHttpAdapter.supports_image_generation is True
+
+
+@pytest.mark.asyncio
+async def test_nano_gpt_image_groups_returns_both_groups():
+    adapter = NanoGptHttpAdapter()
+    groups = await adapter.image_groups(_resolved_nano_conn())
+    assert set(groups) == {ZIMAGE_GROUP_ID, SEEDREAM_GROUP_ID}
+
+
+@pytest.mark.asyncio
+async def test_nano_gpt_generate_images_zimage_attaches_bytes(monkeypatch):
+    fake_bytes = _fake_image_bytes()
+    fake_resp_json = {
+        "created": 1,
+        "requestId": "req_abc",
+        "data": [{"storageKey": "k", "url": "https://r2.example/img.jpg"}],
+        "cost": 0.017,
+    }
+
+    class _Resp:
+        def __init__(self, status=200, content=b"", json_data=None, headers=None):
+            self.status_code = status
+            self.content = content
+            self._json = json_data
+            self.headers = headers or {}
+            self.text = ""
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, *a, **kw):
+            assert url.endswith("/images/generations")
+            return _Resp(json_data=fake_resp_json)
+
+        async def get(self, url, *a, **kw):
+            # Must NOT carry the Authorization header.
+            headers = kw.get("headers") or {}
+            assert "Authorization" not in headers, (
+                "Cloudflare R2 signed URL must be fetched without bearer auth"
+            )
+            return _Resp(
+                content=fake_bytes,
+                headers={"content-type": "image/jpeg"},
+            )
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        _FakeClient,
+    )
+
+    adapter = NanoGptHttpAdapter()
+    items = await adapter.generate_images(
+        connection=_resolved_nano_conn(),
+        group_id=ZIMAGE_GROUP_ID,
+        config=ZImageConfig(model="turbo", size="1024x1024", n=1),
+        prompt="a serene landscape",
+    )
+
+    assert len(items) == 1
+    assert isinstance(items[0], GeneratedImageResult)
+    assert items[0].data == fake_bytes
+    assert items[0].content_type == "image/jpeg"
+    assert items[0].model_id == "z-image-turbo"
+    assert items[0].width == 64
+    assert items[0].height == 32
+
+
+@pytest.mark.asyncio
+async def test_nano_gpt_generate_images_seedream_attaches_bytes(monkeypatch):
+    fake_bytes = _fake_image_bytes()
+    fake_resp_json = {
+        "created": 1,
+        "requestId": "req_xyz",
+        "data": [{"storageKey": "k", "url": "https://r2.example/img.jpg"}],
+        "cost": 0.04,
+    }
+
+    captured_body = {}
+
+    class _Resp:
+        def __init__(self, status=200, content=b"", json_data=None, headers=None):
+            self.status_code = status
+            self.content = content
+            self._json = json_data
+            self.headers = headers or {}
+            self.text = ""
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def post(self, url, *a, **kw):
+            captured_body.update(kw.get("json") or {})
+            return _Resp(json_data=fake_resp_json)
+
+        async def get(self, url, *a, **kw):
+            return _Resp(
+                content=fake_bytes,
+                headers={"content-type": "image/jpeg"},
+            )
+
+    monkeypatch.setattr(
+        "backend.modules.llm._adapters._nano_gpt_http.httpx.AsyncClient",
+        _FakeClient,
+    )
+
+    adapter = NanoGptHttpAdapter()
+    items = await adapter.generate_images(
+        connection=_resolved_nano_conn(),
+        group_id=SEEDREAM_GROUP_ID,
+        config=SeedreamConfig(aspect="16:9", quality="standard", n=1),
+        prompt="a city skyline at night",
+    )
+
+    assert len(items) == 1
+    assert items[0].model_id == "seedream-v4.5"
+    # Seedream sends "size: WxH" derived from the resolution table.
+    assert captured_body.get("size") == "2560x1440"
+
+
+@pytest.mark.asyncio
+async def test_nano_gpt_generate_images_unknown_group_raises():
+    adapter = NanoGptHttpAdapter()
+    with pytest.raises(ValueError, match="unknown image group"):
+        await adapter.generate_images(
+            connection=_resolved_nano_conn(),
+            group_id="bogus_group",
+            config=ZImageConfig(),
+            prompt="x",
+        )
