@@ -11,7 +11,7 @@ def mock_db():
     return db
 
 
-def _make_message(msg_id: str, session_id: str, role: str, content: str, minutes_ago: int = 0):
+def _make_message(msg_id: str, session_id: str, role: str, content: str, minutes_ago: int = 0, session_seq: int = 1):
     return {
         "_id": msg_id,
         "session_id": session_id,
@@ -19,33 +19,36 @@ def _make_message(msg_id: str, session_id: str, role: str, content: str, minutes
         "content": content,
         "token_count": len(content),
         "created_at": datetime.now(timezone.utc) - timedelta(minutes=minutes_ago),
+        "session_seq": session_seq,
     }
 
 
-async def test_delete_messages_after(mock_db):
+async def test_delete_messages_from(mock_db):
     from backend.modules.chat._repository import ChatRepository
 
-    target_msg = _make_message("msg-3", "sess-1", "user", "target", minutes_ago=5)
+    target_msg = _make_message("msg-3", "sess-1", "user", "target", minutes_ago=5, session_seq=3)
     mock_db["chat_messages"].find_one = AsyncMock(return_value=target_msg)
     mock_db["chat_messages"].delete_many = AsyncMock()
 
     repo = ChatRepository(mock_db)
-    result = await repo.delete_messages_after("sess-1", "msg-3")
+    result = await repo.delete_messages_from("sess-1", "msg-3")
 
     assert result is True
     mock_db["chat_messages"].delete_many.assert_awaited_once()
     call_filter = mock_db["chat_messages"].delete_many.call_args[0][0]
     assert call_filter["session_id"] == "sess-1"
-    assert "$gt" in str(call_filter["created_at"])
+    # After the session_seq migration the filter switched from
+    # created_at to session_seq with $gte (deletes target + after).
+    assert call_filter["session_seq"] == {"$gte": 3}
 
 
-async def test_delete_messages_after_not_found(mock_db):
+async def test_delete_messages_from_not_found(mock_db):
     from backend.modules.chat._repository import ChatRepository
 
     mock_db["chat_messages"].find_one = AsyncMock(return_value=None)
 
     repo = ChatRepository(mock_db)
-    result = await repo.delete_messages_after("sess-1", "nonexistent")
+    result = await repo.delete_messages_from("sess-1", "nonexistent")
     assert result is False
 
 

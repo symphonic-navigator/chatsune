@@ -5,6 +5,7 @@ from typing import Literal
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 
 _log = logging.getLogger(__name__)
 
@@ -251,6 +252,17 @@ class ChatRepository:
         )
         await self._messages.create_index("session_id")
         await self._messages.create_index([("session_id", 1), ("created_at", 1)])
+        # Per-session monotonic ordering. Primary read/sort path for
+        # ``list_messages`` and ``list_messages_tail``, and the delete
+        # filter for ``delete_messages_from`` / ``edit_message_atomic``.
+        # The legacy ``(session_id, created_at)`` index is kept — it
+        # still powers display/admin queries that filter or paginate by
+        # wall-clock time.
+        await self._messages.create_index(
+            [("session_id", 1), ("session_seq", 1)],
+            name="session_id_session_seq",
+            background=True,
+        )
         await self._messages.create_index(
             [("content", "text")],
             default_language="none",
@@ -292,6 +304,10 @@ class ChatRepository:
             "auto_read": auto_read,
             "reasoning_override": None,
             "project_id": project_id,
+            # Per-session monotonic counter for message ordering. Atomically
+            # incremented by ``save_message`` / ``next_session_seq``. New
+            # sessions start at 0; the first message takes seq 1.
+            "last_message_seq": 0,
             "created_at": now,
             "updated_at": now,
         }
@@ -339,9 +355,18 @@ class ChatRepository:
             "updated_at": now,
             "deleted_at": None,
         }
+        # ``last_message_seq`` is written inline below from the imported
+        # message count; default 0 here so the doc shape is correct
+        # even for the empty-messages branch.
+        session_doc["last_message_seq"] = 0
         await self._sessions.insert_one(session_doc)
 
         if messages:
+            # Stamp session_seq monotonically (1..N) on the imported docs.
+            # We control the order at this call site, so this avoids one
+            # ``find_one_and_update`` per insert and keeps the import as
+            # a single bulk write. The session's high-water mark is set
+            # below to match.
             message_docs = [
                 {
                     "_id": str(uuid4()),
@@ -355,8 +380,9 @@ class ChatRepository:
                     "status": "completed",
                     "correlation_id": None,
                     "imported_model_slug": m.imported_model_slug,
+                    "session_seq": idx + 1,
                 }
-                for m in messages
+                for idx, m in enumerate(messages)
             ]
             await self._messages.insert_many(message_docs)
             # Seed the session-level context counters so the UI shows a
@@ -367,7 +393,10 @@ class ChatRepository:
             total_tokens = sum(doc["token_count"] for doc in message_docs)
             await self._sessions.update_one(
                 {"_id": session_id},
-                {"$set": {"context_used_tokens": total_tokens}},
+                {"$set": {
+                    "context_used_tokens": total_tokens,
+                    "last_message_seq": len(message_docs),
+                }},
             )
 
         return session_doc
@@ -880,6 +909,27 @@ class ChatRepository:
                 doc["image_refs"] = image_refs
         if refusal_text:
             doc["refusal_text"] = refusal_text
+        # Atomically reserve a per-session sequence number. Using
+        # ``find_one_and_update`` with ``$inc`` and ``ReturnDocument.AFTER``
+        # gives us the new value in a single round-trip; the increment is
+        # atomic at the Mongo level (even under RS0), so concurrent
+        # inserts on the same session receive distinct, ordered seqs.
+        # A subsequent ``insert_one`` failure leaves a one-off gap on the
+        # session counter — acceptable, since correctness only requires
+        # monotonicity and deletes leave gaps too.
+        session_doc = await self._sessions.find_one_and_update(
+            {"_id": session_id},
+            {"$inc": {"last_message_seq": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if session_doc is not None:
+            doc["session_seq"] = session_doc.get("last_message_seq", 0)
+        else:
+            # No matching session document — keeps tests that insert
+            # messages against synthetic session ids working. seq stays
+            # at the default 0; downstream sorts still produce a
+            # deterministic-enough order via insertion time.
+            doc["session_seq"] = 0
         await self._messages.insert_one(doc)
         return doc
 
@@ -928,12 +978,20 @@ class ChatRepository:
         """Return messages for a session, oldest first, capped at
         ``LIST_MESSAGES_CAP``.
 
+        Sort key is ``session_seq``, the per-session monotonic counter
+        assigned atomically on insert (see ``save_message``). Legacy
+        documents without ``session_seq`` are backfilled by the
+        ``0001_session_seq`` startup migration; until that completes
+        they all share seq 0 and fall back to insertion order, which
+        is still good enough for the warning path that uses this
+        method.
+
         WARNING: with the default ascending sort this silently drops the
         NEWEST messages once a session exceeds the cap. For inference
         history-loading use ``list_messages_tail`` instead, which keeps
         the most recent ``max_count`` messages.
         """
-        cursor = self._messages.find({"session_id": session_id}).sort("created_at", 1)
+        cursor = self._messages.find({"session_id": session_id}).sort("session_seq", 1)
         docs = await cursor.to_list(length=LIST_MESSAGES_CAP)
         if len(docs) == LIST_MESSAGES_CAP:
             _log.warning(
@@ -947,7 +1005,13 @@ class ChatRepository:
         self, session_id: str, max_count: int = LIST_MESSAGES_CAP,
     ) -> list[dict]:
         """Return the most recent ``max_count`` messages, ascending by
-        ``created_at``.
+        ``session_seq``.
+
+        Sorting by the per-session monotonic counter (rather than
+        ``created_at``) makes the two-tab race deterministic: even
+        when two inserts share a microsecond clock, the seqs are
+        ordered by Mongo write causality and pair-matching downstream
+        sees a stable, consistent order.
 
         This is what inference history-loading wants: when a session
         exceeds the cap, the newest turns (the ones the model needs to
@@ -957,7 +1021,7 @@ class ChatRepository:
         """
         cursor = (
             self._messages.find({"session_id": session_id})
-            .sort("created_at", -1)
+            .sort("session_seq", -1)
             .limit(max_count)
         )
         docs = await cursor.to_list(length=max_count)
@@ -992,17 +1056,53 @@ class ChatRepository:
         )
         return result.modified_count
 
-    async def delete_messages_after(self, session_id: str, message_id: str) -> bool:
-        """Delete all messages in a session created after the given message."""
-        target = await self._messages.find_one({"_id": message_id, "session_id": session_id})
+    async def delete_messages_from(self, session_id: str, message_id: str) -> bool:
+        """Delete the target message and every message after it in the session.
+
+        Uses ``session_seq: {"$gte": target_seq}`` instead of the historical
+        ``created_at: {"$gte": ...}`` filter. The per-session monotonic
+        counter avoids the same-microsecond collision foot-gun: under the
+        old filter a sibling message inserted in the same Python tick
+        could be swept up nondeterministically. With seq the comparison
+        is exact and total.
+
+        Renamed from ``delete_messages_after`` when the filter switched
+        to inclusive ``$gte`` semantics — the previous name implied
+        target-exclusion which never matched callers' needs.
+
+        Note: ``last_message_seq`` on the session is **not** rewound.
+        Subsequent inserts get the next seq value, creating an
+        intentional gap — gaps are fine, monotonicity is the invariant.
+        """
+        target = await self._messages.find_one(
+            {"_id": message_id, "session_id": session_id},
+        )
         if target is None:
             return False
+        target_seq = target.get("session_seq", 0)
         await self._messages.delete_many({
             "session_id": session_id,
-            "_id": {"$ne": message_id},
-            "created_at": {"$gte": target["created_at"]},
+            "session_seq": {"$gte": target_seq},
         })
         return True
+
+    async def next_session_seq(self, session_id: str) -> int:
+        """Reserve and return the next ``session_seq`` for a session.
+
+        Not used in this module today — declared so the upcoming
+        branching work (which clones-on-branch and needs to reserve a
+        seq slot up-front) doesn't have to revisit this file. Uses
+        the same ``find_one_and_update`` pattern as ``save_message`` so
+        concurrent reservations are atomic at the Mongo level.
+        """
+        session_doc = await self._sessions.find_one_and_update(
+            {"_id": session_id},
+            {"$inc": {"last_message_seq": 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if session_doc is None:
+            raise ValueError(f"session not found: {session_id}")
+        return int(session_doc.get("last_message_seq", 0))
 
     async def update_message_content(
         self, message_id: str, content: str, token_count: int,
@@ -1032,7 +1132,16 @@ class ChatRepository:
     async def edit_message_atomic(
         self, session_id: str, message_id: str, new_content: str, token_count: int,
     ) -> bool:
-        """Delete messages after target and update target content atomically in a transaction."""
+        """Delete messages after target and update target content atomically in a transaction.
+
+        Uses ``session_seq`` for the truncation filter (see
+        ``delete_messages_from`` for the rationale). The target itself
+        is preserved via ``_id: {"$ne": message_id}`` so the subsequent
+        content/token-count update has something to write to. The
+        session-level ``last_message_seq`` counter is left untouched —
+        the gap between the surviving target's seq and the next
+        ``save_message`` is intentional and harmless.
+        """
         from backend.database import get_client
         client = get_client()
         async with await client.start_session() as session:
@@ -1042,11 +1151,12 @@ class ChatRepository:
                 )
                 if target is None:
                     return False
+                target_seq = target.get("session_seq", 0)
                 await self._messages.delete_many(
                     {
                         "session_id": session_id,
                         "_id": {"$ne": message_id},
-                        "created_at": {"$gte": target["created_at"]},
+                        "session_seq": {"$gte": target_seq},
                     },
                     session=session,
                 )

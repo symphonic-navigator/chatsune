@@ -1945,3 +1945,86 @@ in *this* dimension is silent.
 **Related:** INS-004 / INS-019 (model_unique_id format — slug-based
 identity is what lets us route per-model logic in the adapter
 without leaking provider plumbing to other modules).
+
+---
+
+## INS-047 — `session_seq` replaces `created_at` as the message ordering key (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** Every read and mutation of message ordering used to key
+off `created_at`, a microsecond datetime. Two paths exposed the
+foot-gun: `list_messages_tail` sorted by `created_at`, and
+`delete_messages_after` / `edit_message_atomic` truncated by
+`created_at: {"$gte": ...}`. When a user opened two tabs (or sent
+two requests back-to-back), inserts could share a `created_at` tick;
+the tiebreak was the random UUID `_id`, so pair-matching downstream
+got non-deterministic, and the wrong sibling could be swept up by a
+`$gte` delete.
+
+For branching (the next spec), `created_at` is also fatal as a
+lineage key — branches need an ordered identifier that isn't a clock.
+
+**Decision:** Introduce a per-session monotonic integer counter,
+`session_seq`, assigned atomically at insert time via
+`find_one_and_update({"_id": session_id}, {"$inc": {"last_message_seq": 1}}, return_document=AFTER)`
+on `ChatSessionDocument`. The session document holds the high-water
+mark; messages carry their reserved seq. Two collections, one
+counter, no multi-doc transaction:
+
+- `find_one_and_update` is atomic at the Mongo level (even under
+  RS0), so concurrent saves on the same session get distinct,
+  causally-ordered seqs.
+- If the subsequent `insert_one` fails, we leak one seq value —
+  acceptable, because the invariant is monotonicity, not
+  contiguity. Gaps after deletes are also normal.
+
+**Implementation:** see
+`devdocs/specs/2026-05-17-session-seq-migration-design.md`. The
+field is additive on read (default 0 for legacy docs) and the
+backfill runs in a numbered startup migration —
+`backend/migrations/0001_session_seq.py` — invoked via
+`backend/migrations/run_all(db)` from the FastAPI lifespan after
+every module's `init_indexes` and before the app accepts requests.
+This is the first auto-run migration in the repo; the directory
+also still hosts legacy `m_YYYY_MM_DD_*.py` manual scripts which
+`run_all` does NOT pick up (the regex only matches `NNNN_*.py`).
+
+**Why we kept `created_at`:** it remains useful for display in the
+sidebar, the admin "messages by time range" queries, and the
+ChatGPT-import path's chronological seeding. The compound index
+`(session_id, created_at)` stays in place alongside the new
+`(session_id, session_seq)` index. Two indexes, two query shapes
+— one for time-range UX, one for ordering correctness.
+
+**`last_message_seq` is never rewound on delete.** Edits that
+truncate the tail leave the high-water mark untouched; the next
+insert receives the next seq value, creating a gap. The branching
+spec relies on this: a branch that forks from seq=5 can be cloned,
+the original counter advances to 6, and the two timelines never
+collide on seq even if the user keeps writing on both.
+
+**Tests:**
+
+- `tests/test_repository_session_seq.py` — atomic increment under
+  `asyncio.gather`, sort/delete/edit semantics, `next_session_seq`
+  reservation.
+- `tests/migrations/test_session_seq_migration.py` — old-shape
+  fixture (3×5, no seq fields), idempotent re-run, out-of-band
+  insert pick-up, live `save_message` after migration, `run_all`
+  discovers and runs the 0001 module.
+
+**When to revisit:** if Mongo ever loses single-document atomicity
+on `find_one_and_update` (it won't, but theoretically), the entire
+ordering story collapses. If cross-session ordering ever becomes a
+need (e.g. a global timeline view), seq is per-session — a
+secondary key (e.g. global `created_at` or a separate `global_seq`)
+would have to be added.
+
+**Related:** the existing `_id: {"$ne": message_id}` clause in
+`edit_message_atomic` is preserved — we still need to keep the
+target around for the subsequent content update. The truncate
+helper was renamed from `delete_messages_after` to
+`delete_messages_from` to match the new inclusive `$gte`
+semantics; the old name implied target-exclusion which never
+matched what callers actually needed.

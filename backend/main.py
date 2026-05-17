@@ -128,6 +128,14 @@ async def lifespan(app: FastAPI):
     # before the app serves traffic so readers never see a split state.
     await run_providers_migration(db, redis)
     await PremiumProviderAccountRepository(db).create_indexes()
+
+    # Numbered startup migrations. Runs every numbered ``backend/migrations/NNNN_*.py``
+    # in lexical order; each script is idempotent and runs on every
+    # startup. See backend/migrations/__init__.py for the contract.
+    # Wired here so all module indexes exist first and the app does NOT
+    # accept requests until every migration has completed.
+    from backend.migrations import run_all as run_numbered_migrations
+    await run_numbered_migrations(db)
     manager = ConnectionManager()
     set_manager(manager)
     event_bus = EventBus(redis=redis, manager=manager)
