@@ -126,7 +126,7 @@ function ClonedFromBranchSubtitle() {
       data-testid="cloned-from-branch-subtitle"
       className="-mt-1 mb-2 text-[10px] italic leading-snug text-white/35"
     >
-      Aus Parent geklont — nicht erneut ausgeführt
+      Cloned from parent — not re-executed
     </div>
   )
 }

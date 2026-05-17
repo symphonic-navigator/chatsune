@@ -6,10 +6,9 @@ type Props = {
   sessionId: string
 }
 
-// Mini-hint shown for 3 seconds after the toggle changes state. The
-// copy is German because the surrounding cockpit text is in German;
-// the localisation story is not in scope for this spec.
-const HINT_TEXT = 'Wirkt sich ab der nächsten Antwort aus'
+// Mini-hint shown for 3 seconds after the toggle changes state to
+// communicate the non-retroactive semantics (per INS-049).
+const HINT_TEXT = 'Applies from next response'
 const HINT_DURATION_MS = 3000
 
 /**
@@ -68,7 +67,7 @@ export function ReplayHistoryToggleButton({ sessionId }: Props) {
       <CockpitButton
         icon="↻"
         state={enabled ? 'active' : 'idle'}
-        accent="neutral"
+        accent="gold"
         label={label}
         ariaLabel={label}
         onClick={() => {

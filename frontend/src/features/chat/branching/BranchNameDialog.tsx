@@ -2,9 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { ChatSessionDto } from '../../../core/api/chat'
 
 /**
- * Compute the default branch name as ``${parentTitle} (Variante ${n})`` where
+ * Compute the default branch name as ``${parentTitle} (Variant ${n})`` where
  * ``n`` is one greater than the highest variant index seen on any sibling
- * session whose title matches ``${parentTitle} (Variante <number>)``.
+ * session whose title matches ``${parentTitle} (Variant <number>)``.
  *
  * Best-effort only: the system does not enforce unique titles. Concurrent
  * branch creation from two tabs may produce the same variant index — that's
@@ -16,7 +16,7 @@ export function computeDefaultBranchName(
   parentTitle: string,
   allSessions: readonly Pick<ChatSessionDto, 'title'>[],
 ): string {
-  const prefix = `${parentTitle} (Variante `
+  const prefix = `${parentTitle} (Variant `
   let maxIdx = 0
   for (const session of allSessions) {
     const t = session.title
@@ -28,7 +28,7 @@ export function computeDefaultBranchName(
     const num = Number.parseInt(numStr, 10)
     if (Number.isFinite(num) && num > maxIdx) maxIdx = num
   }
-  return `${parentTitle} (Variante ${maxIdx + 1})`
+  return `${parentTitle} (Variant ${maxIdx + 1})`
 }
 
 export interface BranchNameDialogProps {
@@ -52,10 +52,10 @@ export interface BranchNameDialogProps {
  * ``devdocs/specs/2026-05-17-branching-design.md`` §6.3.
  *
  * Behaviour:
- *   - Pre-fills the input with ``${parentTitle} (Variante ${nextIdx})``.
+ *   - Pre-fills the input with ``${parentTitle} (Variant ${nextIdx})``.
  *   - Escape and overlay click dismiss without creating a branch.
  *   - Primary action disabled while the trimmed input is empty.
- *   - On confirm, the body is replaced by a "Branch wird erstellt..." loader
+ *   - On confirm, the body is replaced by a "Creating branch..." loader
  *     while the parent handler is in flight. The dialog stays mounted so the
  *     loader can be cancelled by Escape or by the parent dismissing it.
  */
@@ -132,7 +132,7 @@ export function BranchNameDialog({
     >
       <button
         type="button"
-        aria-label="Dialog schließen"
+        aria-label="Close dialog"
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
@@ -147,7 +147,7 @@ export function BranchNameDialog({
           id={titleId}
           className="mb-3 font-mono text-[13px] font-semibold text-white/85"
         >
-          Neuen Branch erstellen
+          Create new branch
         </h2>
         {submitting ? (
           <div
@@ -166,7 +166,7 @@ export function BranchNameDialog({
             >
               <path d="M12 2a10 10 0 0 1 10 10" />
             </svg>
-            <span>Branch wird erstellt...</span>
+            <span>Creating branch...</span>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -193,7 +193,7 @@ export function BranchNameDialog({
                 onClick={onClose}
                 className="rounded px-3 py-1.5 text-[12px] text-white/55 transition-colors hover:bg-white/5 hover:text-white/80"
               >
-                Abbrechen
+                Cancel
               </button>
               <button
                 type="button"
@@ -202,7 +202,7 @@ export function BranchNameDialog({
                 disabled={!canConfirm}
                 className="rounded bg-white/12 px-3 py-1.5 text-[12px] font-semibold text-white/85 transition-colors hover:bg-white/18 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Branch erstellen
+                Create branch
               </button>
             </div>
           </div>

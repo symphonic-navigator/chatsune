@@ -6,30 +6,30 @@ import {
 } from '../BranchNameDialog'
 
 describe('computeDefaultBranchName', () => {
-  it('returns "(Variante 1)" when no siblings match the prefix', () => {
-    const name = computeDefaultBranchName('Chris fragt nach Quantenphysik', [
-      { title: 'Andere Unterhaltung' },
+  it('returns "(Variant 1)" when no siblings match the prefix', () => {
+    const name = computeDefaultBranchName('Chris asks about quantum physics', [
+      { title: 'Another conversation' },
       { title: null },
     ])
-    expect(name).toBe('Chris fragt nach Quantenphysik (Variante 1)')
+    expect(name).toBe('Chris asks about quantum physics (Variant 1)')
   })
 
   it('returns max-sibling + 1 when matching variants exist', () => {
     const name = computeDefaultBranchName('Parent', [
-      { title: 'Parent (Variante 1)' },
-      { title: 'Parent (Variante 3)' },
-      { title: 'Parent (Variante 2)' },
+      { title: 'Parent (Variant 1)' },
+      { title: 'Parent (Variant 3)' },
+      { title: 'Parent (Variant 2)' },
       { title: 'Unrelated' },
     ])
-    expect(name).toBe('Parent (Variante 4)')
+    expect(name).toBe('Parent (Variant 4)')
   })
 
   it('ignores malformed variant suffixes', () => {
     const name = computeDefaultBranchName('Parent', [
-      { title: 'Parent (Variante abc)' },
-      { title: 'Parent (Variante 2)' },
+      { title: 'Parent (Variant abc)' },
+      { title: 'Parent (Variant 2)' },
     ])
-    expect(name).toBe('Parent (Variante 3)')
+    expect(name).toBe('Parent (Variant 3)')
   })
 })
 
@@ -46,31 +46,31 @@ describe('BranchNameDialog', () => {
     return { ...render(<BranchNameDialog {...props} />), props }
   }
 
-  it('renders the German title and pre-fills the default name', () => {
+  it('renders the title and pre-fills the default name', () => {
     renderDialog()
-    expect(screen.getByText('Neuen Branch erstellen')).toBeInTheDocument()
+    expect(screen.getByText('Create new branch')).toBeInTheDocument()
     const input = screen.getByTestId('branch-name-input') as HTMLInputElement
-    expect(input.value).toBe('Parent Title (Variante 1)')
+    expect(input.value).toBe('Parent Title (Variant 1)')
   })
 
   it('seeds the next variant index from siblings', () => {
     renderDialog({
       allSessions: [
-        { title: 'Parent Title (Variante 2)' },
-        { title: 'Parent Title (Variante 5)' },
+        { title: 'Parent Title (Variant 2)' },
+        { title: 'Parent Title (Variant 5)' },
       ],
     })
     const input = screen.getByTestId('branch-name-input') as HTMLInputElement
-    expect(input.value).toBe('Parent Title (Variante 6)')
+    expect(input.value).toBe('Parent Title (Variant 6)')
   })
 
   it('accepts an edited name and calls onConfirm with the trimmed value', async () => {
     const onConfirm = vi.fn()
     renderDialog({ onConfirm })
     const input = screen.getByTestId('branch-name-input') as HTMLInputElement
-    fireEvent.change(input, { target: { value: '  Mein Branch  ' } })
+    fireEvent.change(input, { target: { value: '  My branch  ' } })
     fireEvent.click(screen.getByTestId('branch-name-confirm'))
-    expect(onConfirm).toHaveBeenCalledWith('Mein Branch')
+    expect(onConfirm).toHaveBeenCalledWith('My branch')
   })
 
   it('cancel does not call onConfirm', () => {

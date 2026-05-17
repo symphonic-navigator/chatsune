@@ -159,7 +159,7 @@ describe('MessageList — assistant action bar (branching)', () => {
     expect(screen.queryAllByTestId('assistant-branch')).toHaveLength(0)
   })
 
-  it('renders the "Aus Parent geklont" subtitle on cloned timeline entries', () => {
+  it('renders the "Cloned from parent" subtitle on cloned timeline entries', () => {
     const messages = [
       makeMsg({
         id: 'a1',
@@ -181,7 +181,7 @@ describe('MessageList — assistant action bar (branching)', () => {
     render(<MessageList {...baseProps} messages={messages} />)
     expect(screen.getByTestId('cloned-from-branch-subtitle')).toBeInTheDocument()
     expect(
-      screen.getByText('Aus Parent geklont — nicht erneut ausgeführt'),
+      screen.getByText('Cloned from parent — not re-executed'),
     ).toBeInTheDocument()
   })
 

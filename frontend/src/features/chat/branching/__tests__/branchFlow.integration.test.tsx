@@ -88,7 +88,7 @@ function BranchFlowHarness({
 
 describe('branch flow integration', () => {
   it('confirming the dialog calls branchSession and notifies on success', async () => {
-    branchSessionMock.mockResolvedValue(fakeBranch('branch-1', 'Parent (Variante 1)'))
+    branchSessionMock.mockResolvedValue(fakeBranch('branch-1', 'Parent (Variant 1)'))
     const onSwitched = vi.fn()
     render(
       <BranchFlowHarness
@@ -98,9 +98,9 @@ describe('branch flow integration', () => {
         allSessions={[]}
       />,
     )
-    // Pre-filled default name uses the parent title and Variante 1.
+    // Pre-filled default name uses the parent title and Variant 1.
     const input = screen.getByTestId('branch-name-input') as HTMLInputElement
-    expect(input.value).toBe('Parent (Variante 1)')
+    expect(input.value).toBe('Parent (Variant 1)')
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('branch-name-confirm'))
@@ -110,14 +110,14 @@ describe('branch flow integration', () => {
     expect(branchSessionMock).toHaveBeenCalledWith(
       'parent-1',
       'assistant-7',
-      'Parent (Variante 1)',
+      'Parent (Variant 1)',
     )
     // Dialog dismisses on success.
     expect(screen.queryByTestId('branch-name-dialog')).not.toBeInTheDocument()
   })
 
   it('passes fork_message_id=null for branch-from-session-start', async () => {
-    branchSessionMock.mockResolvedValue(fakeBranch('branch-2', 'Parent (Variante 1)'))
+    branchSessionMock.mockResolvedValue(fakeBranch('branch-2', 'Parent (Variant 1)'))
     render(
       <BranchFlowHarness
         parentSessionId="parent-1"
@@ -133,7 +133,7 @@ describe('branch flow integration', () => {
     expect(branchSessionMock).toHaveBeenCalledWith(
       'parent-1',
       null,
-      'Parent (Variante 1)',
+      'Parent (Variant 1)',
     )
   })
 

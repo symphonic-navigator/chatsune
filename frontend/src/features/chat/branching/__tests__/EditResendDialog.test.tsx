@@ -14,16 +14,16 @@ describe('EditResendDialog (case 1)', () => {
     return { ...render(<EditResendDialog {...props} />), props }
   }
 
-  it('renders the German title with both options', () => {
+  it('renders the title with both options', () => {
     renderDialog()
     expect(
-      screen.getByText('Antwort ersetzen oder neuer Branch?'),
+      screen.getByText('Replace response or new branch?'),
     ).toBeInTheDocument()
     expect(screen.getByTestId('edit-resend-replace')).toBeInTheDocument()
     expect(screen.getByTestId('edit-resend-branch')).toBeInTheDocument()
   })
 
-  it('"Antwort ersetzen" calls onReplace and not onBranch', () => {
+  it('"Replace response" calls onReplace and not onBranch', () => {
     const onReplace = vi.fn()
     const onBranch = vi.fn()
     renderDialog({ onReplace, onBranch })
@@ -32,7 +32,7 @@ describe('EditResendDialog (case 1)', () => {
     expect(onBranch).not.toHaveBeenCalled()
   })
 
-  it('"Neuer Branch" calls onBranch and not onReplace', () => {
+  it('"New branch" calls onBranch and not onReplace', () => {
     const onReplace = vi.fn()
     const onBranch = vi.fn()
     renderDialog({ onReplace, onBranch })

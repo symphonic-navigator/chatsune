@@ -2,10 +2,10 @@ import { useEffect, useId } from 'react'
 
 export interface EditResendDialogProps {
   isOpen: boolean
-  /** Triggered when the user picks "Antwort ersetzen" — runs the existing
+  /** Triggered when the user picks "Replace response" — runs the existing
    *  in-place edit flow (truncate-and-resend on the same session). */
   onReplace: () => void
-  /** Triggered when the user picks "Neuer Branch" — opens the
+  /** Triggered when the user picks "New branch" — opens the
    *  ``BranchNameDialog`` and proceeds with the branch flow. */
   onBranch: () => void
   onClose: () => void
@@ -46,7 +46,7 @@ export function EditResendDialog({
     >
       <button
         type="button"
-        aria-label="Dialog schließen"
+        aria-label="Close dialog"
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
@@ -61,12 +61,11 @@ export function EditResendDialog({
           id={titleId}
           className="mb-2 font-mono text-[13px] font-semibold text-white/85"
         >
-          Antwort ersetzen oder neuer Branch?
+          Replace response or new branch?
         </h2>
         <p className="mb-4 text-[12px] leading-relaxed text-white/55">
-          Du kannst die bestehende Antwort durch eine neue ersetzen oder
-          stattdessen einen neuen Branch erstellen, in dem die alte Antwort
-          erhalten bleibt.
+          You can replace the existing response with a new one, or create a
+          new branch instead in which the old response is preserved.
         </p>
         <div className="flex flex-col gap-2">
           <button
@@ -75,7 +74,7 @@ export function EditResendDialog({
             onClick={onReplace}
             className="w-full rounded bg-white/12 px-3 py-2 text-left text-[12px] font-semibold text-white/85 transition-colors hover:bg-white/18"
           >
-            Antwort ersetzen
+            Replace response
           </button>
           <button
             type="button"
@@ -83,7 +82,7 @@ export function EditResendDialog({
             onClick={onBranch}
             className="w-full rounded bg-white/12 px-3 py-2 text-left text-[12px] font-semibold text-white/85 transition-colors hover:bg-white/18"
           >
-            Neuer Branch
+            New branch
           </button>
           <button
             type="button"
@@ -91,7 +90,7 @@ export function EditResendDialog({
             onClick={onClose}
             className="mt-1 self-end rounded px-3 py-1.5 text-[12px] text-white/55 transition-colors hover:bg-white/5 hover:text-white/80"
           >
-            Abbrechen
+            Cancel
           </button>
         </div>
       </div>

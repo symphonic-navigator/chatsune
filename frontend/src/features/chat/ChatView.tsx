@@ -1114,7 +1114,7 @@ export function ChatView({ persona }: ChatViewProps) {
     userMessageId: string
     /** The trimmed new content the user just typed. */
     newContent: string
-    /** Pre-computed fork-point for the "Neuer Branch" path. The dialog
+    /** Pre-computed fork-point for the "New branch" path. The dialog
      *  delegates the BranchNameDialog open with this id; the chooser does
      *  not recompute it. */
     forkMessageId: string | null
@@ -1149,7 +1149,7 @@ export function ChatView({ persona }: ChatViewProps) {
   )
 
   // In-place edit dispatch — used by handleEdit's incognito path and by
-  // the case-1 "Antwort ersetzen" branch of the EditResendDialog.
+  // the case-1 "Replace response" branch of the EditResendDialog.
   const dispatchEditInPlace = useCallback(
     (sessionIdArg: string, messageId: string, newContent: string) => {
       const correlationId = crypto.randomUUID()
@@ -1372,8 +1372,8 @@ export function ChatView({ persona }: ChatViewProps) {
     ],
   )
 
-  // EditResendDialog (case 1) — "Antwort ersetzen" picks in-place flow;
-  // "Neuer Branch" opens BranchNameDialog with the case-2 follow-up
+  // EditResendDialog (case 1) — "Replace response" picks in-place flow;
+  // "New branch" opens BranchNameDialog with the case-2 follow-up
   // (chat.send with edited content against the branch).
   const handleEditResendReplace = useCallback(() => {
     if (!editResendContext || !effectiveSessionId) return

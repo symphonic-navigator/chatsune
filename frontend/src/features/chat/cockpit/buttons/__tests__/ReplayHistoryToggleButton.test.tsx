@@ -75,7 +75,7 @@ describe('ReplayHistoryToggleButton', () => {
     ).toBe(false)
   })
 
-  it('shows the German "ab der nächsten Antwort" hint for ~3s after click', () => {
+  it('shows the "applies from next response" hint for ~3s after click', () => {
     vi.useFakeTimers()
     try {
       hydrate(true)
@@ -84,7 +84,7 @@ describe('ReplayHistoryToggleButton', () => {
       expect(screen.queryByRole('status')).toBeNull()
       fireEvent.click(screen.getByRole('button'))
       const hint = screen.getByRole('status')
-      expect(hint.textContent).toMatch(/ab der n[äa]chsten antwort/i)
+      expect(hint.textContent).toMatch(/applies from next response/i)
       // Advance time past the timeout — hint should disappear.
       act(() => {
         vi.advanceTimersByTime(3001)
