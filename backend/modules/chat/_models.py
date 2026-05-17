@@ -62,5 +62,12 @@ class ChatMessageDocument(BaseModel):
     # ``0001_session_seq`` migration backfills correct values for all
     # pre-existing messages before the app accepts requests.
     session_seq: int = 0
+    # Snapshot of ``session.extras.replay_tool_history`` at the moment
+    # this assistant turn was persisted. Read at history-expansion time
+    # so toggle changes do NOT alter how prior turns are re-injected.
+    # Default ``True`` preserves the pre-2026-05-17 behaviour for any
+    # document written before this spec lands. Only meaningful on
+    # assistant documents — user/tool documents never carry the field.
+    tool_replay_at_save: bool = True
 
     model_config = {"populate_by_name": True}

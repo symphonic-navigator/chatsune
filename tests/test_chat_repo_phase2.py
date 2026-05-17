@@ -155,3 +155,59 @@ async def test_save_message_persists_correlation_id_on_assistant(mock_db):
     assert doc["correlation_id"] == "cid-fwd-fix"
     assert doc["user_id"] == "user-1"
     assert doc["role"] == "assistant"
+
+
+async def test_save_message_persists_tool_replay_flag_when_provided(mock_db):
+    """Smoke test for the per-turn replay snapshot.
+
+    Spec: devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md.
+    The orchestrator threads ``tool_replay_at_save`` into the assistant
+    write so each turn records the policy that was active when it
+    began. Omitting the kwarg must leave the field absent on the
+    document — legacy callers (and user-message writes) rely on that.
+    """
+    from backend.modules.chat._repository import ChatRepository
+
+    mock_db["chat_sessions"].find_one_and_update = AsyncMock(
+        return_value={"_id": "sess-1", "last_message_seq": 1},
+    )
+    mock_db["chat_messages"].insert_one = AsyncMock()
+
+    repo = ChatRepository(mock_db)
+
+    # Explicit False — written verbatim.
+    doc_off = await repo.save_message(
+        session_id="sess-1",
+        role="assistant",
+        content="off",
+        token_count=1,
+        correlation_id="cid-off",
+        user_id="user-1",
+        tool_replay_at_save=False,
+    )
+    assert doc_off["tool_replay_at_save"] is False
+
+    # Omitted — field stays absent, reader defaults to True via the
+    # ``ChatMessageDocument`` Pydantic default.
+    doc_default = await repo.save_message(
+        session_id="sess-1",
+        role="assistant",
+        content="default",
+        token_count=1,
+        correlation_id="cid-default",
+        user_id="user-1",
+    )
+    assert "tool_replay_at_save" not in doc_default
+
+    # User-role writes never carry the field, even if the kwarg is
+    # supplied — the flag is only meaningful on assistant docs.
+    doc_user = await repo.save_message(
+        session_id="sess-1",
+        role="user",
+        content="hi",
+        token_count=1,
+        correlation_id="cid-user",
+        user_id="user-1",
+        tool_replay_at_save=False,
+    )
+    assert "tool_replay_at_save" not in doc_user

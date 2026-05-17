@@ -205,7 +205,6 @@ def _expand_history_doc(
     doc: dict,
     *,
     replay_reasoning: bool,
-    replay_tool_history: bool,
 ) -> list[CompletionMessage]:
     """Expand one stored message document into 1..N CompletionMessages.
 
@@ -215,9 +214,14 @@ def _expand_history_doc(
     messages — one per tool-result event on the document, in
     chronological order.
 
-    The replay flags control whether the per-turn reasoning trace and
-    tool-call narration are re-injected on subsequent turns. See spec
-    §4.2 (reasoning + tool re-injection across turns).
+    ``replay_reasoning`` is a per-inference capability flag (depends on
+    the model, not the user's session preferences). The tool-history
+    replay flag, by contrast, is read **per-document** from
+    ``tool_replay_at_save`` (snapshot at the time the assistant turn
+    was persisted). Legacy docs without the field deserialise as
+    ``True`` (see ``ChatMessageDocument.tool_replay_at_save``), matching
+    the pre-2026-05-17 behaviour. See spec
+    ``devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md``.
     """
     role = doc.get("role")
     content_parts: list[ContentPart] = [
@@ -255,6 +259,11 @@ def _expand_history_doc(
         return [CompletionMessage(role=role, content=content_parts)]
 
     # Assistant document — assemble the replay.
+    # Per-turn flag: snapshot at the moment this assistant message was
+    # persisted (see save_fn in run_inference). Legacy documents without
+    # the field default to ``True`` to preserve their original
+    # behaviour.
+    replay_tool_history = doc.get("tool_replay_at_save", True)
     thinking_blocks: list[ThinkingBlock] = (
         _build_thinking_blocks_for_replay(doc) if replay_reasoning else []
     )
@@ -949,6 +958,13 @@ async def run_inference(
             update={"reasoning_mode": new_mode, "reasoning_effort": new_effort},
         )
 
+    # Snapshot the replay-tool-history policy at INFERENCE START (not at
+    # save_fn call time). If the user toggles ``extras.replay_tool_history``
+    # mid-stream, the in-flight turn still records the value that was
+    # active when it began — see spec
+    # ``devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md``.
+    replay_tool_history_snapshot = bool(extras.replay_tool_history)
+
     # Load message history. We do this before assembling the system prompt
     # because the compact-and-continue checkpoint, when present, supplies
     # ``compact_markdown`` to the assembler and trims ``history_docs`` to
@@ -1054,15 +1070,16 @@ async def run_inference(
     # Grok reasoning, Mistral Magistral, o-series) requires the
     # provider's prior thinking trace back in the prompt; soft-CoT
     # families (DSv4, Kimi, MiMo, GLM-5) reject it. ``replay_reasoning``
-    # gates that. ``extras.replay_tool_history`` gates whether past
-    # tool-call narration expands into assistant(tool_calls) +
-    # tool(result) triplets.
+    # gates that. Whether past tool-call narration expands into
+    # assistant(tool_calls) + tool(result) triplets is now read
+    # **per assistant document** from its ``tool_replay_at_save``
+    # snapshot — see spec
+    # ``devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md``.
     for doc in selected_history:
         messages.extend(
             _expand_history_doc(
                 doc,
                 replay_reasoning=reasoning_cap.replay_reasoning,
-                replay_tool_history=extras.replay_tool_history,
             )
         )
 
@@ -1271,6 +1288,10 @@ async def run_inference(
             # 2026-05-17-pair-by-correlation-design.md.
             correlation_id=correlation_id,
             user_id=user_id,
+            # Per-turn snapshot captured at inference start. Stable for
+            # this turn even if the user toggles mid-stream — see spec
+            # 2026-05-17-replay-tool-history-per-turn-flag-design.md.
+            tool_replay_at_save=replay_tool_history_snapshot,
         )
         await repo.update_session_state(session_id, "idle")
 

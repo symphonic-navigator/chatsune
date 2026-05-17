@@ -2137,3 +2137,88 @@ needs to stay tight.
 **Related:** INS-047 (`session_seq` write ordering). Both ship in
 the same v0.2.0 pre-branching wave; correlation-id pairing is the
 last structural prerequisite before the tree model lands.
+
+---
+
+## INS-049 — Persist `replay_tool_history` per assistant turn, not retroactively (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** The reasoning + tool replay spec (INS-shipped earlier in
+this wave) introduced `ChatSessionExtras.replay_tool_history` as a
+session-level cockpit toggle. Initially the orchestrator read the
+live value at history-expansion time and applied it to every past
+turn in the session. That made the toggle **retroactive**: flipping
+it off mid-conversation rebuilt every prior tool-using turn without
+its tool narration, the context-fill ampel jumped down instantly,
+and the user's mental model — "the model already knew about that
+tool call" — was violated. Flipping back on restored the old token
+counts; back-and-forth toggling made the ampel jitter for no good
+reason.
+
+**Decision:** Snapshot the flag value **per turn** at the moment the
+assistant document is persisted, then read that snapshot back at
+history-expansion time. The live `extras.replay_tool_history` toggle
+governs only **future** turns; prior turns stay expanded with the
+policy that produced them.
+
+**Implementation:** see
+`devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md`.
+Four moving parts:
+
+1. **Document field.** `ChatMessageDocument.tool_replay_at_save:
+   bool = True` in `backend/modules/chat/_models.py`. Pydantic
+   default `True` is the backwards-compat read mechanism — legacy
+   assistant docs without the key deserialise as if replay was on,
+   matching their original behaviour. No migration script needed;
+   no index, no schema migration.
+2. **Repository write.** `ChatRepository.save_message` takes an
+   optional `tool_replay_at_save: bool | None = None` kwarg. The
+   value is only written when `role == "assistant"` and the kwarg
+   is supplied — user-message writes and legacy callers leave the
+   field absent.
+3. **Snapshot capture.** `run_inference` resolves the snapshot
+   immediately after the extras are finalised (post
+   `reasoning_override` merge) — *at inference start*, not at
+   `save_fn` call time. Mid-stream toggles do not retroactively
+   reshape the in-flight turn. The closure threads
+   `replay_tool_history_snapshot` through to `save_message`.
+4. **Read path.** `_expand_history_doc` no longer accepts
+   `replay_tool_history` as a kwarg. Instead it does
+   `doc.get("tool_replay_at_save", True)` on each assistant
+   document. The call site in `run_inference` stops passing the
+   global flag — there is no global replay flag in expansion any
+   more.
+
+**Why a snapshot, not a join against session extras?** Sessions
+mutate; per-turn semantics need turn-pinned state. Storing the
+flag on the assistant document keeps the read path one fetch deep
+(the same query that returns the message) and survives branching
+cleanly — a branch clone copies each message's snapshot along with
+its content, so the branch's prior history expands identically to
+the parent's at fork time. The branch's *new* turns can diverge by
+toggling without rewriting history.
+
+**`extras.replay_tool_history` stays put** on the session document
+— it is the "next-turn policy" knob the cockpit toggle writes to.
+Its semantic changed from "applied at expansion" to "snapshot at
+save". For users who never touch the toggle, behaviour is
+identical.
+
+**Tests:**
+
+- `tests/modules/chat/test_history_expansion.py` — extended. The
+  legacy `(replay_reasoning, replay_tool_history)` kwarg combos
+  now set `tool_replay_at_save` on the fixture docs. Two new
+  cases: per-doc respected across two assistant docs in the same
+  history, and legacy doc without the key defaults to replay-on.
+- `tests/test_chat_repo_phase2.py` — smoke test that
+  `save_message` writes the field when supplied, leaves it absent
+  when omitted, and never writes it on user-role docs even if the
+  kwarg is supplied.
+
+**Related:** INS-047 (`session_seq` write ordering), INS-048
+(`correlation_id` pairing). The trio ships in v0.2.0's
+pre-branching stabilisation wave. The cockpit toggle UI that
+exposes this flag to users lives in spec
+`devdocs/specs/2026-05-17-replay-tool-history-toggle-ui-design.md`.

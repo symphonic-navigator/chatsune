@@ -1,6 +1,7 @@
 """Tests for the orchestrator's ``_expand_history_doc`` helper.
 
 Spec: devdocs/specs/2026-05-17-reasoning-tool-replay-design.md §4.2.
+Per-turn tool-replay flag: devdocs/specs/2026-05-17-replay-tool-history-per-turn-flag-design.md.
 
 The helper walks a single stored message document and emits the
 0..N ``CompletionMessage``s that get fed into the next inference. We
@@ -17,8 +18,11 @@ exercise:
   message with ``tool_calls`` plus N ``role=tool`` messages.
 * assistant with an orphan tool_call (no result event) — call is
   dropped from the replay.
-* all four ``(replay_reasoning, replay_tool_history)`` combinations
-  with a thinking+tools-bearing document.
+* the four ``(replay_reasoning, tool_replay_at_save)`` combinations
+  with a thinking+tools-bearing document. ``tool_replay_at_save`` is
+  read off the document itself rather than passed as a kwarg.
+* legacy documents (no ``tool_replay_at_save`` key) default to
+  replay-on, matching pre-2026-05-17 behaviour.
 """
 
 import logging
@@ -142,7 +146,7 @@ def _full_assistant_doc() -> dict:
 
 def test_user_message_roundtrips_content() -> None:
     out = _expand_history_doc(
-        _user_doc(), replay_reasoning=False, replay_tool_history=False,
+        _user_doc(), replay_reasoning=False,
     )
     assert len(out) == 1
     assert out[0].role == "user"
@@ -153,7 +157,6 @@ def test_user_message_with_attachment_and_snapshot_expands_placeholders() -> Non
     out = _expand_history_doc(
         _user_doc_with_attachment_and_snapshot(),
         replay_reasoning=False,
-        replay_tool_history=False,
     )
     assert len(out) == 1
     parts = out[0].content
@@ -166,9 +169,8 @@ def test_user_message_with_attachment_and_snapshot_expands_placeholders() -> Non
 
 def test_bare_assistant_emits_single_assistant_message() -> None:
     out = _expand_history_doc(
-        _bare_assistant_doc(),
+        {**_bare_assistant_doc(), "tool_replay_at_save": True},
         replay_reasoning=True,
-        replay_tool_history=True,
     )
     assert len(out) == 1
     assert out[0].role == "assistant"
@@ -178,9 +180,8 @@ def test_bare_assistant_emits_single_assistant_message() -> None:
 
 def test_assistant_with_legacy_thinking_wraps_as_anonymous_block() -> None:
     out = _expand_history_doc(
-        _legacy_thinking_doc(),
+        {**_legacy_thinking_doc(), "tool_replay_at_save": False},
         replay_reasoning=True,
-        replay_tool_history=False,
     )
     assert len(out) == 1
     blocks = out[0].thinking_blocks
@@ -191,9 +192,8 @@ def test_assistant_with_legacy_thinking_wraps_as_anonymous_block() -> None:
 
 def test_assistant_with_new_thinking_blocks_roundtrips_signatures() -> None:
     out = _expand_history_doc(
-        _new_thinking_blocks_doc(),
+        {**_new_thinking_blocks_doc(), "tool_replay_at_save": False},
         replay_reasoning=True,
-        replay_tool_history=False,
     )
     blocks = out[0].thinking_blocks
     assert blocks is not None and len(blocks) == 2
@@ -203,9 +203,8 @@ def test_assistant_with_new_thinking_blocks_roundtrips_signatures() -> None:
 
 def test_assistant_with_tools_emits_tool_calls_plus_tool_messages() -> None:
     out = _expand_history_doc(
-        _tool_use_doc(),
+        {**_tool_use_doc(), "tool_replay_at_save": True},
         replay_reasoning=False,
-        replay_tool_history=True,
     )
     # assistant(tool_calls) + one role=tool message
     assert len(out) == 2
@@ -226,9 +225,8 @@ def test_orphan_tool_call_is_dropped_with_warning(
 ) -> None:
     with caplog.at_level(logging.WARNING):
         out = _expand_history_doc(
-            _orphan_tool_call_doc(),
+            {**_orphan_tool_call_doc(), "tool_replay_at_save": True},
             replay_reasoning=False,
-            replay_tool_history=True,
         )
     # Single assistant message, no tool_calls (orphan dropped).
     assert len(out) == 1
@@ -242,9 +240,8 @@ def test_orphan_tool_call_is_dropped_with_warning(
 
 def test_combo_no_replay_anywhere_collapses_to_plain_assistant() -> None:
     out = _expand_history_doc(
-        _full_assistant_doc(),
+        {**_full_assistant_doc(), "tool_replay_at_save": False},
         replay_reasoning=False,
-        replay_tool_history=False,
     )
     assert len(out) == 1
     assert out[0].thinking_blocks is None
@@ -253,9 +250,8 @@ def test_combo_no_replay_anywhere_collapses_to_plain_assistant() -> None:
 
 def test_combo_replay_reasoning_only() -> None:
     out = _expand_history_doc(
-        _full_assistant_doc(),
+        {**_full_assistant_doc(), "tool_replay_at_save": False},
         replay_reasoning=True,
-        replay_tool_history=False,
     )
     # Reasoning present, tools collapsed away.
     assert len(out) == 1
@@ -266,9 +262,8 @@ def test_combo_replay_reasoning_only() -> None:
 
 def test_combo_replay_tools_only() -> None:
     out = _expand_history_doc(
-        _full_assistant_doc(),
+        {**_full_assistant_doc(), "tool_replay_at_save": True},
         replay_reasoning=False,
-        replay_tool_history=True,
     )
     # No thinking; one assistant(tool_calls) + one tool message.
     assert len(out) == 2
@@ -279,10 +274,45 @@ def test_combo_replay_tools_only() -> None:
 
 def test_combo_replay_both() -> None:
     out = _expand_history_doc(
-        _full_assistant_doc(),
+        {**_full_assistant_doc(), "tool_replay_at_save": True},
         replay_reasoning=True,
-        replay_tool_history=True,
     )
     assert len(out) == 2
     assert out[0].thinking_blocks is not None
     assert out[0].tool_calls is not None
+
+
+def test_per_doc_flag_respected_across_two_assistant_docs() -> None:
+    """Two assistant docs in the same history, one with the per-turn
+    flag on and one with it off. The doc with ``True`` expands its
+    tool triplet; the doc with ``False`` collapses to a single
+    assistant message even though the call site does not pass a
+    global flag any more.
+    """
+    on_doc = {**_full_assistant_doc(), "tool_replay_at_save": True}
+    off_doc = {**_full_assistant_doc(), "tool_replay_at_save": False}
+
+    out_on = _expand_history_doc(on_doc, replay_reasoning=False)
+    out_off = _expand_history_doc(off_doc, replay_reasoning=False)
+
+    # Replay-on: assistant(tool_calls) + tool result.
+    assert len(out_on) == 2
+    assert out_on[0].tool_calls is not None and len(out_on[0].tool_calls) == 1
+    assert out_on[1].role == "tool"
+    # Replay-off: single assistant, no tool_calls.
+    assert len(out_off) == 1
+    assert out_off[0].tool_calls is None
+
+
+def test_legacy_doc_without_flag_defaults_to_replay_on() -> None:
+    """Documents written before the per-turn flag landed lack the
+    ``tool_replay_at_save`` key entirely. ``doc.get(...)`` falls back
+    to ``True`` (matching the Pydantic model default), preserving
+    pre-2026-05-17 behaviour."""
+    legacy = _full_assistant_doc()  # NO tool_replay_at_save key
+    assert "tool_replay_at_save" not in legacy
+    out = _expand_history_doc(legacy, replay_reasoning=False)
+    # Two messages: assistant(tool_calls) + tool result — replay-on.
+    assert len(out) == 2
+    assert out[0].tool_calls is not None and len(out[0].tool_calls) == 1
+    assert out[1].role == "tool"

@@ -859,6 +859,13 @@ class ChatRepository:
         status: Literal["completed", "aborted", "refused"] = "completed",
         correlation_id: str | None = None,
         user_id: str | None = None,
+        # Per-turn snapshot of ``session.extras.replay_tool_history``.
+        # Only meaningful for ``role == "assistant"``; the orchestrator
+        # supplies the value captured at inference start so the document
+        # records the policy that produced it. ``None`` (the default)
+        # means "do not write the field" — legacy callers, user-message
+        # writes, and the import path all rely on that.
+        tool_replay_at_save: bool | None = None,
     ) -> dict:
         now = datetime.now(UTC)
         doc = {
@@ -917,6 +924,12 @@ class ChatRepository:
                 doc["image_refs"] = image_refs
         if refusal_text:
             doc["refusal_text"] = refusal_text
+        # Per-turn replay-policy snapshot. Only assistant writes carry
+        # it. The Pydantic default on the document model is ``True``, so
+        # omitting the field on legacy docs preserves their pre-spec
+        # behaviour at read time.
+        if role == "assistant" and tool_replay_at_save is not None:
+            doc["tool_replay_at_save"] = tool_replay_at_save
         # Atomically reserve a per-session sequence number. Using
         # ``find_one_and_update`` with ``$inc`` and ``ReturnDocument.AFTER``
         # gives us the new value in a single round-trip; the increment is
