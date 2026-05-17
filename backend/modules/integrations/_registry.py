@@ -283,6 +283,72 @@ def _register_builtins() -> None:
     ))
 
     register(IntegrationDefinition(
+        id="nano_gpt_voice_xai",
+        display_name="xAI Voice via nano-gpt",
+        description=(
+            "Speech-to-text and text-to-speech via xAI, routed through "
+            "nano-gpt. Uses the nano-gpt account's API key — no separate "
+            "xAI account required."
+        ),
+        icon="nano_gpt",
+        execution_mode="hybrid",
+        hydrate_secrets=False,
+        system_prompt_template=build_system_prompt_extension(),
+        capabilities=[
+            IntegrationCapability.TTS_PROVIDER,
+            IntegrationCapability.STT_PROVIDER,
+            IntegrationCapability.TTS_EXPRESSIVE_MARKUP,
+        ],
+        linked_premium_provider="nano_gpt",
+        config_fields=[
+            {
+                "key": "playback_gap_ms",
+                "label": "Pause between chunks",
+                "field_type": "select",
+                "required": False,
+                "description": (
+                    "Gap inserted between sentences and speaker switches. "
+                    "xAI already leaves a natural silence at sentence ends, "
+                    "so no extra gap is needed by default."
+                ),
+                "options": [
+                    {"value": "0",   "label": "0 ms (default)"},
+                    {"value": "100", "label": "100 ms"},
+                    {"value": "200", "label": "200 ms"},
+                    {"value": "300", "label": "300 ms"},
+                    {"value": "400", "label": "400 ms"},
+                    {"value": "500", "label": "500 ms"},
+                    {"value": "600", "label": "600 ms"},
+                    {"value": "700", "label": "700 ms"},
+                    {"value": "800", "label": "800 ms"},
+                ],
+            },
+        ],
+        persona_config_fields=[
+            {
+                "key": "voice_id",
+                "label": "Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": True,
+                "description": "Voice used when this persona speaks.",
+            },
+            {
+                "key": "narrator_voice_id",
+                "label": "Narrator Voice",
+                "field_type": "select",
+                "options_source": OptionsSource.PLUGIN,
+                "required": False,
+                "description": (
+                    "Voice used for narration / prose when narrator mode "
+                    "is active. Leave at 'Inherit' to use the primary voice."
+                ),
+            },
+        ],
+        tool_definitions=[],
+    ))
+
+    register(IntegrationDefinition(
         id="screen_effect",
         display_name="Screen Effects",
         description="Visual inline flourishes the persona drops over the screen.",
@@ -310,6 +376,13 @@ def _register_builtin_voice_adapters() -> None:
     from backend.modules.integrations._voice_adapters import register_adapter
     from backend.modules.integrations._voice_adapters._client import get_voice_http_client
     from backend.modules.integrations._voice_adapters._mistral import MistralVoiceAdapter
+    from backend.modules.integrations._voice_adapters._nano_gpt_voice_xai import (
+        NanoGptVoiceXaiAdapter,
+    )
     from backend.modules.integrations._voice_adapters._xai import XaiVoiceAdapter
     register_adapter("xai_voice", XaiVoiceAdapter(get_voice_http_client()))
     register_adapter("mistral_voice", MistralVoiceAdapter(get_voice_http_client()))
+    register_adapter(
+        "nano_gpt_voice_xai",
+        NanoGptVoiceXaiAdapter(get_voice_http_client()),
+    )

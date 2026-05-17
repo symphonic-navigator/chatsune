@@ -9,6 +9,7 @@ import type { SubTabId } from './userModalTree'
 // Ensure plugins are registered
 import '../../../features/integrations/plugins/lovense'
 import '../../../features/integrations/plugins/mistral_voice'
+import '../../../features/integrations/plugins/nano_gpt_voice_xai'
 
 const LABEL = "block text-[10px] uppercase tracking-[0.15em] text-white/50 mb-2 font-mono"
 

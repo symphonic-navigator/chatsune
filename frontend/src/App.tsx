@@ -14,6 +14,7 @@ import { initPluginLifecycle } from "./features/integrations/pluginLifecycle"
 import './features/integrations/plugins/lovense'
 import './features/integrations/plugins/mistral_voice'
 import './features/integrations/plugins/xai_voice'
+import './features/integrations/plugins/nano_gpt_voice_xai'
 import './features/integrations/plugins/screen_effects'
 import { ScreenEffectsOverlay } from './features/integrations/plugins/screen_effects/overlay/ScreenEffectsOverlay'
 import AppLayout from "./app/layouts/AppLayout"

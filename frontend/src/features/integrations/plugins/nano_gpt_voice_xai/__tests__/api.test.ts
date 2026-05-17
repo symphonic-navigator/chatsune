@@ -1,0 +1,90 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// Mock the auth-token provider BEFORE importing the module under test.
+// apiUrl is passthrough in tests — VITE_API_URL is unset in the vitest env,
+// so the production helper would also return the path unchanged; keeping
+// the assertions origin-agnostic via toContain() leaves both behaviours valid.
+vi.mock('../../../../../core/api/client', () => ({
+  currentAccessToken: () => 'TEST_TOKEN',
+  apiUrl: (path: string) => path,
+}))
+
+import { transcribeNanoGptXai, synthesiseNanoGptXai, listNanoGptXaiVoices } from '../api'
+
+const fetchMock = vi.fn()
+
+beforeEach(() => {
+  fetchMock.mockReset()
+  vi.stubGlobal('fetch', fetchMock)
+})
+
+describe('nano_gpt_voice_xai api', () => {
+  it('transcribeNanoGptXai posts multipart with bearer token and returns text', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: 'hi' }), { status: 200 }),
+    )
+    const audio = new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/webm;codecs=opus' })
+    const text = await transcribeNanoGptXai({ audio, mimeType: 'audio/webm;codecs=opus', language: 'en' })
+    expect(text).toBe('hi')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/integrations/nano_gpt_voice_xai/voice/stt')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(init.headers.Authorization).toBe('Bearer TEST_TOKEN')
+    // multipart filename tracks the MIME extension so servers using the
+    // filename as a content-type hint disambiguate correctly.
+    const form = init.body as FormData
+    const file = form.get('audio') as File
+    expect(file.name).toBe('audio.webm')
+    expect(file.type).toBe('audio/webm;codecs=opus')
+  })
+
+  it('nano-gpt xAI TTS posts JSON body to backend proxy', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(new Uint8Array([0xff, 0xfb]), {
+        status: 200,
+        headers: { 'content-type': 'audio/mpeg' },
+      }),
+    )
+    const blob = await synthesiseNanoGptXai({ text: 'hello', voiceId: 'v1' })
+    expect(blob).toBeInstanceOf(Blob)
+    expect(blob.type).toBe('audio/mpeg')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/integrations/nano_gpt_voice_xai/voice/tts')
+    expect(init.method).toBe('POST')
+    expect(init.headers['Content-Type']).toBe('application/json')
+    expect(init.headers.Authorization).toBe('Bearer TEST_TOKEN')
+    expect(JSON.parse(init.body as string)).toEqual({ text: 'hello', voice_id: 'v1' })
+  })
+
+  it('listNanoGptXaiVoices returns the parsed voice list via nano-gpt backend', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          voices: [{ id: 'v1', name: 'Voice One', language: null, gender: null }],
+        }),
+        { status: 200 },
+      ),
+    )
+    const voices = await listNanoGptXaiVoices()
+    expect(voices).toHaveLength(1)
+    expect(voices[0].id).toBe('v1')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/integrations/nano_gpt_voice_xai/voice/voices')
+    expect(init.method).toBe('GET')
+    expect(init.headers.Authorization).toBe('Bearer TEST_TOKEN')
+  })
+
+  it('throws on non-2xx and surfaces the backend message', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ error_code: 'voice_auth', message: 'bad key' }),
+        { status: 401 },
+      ),
+    )
+    await expect(listNanoGptXaiVoices()).rejects.toThrow(/bad key/)
+  })
+})
