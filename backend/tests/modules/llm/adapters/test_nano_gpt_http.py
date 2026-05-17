@@ -925,6 +925,8 @@ from shared.dtos.images import (
 
 
 def _resolved_nano_conn() -> ResolvedConnection:
+    from datetime import UTC, datetime
+    now = datetime.now(UTC)
     return ResolvedConnection(
         id="conn_nano",
         user_id="u1",
@@ -932,6 +934,8 @@ def _resolved_nano_conn() -> ResolvedConnection:
         display_name="nano-gpt",
         adapter_type="nano_gpt_http",
         config={"url": "https://nano-gpt.com/api/v1", "api_key": "sk-test"},
+        created_at=now,
+        updated_at=now,
     )
 
 
