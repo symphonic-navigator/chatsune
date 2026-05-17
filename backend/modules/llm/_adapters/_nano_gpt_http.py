@@ -1082,7 +1082,11 @@ class NanoGptHttpAdapter(BaseAdapter):
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        # Z-Image-Base at n=4 can take ~3 minutes (the validator's worst-case
+        # cap). 300 s read covers that with a margin; connect/write/pool stay
+        # short so genuine networking issues fail fast.
+        _gen_timeout = httpx.Timeout(connect=15.0, read=300.0, write=15.0, pool=15.0)
+        async with httpx.AsyncClient(timeout=_gen_timeout) as client:
             resp = await client.post(
                 f"{base_url}/images/generations",
                 headers=headers, json=body,

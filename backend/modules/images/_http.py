@@ -168,7 +168,7 @@ async def test_image(
     moderated = 0
     for item in items:
         if isinstance(item, GeneratedImageResult):
-            if item.data is None:
+            if item.data is None or item.content_type is None:
                 moderated += 1
                 continue
             try:
