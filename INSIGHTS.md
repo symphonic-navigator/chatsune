@@ -2642,3 +2642,44 @@ Coverage:
 **Related:** INS-052 (backend endpoint and clone semantics),
 INS-048 (pair-by-correlation — branch and parent share cids by
 design so the pair builder works without changes).
+
+## INS-054 — nano-gpt STT rejects `audio/webm`; spoof as MKV (2026-05-17)
+
+Browser MediaRecorder (notably Chrome) captures audio as
+`audio/webm;codecs=opus`. xAI's direct STT endpoint accepts that
+content-type. **nano-gpt's STT wrapper does not** — it runs an
+early content-type whitelist (MP3, WAV, OGG, OPUS, FLAC, AAC, MP4,
+M4A, MKV) and returns HTTP 400 `Unsupported file type` before the
+audio ever reaches ffmpeg.
+
+**Fix.** In `_nano_gpt_voice_xai.py:transcribe`, when the inbound
+content-type contains `webm`, the multipart upload declares
+`audio/x-matroska` with filename `audio.mkv`. The audio bytes are
+unchanged. This works because webm is a restricted profile of
+Matroska — the MKV parser ffmpeg uses on `.mkv` files reads the
+webm container fine.
+
+**Empirically verified** against the live nano-gpt API on
+2026-05-17 with a real Opus-in-webm sample. Three alternative
+spoofs were probed and all failed:
+- `audio/ogg` / `audio.ogg` → 400 "Unable to read the audio
+  duration" (ogg headers differ from webm just enough that the
+  duration probe rejects).
+- `audio/opus` / `audio.opus` → same error.
+- `application/octet-stream` → bypasses the early whitelist but
+  triggers an upstream xAI 422.
+
+Only `audio/x-matroska` (and the equivalent `video/x-matroska`)
+get a 200.
+
+**Why this lives in the adapter, not at the frontend.** Different
+upstream voice providers have different format tolerances. xAI
+direct accepts webm; nano-gpt's wrapper doesn't. Keeping the
+remap at the adapter boundary means frontend behaviour stays
+provider-agnostic and per-provider quirks live in one place. If a
+future backend behind nano-gpt (Mistral, ElevenLabs, MiniMax)
+exposes a different whitelist, the same pattern repeats inside
+that adapter.
+
+**Related:** Spec
+`devdocs/superpowers/specs/2026-05-17-nano-gpt-voice-design.md`.

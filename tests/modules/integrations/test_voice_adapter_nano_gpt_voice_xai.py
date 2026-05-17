@@ -117,6 +117,28 @@ async def test_transcribe_without_language_omits_field() -> None:
 
 
 @pytest.mark.asyncio
+async def test_transcribe_remaps_webm_to_mkv_for_nano_gpt_whitelist() -> None:
+    # nano-gpt's STT rejects audio/webm at an early content-type check.
+    # webm is a restricted MKV profile, so the adapter spoofs the
+    # declared container to audio/x-matroska / audio.mkv before forwarding.
+    # See INSIGHTS INS-054.
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content.decode("utf-8", errors="replace")
+        assert 'filename="audio.mkv"' in body
+        assert "audio/x-matroska" in body
+        assert "audio/webm" not in body
+        return httpx.Response(200, json={"text": "ok"})
+
+    adapter = NanoGptVoiceXaiAdapter(_client_with(handler))
+    await adapter.transcribe(
+        audio=b"FAKE_WEBM_BYTES",
+        content_type="audio/webm;codecs=opus",
+        api_key="k",
+        language=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_transcribe_maps_400_to_voice_bad_request() -> None:
     from backend.modules.integrations._voice_adapters._base import VoiceBadRequestError
 

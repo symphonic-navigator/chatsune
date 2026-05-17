@@ -93,8 +93,20 @@ class NanoGptVoiceXaiAdapter(VoiceAdapter):
         url = f"{self.BASE_URL}/audio/transcriptions"
         # nano-gpt's OpenAI-compatible endpoint expects the standard
         # Whisper-style ``file`` multipart field plus ``model``.
-        ext = "wav" if "wav" in content_type else "webm"
-        files = {"file": (f"audio.{ext}", audio, content_type)}
+        #
+        # nano-gpt rejects ``audio/webm`` at an early content-type
+        # whitelist. webm IS a restricted MKV profile and ffmpeg reads
+        # the bytes fine when told to expect MKV, so we spoof the
+        # declared container for webm uploads. The audio bytes are
+        # unchanged. See INSIGHTS INS-054.
+        if "webm" in content_type:
+            upload_filename = "audio.mkv"
+            upload_content_type = "audio/x-matroska"
+        else:
+            ext = "wav" if "wav" in content_type else "webm"
+            upload_filename = f"audio.{ext}"
+            upload_content_type = content_type
+        files = {"file": (upload_filename, audio, upload_content_type)}
         data: dict[str, str] = {"model": self.STT_MODEL}
         if language:
             data["language"] = language
