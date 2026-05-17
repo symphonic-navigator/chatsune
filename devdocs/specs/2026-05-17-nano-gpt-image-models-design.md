@@ -23,6 +23,30 @@ Today only xAI's `xai_imagine` group can generate images. Nano-gpt already exist
 
 ---
 
+## Spike findings (live API, 2026-05-17)
+
+Verified against `https://nano-gpt.com/api/v1/images/generations` with the test key on 2026-05-17. Six calls, total cost $0.14, remaining balance $35.38. The numbered sections below have been adjusted to match these findings; this block is the record of what we confirmed.
+
+- **Body shape is uniform across all three models:** OpenAI-style `{model, prompt, n, size: "WxH", response_format: "url"}`. Seedream also accepts separate `width`/`height` but produces identical output to `size` — we standardise on `size` for all three.
+- **Response envelope:** `{created, requestId, data: [{storageKey, url}], cost?, paymentSource?, remainingBalance?}`. Image entries carry **only** `storageKey` + `url` — no `b64_json`, no `revised_prompt`, no per-item moderation field.
+- **`cost` is optional.** Present for Z-Image-Base and Seedream, **absent for Z-Image-Turbo** (effectively free at our scale). Adapter must `payload.get("cost")` defensively.
+- **No per-item moderation field.** Unlike xAI's `respect_moderation: false`, nano-gpt does not flag individual items as moderated. If a prompt is rejected it surfaces as an HTTP 4xx. The `ModeratedRejection` code path is therefore only used for the "adapter promised bytes but fetch failed" stub case, never as the upstream's own moderation signal.
+- **Image URLs are Cloudflare R2 with AWS-V4 signatures** (`X-Amz-Signature`, `X-Amz-Expires=604800`). The adapter **must not** send `Authorization: Bearer` when fetching the image — it collides with the AWS signature. Use a bare GET without auth headers.
+- **Content-Type is `image/jpeg` for all three models** — fits the existing `generate_thumbnail_jpeg` pipeline.
+- **Latency profile differs sharply:**
+
+| Model | 1024² | 1536² | 1920² | 2560×1440 |
+|-------|-------|-------|-------|-----------|
+| Z-Image-Turbo | 3.7 s | 5.4 s | — | — |
+| Z-Image-Base | **43.4 s** | not tested | — | — |
+| Seedream 4.5 | — | — | 21.2 s | 22.8 s |
+
+Z-Image-Base at `n=10` would block the user for ~7 minutes. The count cap is therefore model-aware: `model="base"` is capped at `n=4`, `model="turbo"` keeps `n=10` (§3.3).
+
+- **Cost per image (observed):** Z-Image-Turbo $0, Z-Image-Base $0.017, Seedream 4.5 $0.04 (flat across the tested resolutions).
+
+---
+
 ## 3. Architectural changes — three layers
 
 ### 3.1 Byte-handoff refactor (cross-cutting)
@@ -66,6 +90,13 @@ Both groups POST to `${base_url}/images/generations` with an OpenAI-shaped body.
 
 The adapter also exposes an `/imagine/test` sub-route mirroring xAI's (used by the TTI panel's "Test image" button). Identical request/response shape — `_ImagineTestRequest` is already a generic DTO, no schema work needed.
 
+**Implementation notes from the spike:**
+
+- The R2 image URL is fetched with a bare `httpx.AsyncClient.get(url)` — **no** `Authorization` header. Sending one collides with the embedded AWS-V4 signature and yields 403.
+- Read `cost` defensively (`payload.get("cost")`): Z-Image-Turbo omits it entirely. Log whatever's present with `_log.debug("nano_gpt.generate_images cost_usd=%s", cost)`.
+- Content-Type from `blob_resp.headers.get("content-type", "image/jpeg")` — all three models return JPEG in the spike, but the fallback keeps us safe if that ever changes.
+- Per-item moderation does not exist in the response; `ModeratedRejection` is only emitted for the existing "promised bytes but fetch failed" stub case.
+
 ### 3.3 Two new typed configs in `shared/dtos/images.py`
 
 ```python
@@ -80,6 +111,15 @@ class ZImageConfig(BaseModel):
         "1536x1536",
     ] = "1024x1024"
     n: int = Field(4, ge=1, le=10)
+
+    @model_validator(mode="after")
+    def _cap_base_n(self) -> "ZImageConfig":
+        # Z-Image-Base is ~10x slower than Turbo (43 s vs 4 s at 1024²
+        # in the 2026-05-17 spike). Cap n at 4 for Base so the worst-case
+        # wait stays under ~3 minutes.
+        if self.model == "base" and self.n > 4:
+            self.n = 4
+        return self
 
 class SeedreamConfig(BaseModel):
     group_id: Literal["nano_gpt_seedream"] = "nano_gpt_seedream"
@@ -125,7 +165,7 @@ The size dropdown lists all nine literal strings from the type. Native `<select>
 }
 ```
 
-Model slug derives from `config.model`: `f"z-image-{config.model}"`. We follow xAI's pattern of preferring `response_format: "url"` so the adapter pulls bytes in a second request — that lets us reuse the moderation/fetch-failure handling already in place for xAI.
+Model slug derives from `config.model`: `f"z-image-{config.model}"`. We follow xAI's pattern of preferring `response_format: "url"` so the adapter pulls bytes in a second request — that lets us reuse the fetch-failure stub path already in place for xAI (nano-gpt itself emits no per-item moderation signal, see Spike findings).
 
 ### 4.3 Why model is in the config, not split into two groups
 
@@ -168,13 +208,12 @@ Implemented as a static `dict[tuple[str, str], tuple[int, int]]` in `_nano_gpt_i
   "model": "seedream-v4.5",
   "prompt": "<user prompt>",
   "n": <1-4>,
-  "width": <int>,
-  "height": <int>,
+  "size": "<width>x<height>",
   "response_format": "url"
 }
 ```
 
-If the nano-gpt API turns out to want `size: "WxH"` instead of separate width/height (the OpenAI convention), the adapter switches that one line. The Spike step in the implementation plan verifies which shape the live API accepts.
+Spike verified that `size: "WxH"` works across all three nano-gpt image models (Z-Image-Turbo, Z-Image-Base, Seedream 4.5). We use this one shape uniformly; the optional separate `width`/`height` accepted by Seedream is not used.
 
 ### 5.4 Why a count cap of 4 (vs xAI/Z-Image's 10)
 
@@ -265,11 +304,7 @@ function groupLabel(groupId: string): string {
 
 ### 8.2 Adapter test against live API
 
-Behind an env-gated test (the existing `.nano-test-key` pattern), call each of the three models once with a benign prompt. Verify:
-- Successful path: bytes received, dimensions probed, MIME-type passed through.
-- Cost field surfaced in logs (analogous to xAI's `cost_in_usd_ticks`).
-
-Implementation plan will spell out the exact Spike step that runs this against the live key before we commit the payload-shape decision in §5.3.
+The live-API spike (Spike findings, above) already exercised each of the three models once and verified bytes, dimensions, content-type, and the `cost` field. We do not turn this into a checked-in env-gated test — the Live API would cost real money on every CI run and the response is non-deterministic. The unit tests in §8.1 cover the deterministic parts; the manual QA pass in §8.3 covers the live happy-path post-implementation.
 
 ### 8.3 Manual UI verification
 
@@ -291,21 +326,21 @@ Implementation plan will spell out the exact Spike step that runs this against t
 
 ## 10. Build sequence (handed off to writing-plans)
 
-A rough order, refined into a plan in the next step:
+A rough order, refined into a plan in the next step. The live-API spike is already done (see "Spike findings" above), so it does not appear here.
 
 1. **Buffer refactor** — `GeneratedImageResult.data` + `.content_type`; xAI adapter, ImageService, tests.
-2. **Shared DTO** — `ZImageConfig`, `SeedreamConfig`, union extension.
-3. **Adapter helpers** — `_nano_gpt_image_groups.py` with payload builders and the resolution table; pure functions with unit tests.
-4. **Adapter wiring** — `supports_image_generation=True`, `image_groups`, `generate_images`, `/imagine/test` sub-route on `_nano_gpt_http.py`.
-5. **Spike** — adapter test against `.nano-test-key`; lock in §5.3 payload shape.
-6. **Frontend views** — `ZImageConfigView.tsx`, `SeedreamConfigView.tsx`, registry entries, defaults, empty-state copy, label map.
-7. **Manual QA pass** — three test images per group through the cockpit.
+2. **Shared DTO** — `ZImageConfig` (with model-aware `n` cap), `SeedreamConfig`, union extension.
+3. **Adapter helpers** — `_nano_gpt_image_groups.py` with payload builders and the Seedream resolution table; pure functions with unit tests.
+4. **Adapter wiring** — `supports_image_generation=True`, `image_groups`, `generate_images`, `/imagine/test` sub-route on `_nano_gpt_http.py`. Image GET uses no auth header (signed R2 URLs).
+5. **Frontend views** — `ZImageConfigView.tsx`, `SeedreamConfigView.tsx`, registry entries, defaults, empty-state copy, label map.
+6. **Manual QA pass** — three test images per group through the cockpit.
 
 ---
 
 ## 11. Open risks
 
-- **Nano-gpt body shape for Seedream may differ** (e.g. expects `size: "WxH"` instead of separate `width`/`height`). Mitigated by the Spike step.
-- **Z-Image `n=10` may be rate-limited or expensive at large sizes.** We keep the cap at 10 to mirror xAI; if cost in testing surprises us, we lower the Pydantic field's `le=…` before merging.
-- **Seedream resolution table may need tuning** if the model produces poor quality at one of the picked dimensions. Table is in one file, one diff to adjust.
+- **Z-Image-Base latency in the cockpit.** Spike showed 43 s for one 1024² image; at the capped n=4 the worst case is ~3 minutes. The cockpit's "Test image" button has no progress indicator beyond the existing spinner — if testers complain, we add a "Base is significantly slower than Turbo" hint near the model toggle in `ZImageConfigView`. Low-effort follow-up, not a blocker.
+- **Z-Image `n=10` cost behaviour** at large sizes (1536²): not stress-tested. We keep the cap at 10 (Turbo only) because Turbo is free at our scale; if production usage surprises us, we lower the Pydantic field's `le=…` and ship a patch.
+- **Seedream resolution table may need tuning** if the model produces poor composition at one of the picked dimensions. The table lives in one file (`_nano_gpt_image_groups.py`), one diff to adjust.
 - **Buffer refactor touches xAI tests.** Diff size is small but every xAI image test needs a quick review; we run the full backend suite before merging.
+- ~~**Nano-gpt body shape for Seedream may differ.**~~ **Resolved** — `size: "WxH"` works for all three models (spike, 2026-05-17).
