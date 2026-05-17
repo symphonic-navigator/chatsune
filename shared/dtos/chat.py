@@ -29,6 +29,27 @@ class SessionProjectUpdateDto(BaseModel):
     project_id: str | None
 
 
+class ForkedFromPointer(BaseModel):
+    """Lineage pointer set on clone-on-branch.
+
+    Records where this session was branched off from. Informational
+    only — once a branch is created it is fully independent of its
+    parent. The inference path does NOT consult this pointer; it
+    exists purely so future analytics / 'show branches of this
+    session' surfaces can walk the relationship.
+
+    ``message_id`` and ``session_seq`` are optional because a branch
+    may be forked from the very start of a session (no fork-point
+    message; the new branch starts with zero cloned messages).
+    See devdocs/specs/2026-05-17-branching-design.md §4.1, §7.7.
+    """
+
+    session_id: str          # parent session _id at clone time
+    message_id: str | None = None
+    session_seq: int | None = None
+    created_at: datetime     # when the branch was forked off
+
+
 class ChatSessionDto(BaseModel):
     id: str
     user_id: str
@@ -65,6 +86,10 @@ class ChatSessionDto(BaseModel):
     imported_from: Literal["chatgpt"] | None = None
     imported_model_slug: str | None = None
     imported_at: datetime | None = None
+    # Branching lineage pointer. ``None`` for top-level sessions (the
+    # common case); set on clone-on-branch. See
+    # devdocs/specs/2026-05-17-branching-design.md.
+    forked_from: ForkedFromPointer | None = None
 
 
 class ChatSessionExtras(BaseModel):
@@ -151,12 +176,19 @@ class TimelineEntryKnowledgeSearch(BaseModel):
     kind: Literal["knowledge_search"] = "knowledge_search"
     seq: int
     items: list[KnowledgeContextItem]
+    # True iff this entry was copied verbatim from a parent session by
+    # clone-on-branch. The frontend renders an informative "cloned from
+    # parent — not re-executed" subtitle on the pill. Defaults to
+    # ``False`` so existing documents deserialise unchanged.
+    # See devdocs/specs/2026-05-17-branching-design.md §4.4.
+    cloned_from_branch: bool = False
 
 
 class TimelineEntryWebSearch(BaseModel):
     kind: Literal["web_search"] = "web_search"
     seq: int
     items: list[WebSearchContextItemDto]
+    cloned_from_branch: bool = False
 
 
 class TimelineEntryToolCall(BaseModel):
@@ -170,12 +202,14 @@ class TimelineEntryToolCall(BaseModel):
     success: bool
     moderated_count: int = 0
     result_content: str | None = None
+    cloned_from_branch: bool = False
 
 
 class TimelineEntryArtefact(BaseModel):
     kind: Literal["artefact"] = "artefact"
     seq: int
     ref: ArtefactRefDto
+    cloned_from_branch: bool = False
 
 
 class TimelineEntryImage(BaseModel):
@@ -183,6 +217,7 @@ class TimelineEntryImage(BaseModel):
     seq: int
     refs: list[ImageRefDto]
     moderated_count: int = 0
+    cloned_from_branch: bool = False
 
 
 TimelineEntryDto = Annotated[

@@ -2424,3 +2424,117 @@ normally too.
 race-mitigation prerequisites for the branching feature itself.
 With these in place, frequent session switches under live streams
 no longer silently corrupt the message list.
+
+## INS-052 — Branching is clone-on-branch, not a tree on disk (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** Branching is the v0.2.0 flagship feature: users fork a
+conversation at any past assistant turn into an independent new
+chat. Two storage shapes were on the table — a deep tree
+(`parent_id` + `branch_id` columns, branches share documents) vs
+clone-on-branch (each branch is a normal `ChatSessionDocument`
+with its own messages). PRE-BRANCHING Q1 picked clone-on-branch
+explicitly: storage cost is low priority, and the clone composes
+cleanly with everything we already built (compaction, memory
+extraction, pair-by-correlation, reasoning replay, the new
+`session_seq` write key).
+
+**Decision:** `POST /api/chat/sessions/{parent_session_id}/branch`
+performs a synchronous multi-document MongoDB transaction
+(`ChatRepository.clone_session_at`) that:
+
+1. Loads the parent session and the fork-point assistant under a
+   transaction so a parallel compaction can't slip in.
+2. Pulls every message with `session_seq <= fork_msg.session_seq`.
+3. Writes a new session doc (new `_id`, fresh `created_at`,
+   `pinned=False`, `state="idle"`, `forked_from` populated).
+4. Clones each parent message with a fresh `_id`, a re-stamped
+   `session_seq` running 1..N over the cloned set, and **the same
+   `correlation_id`** so pair-by-correlation (INS-048) and
+   reasoning replay continue to work on the branch.
+5. Drops compaction checkpoints whose `tail_start_message_id`
+   falls outside the cloned set, and re-maps the survivors onto
+   the new branch's `_id`s.
+6. Tags every dict entry on each cloned assistant doc's `events`
+   array with `cloned_from_branch: True`.
+
+`fork_message_id=None` is the documented "branch from session
+start" case (spec §7.7) — the new session is created with zero
+cloned messages and the user's frontend then runs a normal
+`chat.send` against it.
+
+**Why a Mongo transaction:** the clone touches both
+`chat_sessions` and `chat_messages` and reads from
+`chat_messages` while a parallel compaction may be writing.
+Without a transaction, step 2's read can race against the
+compaction's tail-rewrite. RS0 is mandatory per CLAUDE.md;
+multi-doc transactions work. The existing `edit_message_atomic`
+already uses the same pattern (`backend.database.get_client` →
+`start_session` → `start_transaction`).
+
+**The `cloned_from_branch` flag.** Per PRE-BRANCHING Q5, cloned
+tool-call events do NOT re-execute (which would duplicate side
+effects like `write_journal_entry`); the recorded result is
+preserved verbatim. The flag is added to every `TimelineEntry*`
+DTO (default `False`) so the frontend renders a small
+"cloned from parent — not re-executed" subtitle on the pill.
+Existing documents deserialise unchanged — the flag is purely
+additive.
+
+**The `forked_from` pointer is informational only.** Set at
+clone time, never consulted by the inference path. Future
+"show branches of this session" surfaces (and analytics) can
+walk it; v0.2.0's sidebar treats branches as ordinary sessions
+sorted by `updated_at`. `forked_from.message_id` is optional so
+the session-start case round-trips cleanly. Parent deletion
+leaves the pointer dangling — that's by design, no cascade.
+
+**`session_seq` re-stamp on clone, correlation_id preserved.**
+INS-047 keeps the parent's `last_message_seq` advancing on its
+own track; the branch starts a fresh per-session counter at
+`len(cloned_msgs)`. Re-stamping 1..N on the cloned messages
+keeps the branch's monotonic invariant intact. Correlation IDs
+carry through 1:1 so the pair-builder (INS-048) doesn't even
+notice it's working on a branch — branch and parent can share a
+cid for the same logical pre-fork turn without colliding (per-
+session scoping makes them distinct rows).
+
+**No `branch_session` mutation in `_handlers_ws.py`.** The
+clone endpoint lives entirely in `_handlers.py` (REST) — it
+does not run inference, does not start a stream, does not
+publish any chat content events. After 201 the frontend
+switches to the new session and issues normal `chat.send` or
+`chat.regenerate` against the branch (cases 1/2/3/4b in the
+spec). Keeps the endpoint side-effect-free in inference terms.
+
+**Why no `_compaction_lock_held` boundary leak.** The lock
+helper lives in `backend/modules/chat/_handlers_ws.py` (sibling
+of `_handlers.py`, same module). Importing it inside the chat
+module is fine — the boundary rule guards against *external*
+modules reaching into our internals, not against intra-module
+sharing. Moving the helper to a shared internal file is an
+option for a follow-up tidy; we'd touch every existing call
+site, so it can wait.
+
+**Tests:** `tests/test_branching.py` covers ten cases — basic
+clone shape, extras preservation, compaction-checkpoint re-map,
+event-flag stamping, session-start (`None`) branching, the
+defensive user-role fork-point rejection, wrong-owner 404, the
+compaction-lock 409 path (HTTP end-to-end), the concurrency
+case (`asyncio.gather`), and an HTTP smoke test that asserts the
+DTO carries `forked_from`. No backfill migration — the new
+fields are additive and default-friendly per CLAUDE.md's no-DB-
+wipes rule.
+
+**When to revisit:** if a single clone of a multi-thousand-
+message session ever exceeds ~5s sync, move it to a background
+job and stream progress events (already speculated in PRE-
+BRANCHING). The current synchronous design assumes the typical
+branch fork-point is within a few hundred messages of the head.
+
+**Related:** INS-047 (`session_seq`), INS-048 (pair by
+`correlation_id`), INS-049 (per-turn `replay_tool_history`
+snapshot — carried through verbatim on cloned assistant docs).
+The whole pre-branching wave was scoped specifically so branching
+could compose with them without further structural changes.

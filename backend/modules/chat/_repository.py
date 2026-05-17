@@ -22,6 +22,7 @@ from shared.dtos.chat import (
     ChatMessageDto,
     ChatSessionDto,
     ChatSessionExtras,
+    ForkedFromPointer,
     ImportedMessageInput,
     KnowledgeContextItem,
     TimelineEntryArtefact,
@@ -1192,10 +1193,190 @@ class ChatRepository:
                 )
         return True
 
+    async def clone_session_at(
+        self,
+        parent_session_id: str,
+        fork_message_id: str | None,
+        new_name: str,
+        user_id: str,
+    ) -> dict:
+        """Clone-on-branch: produce a new session that mirrors ``parent_session_id``
+        up to and including ``fork_message_id``.
+
+        Runs under a multi-doc MongoDB transaction so a parallel
+        compaction on the parent cannot slip in between the
+        find-and-clone phases. RS0 is mandatory per CLAUDE.md;
+        transactions are supported.
+
+        ``fork_message_id`` semantics:
+          - ``None`` → "branch from session start" (spec §7.7). The new
+            session has zero cloned messages; ``forked_from.message_id``
+            is left ``None``.
+          - non-``None`` → must reference an *assistant* message in the
+            parent (defensive; the UI should never let a user message
+            through). Validation is the caller's responsibility for the
+            human-friendly error code; this method raises ``ValueError``
+            with ``"fork_message_invalid"`` when the constraint fails.
+
+        Cloned items:
+          - All parent messages with ``session_seq <= fork_msg.session_seq``.
+            Each gets a fresh ``_id`` and a re-stamped ``session_seq``
+            running 1..N over the cloned set. ``correlation_id`` is
+            preserved verbatim so pair-by-correlation and reasoning
+            replay continue to function on the branch.
+          - ``compaction_checkpoints`` whose ``tail_start_message_id``
+            falls inside the cloned message set, re-mapped to the new
+            branch's _ids.
+          - ``extras`` (full snapshot at clone time), ``persona_id``,
+            ``user_id``, ``project_id``.
+          - Every dict entry inside cloned assistant docs' ``events``
+            array gets ``cloned_from_branch: True`` so the frontend can
+            surface "cloned from parent — not re-executed".
+
+        Reset on the new session:
+          - ``state`` → ``"idle"``, ``pinned`` → ``False``,
+            ``last_message_seq`` → ``len(cloned_msgs)``,
+            ``forked_from`` set, ``created_at`` / ``updated_at`` to now.
+
+        Returns the new session document. Raises on missing parent or
+        invalid fork-point so the caller can map errors to HTTP codes.
+        """
+        from backend.database import get_client
+        client = get_client()
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                parent = await self._sessions.find_one(
+                    {
+                        "_id": parent_session_id,
+                        "user_id": user_id,
+                        "deleted_at": None,
+                    },
+                    session=session,
+                )
+                if parent is None:
+                    raise LookupError("session_not_found")
+
+                fork_msg: dict | None = None
+                parent_msgs: list[dict] = []
+                if fork_message_id is not None:
+                    fork_msg = await self._messages.find_one(
+                        {
+                            "_id": fork_message_id,
+                            "session_id": parent_session_id,
+                        },
+                        session=session,
+                    )
+                    if fork_msg is None or fork_msg.get("role") != "assistant":
+                        raise ValueError("fork_message_invalid")
+                    cursor = self._messages.find(
+                        {
+                            "session_id": parent_session_id,
+                            "session_seq": {"$lte": fork_msg.get("session_seq", 0)},
+                        },
+                        session=session,
+                    ).sort("session_seq", 1)
+                    parent_msgs = await cursor.to_list(length=None)
+
+                new_session_id = str(uuid4())
+                now = datetime.now(UTC)
+
+                # Build the new session document. ``extras`` is copied
+                # verbatim from the parent (full snapshot at clone time
+                # per spec §4.3). ``pinned`` resets to False; ``state``
+                # resets to "idle" even if the parent was streaming.
+                forked_from = {
+                    "session_id": parent_session_id,
+                    "message_id": fork_message_id,
+                    "session_seq": (
+                        fork_msg.get("session_seq") if fork_msg else None
+                    ),
+                    "created_at": now,
+                }
+
+                # Tracks the old → new _id rebinding so we can re-map the
+                # parent's compaction_checkpoints onto the cloned tail.
+                id_map: dict[str, str] = {}
+                new_msgs: list[dict] = []
+                for idx, m in enumerate(parent_msgs, start=1):
+                    new_id = str(uuid4())
+                    id_map[m["_id"]] = new_id
+                    new_msg: dict = {**m}
+                    new_msg["_id"] = new_id
+                    new_msg["session_id"] = new_session_id
+                    new_msg["session_seq"] = idx
+                    new_msg["created_at"] = now
+                    # Flag every dict entry on the events array. Legacy
+                    # documents may carry typed Pydantic instances that
+                    # were never round-tripped through Mongo, but inside
+                    # this code path docs always come from the DB and
+                    # thus arrive as plain dicts.
+                    raw_events = new_msg.get("events")
+                    if isinstance(raw_events, list):
+                        new_msg["events"] = [
+                            {**ev, "cloned_from_branch": True}
+                            if isinstance(ev, dict)
+                            else ev
+                            for ev in raw_events
+                        ]
+                    new_msgs.append(new_msg)
+
+                # Compaction checkpoints carry over only when their
+                # tail-anchor is inside the cloned set; the rest are
+                # dropped (they describe messages the branch doesn't
+                # contain). The anchor id is then re-mapped onto the
+                # cloned tail.
+                cloned_ids = set(id_map.keys())
+                raw_checkpoints = parent.get("compaction_checkpoints") or []
+                cloned_checkpoints = [
+                    {
+                        **cp,
+                        "tail_start_message_id": id_map[cp["tail_start_message_id"]],
+                    }
+                    for cp in raw_checkpoints
+                    if cp.get("tail_start_message_id") in cloned_ids
+                ]
+
+                new_session = {
+                    "_id": new_session_id,
+                    "user_id": parent["user_id"],
+                    "persona_id": parent["persona_id"],
+                    "state": "idle",
+                    "pinned": False,
+                    "project_id": parent.get("project_id"),
+                    "title": new_name,
+                    # Toggle fields kept in sync with create_session so
+                    # legacy reads that probe these top-level flags work
+                    # on the branch too.
+                    "tools_enabled": parent.get("tools_enabled", False),
+                    "auto_read": parent.get("auto_read", False),
+                    "reasoning_override": parent.get("reasoning_override"),
+                    "extras": parent.get("extras"),
+                    "model_unique_id": parent.get("model_unique_id"),
+                    "knowledge_library_ids": parent.get("knowledge_library_ids") or [],
+                    "compaction_checkpoints": cloned_checkpoints,
+                    "last_message_seq": len(new_msgs),
+                    "forked_from": forked_from,
+                    "deleted_at": None,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                await self._sessions.insert_one(new_session, session=session)
+
+                if new_msgs:
+                    await self._messages.insert_many(new_msgs, session=session)
+
+                return new_session
+
     @staticmethod
     def session_to_dto(doc: dict) -> ChatSessionDto:
         raw_extras = doc.get("extras")
         extras = ChatSessionExtras.model_validate(raw_extras) if raw_extras else None
+        # Branching lineage pointer — ``None`` for top-level (legacy)
+        # sessions; populated only on branches created via clone-on-branch.
+        raw_forked = doc.get("forked_from")
+        forked_from = (
+            ForkedFromPointer.model_validate(raw_forked) if raw_forked else None
+        )
         return ChatSessionDto(
             id=doc["_id"],
             user_id=doc["user_id"],
@@ -1222,6 +1403,7 @@ class ChatRepository:
             imported_from=doc.get("imported_from"),
             imported_model_slug=doc.get("imported_model_slug"),
             imported_at=doc.get("imported_at"),
+            forked_from=forked_from,
         )
 
     async def update_session_context_metrics(

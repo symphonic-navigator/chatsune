@@ -3,7 +3,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from shared.dtos.chat import ChatSessionExtras, CompactionCheckpointDto
+from shared.dtos.chat import (
+    ChatSessionExtras,
+    CompactionCheckpointDto,
+    ForkedFromPointer,
+)
 
 
 # The document and the DTO are structurally identical — we reuse the
@@ -39,6 +43,11 @@ class ChatSessionDocument(BaseModel):
     # ``0001_session_seq`` migration. Never rewound on delete — gaps
     # after deletion are intentional, monotonicity is the only invariant.
     last_message_seq: int = 0
+    # Branching lineage pointer. ``None`` for top-level sessions (the
+    # common case); set on clone-on-branch. Informational only — the
+    # inference path never consults this. See
+    # devdocs/specs/2026-05-17-branching-design.md.
+    forked_from: ForkedFromPointer | None = None
     created_at: datetime
     updated_at: datetime
 

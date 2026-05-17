@@ -695,6 +695,115 @@ async def patch_session_extras(
     return {"extras": extras.model_dump()}
 
 
+class BranchSessionRequest(BaseModel):
+    """Body for ``POST /api/chat/sessions/{parent_session_id}/branch``.
+
+    ``fork_message_id`` is the parent's fork-point — always an assistant
+    message id, or ``None`` to branch from the session start (spec §7.7).
+    ``name`` is the user-supplied title for the new branch session.
+    Same length / strip rules as the regular session-title PATCH.
+    """
+
+    fork_message_id: str | None
+    name: str = Field(min_length=1, max_length=200, strip_whitespace=True)
+
+
+@router.post("/sessions/{parent_session_id}/branch", status_code=201)
+async def branch_session(
+    parent_session_id: str,
+    body: BranchSessionRequest,
+    user: dict = Depends(require_active_session),
+):
+    """Fork an existing session at ``fork_message_id`` into a new branch.
+
+    Synchronous clone-on-branch. The branch is a normal ``ChatSessionDocument``
+    with a fresh ``_id`` and a re-stamped message timeline; ``correlation_id``
+    is preserved on each cloned message so pair-by-correlation continues to
+    work. See devdocs/specs/2026-05-17-branching-design.md §5.
+
+    Error contract (synchronisation point with the frontend):
+      - 400 ``fork_message_invalid`` — fork point missing or not assistant
+      - 400 ``name_invalid`` — Pydantic validator surfaces 422; explicit 400
+        here only if extra checks ever fail (kept for symmetry)
+      - 404 ``session_not_found`` — parent missing or not owned
+      - 409 ``compaction_in_progress`` — parent under compaction lock
+      - 500 ``clone_failed`` — anything else (transaction rolled back)
+    """
+    # Import the lock helper from the sibling internal module. Boundary
+    # is preserved — both files live inside ``backend.modules.chat``.
+    from backend.modules.chat._handlers_ws import _compaction_lock_held
+
+    repo = _chat_repo()
+    parent = await repo.get_session(parent_session_id, user["sub"])
+    if parent is None:
+        raise HTTPException(
+            status_code=404, detail={"error_code": "session_not_found"},
+        )
+
+    if await _compaction_lock_held(parent_session_id):
+        raise HTTPException(
+            status_code=409, detail={"error_code": "compaction_in_progress"},
+        )
+
+    try:
+        new_session = await repo.clone_session_at(
+            parent_session_id=parent_session_id,
+            fork_message_id=body.fork_message_id,
+            new_name=body.name,
+            user_id=user["sub"],
+        )
+    except LookupError:
+        # Defensive: parent was visible during the ownership probe but
+        # vanished by the time the transaction read it. Surface as 404
+        # so the contract stays consistent.
+        raise HTTPException(
+            status_code=404, detail={"error_code": "session_not_found"},
+        )
+    except ValueError as exc:
+        if str(exc) == "fork_message_invalid":
+            raise HTTPException(
+                status_code=400, detail={"error_code": "fork_message_invalid"},
+            )
+        raise HTTPException(
+            status_code=500, detail={"error_code": "clone_failed"},
+        )
+    except Exception:
+        import structlog
+        structlog.get_logger().exception(
+            "branch_session_clone_failed",
+            parent_session_id=parent_session_id,
+            user_id=user["sub"],
+        )
+        raise HTTPException(
+            status_code=500, detail={"error_code": "clone_failed"},
+        )
+
+    dto = ChatRepository.session_to_dto(new_session)
+
+    correlation_id = str(uuid4())
+    now = datetime.now(timezone.utc)
+    event_bus = get_event_bus()
+    await event_bus.publish(
+        Topics.CHAT_SESSION_CREATED,
+        ChatSessionCreatedEvent(
+            session_id=dto.id,
+            user_id=dto.user_id,
+            persona_id=dto.persona_id,
+            title=dto.title,
+            project_id=dto.project_id,
+            created_at=dto.created_at,
+            updated_at=dto.updated_at,
+            correlation_id=correlation_id,
+            timestamp=now,
+        ),
+        scope=f"session:{dto.id}",
+        target_user_ids=[user["sub"]],
+        correlation_id=correlation_id,
+    )
+
+    return dto
+
+
 @router.get("/tools")
 async def list_tool_groups(user: dict = Depends(require_active_session)):
     """Return all available tool groups for the frontend."""
