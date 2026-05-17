@@ -327,6 +327,7 @@ async def test_run_inference_captures_create_artefact_ref(
             yield ToolCallEvent(
                 id="tc1", name="create_artefact",
                 arguments=json.dumps({"handle": "h1", "title": "Hello snippet", "type": "code"}),
+                index=0,
             )
             yield StreamDone(input_tokens=1, output_tokens=1)
         else:
@@ -378,6 +379,7 @@ async def test_run_inference_captures_update_artefact_without_artefact_id(
             yield ToolCallEvent(
                 id="tc2", name="update_artefact",
                 arguments=json.dumps({"handle": "h2", "title": "x"}),
+                index=0,
             )
             yield StreamDone(input_tokens=1, output_tokens=1)
         else:
@@ -419,6 +421,7 @@ async def test_run_inference_skips_failed_artefact_tool_call(
             yield ToolCallEvent(
                 id="tc3", name="create_artefact",
                 arguments=json.dumps({"handle": "h3", "title": "x", "type": "code"}),
+                index=0,
             )
             yield StreamDone(input_tokens=1, output_tokens=1)
         else:
@@ -460,10 +463,12 @@ async def test_run_inference_preserves_artefact_call_order(
             yield ToolCallEvent(
                 id="tc-a", name="create_artefact",
                 arguments=json.dumps({"handle": "h", "title": "t1", "type": "code"}),
+                index=0,
             )
             yield ToolCallEvent(
                 id="tc-b", name="update_artefact",
                 arguments=json.dumps({"handle": "h", "title": "t2"}),
+                index=1,
             )
             yield StreamDone(input_tokens=2, output_tokens=2)
         else:
