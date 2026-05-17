@@ -2222,3 +2222,100 @@ identical.
 pre-branching stabilisation wave. The cockpit toggle UI that
 exposes this flag to users lives in spec
 `devdocs/specs/2026-05-17-replay-tool-history-toggle-ui-design.md`.
+
+---
+
+## INS-050 — Replay-tool-history cockpit toggle: desktop button + mobile R-badge (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** INS-049 made `extras.replay_tool_history` historically
+stable — each assistant doc snapshots the policy that produced it,
+so toggling the flag governs only future turns. To surface that
+control to users, the cockpit needed a glanceable affordance with
+a non-retroactive UX message ("applies from the next response").
+Two presentations, one underlying state.
+
+**Decision:**
+
+- **Desktop:** a dedicated `ReplayHistoryToggleButton` inside the
+  cockpit row, immediately to the right of the `ReasoningToolsCluster`
+  (which renders ThinkingButton + ToolsButton). Glyph: `↻`. Accent:
+  neutral. ARIA label reflects state ("Tool history replay: on" /
+  "off"). A transient German hint "Wirkt sich ab der nächsten
+  Antwort aus" surfaces below the button for 3000 ms after every
+  state change — local component state with a `setTimeout`, no
+  global store, fade respects `prefers-reduced-motion`.
+- **Mobile:** the toggle is folded into the 🔧 group dropdown's
+  expanded menu as the LAST entry (after Image + Integrations).
+  The collapsed 🔧 trigger carries a small "R" marker in its
+  bottom-left corner whenever `replay_tool_history === true` (the
+  default). Off → no badge. Chris's preference: badge on the
+  default state, because the feature is a positive capability and
+  permanent visibility adds awareness without harm.
+
+**Implementation:** see
+`devdocs/specs/2026-05-17-replay-tool-history-toggle-ui-design.md`.
+Four moving parts:
+
+1. **New file** `frontend/src/features/chat/cockpit/buttons/
+   ReplayHistoryToggleButton.tsx`. Reads
+   `cockpit.extras.replay_tool_history` (defaulting to `true` for
+   unhydrated sessions) and writes through `useCockpitStore.
+   updateExtras(sessionId, { replay_tool_history: !enabled })`.
+   No new endpoint — `PATCH /api/chat/sessions/{id}/extras` already
+   accepts the field via the underlying Pydantic DTO.
+2. **`CockpitGroupButton.bottomLeftBadge`** prop. Optional
+   `string | null`. Renders an `aria-hidden` 9 px marker styled
+   like the existing `CockpitButton` badge (bottom-right for
+   single-button effort markers; bottom-left here so it does not
+   collide with the active-child dot in the top-right). Used today
+   only for the "R" replay marker, but the prop is generic.
+3. **`CockpitBar` wiring.** Desktop: `<ReplayHistoryToggleButton>`
+   between `{cluster}` and the Image/Integrations block, with a
+   `<Sep />` between Image and the toggle so the cluster reads as
+   "Thinking · Tools · Replay". Mobile: toggle appended as the
+   last child of `toolsGroupChildren`; `bottomLeftBadge={replayActive
+   ? 'R' : null}` on the parent `<CockpitGroupButton icon="🔧">`.
+4. **`ChatSessionExtras` TS type + defaults.** The frontend type
+   gains `replay_tool_history: boolean` (required, matching the
+   backend Pydantic shape with the `True` default).
+   `cockpitDefaults.ts`, the fallback in `CockpitBar`, the
+   `ChatView` hydrate path, and the `cockpitStore` extras event
+   handler all set `replay_tool_history: true` so legacy
+   payloads / unhydrated sessions render the toggle in the
+   active state. The store event-handler defends against a
+   missing `replay_tool_history` field in the event payload by
+   defaulting to `true` — same backwards-compat read story as
+   the backend.
+
+**Why a transient hint, not a permanent caption?** The
+non-retroactive semantics ("applies from next response") matters
+exactly once per toggle change. A permanent caption would clutter
+the cockpit; a tooltip alone is invisible on touch. 3 s is long
+enough to read and short enough that the cockpit row stays clean
+for normal use. Local state plus `setTimeout` keeps it scoped to
+the component — no global hint-state plumbing.
+
+**Why the "R" badge on the default state, not on the
+non-default?** Chris's variant A: the feature is a positive
+capability ("we will replay tools to keep the model coherent
+across turns"), permanent visibility adds awareness without harm.
+The off state needs no permanent UI — the user just set it that
+way two seconds ago.
+
+**Tests:**
+
+- `frontend/src/features/chat/cockpit/buttons/__tests__/
+  ReplayHistoryToggleButton.test.tsx` — renders active when on,
+  idle when off, PATCHes the negated value on click, surfaces the
+  German hint for 3 s and clears it (fake timers).
+- Existing `CockpitBar.test.tsx` fixtures gained the new
+  `replay_tool_history` field so the cluster regression suite
+  stays green against the now-required type.
+
+**Related:** INS-049 (per-turn `tool_replay_at_save` snapshot
+that makes this toggle's UX honest). The next consumer of this
+control is the branching feature (`a-9`): each branch carries its
+own `extras.replay_tool_history` in the cloned session document,
+so the R-badge surfaces per-branch state at a glance.

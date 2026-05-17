@@ -550,6 +550,7 @@ export function ChatView({ persona }: ChatViewProps) {
             tools_enabled: false,
             reasoning_mode: 'off',
             reasoning_effort: null,
+            replay_tool_history: true,
           },
           autoRead: session.auto_read ?? false,
         })

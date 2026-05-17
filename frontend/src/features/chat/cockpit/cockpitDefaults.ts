@@ -23,11 +23,16 @@ export function defaultExtrasForCapability(
   const hasMutex = tools.exclusive_with_reasoning
   const toolsSupported = tools.supported
 
+  // Replay-tool-history defaults to ``true`` everywhere — the on-disk
+  // shape matches the backend's ``ChatSessionExtras.replay_tool_history
+  // = True`` default. See INS-049 / spec
+  // ``2026-05-17-replay-tool-history-per-turn-flag-design.md``.
   if (reasoning.kind === 'no_reasoning') {
     return {
       tools_enabled: toolsSupported,
       reasoning_mode: 'off',
       reasoning_effort: null,
+      replay_tool_history: true,
     }
   }
   if (reasoning.kind === 'always_on') {
@@ -36,6 +41,7 @@ export function defaultExtrasForCapability(
       tools_enabled: toolsSupported && !hasMutex,
       reasoning_mode: 'on',
       reasoning_effort: effort,
+      replay_tool_history: true,
     }
   }
   // optional
@@ -44,6 +50,7 @@ export function defaultExtrasForCapability(
       tools_enabled: toolsSupported,
       reasoning_mode: 'off',
       reasoning_effort: null,
+      replay_tool_history: true,
     }
   }
   const effort = reasoning.effort?.default_bucket ?? null
@@ -51,5 +58,6 @@ export function defaultExtrasForCapability(
     tools_enabled: toolsSupported,
     reasoning_mode: 'on',
     reasoning_effort: effort,
+    replay_tool_history: true,
   }
 }

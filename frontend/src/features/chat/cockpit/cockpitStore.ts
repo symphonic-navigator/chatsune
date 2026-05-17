@@ -177,6 +177,12 @@ eventBus.on(Topics.CHAT_SESSION_EXTRAS_UPDATED, (event: BaseEvent) => {
     reasoning_mode: raw.reasoning_mode,
     reasoning_effort:
       typeof raw.reasoning_effort === 'string' ? raw.reasoning_effort : null,
+    // Default ``true`` mirrors the backend Pydantic default for legacy
+    // payloads that predate the per-turn flag spec — see INS-049.
+    replay_tool_history:
+      typeof raw.replay_tool_history === 'boolean'
+        ? raw.replay_tool_history
+        : true,
   }
   useCockpitStore.getState().hydrateExtras(payload.session_id, extras)
 })

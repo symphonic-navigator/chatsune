@@ -28,6 +28,17 @@ export interface ChatSessionExtras {
   tools_enabled: boolean
   reasoning_mode: 'off' | 'on'
   reasoning_effort: string | null
+  /**
+   * When ``true`` (the default), past tool-call narration is
+   * re-injected into the model's context as assistant(tool_calls) +
+   * tool(result) triplets on the next turn. When ``false`` the
+   * orchestrator collapses past tool calls into plain assistant
+   * content. The toggle only governs FUTURE turns — prior assistant
+   * documents carry their own ``tool_replay_at_save`` snapshot so
+   * the ampel does not jitter when this is flipped (see
+   * INS-049 / spec ``2026-05-17-replay-tool-history-per-turn-flag-design.md``).
+   */
+  replay_tool_history: boolean
 }
 
 /**

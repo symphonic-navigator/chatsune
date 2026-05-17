@@ -28,6 +28,7 @@ describe('ReasoningToolsCluster mutex coordination', () => {
           tools_enabled: false,
           reasoning_mode: 'on',
           reasoning_effort: null,
+          replay_tool_history: true,
         }}
         onUpdate={async (patch) => {
           updates.push(patch)
@@ -52,6 +53,7 @@ describe('ReasoningToolsCluster mutex coordination', () => {
           tools_enabled: true,
           reasoning_mode: 'off',
           reasoning_effort: null,
+          replay_tool_history: true,
         }}
         onUpdate={async (patch) => {
           updates.push(patch)
@@ -75,6 +77,7 @@ describe('ReasoningToolsCluster mutex coordination', () => {
           tools_enabled: true,
           reasoning_mode: 'off',
           reasoning_effort: null,
+          replay_tool_history: true,
         }}
         onUpdate={async (patch) => {
           updates.push(patch)
@@ -96,6 +99,7 @@ describe('ReasoningToolsCluster mutex coordination', () => {
           tools_enabled: false,
           reasoning_mode: 'on',
           reasoning_effort: null,
+          replay_tool_history: true,
         }}
         onUpdate={async (patch) => {
           updates.push(patch)
@@ -120,6 +124,7 @@ describe('ReasoningToolsCluster mutex coordination', () => {
           tools_enabled: false,
           reasoning_mode: 'off',
           reasoning_effort: null,
+          replay_tool_history: true,
         }}
         onUpdate={async () => {}}
       />,

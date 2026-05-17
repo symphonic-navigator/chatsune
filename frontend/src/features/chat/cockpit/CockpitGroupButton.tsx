@@ -10,6 +10,16 @@ type Props = {
    * something inside the collapsed group is on.
    */
   hasActiveChild?: boolean
+  /**
+   * Short marker text (1-2 chars) rendered in the bottom-left corner of
+   * the trigger to surface persistent per-group state at a glance. Set
+   * to ``null`` to hide. Decorative — the label / dropdown carry the
+   * canonical state for assistive tech, so the badge is ``aria-hidden``
+   * and ``pointer-events-none``. Used today for the "R" replay-history
+   * marker (see spec
+   * ``devdocs/specs/2026-05-17-replay-tool-history-toggle-ui-design.md``).
+   */
+  bottomLeftBadge?: string | null
 }
 
 /**
@@ -18,7 +28,9 @@ type Props = {
  * Used on mobile to collapse related actions (e.g. attach/camera/browse,
  * or tools/integrations) into a single slot.
  */
-export function CockpitGroupButton({ icon, label, children, hasActiveChild }: Props) {
+export function CockpitGroupButton({
+  icon, label, children, hasActiveChild, bottomLeftBadge,
+}: Props) {
   const [open, setOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
 
@@ -57,6 +69,14 @@ export function CockpitGroupButton({ icon, label, children, hasActiveChild }: Pr
         {icon}
         {hasActiveChild && !open && (
           <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-[#d4af37] shadow-[0_0_4px_rgba(212,175,55,0.6)]" />
+        )}
+        {bottomLeftBadge && (
+          <span
+            aria-hidden="true"
+            className="absolute bottom-0.5 left-0.5 text-[9px] font-semibold leading-none tracking-tight opacity-90 pointer-events-none"
+          >
+            {bottomLeftBadge}
+          </span>
         )}
       </button>
       {open && (

@@ -12,6 +12,7 @@ import { ImageButton } from '@/features/images/cockpit/ImageButton'
 import { MobileInfoModal } from './MobileInfoModal'
 import { CockpitButton } from './CockpitButton'
 import { CockpitGroupButton } from './CockpitGroupButton'
+import { ReplayHistoryToggleButton } from './buttons/ReplayHistoryToggleButton'
 import { useCockpitSession, useCockpitStore } from './cockpitStore'
 import { useEmojiPickerStore } from '../emojiPickerStore'
 import type { ResolvedCapabilities } from '@/core/types/llm'
@@ -105,6 +106,10 @@ export function CockpitBar(props: Props) {
     tools_enabled: false,
     reasoning_mode: 'off',
     reasoning_effort: null,
+    // Default ``true`` — mirrors the backend Pydantic default. New
+    // sessions render the replay toggle in its active state until the
+    // real extras arrive.
+    replay_tool_history: true,
   }
 
   const handleClusterUpdate = async (patch: Partial<ChatSessionExtras>) => {
@@ -132,8 +137,15 @@ export function CockpitBar(props: Props) {
     <>
       <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
       <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
+      <ReplayHistoryToggleButton sessionId={props.sessionId} />
     </>
   )
+
+  // Mobile R-badge: when replay-tool-history is on (the default), the
+  // collapsed 🔧 group button carries a small "R" in its bottom-left
+  // corner so the user can see the state without expanding the menu.
+  // Off → no badge.
+  const replayActive = extras.replay_tool_history
 
   return (
     <div className="cockpit-bar bg-[#0f0d16] rounded-lg">
@@ -149,16 +161,24 @@ export function CockpitBar(props: Props) {
         </>
       )}
       {cluster}
+      {!isMobile && (
+        // Desktop: sits immediately after the cluster's ToolsButton so
+        // the user reads "thinking · tools · replay" as a single
+        // capability row. Mobile renders this inside the 🔧 dropdown.
+        <ReplayHistoryToggleButton sessionId={props.sessionId} />
+      )}
       {isMobile ? (
         <CockpitGroupButton
           icon="🔧"
           label="Image and integrations"
           hasActiveChild={toolsActive}
+          bottomLeftBadge={replayActive ? 'R' : null}
         >
           {toolsGroupChildren}
         </CockpitGroupButton>
       ) : (
         <>
+          <Sep />
           <ImageButton sessionId={props.sessionId} onOpenLlmProviders={openLlmProviders} />
           <Sep />
           <IntegrationsButton activePersonaIntegrationIds={props.activePersonaIntegrationIds} />
