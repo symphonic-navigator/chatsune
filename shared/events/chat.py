@@ -100,6 +100,27 @@ class ChatStreamErrorEvent(BaseModel):
     timestamp: datetime
 
 
+class ChatStreamWarningEvent(BaseModel):
+    """Non-terminal advisory from inside an in-flight stream.
+
+    Emitted when the adapter applied a recoverable workaround (e.g.
+    Anthropic rejected a prior thinking signature and we stripped the
+    reasoning trace from the retry). The stream continues and a normal
+    ``chat.stream.ended`` will follow. Frontends MAY surface a subtle
+    toast keyed off ``code``; ignoring the event is safe.
+    """
+    type: str = "chat.stream.warning"
+    correlation_id: str
+    # Stable code for UI dispatch:
+    #   "thinking_signature_stripped" — Anthropic signature lifetime
+    #       expired or model bumped; reasoning trace dropped on retry.
+    code: str
+    # Human-readable detail; the frontend may display verbatim or
+    # ignore in favour of code-specific copy.
+    detail: str | None = None
+    timestamp: datetime
+
+
 class ChatMessagesTruncatedEvent(BaseModel):
     type: str = "chat.messages.truncated"
     session_id: str

@@ -305,11 +305,23 @@ def _translate_message(msg: CompletionMessage) -> dict:
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    # When there are no images, a plain string is more cache-friendly.
-    if not image_parts:
+    # Hard-CoT replay path: Mistral Magistral accepts structured
+    # thinking objects on assistant messages. Force the typed-array
+    # content shape when any thinking blocks are present and prepend
+    # ``{"type": "thinking", "text": ...}`` items per block.
+    thinking_parts: list[dict] = []
+    if msg.role == "assistant" and msg.thinking_blocks:
+        for b in msg.thinking_blocks:
+            if b.text:
+                thinking_parts.append({"type": "thinking", "text": b.text})
+
+    # When there are no images and no thinking blocks, a plain string
+    # is more cache-friendly.
+    if not image_parts and not thinking_parts:
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
+        content.extend(thinking_parts)
         for p in text_parts:
             content.append({"type": "text", "text": p.text or ""})
         for p in image_parts:

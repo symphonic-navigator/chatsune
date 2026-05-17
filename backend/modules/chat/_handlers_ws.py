@@ -935,6 +935,7 @@ async def handle_incognito_send(user_id: str, data: dict, *, connection_id: str 
         async def save_fn(
             content: str,
             thinking: str | None = None,
+            thinking_blocks: list[dict] | None = None,
             usage: dict | None = None,
             events: list | None = None,
             refusal_text: str | None = None,

@@ -256,6 +256,15 @@ def _translate_message(msg: CompletionMessage) -> dict:
 
     result: dict = {"role": msg.role, "content": content}
 
+    # Hard-CoT replay path: concatenate any prior thinking blocks into
+    # a single ``reasoning_content`` string. xAI ignores unknown
+    # fields silently, so this is safe whether the provider honours
+    # the hint or not.
+    if msg.role == "assistant" and msg.thinking_blocks:
+        concat = "".join((b.text or "") for b in msg.thinking_blocks)
+        if concat:
+            result["reasoning_content"] = concat
+
     if msg.tool_calls:
         result["tool_calls"] = [
             {

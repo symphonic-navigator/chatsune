@@ -836,6 +836,7 @@ class ChatRepository:
         content: str,
         token_count: int,
         thinking: str | None = None,
+        thinking_blocks: list[dict] | None = None,
         usage: dict | None = None,
         # ``knowledge_context`` is only written on USER messages now, where
         # it carries the PTI (phrase-trigger injection) items that fired
@@ -873,6 +874,13 @@ class ChatRepository:
         }
         if user_id:
             doc["user_id"] = user_id
+        if thinking_blocks:
+            # Structured per-block reasoning trace. Hard-CoT providers
+            # supply discrete blocks with signatures; the orchestrator
+            # replays them verbatim on the next turn (see
+            # ``_expand_history_doc``). Legacy documents without this
+            # field fall back to wrapping the ``thinking`` string.
+            doc["thinking_blocks"] = thinking_blocks
         if knowledge_context:
             doc["knowledge_context"] = knowledge_context
         if pti_overflow:

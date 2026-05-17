@@ -21,7 +21,7 @@ from backend.modules.llm import (
     ThinkingDelta,
     ToolCallEvent,
 )
-from backend.modules.llm._adapters._events import ToolCallArgsDelta
+from backend.modules.llm._adapters._events import StreamWarning, ToolCallArgsDelta
 from backend.modules.tools import ToolNotFoundError
 from shared.dtos.chat import (
     ArtefactRefDto,
@@ -36,7 +36,8 @@ from shared.dtos.chat import (
 from shared.dtos.inference import CompletionMessage
 from shared.events.chat import (
     ChatContentDeltaEvent, ChatStreamEndedEvent, ChatStreamErrorEvent,
-    ChatStreamSlowEvent, ChatStreamStartedEvent, ChatThinkingDeltaEvent,
+    ChatStreamSlowEvent, ChatStreamStartedEvent, ChatStreamWarningEvent,
+    ChatThinkingDeltaEvent,
     ChatToolCallCompletedEvent, ChatToolCallDeltaEvent, ChatToolCallStartedEvent,
     ChatWebSearchContextEvent, WebSearchContextItem,
 )
@@ -51,6 +52,42 @@ _TRACE_DELTAS = os.environ.get("LLM_TRACE_DELTAS") == "1"
 
 _MAX_TOOL_ITERATIONS = 5
 _REFUSAL_FALLBACK_TEXT = "The model declined this request."
+
+
+def _append_thinking_delta(
+    blocks: list[dict], td: "ThinkingDelta",
+) -> None:
+    """Group an incoming ``ThinkingDelta`` into the per-iteration block list.
+
+    Rules:
+
+    * A delta with ``signature`` always starts a new block (Anthropic
+      forwards one ``reasoning_details`` entry per discrete reasoning
+      segment, each with its own signature; the parse path emits one
+      ``ThinkingDelta`` per entry, so this case is one-block-per-event
+      with no concatenation).
+    * A delta without ``signature`` is concatenated onto the most
+      recent anonymous (no-signature) block, OR starts a new anonymous
+      block if the most recent entry has a signature or the list is
+      empty. This matches the OpenAI-compat soft-CoT shape where a
+      stream of small ``delta.reasoning`` fragments collectively
+      represents one block.
+    """
+    sig = td.signature
+    raw = td.raw
+    text = td.delta or ""
+    if sig:
+        # One block per signature-carrying event.
+        blocks.append({"text": text, "signature": sig, "raw": raw})
+        return
+    # Anonymous fragment — extend the current anonymous block if the
+    # tail is also anonymous; otherwise start a new one.
+    if blocks and blocks[-1].get("signature") is None:
+        blocks[-1]["text"] = (blocks[-1].get("text") or "") + text
+        # ``raw`` from the very first fragment wins. Later anonymous
+        # fragments carry no provider-specific metadata worth merging.
+    else:
+        blocks.append({"text": text, "signature": None, "raw": raw})
 
 # When iteration 0 of a completion ends cleanly (no error, no abort, no
 # refusal) but produces zero content / zero thinking / zero tool_calls,
@@ -239,6 +276,14 @@ class InferenceRunner:
 
         full_content = ""
         full_thinking = ""
+        # Structured per-block accumulator. One entry per upstream
+        # thinking segment in chronological order. Hard-CoT providers
+        # (Anthropic, xAI Grok, Mistral Magistral) supply discrete
+        # blocks — each with its own signature where applicable. Soft-
+        # CoT and string-only streams collapse into a single anonymous
+        # block. The legacy ``full_thinking`` string mirror is kept for
+        # human-readable display and backwards-compat reads.
+        full_thinking_blocks: list[dict] = []
         usage = None
         status = "completed"
         iter_refusal_text: str | None = None
@@ -282,6 +327,11 @@ class InferenceRunner:
                     # are all empty by definition, so nothing is lost.
                     iter_content = ""
                     iter_thinking = ""
+                    # Per-iteration structured-thinking accumulator.
+                    # See ``_append_thinking_delta`` for the grouping
+                    # rules (one block per Anthropic-signature, single
+                    # anonymous block for OpenAI-compat streams).
+                    iter_thinking_blocks: list[dict] = []
                     iter_refusal_text: str | None = None
                     iter_tool_calls: list[ToolCallEvent] = []
                     iter_reasoning_tokens: int | None = None
@@ -331,15 +381,20 @@ class InferenceRunner:
                                         correlation_id=correlation_id, delta=delta,
                                     ))
 
-                                case ThinkingDelta(delta=delta):
+                                case ThinkingDelta() as td:
+                                    delta = td.delta
                                     if t_first_token is None:
                                         t_first_token = time.monotonic()
                                     iter_thinking += delta
+                                    _append_thinking_delta(
+                                        iter_thinking_blocks, td,
+                                    )
                                     if _TRACE_DELTAS:
                                         _log.info(
                                             "LLM_TRACE path=inference-emit kind=thinking "
-                                            "correlation_id=%s len=%d preview=%r",
+                                            "correlation_id=%s len=%d preview=%r sig=%s",
                                             correlation_id, len(delta), delta[:40],
+                                            "yes" if td.signature else "no",
                                         )
                                     await emit_fn(ChatThinkingDeltaEvent(
                                         correlation_id=correlation_id, delta=delta,
@@ -410,6 +465,18 @@ class InferenceRunner:
                                         timestamp=datetime.now(timezone.utc),
                                     ))
 
+                                case StreamWarning() as warn:
+                                    # Adapter-applied workaround
+                                    # (today: Anthropic strip-and-retry).
+                                    # Non-terminal — the stream
+                                    # continues normally.
+                                    await emit_fn(ChatStreamWarningEvent(
+                                        correlation_id=correlation_id,
+                                        code=warn.code,
+                                        detail=warn.detail,
+                                        timestamp=datetime.now(timezone.utc),
+                                    ))
+
                                 case StreamAborted() as ab:
                                     _log.warning(
                                         "chat.stream.aborted session=%s correlation_id=%s reason=%s",
@@ -456,6 +523,13 @@ class InferenceRunner:
                         full_content += iter_content
                         if iter_thinking:
                             full_thinking += iter_thinking
+                        # Merge per-iteration thinking blocks onto the
+                        # full list. Across tool-loop iterations the
+                        # blocks land in chronological order; the
+                        # orchestrator collapses them into one assistant
+                        # message at replay time.
+                        if iter_thinking_blocks:
+                            full_thinking_blocks.extend(iter_thinking_blocks)
 
                         # Pending-Drain: any deltas emitted before the provider supplied an id
                         # are now matchable against iter_tool_calls (which carries the
@@ -831,6 +905,7 @@ class InferenceRunner:
                 message_id = await save_fn(
                     content=full_content,
                     thinking=full_thinking or None,
+                    thinking_blocks=full_thinking_blocks or None,
                     usage=usage,
                     events=events or None,
                     refusal_text=iter_refusal_text,

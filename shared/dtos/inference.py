@@ -19,11 +19,39 @@ class ToolCallResult(BaseModel):
     arguments: str                   # JSON-encoded string of tool arguments
 
 
+class ThinkingBlock(BaseModel):
+    """One reasoning segment from an assistant turn.
+
+    Hard-CoT providers (Anthropic, xAI Grok, Mistral Magistral) emit
+    discrete thinking blocks alongside the visible content stream.
+    Soft-CoT providers (DeepSeek-R1 family, Kimi, MiMo, GLM-5) emit a
+    single inline ``<think>`` block parsed out post-hoc by the
+    ``_soft_cot_parser``; for those families we still capture the text
+    here but the ``replay_reasoning`` capability flag (see
+    ``ReasoningCapability``) is ``False`` so the block is never sent
+    back to the model.
+    """
+
+    text: str
+    # Anthropic-specific opaque server token; replay verbatim if present.
+    # Provider rejects on tampering. ``None`` for non-Anthropic routes.
+    signature: str | None = None
+    # Adapter-supplied raw block dict for round-tripping unknown fields
+    # (Anthropic's ``reasoning_details`` may carry extra metadata we
+    # don't want to model individually). Optional; advisory only.
+    raw: dict | None = None
+
+
 class CompletionMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
     content: list[ContentPart]
     tool_calls: list[ToolCallResult] | None = None
     tool_call_id: str | None = None  # required for role="tool" messages
+    # Assistant-role only. Hard-CoT reasoning blocks to replay on the
+    # next turn. Adapter translates to provider-native wire format.
+    # Additive and optional: adapters that don't push thinking back
+    # simply ignore it. See ReasoningCapability.replay_reasoning.
+    thinking_blocks: list[ThinkingBlock] | None = None
 
 
 class ToolDefinition(BaseModel):

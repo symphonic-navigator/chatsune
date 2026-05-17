@@ -55,7 +55,13 @@ from backend.modules.tools import execute_tool, get_active_definitions, set_mcp_
 from shared.topics import Topics
 from backend.ws.event_bus import get_event_bus
 from backend.ws.manager import get_manager
-from shared.dtos.inference import CompletionMessage, CompletionRequest, ContentPart
+from shared.dtos.inference import (
+    CompletionMessage,
+    CompletionRequest,
+    ContentPart,
+    ThinkingBlock,
+    ToolCallResult,
+)
 from shared.events.chat import (
     ChatSessionExtrasUpdatedEvent,
     ChatStreamEndedEvent,
@@ -78,6 +84,189 @@ def _filter_usable_history(docs: list[dict]) -> list[dict]:
         d for d in docs
         if d.get("status", "completed") not in ("aborted", "refused")
     ]
+
+
+def _build_thinking_blocks_for_replay(doc: dict) -> list[ThinkingBlock]:
+    """Resolve thinking blocks for replay from a stored assistant document.
+
+    Backwards-compatibility ladder:
+    1. New documents carry ``thinking_blocks: list[dict]`` — used verbatim.
+    2. Legacy documents only have ``thinking: str`` — wrap as one
+       anonymous block (no signature; Anthropic strip-and-retry handles
+       any rejection downstream).
+    3. Neither field present — empty list, no replay.
+    """
+    raw_blocks = doc.get("thinking_blocks")
+    if isinstance(raw_blocks, list) and raw_blocks:
+        out: list[ThinkingBlock] = []
+        for b in raw_blocks:
+            if not isinstance(b, dict):
+                continue
+            out.append(ThinkingBlock(
+                text=b.get("text") or "",
+                signature=b.get("signature"),
+                raw=b.get("raw") if isinstance(b.get("raw"), dict) else None,
+            ))
+        if out:
+            return out
+    legacy = doc.get("thinking")
+    if isinstance(legacy, str) and legacy.strip():
+        return [ThinkingBlock(text=legacy, signature=None, raw=None)]
+    return []
+
+
+def _collect_tool_triplets(
+    doc: dict,
+) -> tuple[list[ToolCallResult], list[CompletionMessage]]:
+    """Pull tool-call / tool-result triplets out of a stored assistant doc.
+
+    Walks the chronological ``events`` timeline. Returns:
+
+    * ``tool_calls`` — one ``ToolCallResult`` per tool_call event that
+      has a matching tool_result event with the same id. Orphan
+      tool_calls (no result) are dropped and a WARNING is logged.
+    * ``tool_messages`` — one ``CompletionMessage(role="tool", ...)``
+      per tool_result event, in chronological order.
+    """
+    tool_calls: list[ToolCallResult] = []
+    tool_messages: list[CompletionMessage] = []
+    events = doc.get("events") or []
+    if not isinstance(events, list):
+        return tool_calls, tool_messages
+
+    # First pass: collect the id set of tool_call events that carry a
+    # result_content (TimelineEntryToolCall stores call + result on the
+    # same event). Tool_calls without a result are orphans.
+    # ``tool_call_id`` is the new event shape; ``id`` is the legacy
+    # ad-hoc shape — accept either.
+    result_ids: set[str] = set()
+    for ev in events:
+        if not isinstance(ev, dict) or ev.get("kind") != "tool_call":
+            continue
+        tc_id = ev.get("tool_call_id") or ev.get("id")
+        if tc_id and ev.get("result_content") is not None:
+            result_ids.add(tc_id)
+
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        kind = ev.get("kind")
+        if kind != "tool_call":
+            # Knowledge / web-search / artefact / image events do NOT
+            # roundtrip as assistant tool-call replay messages —
+            # they're rendered metadata only.
+            continue
+        tc_id = ev.get("tool_call_id") or ev.get("id")
+        tool_name = ev.get("tool_name") or ev.get("name") or ""
+        result_content = ev.get("result_content")
+        if not tc_id:
+            # Malformed event — skip silently; no replay possible.
+            continue
+        if tc_id not in result_ids:
+            # Orphan tool_call (cancelled mid-turn or persistence
+            # truncated). Drop it from the replayed list — sending
+            # ``tool_calls`` without a matching ``tool`` reply would
+            # produce a malformed prompt.
+            _log.warning(
+                "history_expand.orphan_tool_call session=%s "
+                "tool_call_id=%s tool=%s — dropped from replay",
+                doc.get("session_id"), tc_id, tool_name,
+            )
+            continue
+        # Encode arguments as a JSON string — ``TimelineEntryToolCall``
+        # stores them as a dict for the renderer; ToolCallResult on
+        # the wire expects a JSON string per the inference DTO.
+        args = ev.get("arguments")
+        if isinstance(args, str):
+            args_json = args
+        else:
+            try:
+                args_json = json.dumps(args or {})
+            except (TypeError, ValueError):
+                args_json = "{}"
+        tool_calls.append(ToolCallResult(
+            id=tc_id, name=tool_name, arguments=args_json,
+        ))
+        tool_messages.append(CompletionMessage(
+            role="tool",
+            tool_call_id=tc_id,
+            content=[ContentPart(
+                type="text",
+                text=result_content if isinstance(result_content, str) else "",
+            )],
+        ))
+    return tool_calls, tool_messages
+
+
+def _expand_history_doc(
+    doc: dict,
+    *,
+    replay_reasoning: bool,
+    replay_tool_history: bool,
+) -> list[CompletionMessage]:
+    """Expand one stored message document into 1..N CompletionMessages.
+
+    User messages: always one message (unchanged from the legacy path).
+    Assistant messages: zero or one assistant message (possibly with
+    tool_calls and/or thinking_blocks), plus zero or more ``role="tool"``
+    messages — one per tool-result event on the document, in
+    chronological order.
+
+    The replay flags control whether the per-turn reasoning trace and
+    tool-call narration are re-injected on subsequent turns. See spec
+    §4.2 (reasoning + tool re-injection across turns).
+    """
+    role = doc.get("role")
+    content_parts: list[ContentPart] = [
+        ContentPart(type="text", text=doc.get("content") or ""),
+    ]
+    # Historical attachments get text placeholders instead of binary
+    # data (same as the legacy loop).
+    refs = doc.get("attachment_refs")
+    if refs:
+        for ref in refs:
+            content_parts.append(
+                ContentPart(
+                    type="text",
+                    text=f"\n[Attachment: {ref.get('display_name')}]",
+                )
+            )
+    # Feed back stored vision snapshots so the model has consistent
+    # context (same as the legacy loop).
+    snaps = doc.get("vision_descriptions_used")
+    if snaps:
+        for s in snaps:
+            content_parts.append(
+                ContentPart(
+                    type="text",
+                    text=(
+                        f"\n[Image description for {s.get('display_name')} "
+                        f"(via {s.get('model_id')}):\n{s.get('text')}\n]"
+                    ),
+                )
+            )
+
+    if role != "assistant":
+        # User / tool messages just round-trip the content (and any
+        # attachment expansions). No thinking / no tool_calls.
+        return [CompletionMessage(role=role, content=content_parts)]
+
+    # Assistant document — assemble the replay.
+    thinking_blocks: list[ThinkingBlock] = (
+        _build_thinking_blocks_for_replay(doc) if replay_reasoning else []
+    )
+    tool_calls: list[ToolCallResult] = []
+    tool_messages: list[CompletionMessage] = []
+    if replay_tool_history:
+        tool_calls, tool_messages = _collect_tool_triplets(doc)
+
+    assistant_msg = CompletionMessage(
+        role="assistant",
+        content=content_parts,
+        thinking_blocks=thinking_blocks or None,
+        tool_calls=tool_calls or None,
+    )
+    return [assistant_msg, *tool_messages]
 
 
 def _format_pti_knowledge_block(items: list[dict]) -> str:
@@ -857,26 +1046,21 @@ async def run_inference(
             content=[ContentPart(type="text", text=system_prompt)],
         ))
 
+    # Capability-gated history expansion. Hard-CoT replay (Anthropic,
+    # Grok reasoning, Mistral Magistral, o-series) requires the
+    # provider's prior thinking trace back in the prompt; soft-CoT
+    # families (DSv4, Kimi, MiMo, GLM-5) reject it. ``replay_reasoning``
+    # gates that. ``extras.replay_tool_history`` gates whether past
+    # tool-call narration expands into assistant(tool_calls) +
+    # tool(result) triplets.
     for doc in selected_history:
-        content_parts_list: list[ContentPart] = [ContentPart(type="text", text=doc["content"])]
-        # Historical attachments get text placeholders instead of binary data
-        refs = doc.get("attachment_refs")
-        if refs:
-            for ref in refs:
-                content_parts_list.append(
-                    ContentPart(type="text", text=f"\n[Attachment: {ref['display_name']}]")
-                )
-        # Feed back stored vision snapshots so the model has consistent context
-        snaps = doc.get("vision_descriptions_used")
-        if snaps:
-            for s in snaps:
-                content_parts_list.append(
-                    ContentPart(
-                        type="text",
-                        text=f"\n[Image description for {s['display_name']} (via {s['model_id']}):\n{s['text']}\n]",
-                    )
-                )
-        messages.append(CompletionMessage(role=doc["role"], content=content_parts_list))
+        messages.extend(
+            _expand_history_doc(
+                doc,
+                replay_reasoning=reasoning_cap.replay_reasoning,
+                replay_tool_history=extras.replay_tool_history,
+            )
+        )
 
     # Set up correlation ID and event emission BEFORE building messages so
     # that _resolve_image_attachments_for_inference can emit vision
@@ -1057,6 +1241,7 @@ async def run_inference(
     async def save_fn(
         content: str,
         thinking: str | None = None,
+        thinking_blocks: list[dict] | None = None,
         usage: dict | None = None,
         events: list | None = None,
         refusal_text: str | None = None,
@@ -1069,6 +1254,7 @@ async def run_inference(
             content=content,
             token_count=token_count,
             thinking=thinking,
+            thinking_blocks=thinking_blocks,
             usage=usage,
             events=events,
             refusal_text=refusal_text,

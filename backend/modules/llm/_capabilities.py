@@ -72,6 +72,7 @@ def _yaml_lookup(adapter_type: str, model_id: str) -> CapabilityHint | None:
             kind=r["kind"],
             effort=effort,
             default_on=r.get("default_on", True),
+            replay_reasoning=r.get("replay_reasoning", False),
         )
         t = entry.get("tools", {})
         tools = ToolCapability(

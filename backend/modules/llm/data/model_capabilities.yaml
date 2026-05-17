@@ -17,6 +17,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: openrouter_http
@@ -24,6 +25,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: openrouter_http
@@ -31,6 +33,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: openrouter_http
@@ -38,6 +41,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: openrouter_http
@@ -45,6 +49,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: openrouter_http
@@ -52,6 +57,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # Same family via nano-gpt
@@ -60,6 +66,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: nano_gpt_http
@@ -67,6 +74,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: nano_gpt_http
@@ -74,6 +82,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: nano_gpt_http
@@ -81,6 +90,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: nano_gpt_http
@@ -88,6 +98,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: nano_gpt_http
@@ -95,6 +106,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # OpenAI GPT-5 via OpenRouter
@@ -115,6 +127,27 @@ models:
       default_on: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
+  # OpenAI o-series (o1/o3/...) via OpenRouter — hard-CoT family, expects
+  # its own reasoning trace back in history on replay.
+  - adapter: openrouter_http
+    pattern: "openai/o*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+      replay_reasoning: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
+  # OpenAI o-series via nano-gpt — same hard-CoT replay shape.
+  - adapter: nano_gpt_http
+    pattern: "openai/o*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [minimal, low, medium, high], default_bucket: medium }
+      default_on: true
+      replay_reasoning: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
   # xAI native — grok-4.3 with configurable reasoning_effort.
   # "Off" path is collapsed into the adapter: reasoning_mode="off"
   # forwards reasoning_effort="none" to xAI; the pop-out buckets stay
@@ -125,6 +158,7 @@ models:
       kind: optional
       effort: { buckets: [low, medium, high], default_bucket: low }
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # Mistral native — Small 4 und Medium 3.5 mit binärem reasoning_effort
@@ -135,6 +169,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   - adapter: mistral_http
@@ -142,6 +177,7 @@ models:
     reasoning:
       kind: optional
       default_on: true
+      replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
   # z.AI GLM-5 family via Ollama Cloud — reasoning toggleable via think:

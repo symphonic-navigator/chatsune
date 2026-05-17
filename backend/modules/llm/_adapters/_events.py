@@ -15,9 +15,23 @@ class ContentDelta(BaseModel):
 
 
 class ThinkingDelta(BaseModel):
-    """A fragment of the model's internal reasoning / thinking step."""
+    """A fragment of the model's internal reasoning / thinking step.
+
+    ``signature`` and ``raw`` are populated by hard-CoT adapters (today
+    only Anthropic via OpenRouter / nano-gpt) that surface a per-block
+    signature in ``reasoning_details``. Other adapters leave them
+    ``None`` and the inference loop persists a single anonymous block.
+    """
 
     delta: str
+    # Anthropic-supplied opaque server token tied to one thinking
+    # block. ``None`` for non-Anthropic routes and for OpenAI-compat
+    # soft-CoT streams that don't delimit blocks.
+    signature: str | None = None
+    # Raw provider block dict for round-tripping unknown metadata.
+    # Optional; advisory only — the inference loop does not depend on
+    # it for behaviour.
+    raw: dict | None = None
 
 
 class ToolCallArgsDelta(BaseModel):
@@ -75,6 +89,22 @@ class StreamSlow(BaseModel):
     """
 
 
+class StreamWarning(BaseModel):
+    """Non-terminal adapter-applied workaround on an in-flight stream.
+
+    Today the only producer is the Anthropic strip-and-retry path: a
+    400 invalid_request_error mentioning ``signature`` or
+    ``thinking_block`` triggers a single retry with thinking blocks
+    stripped. The adapter emits one ``StreamWarning`` before the retry
+    and the inference layer surfaces it as ``ChatStreamWarningEvent``.
+    """
+
+    # Stable, machine-readable code. Today only:
+    #   "thinking_signature_stripped"
+    code: str
+    detail: str | None = None
+
+
 class StreamAborted(BaseModel):
     """Emitted when the upstream stream has been idle for longer than
     ``GUTTER_ABORT_SECONDS``. The stream is dead — any previously
@@ -107,6 +137,7 @@ ProviderStreamEvent = (
     | StreamDone
     | StreamError
     | StreamSlow
+    | StreamWarning
     | StreamAborted
     | StreamRefused
 )

@@ -67,6 +67,7 @@ from backend.modules.llm._adapters._events import (
     StreamError,
     StreamRefused,
     StreamSlow,
+    StreamWarning,
     ThinkingDelta,
     ToolCallEvent,
 )
@@ -195,6 +196,22 @@ def _chunk_to_events(
             )
         events.append(ThinkingDelta(delta=reasoning))
 
+    # Anthropic-specific: ``reasoning_details`` is a list of typed
+    # blocks, each carrying its own ``signature`` token. See the
+    # OpenRouter adapter for the rationale — nano-gpt forwards the
+    # same Anthropic-shape content blocks.
+    details = delta.get("reasoning_details") or []
+    if isinstance(details, list):
+        for d in details:
+            if not isinstance(d, dict):
+                continue
+            if d.get("type") == "thinking":
+                events.append(ThinkingDelta(
+                    delta=d.get("thinking") or "",
+                    signature=d.get("signature"),
+                    raw=d,
+                ))
+
     content = delta.get("content") or ""
     if content:
         if _TRACE_DELTAS:
@@ -259,15 +276,40 @@ def _translate_message(
     msg: CompletionMessage,
     *,
     cache_control: dict | None = None,
+    model_id: str | None = None,
 ) -> dict:
     """Translate our CompletionMessage into an OpenAI-compatible chat message."""
     text_parts = [p for p in msg.content if p.type == "text" and p.text]
     image_parts = [p for p in msg.content if p.type == "image" and p.data]
 
-    if cache_control is None and not image_parts:
+    # Hard-CoT replay path: for Anthropic models on the nano-gpt route
+    # we pre-pend ``{"type": "thinking", "thinking": ..., "signature":
+    # ...}`` parts. Non-Anthropic routes get a concatenated
+    # ``reasoning_content`` field on the assistant message instead.
+    anthropic_thinking_parts: list[dict] = []
+    non_anthropic_reasoning_concat = ""
+    is_anthropic = bool(model_id and is_anthropic_model(model_id))
+    if msg.role == "assistant" and msg.thinking_blocks:
+        if is_anthropic:
+            for b in msg.thinking_blocks:
+                block: dict = {"type": "thinking", "thinking": b.text or ""}
+                if b.signature:
+                    block["signature"] = b.signature
+                anthropic_thinking_parts.append(block)
+        else:
+            non_anthropic_reasoning_concat = "".join(
+                (b.text or "") for b in msg.thinking_blocks
+            )
+
+    if (
+        cache_control is None
+        and not image_parts
+        and not anthropic_thinking_parts
+    ):
         content: str | list[dict] = "".join(p.text or "" for p in text_parts)
     else:
         content = []
+        content.extend(anthropic_thinking_parts)
         for p in text_parts:
             content.append({"type": "text", "text": p.text or ""})
         for p in image_parts:
@@ -281,6 +323,8 @@ def _translate_message(
             content[-1]["cache_control"] = cache_control
 
     result: dict = {"role": msg.role, "content": content}
+    if non_anthropic_reasoning_concat:
+        result["reasoning_content"] = non_anthropic_reasoning_concat
     if msg.tool_calls:
         result["tool_calls"] = [
             {
@@ -346,7 +390,11 @@ def _build_chat_payload(
         "stream": True,
         "stream_options": {"include_usage": True},
         "messages": [
-            _translate_message(m, cache_control=cc_by_index.get(i))
+            _translate_message(
+                m,
+                cache_control=cc_by_index.get(i),
+                model_id=request.model,
+            )
             for i, m in enumerate(request.messages)
         ],
     }
@@ -373,6 +421,44 @@ def _build_chat_payload(
             for t in request.tools
         ]
     return payload
+
+
+def _is_anthropic_signature_rejection(status_code: int, body: str) -> bool:
+    """Detect Anthropic 400 invalid_request_error for thinking signature.
+
+    Mirrors the OpenRouter helper — nano-gpt forwards Anthropic
+    rejections with the same shape (400 + mention of ``signature`` or
+    ``thinking`` / ``thinking_block``). Match permissively; we only
+    flip into strip-and-retry on a clear signal.
+    """
+    if status_code != 400:
+        return False
+    low = body.lower()
+    if "invalid_request_error" not in low and "invalid request" not in low:
+        return False
+    return "signature" in low or "thinking" in low
+
+
+def _strip_thinking_from_payload(payload: dict) -> None:
+    """In-place strip of thinking content blocks on assistant messages.
+
+    Used by the Anthropic strip-and-retry path; see the OpenRouter
+    adapter for the rationale. Symmetrical with that implementation
+    so behaviour matches across both Anthropic-bearing premium routes.
+    """
+    for msg in payload.get("messages") or []:
+        if msg.get("role") != "assistant":
+            continue
+        msg.pop("reasoning_content", None)
+        content = msg.get("content")
+        if isinstance(content, list):
+            filtered = [
+                c for c in content
+                if not (isinstance(c, dict) and c.get("type") == "thinking")
+            ]
+            if not filtered:
+                filtered = [{"type": "text", "text": ""}]
+            msg["content"] = filtered
 
 
 def build_request_body(
@@ -728,12 +814,17 @@ class NanoGptHttpAdapter(BaseAdapter):
                 base_url, json.dumps(payload, default=str, sort_keys=True),
             )
 
+        # Anthropic signature-replay strip-and-retry guard. See the
+        # OpenRouter adapter for the rationale.
+        anthropic_strip_attempted = False
+
         async with httpx.AsyncClient(timeout=_STREAM_TIMEOUT) as client:
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Re-init per attempt — retries only happen before any
                 # stream event has been yielded, so it is safe to reset.
                 acc = _ToolCallAccumulator()
                 retry_delay: float | None = None
+                anthropic_retry_now = False
                 try:
                     async with client.stream(
                         "POST", f"{base_url}/chat/completions",
@@ -774,15 +865,43 @@ class NanoGptHttpAdapter(BaseAdapter):
                         elif resp.status_code != 200:
                             body = await resp.aread()
                             detail = body.decode("utf-8", errors="replace")[:500]
-                            _log.error(
-                                "nano_gpt_http upstream %d: %s",
-                                resp.status_code, detail,
-                            )
-                            yield StreamError(
-                                error_code="provider_unavailable",
-                                message=f"Nano-GPT returned {resp.status_code}: {detail}",
-                            )
-                            return
+                            # Anthropic strip-and-retry: see the
+                            # OpenRouter adapter for the rationale.
+                            if (
+                                not anthropic_strip_attempted
+                                and is_anthropic_model(request.model)
+                                and _is_anthropic_signature_rejection(
+                                    resp.status_code, detail,
+                                )
+                            ):
+                                _log.warning(
+                                    "nano_gpt_http.thinking_signature_stripped "
+                                    "model=%s status=%d body_snippet=%s",
+                                    upstream_slug,
+                                    resp.status_code,
+                                    detail[:200],
+                                )
+                                _strip_thinking_from_payload(payload)
+                                anthropic_strip_attempted = True
+                                anthropic_retry_now = True
+                                yield StreamWarning(
+                                    code="thinking_signature_stripped",
+                                    detail=(
+                                        "Anthropic rejected the prior "
+                                        "thinking trace; retrying without "
+                                        "reasoning replay."
+                                    ),
+                                )
+                            else:
+                                _log.error(
+                                    "nano_gpt_http upstream %d: %s",
+                                    resp.status_code, detail,
+                                )
+                                yield StreamError(
+                                    error_code="provider_unavailable",
+                                    message=f"Nano-GPT returned {resp.status_code}: {detail}",
+                                )
+                                return
                         else:
                             # 200 — process the SSE body. Once we begin
                             # yielding stream events, no further retry is
@@ -881,6 +1000,12 @@ class NanoGptHttpAdapter(BaseAdapter):
                         message="Cannot connect to Nano-GPT",
                     )
                     return
+
+                # Anthropic strip-and-retry: re-issue immediately with
+                # the stripped payload. Does not consume an attempt;
+                # ``anthropic_strip_attempted`` is the one-shot guard.
+                if anthropic_retry_now:
+                    continue
 
                 # Retry path: 429/503 with attempts remaining set retry_delay.
                 # Sleep with the stream context closed.

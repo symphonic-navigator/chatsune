@@ -77,6 +77,15 @@ class ChatSessionExtras(BaseModel):
     tools_enabled: bool
     reasoning_mode: Literal["off", "on"]
     reasoning_effort: str | None = None
+    # When True, past tool-call narration is expanded into
+    # assistant(tool_calls) + tool(result) triplets for the next
+    # inference (default). When False, the orchestrator collapses past
+    # tool-call narration into the assistant's plain content text only
+    # — useful for branching off old conversations where tool results
+    # are stale (e.g. last week's web search). Default ``True``
+    # preserves backwards compatibility for pre-existing stored extras
+    # documents that lack the field.
+    replay_tool_history: bool = True
 
 
 class WebSearchContextItemDto(BaseModel):

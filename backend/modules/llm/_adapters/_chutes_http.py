@@ -178,6 +178,12 @@ def _translate_message(msg: CompletionMessage) -> dict:
             })
 
     result: dict = {"role": msg.role, "content": content}
+    # Hard-CoT replay path: concat thinking blocks into
+    # ``reasoning_content``. Chutes upstreams ignore unknown fields.
+    if msg.role == "assistant" and msg.thinking_blocks:
+        concat = "".join((b.text or "") for b in msg.thinking_blocks)
+        if concat:
+            result["reasoning_content"] = concat
     if msg.tool_calls:
         result["tool_calls"] = [
             {

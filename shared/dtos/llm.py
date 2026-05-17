@@ -27,6 +27,17 @@ class ReasoningCapability(BaseModel):
     kind: Literal["no_reasoning", "optional", "always_on"]
     effort: ReasoningEffortSpec | None = None
     default_on: bool = True
+    # True for hard-CoT families that expect their own prior thinking
+    # blocks back in history (Anthropic, xAI Grok reasoning, Mistral
+    # Magistral, OpenAI o-series). False for soft-CoT (DeepSeek-R1,
+    # Kimi, MiMo, GLM-5) which were trained never to see their own
+    # ``<think>`` blocks in subsequent prompts. Default ``False`` —
+    # safe-by-default; explicit ``True`` per family. Pre-existing
+    # cached ``ModelMetaDto`` documents in Redis don't carry this key;
+    # the default keeps them readable (30-minute TTL — see
+    # ``ModelMetaDto`` for the analogous backwards-compat story on
+    # other fields).
+    replay_reasoning: bool = False
 
 
 class ToolCapability(BaseModel):
