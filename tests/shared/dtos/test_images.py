@@ -92,3 +92,24 @@ def test_xai_imagine_config_pro_tier_alias_to_quality():
 def test_xai_imagine_config_rejects_unknown_tier():
     with pytest.raises(ValidationError):
         XaiImagineConfig(tier="ultra")
+
+
+def test_generated_image_result_data_fields_default_none():
+    """The in-process handoff fields default to None."""
+    r = GeneratedImageResult(id="img_a", width=64, height=32, model_id="m")
+    assert r.data is None
+    assert r.content_type is None
+
+
+def test_generated_image_result_excludes_data_from_dump():
+    """Bytes never leak through Pydantic serialisation."""
+    r = GeneratedImageResult(
+        id="img_a", width=64, height=32, model_id="m",
+        data=b"raw_bytes", content_type="image/jpeg",
+    )
+    dumped = r.model_dump()
+    assert "data" not in dumped
+    assert "content_type" not in dumped
+    # Sanity: the existing visible fields are still present.
+    assert dumped["id"] == "img_a"
+    assert dumped["model_id"] == "m"

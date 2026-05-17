@@ -39,6 +39,10 @@ class GeneratedImageResult(BaseModel):
     height: int
     model_id: str
     description: str | None = None  # Phase II hook (vision-derived caption)
+    # In-process handoff from adapter to ImageService. Never serialised —
+    # the BlobStore is the durable home for image bytes.
+    data: bytes | None = Field(default=None, exclude=True)
+    content_type: str | None = Field(default=None, exclude=True)
 
 
 class ModeratedRejection(BaseModel):
