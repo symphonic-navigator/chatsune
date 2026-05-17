@@ -61,12 +61,6 @@ from shared.dtos.llm import ModelMetaDto, ReasoningCapability, ToolCapability
 
 _log = logging.getLogger(__name__)
 
-# Module-level temporary buffer keyed by generated image_id, drained
-# by the caller (ImageService) immediately after generate_images returns.
-# Single-process only; do not rely on cross-request persistence.
-_LAST_BATCH_BUFFERS: dict[str, tuple[bytes, str]] = {}
-
-
 def _new_image_id() -> str:
     return f"img_{uuid.uuid4().hex[:12]}"
 
@@ -78,11 +72,6 @@ def _probe_dimensions(image_bytes: bytes) -> tuple[int, int] | None:
             return im.size  # (w, h)
     except Exception:
         return None
-
-
-def drain_image_buffer(image_id: str) -> tuple[bytes, str] | None:
-    """Caller (ImageService) drains the bytes once and discards them."""
-    return _LAST_BATCH_BUFFERS.pop(image_id, None)
 
 # Opt-in payload tracing for cache-miss debugging. Enable via
 # LLM_TRACE_PAYLOADS=1 in the environment; keep off in production.
@@ -831,10 +820,6 @@ def _build_adapter_router() -> APIRouter:
             config=cfg,
             prompt=body.prompt,
         )
-        # Drain buffers immediately — bytes are not persisted in the test path.
-        for item in items:
-            if item.kind == "image":
-                drain_image_buffer(item.id)
         return _ImagineTestResponse(items=items)
 
     return router

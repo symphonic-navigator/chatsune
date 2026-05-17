@@ -107,7 +107,12 @@ class BaseAdapter(ABC):
     ) -> list[ImageGenItem]:
         """Generate images for the given group and config. Default:
         raise ``NotImplementedError``. Adapters that declare image
-        support must override."""
+        support must override.
+
+        Image adapters MUST attach bytes inline on each successful
+        ``GeneratedImageResult`` via ``data`` and ``content_type``; the
+        in-process handoff to ``ImageService`` happens through the DTO,
+        not through module-level buffers."""
         raise NotImplementedError(
             f"Adapter {self.adapter_type!r} does not implement image generation"
         )

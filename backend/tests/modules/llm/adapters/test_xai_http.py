@@ -940,9 +940,10 @@ def test_imagine_test_endpoint_invalid_config_returns_422(monkeypatch):
     assert "invalid config" in resp.json()["detail"].lower()
 
 
-def test_imagine_test_endpoint_returns_items_and_drains_buffers(monkeypatch):
-    """Successful generation returns items; buffers are drained (no bytes
-    remain in _LAST_BATCH_BUFFERS after the endpoint response)."""
+def test_imagine_test_endpoint_returns_items_with_bytes_excluded(monkeypatch):
+    """Successful generation returns items via the endpoint. Bytes travel on
+    the DTO and are excluded from the JSON response by Field(exclude=True),
+    so they do not appear in the serialised output."""
     import io as _io
     from PIL import Image as _Image
 
@@ -1003,9 +1004,11 @@ def test_imagine_test_endpoint_returns_items_and_drains_buffers(monkeypatch):
     assert item["width"] == 32
     assert item["height"] == 32
 
-    # Buffer must have been drained — no bytes left behind.
-    from backend.modules.llm._adapters._xai_http import drain_image_buffer
-    assert drain_image_buffer(item["id"]) is None
+    # `data` and `content_type` are excluded from the JSON response by
+    # Pydantic Field(exclude=True), so they never appear in the serialised
+    # endpoint output even though they were attached to the DTO server-side.
+    assert "data" not in item
+    assert "content_type" not in item
 
 
 @pytest.mark.asyncio

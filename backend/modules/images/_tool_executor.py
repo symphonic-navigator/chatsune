@@ -27,8 +27,7 @@ _log = logging.getLogger(__name__)
 # Pattern: the executor stashes the outcome under the originating
 # ``tool_call_id`` immediately after generation. The orchestrator drains
 # it at the same call site where it processes the string result. Single
-# process only — drained-once-and-discarded, like the
-# ``_LAST_BATCH_BUFFERS`` pattern in the xAI adapter.
+# process only — drained-once-and-discarded.
 _PENDING_OUTCOMES: dict[str, "ImageGenerationOutcome"] = {}
 
 
