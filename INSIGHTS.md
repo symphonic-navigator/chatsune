@@ -2028,3 +2028,112 @@ helper was renamed from `delete_messages_after` to
 `delete_messages_from` to match the new inclusive `$gte`
 semantics; the old name implied target-exclusion which never
 matched what callers actually needed.
+
+## INS-048 — Pair messages by `correlation_id`, not positional adjacency (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** `select_message_pairs` used to walk the chronological
+message list with `i += 2` on a user/assistant alternation and
+`i += 1` otherwise. Three bugs shared this root cause:
+
+- **a-2:** `_filter_usable_history` dropped aborted assistants but
+  left the sibling user behind. The pair-builder then saw
+  `[user, user, assistant]`, advanced past the orphan, and the
+  model received no record the user said anything on that turn.
+- **a-3:** the two-tab race writes `user_B` between `user_A` and
+  the cancelled `assistant-for-A`. `session_seq` (INS-047) made
+  the order deterministic, but positional pairing still mismatched
+  `user_B` with `assistant-for-A` — the model received a reply
+  addressed to the wrong question.
+- **a-10:** orphan user messages survived compaction and polluted
+  subsequent pair-matching.
+
+**Decision:** Pair user/assistant docs by shared `correlation_id`.
+Every user message already carries one (assigned by
+`handle_chat_send`); the forward-fix at
+`backend/modules/chat/_orchestrator.py` `save_fn` now forwards that
+cid (and `user_id`) onto the assistant write so the pair-builder
+has a key to match on. Position is no longer load-bearing —
+race-poisoned timelines re-pair correctly, branching (the next
+spec) clones cids without changes, and aborted/refused assistants
+take their sibling user with them when their pair is dropped.
+
+**Implementation:** see
+`devdocs/specs/2026-05-17-pair-by-correlation-design.md`. Three
+moving parts:
+
+1. **Forward-fix** at `backend/modules/chat/_orchestrator.py:1241`
+   (`save_fn` passes `correlation_id` + `user_id` to
+   `repo.save_message`). One-line change covers every assistant
+   write that flows through the orchestrator — edit and regenerate
+   paths route through the same `save_fn`.
+2. **Backfill migration** at
+   `backend/migrations/0002_assistant_correlation_id.py`. Two
+   cohorts:
+   - **Legacy sessions:** assistant docs with `correlation_id=None`
+     inherit the immediately-preceding user's cid (sorted by
+     `session_seq`, with `created_at` and `_id` as tiebreaks).
+   - **Imported sessions** (`session.imported_from` set, every doc
+     has `cid=None` by construction): each pair gets a synthetic
+     `imported-{session_id}-{idx}`; trailing or doubled-up users
+     get `imported-{session_id}-orphan-{idx}`.
+
+   Idempotent — only writes when `correlation_id is None`.
+3. **Pair-builder rewrite** at `backend/modules/chat/_context.py`
+   `select_message_pairs`. Public signature unchanged. New algorithm
+   indexes by cid, then walks user docs in their original order and
+   emits `(user, assistant)` only when (a) the cid has both halves
+   and (b) the assistant's `status == "completed"`. Newest-first
+   budget selection is identical to before.
+
+**`_filter_usable_history` is now a pass-through.** Status semantics
+moved to the pair-builder so the user and assistant are dropped
+*together* — never one without the other. The function is kept
+(rather than inlined out) because regression tests reference it
+directly; the in-file comment warns future contributors not to
+re-introduce role/status filtering there.
+
+**Why `correlation_id`, not `session_seq` adjacency on the read
+side?** Branching (the next spec) clones a subtree of messages
+into a new session. Under a tree model "positional adjacency" no
+longer expresses lineage, but a `correlation_id` invariant carries
+through cleanly — the pair-builder works on a branch without
+changes. INS-047's `session_seq` is still the *write*-ordering key;
+INS-048 covers *pairing*. The two are orthogonal.
+
+**Defensive skip on missing cid.** Until the migration runs, legacy
+assistant docs have `correlation_id=None`. The pair-builder's
+`if not cid: continue` keeps them out of the pair set without
+crashing. The migration runs at startup before the app accepts
+requests (via `run_all` from INS-047), so by the time real traffic
+flows every doc has a cid.
+
+**Tests:**
+
+- `tests/test_context_pair_by_correlation.py` — eight unit tests
+  covering basic pairing, aborted/refused drops, orphan user,
+  two-tab race regression, defensive skip on missing cid, budget
+  cap, and regenerate last-write-wins on a slot.
+- `tests/migrations/test_correlation_id_backfill.py` — six
+  integration tests against old-shape docs in a real Mongo DB
+  (CLAUDE.md hard rule): legacy backfill, imported synthetic ids,
+  orphan-user handling, idempotent re-run, two-users-in-a-row
+  edge case, `run_all` discovery.
+- Smoke assertion in `tests/test_chat_repo_phase2.py` that
+  `save_message` persists the forwarded `correlation_id` and
+  `user_id` on assistant docs.
+
+**When to revisit:** if we ever need to render a *partial* pair
+(e.g. show the orphan user message in a "this turn was cancelled"
+UI slot in the chat history view), the pair-builder is for LLM
+context only — the renderer reads `list_messages_tail` directly
+and is not affected. If branching introduces a session where two
+distinct branches both carry the same `correlation_id` (a clone
+preserved it on both sides), the pair-builder's per-session input
+keeps them isolated — only the orchestrator's session scoping
+needs to stay tight.
+
+**Related:** INS-047 (`session_seq` write ordering). Both ship in
+the same v0.2.0 pre-branching wave; correlation-id pairing is the
+last structural prerequisite before the tree model lands.

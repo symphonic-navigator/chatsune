@@ -121,3 +121,37 @@ async def test_delete_message_not_found(mock_db):
     repo = ChatRepository(mock_db)
     result = await repo.delete_message("nonexistent")
     assert result is False
+
+
+async def test_save_message_persists_correlation_id_on_assistant(mock_db):
+    """Forward-fix smoke test: assistant writes carry correlation_id.
+
+    Until 2026-05-17 the orchestrator's ``save_fn`` dropped the
+    user's correlation_id when persisting the assistant doc. The
+    new pair-builder (``select_message_pairs``) keys off
+    ``correlation_id`` and skips any doc without one — so without
+    this fix the entire prior history would silently fall out of
+    the LLM context. See spec
+    ``devdocs/specs/2026-05-17-pair-by-correlation-design.md``.
+    """
+    from backend.modules.chat._repository import ChatRepository
+
+    # ReturnDocument.AFTER on the session counter — return a synthetic
+    # session doc so the repo can stamp ``session_seq``.
+    mock_db["chat_sessions"].find_one_and_update = AsyncMock(
+        return_value={"_id": "sess-1", "last_message_seq": 5},
+    )
+    mock_db["chat_messages"].insert_one = AsyncMock()
+
+    repo = ChatRepository(mock_db)
+    doc = await repo.save_message(
+        session_id="sess-1",
+        role="assistant",
+        content="hello",
+        token_count=2,
+        correlation_id="cid-fwd-fix",
+        user_id="user-1",
+    )
+    assert doc["correlation_id"] == "cid-fwd-fix"
+    assert doc["user_id"] == "user-1"
+    assert doc["role"] == "assistant"

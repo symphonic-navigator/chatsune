@@ -50,10 +50,14 @@ def test_calculate_budget_negative_available_clamped_to_zero():
 
 def test_select_message_pairs_all_fit():
     messages = [
-        {"role": "user", "content": "hi", "token_count": 10},
-        {"role": "assistant", "content": "hello", "token_count": 15},
-        {"role": "user", "content": "bye", "token_count": 10},
-        {"role": "assistant", "content": "cya", "token_count": 10},
+        {"role": "user", "content": "hi", "token_count": 10,
+         "correlation_id": "cid-A", "status": "completed"},
+        {"role": "assistant", "content": "hello", "token_count": 15,
+         "correlation_id": "cid-A", "status": "completed"},
+        {"role": "user", "content": "bye", "token_count": 10,
+         "correlation_id": "cid-B", "status": "completed"},
+        {"role": "assistant", "content": "cya", "token_count": 10,
+         "correlation_id": "cid-B", "status": "completed"},
     ]
     selected, total_tokens = select_message_pairs(messages, available_tokens=1000)
     assert len(selected) == 4
@@ -62,10 +66,14 @@ def test_select_message_pairs_all_fit():
 
 def test_select_message_pairs_budget_exceeded():
     messages = [
-        {"role": "user", "content": "old", "token_count": 100},
-        {"role": "assistant", "content": "old reply", "token_count": 100},
-        {"role": "user", "content": "new", "token_count": 50},
-        {"role": "assistant", "content": "new reply", "token_count": 50},
+        {"role": "user", "content": "old", "token_count": 100,
+         "correlation_id": "cid-A", "status": "completed"},
+        {"role": "assistant", "content": "old reply", "token_count": 100,
+         "correlation_id": "cid-A", "status": "completed"},
+        {"role": "user", "content": "new", "token_count": 50,
+         "correlation_id": "cid-B", "status": "completed"},
+        {"role": "assistant", "content": "new reply", "token_count": 50,
+         "correlation_id": "cid-B", "status": "completed"},
     ]
     # Budget only fits the newest pair
     selected, total_tokens = select_message_pairs(messages, available_tokens=150)
@@ -83,9 +91,10 @@ def test_select_message_pairs_empty():
 
 def test_select_message_pairs_single_user_message_no_pair():
     messages = [
-        {"role": "user", "content": "hi", "token_count": 10},
+        {"role": "user", "content": "hi", "token_count": 10,
+         "correlation_id": "cid-A", "status": "completed"},
     ]
-    # Incomplete trailing pair — no complete pairs to select
+    # Orphan user (no matching assistant) — pair-builder drops it.
     selected, total_tokens = select_message_pairs(messages, available_tokens=1000)
     assert selected == []
     assert total_tokens == 0

@@ -498,7 +498,15 @@ async def test_run_inference_preserves_artefact_call_order(
     assert artefact_entries[0].seq < artefact_entries[1].seq
 
 
-def test_history_filter_excludes_aborted_and_refused():
+def test_history_filter_is_passthrough():
+    """``_filter_usable_history`` is now a no-op.
+
+    Status-based filtering moved to ``select_message_pairs`` so that
+    aborted/refused assistants take their sibling user with them — see
+    ``devdocs/specs/2026-05-17-pair-by-correlation-design.md`` §6.2 and
+    INS-048. The function is kept for backwards compatibility with
+    callers; new behaviour: return docs verbatim.
+    """
     from backend.modules.chat._orchestrator import _filter_usable_history
     docs = [
         {"_id": "1", "status": "completed"},
@@ -507,4 +515,4 @@ def test_history_filter_excludes_aborted_and_refused():
         {"_id": "4"},  # legacy, no status
     ]
     result = _filter_usable_history(docs)
-    assert [d["_id"] for d in result] == ["1", "4"]
+    assert [d["_id"] for d in result] == ["1", "2", "3", "4"]

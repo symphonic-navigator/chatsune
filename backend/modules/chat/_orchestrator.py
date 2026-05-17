@@ -75,15 +75,18 @@ _runner = InferenceRunner()
 
 
 def _filter_usable_history(docs: list[dict]) -> list[dict]:
-    """Exclude messages that must not enter the LLM context.
+    """Pass-through. Status semantics moved to ``select_message_pairs``.
 
-    Aborted messages are interrupted/incomplete and pollute context.
-    Refused messages are known to poison context with further refusals.
+    DO NOT drop by role or by status here — the pair-builder owns that
+    logic now. It pairs user/assistant by ``correlation_id`` and drops
+    pairs whose assistant has ``status != "completed"``. If we filtered
+    here we would re-introduce bug a-2 (orphan user dropped silently).
+
+    See ``devdocs/specs/2026-05-17-pair-by-correlation-design.md`` §6.2.
+    The function is kept (rather than inlined as a no-op at the call
+    site) because many tests reference it directly.
     """
-    return [
-        d for d in docs
-        if d.get("status", "completed") not in ("aborted", "refused")
-    ]
+    return docs
 
 
 def _build_thinking_blocks_for_replay(doc: dict) -> list[ThinkingBlock]:
@@ -996,10 +999,11 @@ async def run_inference(
     if max_context is None or max_context == 0:
         max_context = _DEFAULT_CONTEXT_WINDOW
 
-    # Aborted assistant messages pollute the LLM context with
-    # half-finished thoughts or truncated code — strip them before
-    # context pair selection. The matching user prompts remain in place
-    # so a regenerate still has the user's input to work with.
+    # Pass-through today — status-based filtering moved to
+    # ``select_message_pairs`` so the user and assistant halves of an
+    # aborted/refused turn are dropped together (see INS-048 and spec
+    # 2026-05-17-pair-by-correlation-design.md). The call site stays
+    # so future non-status filters can be added without re-plumbing.
     history_docs = _filter_usable_history(history_docs)
 
     # The last message should be the user's new message
@@ -1259,6 +1263,14 @@ async def run_inference(
             events=events,
             refusal_text=refusal_text,
             status=status,
+            # Forward the matching user message's correlation_id so the
+            # pair-builder (``select_message_pairs``) can match this
+            # assistant doc to its user. Without this, every assistant
+            # doc lands with ``correlation_id=None`` and pairing falls
+            # back to positional adjacency — see spec
+            # 2026-05-17-pair-by-correlation-design.md.
+            correlation_id=correlation_id,
+            user_id=user_id,
         )
         await repo.update_session_state(session_id, "idle")
 
