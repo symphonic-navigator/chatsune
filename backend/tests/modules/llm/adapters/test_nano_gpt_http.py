@@ -933,7 +933,7 @@ def _resolved_nano_conn() -> ResolvedConnection:
         slug="nano",
         display_name="nano-gpt",
         adapter_type="nano_gpt_http",
-        config={"url": "https://nano-gpt.com/api/v1", "api_key": "sk-test"},
+        config={"base_url": "https://nano-gpt.com/api/v1", "api_key": "sk-test"},
         created_at=now,
         updated_at=now,
     )

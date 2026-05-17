@@ -1069,7 +1069,7 @@ class NanoGptHttpAdapter(BaseAdapter):
                 f"unknown image group {group_id!r} for nano-gpt adapter"
             )
 
-        base_url = connection.config["url"].rstrip("/")
+        base_url = (connection.config.get("base_url") or _DEFAULT_BASE_URL).rstrip("/")
         api_key = connection.config.get("api_key") or ""
         headers = {
             "Authorization": f"Bearer {api_key}",
