@@ -133,14 +133,11 @@ async def test_image(
 
     Bypasses the active-config + gallery-persistence path: takes inline
     config, runs the adapter, returns base64 thumbnails inline (no row
-    in ``generated_images``). Drains the adapter byte buffer so memory
-    is not leaked across requests. A successful response confirms the
-    upstream credentials work and the configured params produce real
-    images for the user.
+    in ``generated_images``). A successful response confirms the upstream
+    credentials work and the configured params produce real images for the
+    user.
     """
     import base64
-    import io
-    from PIL import Image
 
     from backend.modules.images._thumbnails import generate_thumbnail_jpeg
     from backend.modules.llm import LlmService
