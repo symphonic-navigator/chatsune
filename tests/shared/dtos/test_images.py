@@ -7,7 +7,9 @@ from shared.dtos.images import (
     ImageGroupConfig,
     ImageRefDto,
     ModeratedRejection,
+    SeedreamConfig,
     XaiImagineConfig,
+    ZImageConfig,
 )
 
 
@@ -113,3 +115,74 @@ def test_generated_image_result_excludes_data_from_dump():
     # Sanity: the existing visible fields are still present.
     assert dumped["id"] == "img_a"
     assert dumped["model_id"] == "m"
+
+
+# ---------------------------------------------------------------------------
+# ZImageConfig
+# ---------------------------------------------------------------------------
+
+def test_zimage_config_defaults():
+    cfg = ZImageConfig()
+    assert cfg.group_id == "nano_gpt_zimage"
+    assert cfg.model == "turbo"
+    assert cfg.size == "1024x1024"
+    assert cfg.n == 4
+
+
+def test_zimage_config_size_must_be_known_literal():
+    with pytest.raises(ValidationError):
+        ZImageConfig(size="999x999")
+
+
+def test_zimage_config_caps_n_for_base_model():
+    """Z-Image-Base is 10x slower; the validator caps n at 4 for Base."""
+    cfg = ZImageConfig(model="base", n=10)
+    assert cfg.n == 4
+    # Turbo keeps its n=10 cap.
+    cfg = ZImageConfig(model="turbo", n=10)
+    assert cfg.n == 10
+
+
+# ---------------------------------------------------------------------------
+# SeedreamConfig
+# ---------------------------------------------------------------------------
+
+def test_seedream_config_defaults():
+    cfg = SeedreamConfig()
+    assert cfg.group_id == "nano_gpt_seedream"
+    assert cfg.aspect == "1:1"
+    assert cfg.quality == "standard"
+    assert cfg.n == 1
+
+
+def test_seedream_config_n_capped_at_4():
+    with pytest.raises(ValidationError):
+        SeedreamConfig(n=5)
+
+
+# ---------------------------------------------------------------------------
+# ImageGroupConfig union routing
+# ---------------------------------------------------------------------------
+
+def test_image_group_config_union_routes_to_zimage():
+    adapter = TypeAdapter(ImageGroupConfig)
+    parsed = adapter.validate_python({
+        "group_id": "nano_gpt_zimage",
+        "model": "base",
+        "size": "1536x1536",
+        "n": 2,
+    })
+    assert isinstance(parsed, ZImageConfig)
+    assert parsed.size == "1536x1536"
+
+
+def test_image_group_config_union_routes_to_seedream():
+    adapter = TypeAdapter(ImageGroupConfig)
+    parsed = adapter.validate_python({
+        "group_id": "nano_gpt_seedream",
+        "aspect": "16:9",
+        "quality": "high",
+        "n": 2,
+    })
+    assert isinstance(parsed, SeedreamConfig)
+    assert parsed.aspect == "16:9"
