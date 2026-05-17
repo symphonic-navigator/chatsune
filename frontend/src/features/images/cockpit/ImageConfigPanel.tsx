@@ -14,14 +14,24 @@ const XAI_IMAGINE_DEFAULTS: XaiImagineConfig = {
 }
 
 function defaultConfigForGroup(groupId: string): ImageGroupConfig {
-  if (groupId === 'xai_imagine') return { ...XAI_IMAGINE_DEFAULTS }
-  // Extend this when new groups are added (Seedream, FLUX, etc.)
+  if (groupId === 'nano_gpt_zimage') {
+    return { group_id: 'nano_gpt_zimage', model: 'turbo', size: '1024x1024', n: 4 }
+  }
+  if (groupId === 'nano_gpt_seedream') {
+    return { group_id: 'nano_gpt_seedream', aspect: '1:1', quality: 'standard', n: 1 }
+  }
+  // xai_imagine and last-resort fallback share the same default.
   return { ...XAI_IMAGINE_DEFAULTS }
 }
 
+const GROUP_LABELS: Record<string, string> = {
+  xai_imagine: 'Grok Imagine',
+  nano_gpt_zimage: 'Z-Image',
+  nano_gpt_seedream: 'Seedream 4.5',
+}
 // Format a short human-readable label for a group id.
 function groupLabel(groupId: string): string {
-  return groupId.replace(/_/g, ' ')
+  return GROUP_LABELS[groupId] ?? groupId.replace(/_/g, ' ')
 }
 
 /** Option style applied to native <select> options — see CLAUDE.md for why. */
@@ -36,7 +46,7 @@ function EmptyState() {
   return (
     <p className="text-xs text-white/50 leading-relaxed">
       No image-capable connection configured.{' '}
-      <span className="text-white/70">Add an xAI connection in settings.</span>
+      <span className="text-white/70">Add an xAI or nano-gpt connection in settings.</span>
     </p>
   )
 }
