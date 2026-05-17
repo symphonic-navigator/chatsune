@@ -7,7 +7,7 @@ import { useEnrichedModels } from '../../core/hooks/useEnrichedModels'
 import type { UserModalTab } from '../../app/components/user-modal/UserModal'
 import { sendMessage } from '../../core/websocket/connection'
 import { useChatStore } from '../../core/store/chatStore'
-import { useChatStream } from './useChatStream'
+import { useChatStream, handleChatEvent } from './useChatStream'
 import { useAutoScroll } from './useAutoScroll'
 import { useHighlighter } from './useMarkdown'
 import { MessageList } from './MessageList'
@@ -480,10 +480,23 @@ export function ChatView({ persona }: ChatViewProps) {
     })
 
     setIsLoading(true)
+    // d-13 reconciliation window: open BEFORE the REST request fires so
+    // any WS events that arrive between now and the REST snapshot land
+    // get queued instead of being applied on top of soon-to-be-replaced
+    // state. Drained after ``setMessages`` runs, in arrival order, via
+    // ``handleChatEvent`` — every queued event takes the exact same
+    // path it would have taken live. See spec
+    // ``devdocs/specs/2026-05-17-frontend-race-fixes-design.md`` d-13.
+    useChatStore.getState().beginReconciliation(sessionId)
     chatApi
       .getMessages(sessionId)
       .then((bundle) => {
-        if (cancelled) return
+        if (cancelled) {
+          // The user switched away mid-REST. Drop the queue — any events
+          // that arrived for this session are no longer interesting.
+          useChatStore.getState().endReconciliation(sessionId, () => {})
+          return
+        }
         useChatStore.getState().setMessages(bundle.messages)
         // Hydrate the context-window indicator from the session's
         // persisted metrics so a long chat does not show 0% when
@@ -501,9 +514,21 @@ export function ChatView({ persona }: ChatViewProps) {
         useChatStore.getState().setCompactionCheckpoints(
           bundle.compaction_checkpoints ?? [],
         )
+        // Drain the reconcile queue through the regular dispatcher.
+        // ``handleChatEvent`` checks ``reconciling[sid]`` at its top
+        // and dispatches normally because ``endReconciliation`` has
+        // already removed the entry by the time the handler runs.
+        useChatStore.getState().endReconciliation(sessionId, (queued) =>
+          handleChatEvent(queued, sendMessage, sessionId),
+        )
       })
       .catch((err) => {
         if (cancelled) return
+        // Don't leave the reconciliation window open after a failed
+        // REST call — subsequent WS events for this session would be
+        // queued indefinitely. Drop the queue silently; the user sees
+        // the load-error message instead.
+        useChatStore.getState().endReconciliation(sessionId, () => {})
         console.error('Failed to load chat messages', err)
         setLoadError('Could not load chat history.')
       })

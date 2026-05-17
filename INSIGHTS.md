@@ -2319,3 +2319,108 @@ that makes this toggle's UX honest). The next consumer of this
 control is the branching feature (`a-9`): each branch carries its
 own `extras.replay_tool_history` in the cloned session document,
 so the R-badge surfaces per-branch state at a glance.
+
+---
+
+## INS-051 — Frontend race fixes: dedup-by-content + reconciliation queue (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** Two long-standing frontend races got worse under the
+branching feature's frequent session switches:
+
+- **d-6 — duplicate-display of user messages.** The
+  `CHAT_MESSAGE_CREATED` handler swapped an optimistic entry into a
+  real one only when the server-echoed event carried THIS tab's
+  `client_message_id`. Any path that produced a real user doc
+  without that id (ChatGPT import replay, branch-fork synthetic
+  message, second-tab echo) appended the real message and left the
+  optimistic in place. The user saw their own text twice.
+- **d-13 — `reset` + REST `getMessages` race.** Switching to a
+  session opens a 50–500 ms gap between `chatApi.getMessages(...)`
+  firing and its `.then(...)` running. WS events arriving during
+  that window either landed on top of state that the upcoming REST
+  snapshot was about to overwrite (lost) or were applied to the
+  freshly-replaced snapshot in arbitrary order. Branch-switching
+  under a live stream is exactly that hot path made common.
+
+**Decision:**
+
+- **d-6:** add a second fallback to `CHAT_MESSAGE_CREATED` handling.
+  When `client_message_id` does not match (or is absent), look for
+  an optimistic user message with **exact** content equality. If
+  found, swap it; otherwise append. Gated on `role === 'user'`
+  (only user messages have optimistic counterparts) and
+  `is_optimistic === true` (never collapse a real message into
+  another real one). No trimming, no normalisation — same-text
+  false positives are vanishingly rare; the dedup cost is far
+  preferable to the duplicate-display cost.
+- **d-13:** add a per-session **reconciliation queue** to
+  `chatStore`. ChatView opens the window with
+  `beginReconciliation(sid)` before firing `getMessages`. Any
+  WS event whose `payload.session_id === sid` arriving while the
+  window is open gets queued instead of dispatched. The
+  `then(...)` handler applies the REST snapshot, then calls
+  `endReconciliation(sid, handler)` which drops the entry FIRST
+  (so the drained-event recursion sees a closed window) and
+  replays the queue through `handleChatEvent`. Each event takes
+  the exact same path it would have taken live — d-6's dedup
+  fallback survives the drain unchanged. Cancellation
+  (`if (cancelled)`) and REST failure both close the window with
+  a no-op handler so events do not get queued forever.
+
+**Implementation:** see
+`devdocs/specs/2026-05-17-frontend-race-fixes-design.md`.
+
+- `frontend/src/features/chat/useChatStream.ts` —
+  `CHAT_MESSAGE_CREATED` switches over three fallbacks
+  (`client_message_id` exact match → content-equality dedup →
+  unconditional append). At the top of `handleChatEvent`, the
+  function checks `chatStore.reconciling[sid]` for the event's
+  `payload.session_id` and queues if a window is open.
+- `frontend/src/core/store/chatStore.ts` — new
+  `reconciling: Record<string, BaseEvent[]>` state, plus
+  `beginReconciliation` / `endReconciliation` /
+  `queueReconciliationEvent` actions. `endReconciliation` clears
+  the entry **before** replaying so the drained events dispatch
+  normally (bounded recursion).
+- `frontend/src/features/chat/ChatView.tsx` — the `getMessages`
+  effect opens the window before firing the REST call, closes
+  it (with a no-op handler) on cancellation or REST failure, and
+  closes it (with the regular dispatcher) on success — after the
+  snapshot has been applied.
+
+**Why content equality without trimming?** A user typing
+`"hello "` with a trailing space and the server echoing `"hello"`
+without it would NOT dedup, and the optimistic would get cleaned
+up by its own future echo or stay until session-switch. That is
+acceptable: the failure mode is one stray optimistic, not a
+silent collapse of two distinct messages. Trimming or fuzzy
+matching introduces a risk of false-positive collapsing of
+deliberately-similar messages (think: rapid retries of "yes" /
+"yes." / "yes!") which is worse.
+
+**Why drop the reconcile-entry first, then replay?** A drained
+event whose handler recursively touches the store (typical for
+`setMessages` / `appendMessage`) must see
+`reconciling[sid] === undefined`, otherwise the dispatch would
+re-queue itself into the same array. Dropping first keeps the
+recursion bounded at one level: the queued event runs, takes the
+non-queue path, and any handler-internal events get dispatched
+normally too.
+
+**Tests:**
+
+- `frontend/src/features/chat/__tests__/useChatStream.dedup.test.ts`
+  — six cases covering all three fallbacks plus the
+  role-mismatch and is_optimistic guards.
+- `frontend/src/features/chat/__tests__/useChatStream.reconcile.test.ts`
+  — six cases: events arriving during the window get queued,
+  `endReconciliation` drains them, OTHER sessions flow through,
+  cancellation drops the queue, and drained events still
+  exercise d-6's dedup-by-content path.
+
+**Related:** d-6 + d-13 are listed in `PRE-BRANCHING.md` as
+race-mitigation prerequisites for the branching feature itself.
+With these in place, frequent session switches under live streams
+no longer silently corrupt the message list.

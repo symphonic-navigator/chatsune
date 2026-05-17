@@ -39,6 +39,11 @@ export function flushActiveTagBufferOnCancel(): void {
 
 // Module-level handler exported for unit testing. The hook wires this into
 // the event bus; tests call it directly without mounting a component.
+//
+// Also re-used by ChatView's reconciliation-window drain (d-13): when
+// ``getMessages`` returns and ``endReconciliation`` replays queued
+// events, it passes them through this same function so each event takes
+// the exact same path it would have taken live.
 export function handleChatEvent(
   event: BaseEvent,
   sendMessageFn: typeof sendMessage,
@@ -54,6 +59,24 @@ export function handleChatEvent(
   // events whose session_id does NOT match the active one — is added by
   // Tasks 6 and 7 (multi-Group registry + voice teardown rework).
   if (!sessionId) return
+
+  // d-13 reconciliation window: while ChatView is still waiting for the
+  // REST snapshot for a session, queue any session-targeted events
+  // instead of dispatching them. The drain after REST hydration calls
+  // this same function with each queued event, by which point the
+  // ``reconciling[sid]`` entry has been removed — so the recursion is
+  // bounded. Global events without a ``session_id`` flow through
+  // unimpeded. See spec
+  // ``devdocs/specs/2026-05-17-frontend-race-fixes-design.md`` §3.
+  const sid = p.session_id as string | undefined
+  if (sid !== undefined) {
+    const reconciling = getStore().reconciling[sid]
+    if (reconciling !== undefined) {
+      getStore().queueReconciliationEvent(sid, event)
+      return
+    }
+  }
+
   const writeOpts = { sessionId }
 
   switch (event.type) {
@@ -551,6 +574,7 @@ export function handleChatEvent(
         (p.knowledge_context as KnowledgeContextItem[] | null | undefined) ?? null
       const ptiOverflow = (p.pti_overflow as PtiOverflow | null | undefined) ?? null
       const clientId = p.client_message_id as string | undefined
+      // Fallback 0: exact match on the current tab's optimistic id.
       if (clientId) {
         const idx = getStore().messages.findIndex((m) => m.id === clientId)
         if (idx !== -1) {
@@ -562,8 +586,32 @@ export function handleChatEvent(
           break
         }
       }
-      // Fallback: append if we have no matching optimistic entry
-      // (e.g. another tab, or a server-initiated user message).
+      // Fallback 1: dedup by exact content + role. Branch-fork synthetic
+      // user messages, second-tab echoes, and ChatGPT replay paths all
+      // create real user docs without THIS tab's ``client_message_id``
+      // but with content that matches an optimistic entry from this
+      // tab. Match on ``role === 'user'`` (only user messages have
+      // optimistic counterparts today), ``is_optimistic === true`` (so
+      // we never collapse a real message into another real one), and
+      // exact content (no trimming, no normalisation — same-text false
+      // positives are vanishingly rare and the dedup cost is preferable
+      // to duplicate display). See spec
+      // ``devdocs/specs/2026-05-17-frontend-race-fixes-design.md`` d-6.
+      if (p.role === 'user') {
+        const content = p.content as string
+        const optimistic = getStore().messages.find(
+          (m) => m.is_optimistic && m.role === 'user' && m.content === content,
+        )
+        if (optimistic) {
+          getStore().swapMessageId(optimistic.id, p.message_id as string, {
+            knowledge_context: knowledgeContext,
+            pti_overflow: ptiOverflow,
+            is_optimistic: false,
+          })
+          break
+        }
+      }
+      // Fallback 2: append if no optimistic / dedup match.
       getStore().appendMessage({
         id: p.message_id as string,
         session_id: p.session_id as string,

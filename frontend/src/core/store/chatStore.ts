@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessageDto, CompactionCheckpoint, TimelineEntry } from '../api/chat'
+import type { BaseEvent } from '../types/events'
 
 type ContextStatus = 'green' | 'yellow' | 'orange' | 'red'
 
@@ -247,6 +248,42 @@ interface ChatState {
    * ``false`` (and is a no-op) otherwise.
    */
   consumeCompactionTimedOut: (correlationId: string) => boolean
+
+  /**
+   * Per-session queue of WS events that arrived while ChatView was still
+   * waiting for ``chatApi.getMessages`` to return. The presence of an
+   * entry (``reconciling[sid] !== undefined``) is the "reconcile in
+   * progress" signal that ``useChatStream`` checks; the array holds the
+   * events to replay through the regular dispatcher once the REST
+   * snapshot is applied. See spec
+   * ``devdocs/specs/2026-05-17-frontend-race-fixes-design.md`` d-13.
+   */
+  reconciling: Record<string, BaseEvent[]>
+  /**
+   * Open a reconciliation window for ``sessionId``. Events targeting this
+   * session that arrive before ``endReconciliation`` get queued instead
+   * of being dispatched. Idempotent: a second open call wipes any
+   * previously-queued events for the same session.
+   */
+  beginReconciliation: (sessionId: string) => void
+  /**
+   * Close the window: replay every queued event through ``handler`` in
+   * arrival order, then drop the queue. Pass a no-op handler when the
+   * caller wants to discard the queue (e.g. ChatView switching away
+   * before its REST call returns).
+   */
+  endReconciliation: (
+    sessionId: string,
+    handler: (event: BaseEvent) => void,
+  ) => void
+  /**
+   * Push an event onto the queue. Called by ``useChatStream`` when its
+   * top-of-handler check finds the session is reconciling. No-op if no
+   * window is open — the caller is expected to dispatch normally in
+   * that case.
+   */
+  queueReconciliationEvent: (sessionId: string, event: BaseEvent) => void
+
   reset: (sessionId?: string) => void
 }
 
@@ -294,9 +331,42 @@ function clearStream(
 
 export const useChatStore = create<ChatState>((set, get) => ({
   streamsBySession: new Map(),
+  reconciling: {} as Record<string, BaseEvent[]>,
   ...INITIAL_NON_STREAMING,
 
   getStreamFor: (sessionId) => get().streamsBySession.get(sessionId) ?? null,
+
+  beginReconciliation: (sessionId) =>
+    set((s) => ({
+      reconciling: { ...s.reconciling, [sessionId]: [] },
+    })),
+
+  queueReconciliationEvent: (sessionId, event) =>
+    set((s) => {
+      const queue = s.reconciling[sessionId]
+      if (queue === undefined) return s
+      return {
+        reconciling: { ...s.reconciling, [sessionId]: [...queue, event] },
+      }
+    }),
+
+  endReconciliation: (sessionId, handler) => {
+    const queue = get().reconciling[sessionId]
+    // Drop the window first so any dispatched event whose handler
+    // recursively touches the store (typical for setMessages /
+    // appendMessage) sees ``reconciling[sid] === undefined`` and
+    // dispatches normally — no replay loop.
+    set((s) => {
+      if (s.reconciling[sessionId] === undefined) return s
+      const next = { ...s.reconciling }
+      delete next[sessionId]
+      return { reconciling: next }
+    })
+    if (!queue) return
+    for (const event of queue) {
+      handler(event)
+    }
+  },
 
   setMessages: (messages) => set({ messages }),
   appendMessage: (message) => set((s) => ({ messages: [...s.messages, message] })),
