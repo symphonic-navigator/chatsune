@@ -42,6 +42,16 @@ interface AssistantMessageProps {
   accentColour: string; highlighter: Highlighter | null;
   isBookmarked?: boolean; onBookmark?: () => void;
   canRegenerate?: boolean; onRegenerate?: () => void;
+  /**
+   * Branching action bar — wired in by ``MessageList``. When provided,
+   * the assistant bubble renders a ``Branch`` button that forks the
+   * conversation at this message. When ``isLastAssistant`` is false the
+   * Regenerate button label flips to ``Branch & Regenerate`` so the
+   * user understands the regenerate now also forks. See
+   * ``devdocs/specs/2026-05-17-branching-design.md`` §6.1.
+   */
+  isLastAssistant?: boolean;
+  onBranch?: () => void;
   status?: 'completed' | 'aborted' | 'refused';
   refusalText?: string | null;
   timeToFirstTokenMs?: number | null;
@@ -74,6 +84,10 @@ function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boo
     prev.highlighter === next.highlighter &&
     prev.isBookmarked === next.isBookmarked &&
     prev.canRegenerate === next.canRegenerate &&
+    prev.isLastAssistant === next.isLastAssistant &&
+    // ``onBranch`` is deliberately omitted for the same reason ``onRegenerate``
+    // and ``onBookmark`` are — MessageList passes a fresh inline closure each
+    // render; comparing identities would defeat memoisation entirely.
     prev.status === next.status &&
     prev.refusalText === next.refusalText &&
     prev.timeToFirstTokenMs === next.timeToFirstTokenMs &&
@@ -88,7 +102,7 @@ function areEqual(prev: AssistantMessageProps, next: AssistantMessageProps): boo
   )
 }
 
-function AssistantMessageBase({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
+function AssistantMessageBase({ content, thinking, isStreaming, accentColour, highlighter, isBookmarked, onBookmark, canRegenerate, onRegenerate, isLastAssistant, onBranch, status = 'completed', refusalText, timeToFirstTokenMs, tokensPerSecond, generationDurationMs, outputTokens, providerName, modelName, messageId, persona }: AssistantMessageProps) {
   const effectiveContent = (() => {
     if (content) return content
     if (refusalText && status === 'refused') return refusalText
@@ -322,13 +336,25 @@ function AssistantMessageBase({ content, thinking, isStreaming, accentColour, hi
               )}
               {canRegenerate && onRegenerate && (
                 <button type="button" onClick={onRegenerate}
+                  data-testid="assistant-regenerate"
                   className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50"
-                  title="Regenerate response">
+                  title={isLastAssistant === false ? 'Branch & regenerate response' : 'Regenerate response'}>
                   <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
                     <path d="M1.5 7C1.5 4 4 1.5 7 1.5C10 1.5 12.5 4 12.5 7C12.5 10 10 12.5 7 12.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                     <path d="M1.5 7L3.5 5M1.5 7L3.5 9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  Regenerate
+                  {isLastAssistant === false ? 'Branch & Regenerate' : 'Regenerate'}
+                </button>
+              )}
+              {onBranch && (
+                <button type="button" onClick={onBranch}
+                  data-testid="assistant-branch"
+                  className="flex items-center gap-1 text-[11px] text-white/25 transition-colors hover:text-white/50"
+                  title="Branch from this message">
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                    <path d="M4 2v6a3 3 0 0 0 3 3h3M4 2a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm6 9a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Branch
                 </button>
               )}
             </div>

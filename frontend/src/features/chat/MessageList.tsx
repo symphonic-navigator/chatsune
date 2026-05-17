@@ -49,7 +49,25 @@ interface MessageListProps {
   showScrollButton: boolean
   onScrollToBottom: () => void
   onEdit: (messageId: string, content: string) => void
-  onRegenerate: () => void
+  /**
+   * Triggered by the action-bar regenerate button on assistant messages
+   * (and the standalone "Generate response" CTA at the foot of the list).
+   *
+   * The optional ``messageId`` and ``isLastAssistant`` arguments tell
+   * ChatView whether to run an in-place regenerate or to fork into a new
+   * branch first ("Branch & Regenerate" label, spec §6.1). Existing call
+   * sites that pass no arguments keep the legacy in-place behaviour for
+   * the trailing-CTA path.
+   */
+  onRegenerate: (args?: { messageId?: string; isLastAssistant?: boolean }) => void
+  /**
+   * Triggered by the action-bar Branch button on assistant messages.
+   * Fires with the assistant message id that should become the
+   * fork-point. ChatView opens ``BranchNameDialog`` and routes the
+   * confirmation through ``chatApi.branchSession``. See
+   * ``devdocs/specs/2026-05-17-branching-design.md`` §6.1.
+   */
+  onBranch?: (messageId: string) => void
   bookmarkedMessageIds: Set<string>
   onBookmark?: (messageId: string) => void
   sttEnabled?: boolean
@@ -96,23 +114,54 @@ export function mergePtiIntoFirstKnowledgeEntry(
   return rawEvents
 }
 
+/**
+ * Subtitle rendered beneath every timeline entry whose ``cloned_from_branch``
+ * flag is set. The flag is stamped by the backend at branch-creation time on
+ * the cloned message's events array; renderers are otherwise unchanged.
+ * See ``devdocs/specs/2026-05-17-branching-design.md`` §4.4 / §6.5.
+ */
+function ClonedFromBranchSubtitle() {
+  return (
+    <div
+      data-testid="cloned-from-branch-subtitle"
+      className="-mt-1 mb-2 text-[10px] italic leading-snug text-white/35"
+    >
+      Aus Parent geklont — nicht erneut ausgeführt
+    </div>
+  )
+}
+
 function renderTimelineEntry(
   entry: TimelineEntry,
   sessionId: string,
   keyPrefix: string,
 ): React.ReactNode {
   const k = `${keyPrefix}-${entry.seq}-${entry.kind}`
+  // Stamped on cloned timeline entries when a branch is created. The flag
+  // is per-entry rather than per-message so a single assistant doc may
+  // contain a mix of cloned and live events after future regenerate flows
+  // (the spec defers that — for now every entry on a cloned message is
+  // flagged uniformly).
+  const isCloned = entry.cloned_from_branch === true
+  const subtitle = isCloned ? <ClonedFromBranchSubtitle /> : null
   switch (entry.kind) {
     case 'knowledge_search':
       return (
-        <KnowledgePills
-          key={k}
-          items={entry.items}
-          overflow={entry._overflow ?? null}
-        />
+        <div key={k}>
+          <KnowledgePills
+            items={entry.items}
+            overflow={entry._overflow ?? null}
+          />
+          {subtitle}
+        </div>
       )
     case 'web_search':
-      return <WebSearchPills key={k} items={entry.items} />
+      return (
+        <div key={k}>
+          <WebSearchPills items={entry.items} />
+          {subtitle}
+        </div>
+      )
     case 'tool_call': {
       const ref: ToolCallRef = {
         tool_call_id: entry.tool_call_id,
@@ -122,7 +171,12 @@ function renderTimelineEntry(
         moderated_count: entry.moderated_count,
         result_content: entry.result_content ?? null,
       }
-      return <ToolCallPill key={k} phase={{ kind: 'completed', ref }} />
+      return (
+        <div key={k}>
+          <ToolCallPill phase={{ kind: 'completed', ref }} />
+          {subtitle}
+        </div>
+      )
     }
     case 'artefact':
       return (
@@ -134,15 +188,18 @@ function renderTimelineEntry(
             isUpdate={entry.ref.operation === 'update'}
             sessionId={sessionId}
           />
+          {subtitle}
         </div>
       )
     case 'image':
       return (
-        <InlineImageBlock
-          key={k}
-          refs={entry.refs}
-          moderatedCount={entry.moderated_count ?? 0}
-        />
+        <div key={k}>
+          <InlineImageBlock
+            refs={entry.refs}
+            moderatedCount={entry.moderated_count ?? 0}
+          />
+          {subtitle}
+        </div>
       )
   }
 }
@@ -151,7 +208,7 @@ export function MessageList({
   sessionId, messages, streamingContent, streamingThinking, streamingEvents, streamingToolCalls,
   isWaitingForResponse, isStreaming, accentColour, highlighter,
   visionDescriptions, streamingCorrelationId, streamingSlow,
-  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
+  containerRef, bottomRef, showScrollButton, onScrollToBottom, onEdit, onRegenerate, onBranch, bookmarkedMessageIds, onBookmark, sttEnabled, persona,
 }: MessageListProps) {
   // Compact-and-continue checkpoints for the active session, hydrated
   // from the messages bundle on session-switch and extended on
@@ -189,6 +246,10 @@ export function MessageList({
     lastMsg !== null &&
     (lastMsg.role === 'assistant' || lastMsg.role === 'user')
   const showStandaloneRegenerate = canRegenerate && lastMsg !== null && lastMsg.role === 'user'
+  // Non-last assistant messages get a "Branch & Regenerate" regenerate button
+  // (forks first, then runs inference on the fork) plus a standalone Branch
+  // button. Only render the regenerate row at all when not streaming.
+  const canAssistantAction = !isStreaming && onBranch !== undefined
 
   // Renamed locally to keep the rest of the body unchanged.
   const correlationId = streamingCorrelationId
@@ -365,7 +426,24 @@ export function MessageList({
                 <AssistantMessage content={msg.content} thinking={msg.thinking}
                   isStreaming={false} accentColour={accentColour} highlighter={highlighter}
                   isBookmarked={isBm} onBookmark={onBookmark ? () => onBookmark(msg.id) : undefined}
-                  canRegenerate={canRegenerate && i === lastAssistantIdx} onRegenerate={onRegenerate}
+                  canRegenerate={
+                    // Regenerate button visible on:
+                    //   - the last assistant (in-place regenerate as before), or
+                    //   - any earlier assistant when branching is wired in
+                    //     (label becomes "Branch & Regenerate" via the
+                    //     ``isLastAssistant === false`` branch in AssistantMessage).
+                    i === lastAssistantIdx
+                      ? canRegenerate
+                      : canAssistantAction
+                  }
+                  onRegenerate={
+                    () => onRegenerate({
+                      messageId: msg.id,
+                      isLastAssistant: i === lastAssistantIdx,
+                    })
+                  }
+                  isLastAssistant={i === lastAssistantIdx}
+                  onBranch={onBranch && !isStreaming ? () => onBranch(msg.id) : undefined}
                   status={msg.status ?? 'completed'}
                   refusalText={msg.refusal_text ?? null}
                   timeToFirstTokenMs={msg.time_to_first_token_ms}
@@ -440,7 +518,7 @@ export function MessageList({
           <div className="flex justify-center py-2">
             <button
               type="button"
-              onClick={onRegenerate}
+              onClick={() => onRegenerate()}
               className="px-3 py-1 text-sm rounded-md border border-white/10 hover:bg-white/5 transition text-white/70 hover:text-white"
             >
               Generate response

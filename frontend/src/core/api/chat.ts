@@ -108,8 +108,28 @@ interface ChatSessionDto {
   imported_from?: 'chatgpt' | null
   imported_model_slug?: string | null
   imported_at?: string | null
+  /**
+   * Lineage pointer for branches. ``null`` for top-level sessions (the
+   * common case). Set on clone-on-branch. Informational only — the
+   * branch is fully independent after creation. See
+   * ``devdocs/specs/2026-05-17-branching-design.md`` §4.1.
+   */
+  forked_from?: ForkedFromPointer | null
   created_at: string
   updated_at: string
+}
+
+/**
+ * Records where a branch was forked off from. Mirrors the backend
+ * ``ForkedFromPointer`` DTO in ``shared/dtos/chat.py``. Used by future
+ * analytics / "show branches" features; not consulted by the runtime
+ * inference path.
+ */
+interface ForkedFromPointer {
+  session_id: string
+  message_id: string | null
+  session_seq: number
+  created_at: string
 }
 
 interface WebSearchContextItem {
@@ -160,12 +180,21 @@ interface TimelineEntryKnowledgeSearch {
    * knowledge_search entry. Never persisted, never set by the backend.
    */
   _overflow?: PtiOverflow | null
+  /**
+   * Set to ``true`` on timeline entries that were copied verbatim from a
+   * parent session at branch-creation time. The frontend renders a small
+   * subtitle on the corresponding pill to make clear the side effect was
+   * not re-executed for this branch. See
+   * ``devdocs/specs/2026-05-17-branching-design.md`` §4.4.
+   */
+  cloned_from_branch?: boolean
 }
 
 interface TimelineEntryWebSearch {
   kind: 'web_search'
   seq: number
   items: WebSearchContextItem[]
+  cloned_from_branch?: boolean
 }
 
 interface TimelineEntryToolCall {
@@ -177,12 +206,14 @@ interface TimelineEntryToolCall {
   success: boolean
   moderated_count?: number
   result_content?: string | null
+  cloned_from_branch?: boolean
 }
 
 interface TimelineEntryArtefact {
   kind: 'artefact'
   seq: number
   ref: ArtefactRef
+  cloned_from_branch?: boolean
 }
 
 interface TimelineEntryImage {
@@ -190,6 +221,7 @@ interface TimelineEntryImage {
   seq: number
   refs: ImageRefDto[]
   moderated_count?: number
+  cloned_from_branch?: boolean
 }
 
 type TimelineEntry =
@@ -251,6 +283,7 @@ export type {
   ToolCallRef,
   ToolGroupDto,
   AttachmentRefDto,
+  ForkedFromPointer,
   TimelineEntry,
   TimelineEntryKnowledgeSearch,
   TimelineEntryWebSearch,
@@ -366,6 +399,29 @@ export const chatApi = {
 
   updateSessionPinned: (sessionId: string, pinned: boolean) =>
     api.patch<ChatSessionDto>(`/api/chat/sessions/${sessionId}/pinned`, { pinned }),
+
+  /**
+   * Clone the parent session up to and including ``forkMessageId`` (an
+   * assistant message id) into a fresh branch session. Pass ``null`` for
+   * ``forkMessageId`` to branch from the session start (no messages
+   * cloned — used when the user edits the very first user message into
+   * a branch).
+   *
+   * The new session document is returned on success (201). See
+   * ``devdocs/specs/2026-05-17-branching-design.md`` §5.1. Error codes
+   * surfaced by the backend (``fork_message_invalid``, ``name_invalid``,
+   * ``session_not_found``, ``compaction_in_progress``, ``clone_failed``)
+   * propagate via ``ApiError.body`` for the caller to decode.
+   */
+  branchSession: (
+    parentSessionId: string,
+    forkMessageId: string | null,
+    name: string,
+  ): Promise<ChatSessionDto> =>
+    api.post<ChatSessionDto>(
+      `/api/chat/sessions/${parentSessionId}/branch`,
+      { fork_message_id: forkMessageId, name },
+    ),
 
   listToolGroups: () =>
     api.get<ToolGroupDto[]>("/api/chat/tools"),

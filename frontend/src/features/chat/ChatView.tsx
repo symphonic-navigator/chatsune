@@ -11,6 +11,9 @@ import { useChatStream, handleChatEvent } from './useChatStream'
 import { useAutoScroll } from './useAutoScroll'
 import { useHighlighter } from './useMarkdown'
 import { MessageList } from './MessageList'
+import { BranchNameDialog } from './branching/BranchNameDialog'
+import { EditResendDialog } from './branching/EditResendDialog'
+import { useChatSessions } from '../../core/hooks/useChatSessions'
 import { ChatInput, type ChatInputHandle } from './ChatInput'
 import { CockpitBar } from './cockpit/CockpitBar'
 import type { ToolGroup } from './cockpit/buttons/ToolsButton'
@@ -1070,6 +1073,121 @@ export function ChatView({ persona }: ChatViewProps) {
     [canSendImages, attachments, notifyImagesBlocked],
   )
 
+  // Branching: dialog state and orchestration.
+  //
+  // The branching feature (spec ``devdocs/specs/2026-05-17-branching-design.md``)
+  // overlays four trigger patterns onto the existing edit / regenerate flow:
+  //   - [Branch] on an assistant — clone up to this assistant, no inference.
+  //   - [Regenerate] on the LAST assistant — unchanged in-place behaviour.
+  //   - [Branch & Regenerate] on a non-last assistant — clone then regenerate.
+  //   - Edit + Save & Resend on a user message — last user msg gets a chooser
+  //     dialog (replace vs branch); earlier user msgs go straight to branch.
+  //
+  // ``branchDialogContext`` drives the BranchNameDialog. ``editResendContext``
+  // drives the case-1 chooser dialog. They are deliberately decoupled so
+  // an EditResend can chain into a Branch name dialog without entangling
+  // state. ``branchSubmitting`` keeps the name dialog's loader visible
+  // across the async clone request.
+  interface BranchDialogContext {
+    /**
+     * Fork-point message id. ``null`` for the "branch from session start"
+     * case (user edits the first user message — spec §7.7).
+     */
+    forkMessageId: string | null
+    /**
+     * After the clone succeeds, the orchestrator switches the chat view
+     * to the new branch and optionally dispatches a follow-up action on
+     * it. ``regenerate`` → ``chat.regenerate`` (non-last assistant). ``send``
+     * → ``chat.send`` with the supplied content (user-edit branch flows).
+     * ``none`` → no follow-up, used by the plain ``[Branch]`` button on
+     * assistant messages.
+     */
+    followup:
+      | { kind: 'none' }
+      | { kind: 'regenerate' }
+      | { kind: 'send'; content: string }
+  }
+  const [branchDialogContext, setBranchDialogContext] =
+    useState<BranchDialogContext | null>(null)
+  interface EditResendContext {
+    /** The user message id being edited (last user message in the session). */
+    userMessageId: string
+    /** The trimmed new content the user just typed. */
+    newContent: string
+    /** Pre-computed fork-point for the "Neuer Branch" path. The dialog
+     *  delegates the BranchNameDialog open with this id; the chooser does
+     *  not recompute it. */
+    forkMessageId: string | null
+  }
+  const [editResendContext, setEditResendContext] =
+    useState<EditResendContext | null>(null)
+  // ``branchSibling`` sessions feed the sibling-variant lookup that seeds
+  // the default name in ``BranchNameDialog``. We read the same store
+  // ``useChatSessions`` returns; project-only chats are deliberately
+  // missing from the result, which is acceptable for a best-effort
+  // cosmetic-only computation (spec §7.6).
+  const { sessions: allSessions } = useChatSessions()
+  const parentSessionTitle = useChatStore((s) => s.sessionTitle)
+
+  /**
+   * Locate the most recent assistant message strictly BEFORE
+   * ``userMessageId``. Returns ``null`` if there is no such assistant
+   * (i.e. ``userMessageId`` is the first message in the session and
+   * the user wants to branch from the session start, spec §7.7).
+   */
+  const findPriorAssistantId = useCallback(
+    (userMessageId: string): string | null => {
+      const msgs = useChatStore.getState().messages
+      const idx = msgs.findIndex((m) => m.id === userMessageId)
+      if (idx <= 0) return null
+      for (let i = idx - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') return msgs[i].id
+      }
+      return null
+    },
+    [],
+  )
+
+  // In-place edit dispatch — used by handleEdit's incognito path and by
+  // the case-1 "Antwort ersetzen" branch of the EditResendDialog.
+  const dispatchEditInPlace = useCallback(
+    (sessionIdArg: string, messageId: string, newContent: string) => {
+      const correlationId = crypto.randomUUID()
+      createAndRegisterGroup(correlationId, sessionIdArg)
+      if (isIncognito) {
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true, { sessionId: sessionIdArg })
+        const allMessages = useChatStore.getState().messages
+        sendMessage({
+          type: 'chat.incognito.send',
+          persona_id: personaId,
+          session_id: sessionIdArg,
+          correlation_id: correlationId,
+          messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+        })
+      } else {
+        // Optimistically reflect the edit in the store so the bubble does
+        // not flash the previous text between closing the editor and the
+        // backend's CHAT_MESSAGE_UPDATED arriving. The backend remains
+        // authoritative — the truncate/update events will reconcile this.
+        const store = useChatStore.getState()
+        store.truncateAfter(messageId)
+        store.updateMessage(messageId, newContent, 0)
+        store.setWaitingForResponse(true, { sessionId: sessionIdArg })
+        sendMessage({
+          type: 'chat.edit',
+          session_id: sessionIdArg,
+          message_id: messageId,
+          correlation_id: correlationId,
+          content: [{ type: 'text', text: newContent }],
+        })
+      }
+    },
+    [isIncognito, personaId, createAndRegisterGroup],
+  )
+
   const handleEdit = useCallback(
     (messageId: string, newContent: string) => {
       if (!effectiveSessionId) return
@@ -1089,13 +1207,65 @@ export function ChatView({ persona }: ChatViewProps) {
         })
         return
       }
+
+      // Branching overlay: is this the LAST user message in the session?
+      // Incognito sessions skip the branch path entirely — there is no
+      // server-side session to fork.
+      if (!isIncognito) {
+        const msgs = useChatStore.getState().messages
+        const lastUserIdx = msgs.findLastIndex((m) => m.role === 'user')
+        const isLastUser =
+          lastUserIdx !== -1 && msgs[lastUserIdx].id === messageId
+        const forkMessageId = findPriorAssistantId(messageId)
+        if (isLastUser) {
+          // Case 1 — show chooser: replace in-place OR fork to branch.
+          setEditResendContext({
+            userMessageId: messageId,
+            newContent,
+            forkMessageId,
+          })
+          return
+        }
+        // Case 2 — earlier user message: go straight to BranchNameDialog,
+        // forced (in-place would invalidate later messages).
+        setBranchDialogContext({
+          forkMessageId,
+          followup: { kind: 'send', content: newContent },
+        })
+        return
+      }
+
+      dispatchEditInPlace(effectiveSessionId, messageId, newContent)
+    },
+    [effectiveSessionId, isIncognito, findPriorAssistantId, dispatchEditInPlace],
+  )
+
+  const handleRegenerate = useCallback(
+    (args?: { messageId?: string; isLastAssistant?: boolean }) => {
+      if (!effectiveSessionId) return
+      // Non-last assistant: don't run in-place — fork into a branch first
+      // and run the regenerate against the branch (spec §6.1 / §3.1).
+      // Skipped for incognito since no server-side session exists.
+      if (
+        !isIncognito &&
+        args?.messageId &&
+        args.isLastAssistant === false
+      ) {
+        setBranchDialogContext({
+          forkMessageId: args.messageId,
+          followup: { kind: 'regenerate' },
+        })
+        return
+      }
+
       const correlationId = crypto.randomUUID()
       createAndRegisterGroup(correlationId, effectiveSessionId)
 
       if (isIncognito) {
         const store = useChatStore.getState()
-        store.truncateAfter(messageId)
-        store.updateMessage(messageId, newContent, 0)
+        const msgs = store.messages
+        const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+        if (lastAssistant) store.deleteMessage(lastAssistant.id)
         store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
         const allMessages = useChatStore.getState().messages
         sendMessage({
@@ -1106,50 +1276,120 @@ export function ChatView({ persona }: ChatViewProps) {
           messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
         })
       } else {
-        // Optimistically reflect the edit in the store so the bubble does
-        // not flash the previous text between closing the editor and the
-        // backend's CHAT_MESSAGE_UPDATED arriving. The backend remains
-        // authoritative — the truncate/update events will reconcile this.
-        const store = useChatStore.getState()
-        store.truncateAfter(messageId)
-        store.updateMessage(messageId, newContent, 0)
-        store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
-        sendMessage({
-          type: 'chat.edit',
-          session_id: effectiveSessionId,
-          message_id: messageId,
-          correlation_id: correlationId,
-          content: [{ type: 'text', text: newContent }],
-        })
+        useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
+        sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId, correlation_id: correlationId })
       }
     },
     [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup],
   )
 
-  const handleRegenerate = useCallback(() => {
-    if (!effectiveSessionId) return
-    const correlationId = crypto.randomUUID()
-    createAndRegisterGroup(correlationId, effectiveSessionId)
-
-    if (isIncognito) {
-      const store = useChatStore.getState()
-      const msgs = store.messages
-      const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (lastAssistant) store.deleteMessage(lastAssistant.id)
-      store.setWaitingForResponse(true, { sessionId: effectiveSessionId })
-      const allMessages = useChatStore.getState().messages
-      sendMessage({
-        type: 'chat.incognito.send',
-        persona_id: personaId,
-        session_id: effectiveSessionId,
-        correlation_id: correlationId,
-        messages: allMessages.map((m) => ({ role: m.role, content: m.content })),
+  /**
+   * Branch button on an assistant message — fork the conversation at this
+   * message (spec §3.1: fork-point IS the assistant itself), with no
+   * follow-up inference. The plain ``[Branch]`` button preserves the
+   * cloned assistant reply verbatim; the user can type the next message
+   * themselves in the branch.
+   */
+  const handleBranch = useCallback(
+    (messageId: string) => {
+      if (!effectiveSessionId) return
+      if (isIncognito) return
+      setBranchDialogContext({
+        forkMessageId: messageId,
+        followup: { kind: 'none' },
       })
-    } else {
-      useChatStore.getState().setWaitingForResponse(true, { sessionId: effectiveSessionId })
-      sendMessage({ type: 'chat.regenerate', session_id: effectiveSessionId, correlation_id: correlationId })
-    }
-  }, [effectiveSessionId, isIncognito, personaId, createAndRegisterGroup])
+    },
+    [effectiveSessionId, isIncognito],
+  )
+
+  /**
+   * Confirm-handler for the BranchNameDialog. Calls the branch endpoint,
+   * navigates to the new branch, then runs the follow-up action recorded
+   * in ``branchDialogContext`` (regenerate / send / nothing).
+   *
+   * Errors surface as a toast and leave the user in the parent session.
+   */
+  const handleBranchConfirm = useCallback(
+    async (name: string) => {
+      if (!effectiveSessionId || !branchDialogContext || !personaId) return
+      const context = branchDialogContext
+      try {
+        const branch = await chatApi.branchSession(
+          effectiveSessionId,
+          context.forkMessageId,
+          name,
+        )
+        setBranchDialogContext(null)
+        setEditResendContext(null)
+        navigate(`/chat/${personaId}/${branch.id}`)
+
+        // Schedule the follow-up to fire on the NEXT tick so the route
+        // change has time to remount ChatView with the new session id —
+        // dispatching directly here would target the parent session.
+        if (context.followup.kind !== 'none') {
+          setTimeout(() => {
+            const correlationId = crypto.randomUUID()
+            createAndRegisterGroup(correlationId, branch.id)
+            if (context.followup.kind === 'regenerate') {
+              useChatStore
+                .getState()
+                .setWaitingForResponse(true, { sessionId: branch.id })
+              sendMessage({
+                type: 'chat.regenerate',
+                session_id: branch.id,
+                correlation_id: correlationId,
+              })
+            } else if (context.followup.kind === 'send') {
+              useChatStore
+                .getState()
+                .setWaitingForResponse(true, { sessionId: branch.id })
+              sendMessage({
+                type: 'chat.send',
+                session_id: branch.id,
+                correlation_id: correlationId,
+                content: [{ type: 'text', text: context.followup.content }],
+              })
+            }
+          }, 50)
+        }
+      } catch (err) {
+        console.error('Branch creation failed', err)
+        setBranchDialogContext(null)
+        useNotificationStore.getState().addNotification({
+          level: 'error',
+          title: 'Branch fehlgeschlagen',
+          message: 'Branch konnte nicht erstellt werden.',
+          duration: 6000,
+        })
+      }
+    },
+    [
+      effectiveSessionId,
+      branchDialogContext,
+      personaId,
+      navigate,
+      createAndRegisterGroup,
+    ],
+  )
+
+  // EditResendDialog (case 1) — "Antwort ersetzen" picks in-place flow;
+  // "Neuer Branch" opens BranchNameDialog with the case-2 follow-up
+  // (chat.send with edited content against the branch).
+  const handleEditResendReplace = useCallback(() => {
+    if (!editResendContext || !effectiveSessionId) return
+    const ctx = editResendContext
+    setEditResendContext(null)
+    dispatchEditInPlace(effectiveSessionId, ctx.userMessageId, ctx.newContent)
+  }, [editResendContext, effectiveSessionId, dispatchEditInPlace])
+
+  const handleEditResendBranch = useCallback(() => {
+    if (!editResendContext) return
+    setBranchDialogContext({
+      forkMessageId: editResendContext.forkMessageId,
+      followup: { kind: 'send', content: editResendContext.newContent },
+    })
+    setEditResendContext(null)
+  }, [editResendContext])
 
   // Voice pipeline callbacks — registered once on mount. handleSend and
   // autoSendTranscription are read through refs so that re-renders (which
@@ -1740,7 +1980,7 @@ export function ChatView({ persona }: ChatViewProps) {
         <div className="border-b border-red-500/20 bg-red-500/5 px-4 py-2 text-[13px]">
           <span className="text-red-400">{error.userMessage}</span>
           {error.recoverable ? (
-            <button type="button" onClick={handleRegenerate}
+            <button type="button" onClick={() => handleRegenerate()}
               className="ml-3 rounded border border-red-500/30 px-2 py-0.5 text-[12px] text-red-300 hover:bg-red-500/10">
               Retry
             </button>
@@ -1817,6 +2057,7 @@ export function ChatView({ persona }: ChatViewProps) {
               streamingSlow={stream?.streamingSlow ?? false}
               containerRef={containerRef} bottomRef={bottomRef} showScrollButton={showScrollButton} onScrollToBottom={scrollToBottom}
               onEdit={handleEdit} onRegenerate={handleRegenerate}
+              onBranch={isIncognito ? undefined : handleBranch}
               bookmarkedMessageIds={bookmarkedMessageIds}
               onBookmark={isIncognito ? undefined : (msgId) => setBookmarkTargetMsgId(msgId)}
               sttEnabled={sttEnabled}
@@ -1938,6 +2179,24 @@ export function ChatView({ persona }: ChatViewProps) {
           setBookmarkTargetMsgId(null)
         }}
         accentColour={accentColour}
+      />
+
+      {/* Branching: case-1 chooser (last user msg edit) and the universal
+          name dialog. Both mount under ChatView so the active session is
+          available for the API call; the chooser may chain into the name
+          dialog by clearing its own state and setting branchDialogContext. */}
+      <EditResendDialog
+        isOpen={editResendContext !== null}
+        onClose={() => setEditResendContext(null)}
+        onReplace={handleEditResendReplace}
+        onBranch={handleEditResendBranch}
+      />
+      <BranchNameDialog
+        isOpen={branchDialogContext !== null}
+        parentTitle={parentSessionTitle}
+        allSessions={allSessions}
+        onConfirm={handleBranchConfirm}
+        onClose={() => setBranchDialogContext(null)}
       />
     </div>
   )

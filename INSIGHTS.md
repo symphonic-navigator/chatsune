@@ -2538,3 +2538,107 @@ branch fork-point is within a few hundred messages of the head.
 snapshot — carried through verbatim on cloned assistant docs).
 The whole pre-branching wave was scoped specifically so branching
 could compose with them without further structural changes.
+
+## INS-053 — Branching UI: four trigger patterns, two dialogs, one orchestrator (2026-05-17)
+
+**Date:** 2026-05-17
+
+**Context:** The branch endpoint (INS-052) is purely additive on
+the wire — clone, return the new session, no inference. The UX
+work lives entirely on the frontend: four behaviourally distinct
+trigger patterns must collapse onto the same `POST /branch` call
+plus optional follow-up `chat.send` / `chat.regenerate`. Spec
+`devdocs/specs/2026-05-17-branching-design.md` §2.
+
+**The four triggers and how the UI distinguishes them:**
+
+1. **`[Branch]` on any assistant message** — fork at this
+   assistant (verbatim clone), no follow-up. Endpoint state in
+   the branch: the cloned assistant is the last message; the
+   user types the next turn.
+2. **`[Regenerate]` on the LAST assistant** — unchanged in-place
+   behaviour. No dialog, no API call.
+3. **`[Branch & Regenerate]` on a non-last assistant** — same
+   button slot as Regenerate, re-labelled. Forks at the
+   assistant, then runs `chat.regenerate` against the branch.
+4. **Edit + Save & Resend** on a user message — two sub-cases:
+   - **Last user message (case 1):** chooser dialog with two
+     options. *Antwort ersetzen* runs the legacy in-place flow;
+     *Neuer Branch* chains into the name dialog with a
+     `chat.send` follow-up against the branch.
+   - **Earlier user message (case 2):** no chooser. Branch is
+     the only safe option (in-place would invalidate later
+     messages), so the name dialog opens directly with the same
+     `chat.send` follow-up.
+
+**Two dialogs, two state slots.** `BranchNameDialog` and
+`EditResendDialog` are separate components and have separate
+`branchDialogContext` / `editResendContext` state slots in
+`ChatView`. The chooser dialog can chain into the name dialog
+cleanly by clearing its own context and setting the other one;
+keeping them entangled would have forced a state machine where a
+simpler hand-off does the job.
+
+**The fork-point is always an assistant (or `null`).** Spec §3.1
+is strict: pair-matching demands the cloned tail is well-formed.
+The frontend computes the fork id from the action context:
+- Branch / Branch&Regen on assistant `A_n` → `fork = A_n.id`.
+- Edit user `U_n` → `fork = the assistant immediately before U_n`,
+  or `null` if `U_n` is the first message. Helper:
+  `findPriorAssistantId` in `ChatView.tsx`.
+
+**Follow-up dispatch happens on the next tick, not immediately.**
+After `branchSession` returns, the orchestrator calls
+`navigate(/chat/{persona}/{branchId})` and only then schedules the
+follow-up `sendMessage` via `setTimeout(..., 50)`. Dispatching
+synchronously would target the parent session because the route
+change hasn't remounted `ChatView` yet — the chatStore's
+`activeSessionId` is still the parent's. The 50ms delay is
+empirical; it could be replaced with a "wait until route
+matches" promise in a future tidy.
+
+**`cloned_from_branch` subtitle is rendered at the timeline-
+entry render layer, not inside each pill.** Wrapping every
+pill component to know about the flag would have meant touching
+five files (`ToolCallPill`, `WebSearchPills`, `KnowledgePills`,
+`ArtefactCard`, `InlineImageBlock`). Instead `renderTimelineEntry`
+in `MessageList.tsx` checks `entry.cloned_from_branch` and drops
+a small `<ClonedFromBranchSubtitle />` beneath the rendered pill.
+DRY by construction; pill components remain ignorant of branching.
+
+**Sibling-variant-index computation is best-effort and cosmetic.**
+The name dialog scans `useChatSessions().sessions` for titles
+matching `${parentTitle} (Variante <n>)` and picks `max + 1`. Two
+tabs branching simultaneously may compute the same number — the
+backend does not enforce unique titles, so the collision is a
+purely cosmetic problem the user can fix by renaming. Spec §7.6.
+
+**Incognito sessions bypass the branch path entirely.** No
+server-side session means no document to clone. `handleEdit`
+short-circuits to the in-place flow when `isIncognito` is true,
+and `onBranch` is left undefined on the `MessageList` so the
+Branch button doesn't render at all in incognito chats.
+
+**`MessageList.onRegenerate` signature change.** It now takes an
+optional `{ messageId, isLastAssistant }` object so the
+non-last branch path can route to the name dialog. The trailing
+"Generate response" CTA (which fires when the last message is a
+user message awaiting an assistant) calls it with no arguments
+and the existing in-place behaviour is preserved.
+
+**Tests live in `frontend/src/features/chat/branching/__tests__/`**
+and `frontend/src/core/api/__tests__/chat.branchSession.test.ts`.
+Coverage:
+- API wire shape (path, body, return value).
+- Dialog rendering (German strings, default-name seeding, cancel
+  vs confirm wiring, loader on submit).
+- Action-bar rules on assistant messages (last vs non-last
+  labels and button visibility).
+- End-to-end flow harness (confirm → API call → switch
+  notification; error path leaves the user in the parent).
+- `cloned_from_branch` subtitle rendering on cloned entries
+  and its absence on fresh ones.
+
+**Related:** INS-052 (backend endpoint and clone semantics),
+INS-048 (pair-by-correlation — branch and parent share cids by
+design so the pair builder works without changes).
