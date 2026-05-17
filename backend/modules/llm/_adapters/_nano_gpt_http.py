@@ -48,7 +48,9 @@ from typing import ClassVar
 from uuid import uuid4
 
 import httpx
+from fastapi import APIRouter, Depends, HTTPException
 from PIL import Image
+from pydantic import BaseModel
 from redis.asyncio import Redis
 
 from backend._retry import (
@@ -698,6 +700,10 @@ class NanoGptHttpAdapter(BaseAdapter):
             ),
         ]
 
+    @classmethod
+    def router(cls) -> APIRouter:
+        return _build_adapter_router()
+
     async def fetch_models(
         self, connection: ResolvedConnection,
     ) -> list[ModelMetaDto]:
@@ -1125,3 +1131,51 @@ class NanoGptHttpAdapter(BaseAdapter):
                         content_type=content_type,
                     ))
         return items
+
+
+# ---------------------------------------------------------------------------
+# Adapter sub-router — mounted under /api/llm/connections/{id}/adapter/
+# ---------------------------------------------------------------------------
+
+class _ImagineTestRequest(BaseModel):
+    group_id: str
+    config: dict
+    prompt: str = "a serene mountain landscape at dawn"
+
+
+class _ImagineTestResponse(BaseModel):
+    items: list[ImageGenItem]
+
+
+def _build_adapter_router() -> APIRouter:
+    from pydantic import TypeAdapter
+    from backend.modules.llm._resolver import resolve_connection_for_user
+
+    router = APIRouter()
+
+    @router.post("/imagine/test", response_model=_ImagineTestResponse)
+    async def imagine_test(
+        body: _ImagineTestRequest,
+        c: ResolvedConnection = Depends(resolve_connection_for_user),
+    ) -> _ImagineTestResponse:
+        _log.info(
+            "nano_gpt.imagine_test connection_id=%s group_id=%s",
+            c.id, body.group_id,
+        )
+        try:
+            cfg = TypeAdapter(ImageGroupConfig).validate_python(
+                {**body.config, "group_id": body.group_id}
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"invalid config: {exc}")
+
+        adapter = NanoGptHttpAdapter()
+        items = await adapter.generate_images(
+            connection=c,
+            group_id=body.group_id,
+            config=cfg,
+            prompt=body.prompt,
+        )
+        return _ImagineTestResponse(items=items)
+
+    return router

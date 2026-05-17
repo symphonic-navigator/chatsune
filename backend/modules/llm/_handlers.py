@@ -18,7 +18,7 @@ from backend.modules.llm._metadata import (
     get_models_for_connection,
     refresh_connection_models,
 )
-from backend.modules.llm._registry import ADAPTER_REGISTRY
+from backend.modules.llm._registry import ADAPTER_REGISTRY, _PREMIUM_ONLY_ADAPTERS
 from backend.modules.llm._resolver import resolve_connection_for_user
 from backend.modules.llm._semaphores import get_semaphore_registry
 from backend.modules.llm._user_config import UserModelConfigRepository
@@ -360,7 +360,11 @@ def _mount_adapter_routers() -> None:
     # (e.g. ``/test``) regardless of the connection's actual adapter —
     # which caused ``ollama_http.test`` to execute against a community
     # connection and crash on a missing ``url`` config field.
-    for adapter_type, cls in ADAPTER_REGISTRY.items():
+    # Premium-only adapters are included so their sub-routers (e.g.
+    # /imagine/test) are also reachable even though users cannot create
+    # connections of those types directly.
+    all_adapters = {**ADAPTER_REGISTRY, **_PREMIUM_ONLY_ADAPTERS}
+    for adapter_type, cls in all_adapters.items():
         try:
             sub = cls.router()
         except Exception as exc:
