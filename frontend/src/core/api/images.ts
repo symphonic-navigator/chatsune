@@ -15,12 +15,31 @@ export interface XaiImagineConfig {
   n: number
 }
 
+export interface ZImageConfig {
+  group_id: 'nano_gpt_zimage'
+  model: 'turbo' | 'base'
+  size:
+    | '256x256' | '512x512' | '768x768'
+    | '1024x1024'
+    | '1280x720' | '720x1280'
+    | '1536x1024' | '1024x1536'
+    | '1536x1536'
+  n: number
+}
+
+export interface SeedreamConfig {
+  group_id: 'nano_gpt_seedream'
+  aspect: '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
+  quality: 'standard' | 'high' | 'ultra'
+  n: number
+}
+
 /**
  * Discriminated union of all image-group configs.
  * Narrow with: switch (cfg.group_id) { case 'xai_imagine': ... }
- * Extend this union when new image groups are added (Seedream, FLUX, etc.).
+ * Extend this union when new image groups are added.
  */
-export type ImageGroupConfig = XaiImagineConfig
+export type ImageGroupConfig = XaiImagineConfig | ZImageConfig | SeedreamConfig
 
 
 // --- generation result items (per-image; discriminated by kind) ---------------
