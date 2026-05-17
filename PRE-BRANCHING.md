@@ -665,13 +665,28 @@ their findings can be acted on. Consolidated and de-duplicated:
    `list_messages` with zero changes. **Recommended: separate session
    documents (clone-on-branch)** — it composes cleanly with existing
    compaction checkpoints, with the cost of more storage.
+
+Chris: clone-on-branch - session storage cost is (almost) irrelevant  
+
+turn artefacts and uploads into dead links in the clone - thats a limitation we can't workaround for the time bein
+
 2. **Concurrent branch streaming** within one user session: allowed or
    serialised one-at-a-time?
+
+Chris: should not be a problem - since we clone it's an entirely new session
+
 3. **Branch from a compacted-out message:** disallow (mirror
    `edit_before_compact` guard) or allow with an explicit "your branch
    inherits the briefing" disclaimer?
+
+Chris: we keep the entire history anyway - branching before a checkpoint can, therefore, restore the chat as it was before the checkpoint up to the point where the user branched - no problem there  
+
+So if user branches between compaction checkpoints 2 and 3 the cloned branch includes checkpoints 1 and 2 and the messages up to the point where branching happened
+
 4. **`messagePillContents` / `compaction_checkpoints`** on branch fork —
    share or clone?
+
+Chris: clone, clearly clone - don't keep anything, because this would cause problems with deletion, export, import, etc...
 
 ### Reasoning / tool re-injection
 
@@ -679,53 +694,100 @@ their findings can be acted on. Consolidated and de-duplicated:
    where the assistant called `write_journal_entry`, do we (a) replay the
    recorded tool result (lying — entry already exists), (b) re-execute
    (duplicating), or (c) drop the tool call entirely from the replay?
+
+Chris: no tool calls on clone - (a) is correct here but with a "not replayed - clone" indicator perhaps
+
 6. **Anthropic signature persistence:** how long are signatures valid?
    A branch created weeks later may have the signature rejected. Accept
    the failure, or strip-and-retry?
+
+Chris: I'm sorry, this is something I don't understand, please explain to me in chat later
+
 7. **DSv4 / Kimi on Ollama Cloud:** soft-CoT class, but `thinking` is
    provider-emitted. `replay_reasoning` should be `False` there too?
+
+Chris: thats a damn good question, lets discuss in chat if we want to display replay reasoning at all... I'm really not sure about this - especially in the context of cache prefixes, etc... what is it that we want to do?
+
+This is one of the most confusing concepts for me at the moment, please help me :-)
+
 8. **Effort persistence on branches:** if we replay thinking, does the
    original turn's `reasoning_effort` survive, or does the branch's
    current setting win?
+
+Chris: branch current setting wins
+
 9. **Tool-result truncation:** big web_fetch results (20k chars) — do we
    want a "tool-result summary on N+2" policy? Out of scope for branching
    itself, but worth flagging now.
+
+Chris: damn good question... I don't know, lets discuss in chat
 
 ### Context handling
 
 10. **`save_fn` failure mid-stream:** (a) write a "broken" placeholder
     with captured content, (b) retry in a background task, or (c) fire
     `ChatStreamErrorEvent` and tell user to regenerate?
+
+Chris: (c) - thats an error
+
 11. **Per-adapter token reconciliation:** is provider-reported
     `input_tokens` the new "truth" between turns, or do we want both
     numbers persisted and shown side-by-side for transparency?
+
+Chris: please recommend something here - I tend towards "provider reported", though - because it's exact (I hope)
+
 12. **`list_messages` 5000 cap:** has anyone seen a session approach this
     yet? Determines whether a-5 is urgent.
+
+Chris: I don't know where 5000 comes from - probably because browsers become slow when too many messages are present?
+
 13. **Aborted user prompts:** abort-before-delta deletes the user
     message; abort-after-delta keeps it. Should branching treat both the
     same (preserve user message + allow regenerate)?
+
+Chris: probably yes
 
 ### Compaction
 
 14. **Auto-Mode + discovery dialog (spec §6.0/§6.5):** in scope for
     v0.2.0? No implementation found.
+
+Chris: no, will be 0.3.0 - I need feedback from users first
+
 15. **Reversibility (c-14):** "rollback last compaction" for v0.2.0, or
     accept "start a new session" as the recovery path?
+
+Chris: rollback for now - we wait for user feedback to make a decision on this again
+
 16. **Are concurrent compactions across multiple sessions intentional?**
     Lock is per-session; a power user could compact 3 sessions in
     parallel. With c-3 unfixed this is a budget DoS.
+
+Chris: user issue, not Chatsune issue - if users do something like this it's their fault, honestly
+
 17. **`compaction_source_too_large`:** should we offer a two-stage
     hierarchical compaction (spec §10) before declaring v0.2.0 ready, or
     is "switch to a larger model" acceptable?
+
+
+Chris: lets keep it as it is - but make a note for 0.3.0, in 0.3.0 we will solve a lot of issues based on user feedback (thats one of the goals for 0.3.0)
 
 ### Frontend
 
 18. **`lastSequence` per tab (d-4):** by design (incognito-resilient) or
     accidental? If by design, multi-tab catchup gap is acceptable.
+
+Chris: incognito-resilience is very important
+
 19. **Want a generic `Topics.ERROR` toast subscriber added** at app-shell
     level (d-2)?
+
+Chris: yes, will probably be useful
+
 20. **Client-tool dispatch timeout (d-3):** expiry surfaces as a
     stream-error event, or a silent tool-result error?
+
+Chris: stream-error event please
 
 ---
 
