@@ -885,15 +885,11 @@ async def test_xai_generate_images_success_and_moderation_mix(monkeypatch):
     assert isinstance(items[1], ModeratedRejection)
     assert items[1].reason == "filter_a"
 
-    # Buffer should have been populated for the success item.
-    from backend.modules.llm._adapters._xai_http import drain_image_buffer
-    bufs = drain_image_buffer(items[0].id)
-    assert bufs is not None
-    bytes_, ct = bufs
-    assert bytes_ == fake_image_bytes
-    assert ct == "image/png"
-    # Second drain returns None (buffer entry has been consumed).
-    assert drain_image_buffer(items[0].id) is None
+    # The success item carries the bytes inline; the moderated item doesn't.
+    assert items[0].data == fake_image_bytes
+    assert items[0].content_type == "image/png"
+    # items[1] is a ModeratedRejection — it has no data attribute by design.
+    assert not hasattr(items[1], "data")
 
 
 # ---------------------------------------------------------------------------

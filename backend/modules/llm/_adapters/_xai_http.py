@@ -723,8 +723,9 @@ class XaiHttpAdapter(BaseAdapter):
                     width=width,
                     height=height,
                     model_id=model_id,
+                    data=blob_resp.content,
+                    content_type=content_type,
                 ))
-                _LAST_BATCH_BUFFERS[image_id] = (blob_resp.content, content_type)
 
         return items
 
