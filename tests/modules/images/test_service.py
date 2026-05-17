@@ -71,14 +71,13 @@ async def test_generate_for_chat_partial_moderation_outcome(monkeypatch):
     svc, llm, _, _, cfg = _make_service()
     cfg.get_active.return_value = _active_cfg()
     llm.validate_image_config.return_value = XaiImagineConfig(n=2)
-    success = GeneratedImageResult(id="img_a", width=1024, height=1024, model_id="grok-imagine-image")
+    success = GeneratedImageResult(
+        id="img_a", width=1024, height=1024, model_id="grok-imagine-image",
+        data=b"raw_bytes", content_type="image/jpeg",
+    )
     moderated = ModeratedRejection(reason=None)
     llm.generate_images.return_value = [success, moderated]
 
-    monkeypatch.setattr(
-        "backend.modules.images._service.drain_image_buffer",
-        lambda iid: (b"raw_bytes", "image/jpeg") if iid == "img_a" else None,
-    )
     monkeypatch.setattr(
         "backend.modules.images._service.generate_thumbnail_jpeg",
         lambda b, max_edge=256: b"thumb_bytes",
@@ -103,10 +102,6 @@ async def test_generate_for_chat_all_moderated_sets_flag(monkeypatch):
     cfg.get_active.return_value = _active_cfg()
     llm.validate_image_config.return_value = XaiImagineConfig(n=2)
     llm.generate_images.return_value = [ModeratedRejection(), ModeratedRejection()]
-    monkeypatch.setattr(
-        "backend.modules.images._service.drain_image_buffer",
-        lambda iid: None,
-    )
     outcome = await svc.generate_for_chat(user_id="u1", prompt="x", tool_call_id="tc1")
     assert outcome.successful_count == 0
     assert outcome.moderated_count == 2

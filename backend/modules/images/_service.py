@@ -18,7 +18,6 @@ from typing import Literal
 
 from backend.modules.images._models import GeneratedImageDocument, UserImageConfigDocument
 from backend.modules.images._thumbnails import generate_thumbnail_jpeg
-from backend.modules.llm._adapters._xai_http import drain_image_buffer
 from shared.dtos.images import (
     ActiveImageConfigDto,
     ConnectionImageGroupsDto,
@@ -186,14 +185,13 @@ class ImageService:
                 moderated_count += 1
                 continue
 
-            # GeneratedImageResult — attempt to drain the adapter's byte buffer.
+            # GeneratedImageResult — bytes travel inline on the result DTO.
             assert isinstance(item, GeneratedImageResult)
-            buf = drain_image_buffer(item.id)
-            if buf is None:
+            if item.data is None or item.content_type is None:
                 # Adapter promised a result but no bytes arrived; treat as moderated.
                 _log.warning(
                     "image.generate_for_chat user_id=%s image_id=%s "
-                    "reason=buffer_empty_treat_as_moderated",
+                    "reason=empty_data_treat_as_moderated",
                     user_id, item.id,
                 )
                 doc = GeneratedImageDocument(
@@ -212,7 +210,7 @@ class ImageService:
                 moderated_count += 1
                 continue
 
-            full_bytes, content_type = buf
+            full_bytes, content_type = item.data, item.content_type
 
             # Generate a thumbnail (always JPEG, max 256 px on longest edge).
             thumb_bytes = generate_thumbnail_jpeg(full_bytes, max_edge=256)
