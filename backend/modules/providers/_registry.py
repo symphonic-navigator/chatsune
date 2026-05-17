@@ -114,7 +114,7 @@ def _register_builtins() -> None:
         display_name="Nano-GPT",
         icon="nano_gpt",
         base_url="https://nano-gpt.com/api/v1",
-        capabilities=[Capability.LLM],
+        capabilities=[Capability.LLM, Capability.TTI],
         config_fields=[_api_key_field("Nano-GPT API Key")],
         # Nano-GPT's ``/v1/models`` endpoint is unauthenticated — it returns
         # the full system catalogue regardless of key. Only the personalised
