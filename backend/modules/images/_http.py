@@ -144,7 +144,6 @@ async def test_image(
 
     from backend.modules.images._thumbnails import generate_thumbnail_jpeg
     from backend.modules.llm import LlmService
-    from backend.modules.llm._adapters._xai_http import drain_image_buffer
     from shared.dtos.images import GeneratedImageResult
 
     try:
@@ -172,13 +171,11 @@ async def test_image(
     moderated = 0
     for item in items:
         if isinstance(item, GeneratedImageResult):
-            buf = drain_image_buffer(item.id)
-            if buf is None:
+            if item.data is None:
                 moderated += 1
                 continue
-            full_bytes, _ = buf
             try:
-                thumb_bytes = generate_thumbnail_jpeg(full_bytes, max_edge=192)
+                thumb_bytes = generate_thumbnail_jpeg(item.data, max_edge=192)
             except Exception:
                 moderated += 1
                 continue
