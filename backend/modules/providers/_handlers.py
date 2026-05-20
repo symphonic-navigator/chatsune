@@ -68,6 +68,8 @@ async def upsert_account(
         PremiumProviderAccountUpsertedEvent(provider_id=provider_id),
         target_user_ids=[user["sub"]],
     )
+    from backend.modules.llm import get_model_cache_refresher
+    await get_model_cache_refresher().trigger_premium(user["sub"], provider_id)
     return account
 
 
