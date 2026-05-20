@@ -423,7 +423,22 @@ async def get_model_metadata(
     adapter_cls = get_adapter_class(c.adapter_type)
     if adapter_cls is None:
         return None
-    models = await get_models_for_connection(c, adapter_cls, get_redis())
+    redis = get_redis()
+    # Premium and per-user Connection caches live under different keys
+    # (premium keys are user-scoped; see ``_metadata.py``). Route by the
+    # synthetic ``premium:`` prefix that ``_resolve_premium`` attaches to
+    # the ResolvedConnection so we read from the same cache the listing
+    # endpoint and the background refresher write to. Without this split
+    # premium lookups always hit a stale connection-scoped key, miss, and
+    # — since the read path no longer falls back to a synchronous fetch
+    # — return ``None`` for every premium model.
+    if c.id.startswith("premium:"):
+        provider_id = c.id.removeprefix("premium:")
+        models = await get_premium_models(
+            c, adapter_cls, redis, user_id, provider_id,
+        )
+    else:
+        models = await get_models_for_connection(c, adapter_cls, redis)
     for m in models:
         if m.model_id == model_slug:
             return m
