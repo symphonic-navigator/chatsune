@@ -18,6 +18,7 @@ from backend.modules.llm._metadata import (
     get_models_for_connection,
     refresh_connection_models,
 )
+from backend.modules.llm._metadata_refresher import get_model_cache_refresher
 from backend.modules.llm._registry import ADAPTER_REGISTRY, _PREMIUM_ONLY_ADAPTERS
 from backend.modules.llm._resolver import resolve_connection_for_user
 from backend.modules.llm._semaphores import get_semaphore_registry
@@ -137,6 +138,7 @@ async def create_connection(
         ),
         target_user_ids=[user["sub"]],
     )
+    await get_model_cache_refresher().trigger_connection(doc["_id"])
     return dto
 
 
@@ -208,6 +210,7 @@ async def update_connection(
         ),
         target_user_ids=[user["sub"]],
     )
+    await get_model_cache_refresher().trigger_connection(doc["_id"])
     return dto
 
 
