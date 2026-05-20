@@ -7,7 +7,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from backend.modules.tools._mcp_executor import McpExecutor
+from backend.modules.tools._mcp_executor import McpExecutor, _normalise_mcp_url
 from backend.modules.tools._mcp_registry import GatewayHandle, SessionMcpRegistry
 from backend.modules.tools._namespace import normalise_namespace, normalise_prefix
 from backend.ws.event_bus import get_event_bus
@@ -117,7 +117,7 @@ async def _discover_single_gateway(
 ) -> tuple[GatewayHandle | None, McpGatewayStatusDto]:
     """Discover tools from one gateway. Returns (handle_or_None, status)."""
     namespace = normalise_namespace(config.name)
-    mcp_url = config.url.rstrip("/") + "/mcp"
+    mcp_url = _normalise_mcp_url(config.url)
 
     # Step 1: initialise — populates session_id for stateful servers, returns
     # None for stateless servers OR for protocol failures. Both cases are
