@@ -204,6 +204,74 @@ class ModelCacheRefresher:
             target_user_ids=[user_id],
         )
 
+    async def trigger_connection(self, connection_id: str) -> None:
+        """Fire-and-forget refresh of a single connection's cache."""
+        asyncio.create_task(
+            self._safe_one_shot_connection(connection_id),
+            name=f"model-cache-refresh-conn:{connection_id}",
+        )
+
+    async def trigger_premium(self, user_id: str, provider_id: str) -> None:
+        """Fire-and-forget refresh of a single user/provider's cache."""
+        asyncio.create_task(
+            self._safe_one_shot_premium(user_id, provider_id),
+            name=f"model-cache-refresh-prem:{user_id}:{provider_id}",
+        )
+
+    async def _safe_one_shot_connection(self, connection_id: str) -> None:
+        try:
+            conn = await self._load_connection(connection_id)
+            if conn is None:
+                return
+            adapter_cls = self._get_adapter_class(conn.adapter_type)
+            if adapter_cls is None:
+                return
+            await _refresh_connection_into_cache(conn, adapter_cls, self._get_redis())
+            await self._publish_connection_refreshed(
+                self._get_event_bus(), conn.user_id, conn.id,
+            )
+        except Exception as exc:
+            _log.warning(
+                "one-shot refresh failed for connection=%s: %s",
+                connection_id, exc,
+            )
+
+    async def _safe_one_shot_premium(
+        self, user_id: str, provider_id: str,
+    ) -> None:
+        try:
+            from backend.modules.llm._resolver import resolve_premium_for_listing
+            resolved = await resolve_premium_for_listing(user_id, provider_id)
+            if resolved is None:
+                return
+            adapter_cls = self._get_adapter_class(resolved.adapter_type)
+            if adapter_cls is None:
+                return
+            await _refresh_premium_into_cache(
+                resolved, adapter_cls, self._get_redis(), user_id, provider_id,
+            )
+            await self._publish_premium_refreshed(
+                self._get_event_bus(), user_id, provider_id,
+            )
+        except Exception as exc:
+            _log.warning(
+                "one-shot refresh failed for premium provider=%s user=%s: %s",
+                provider_id, user_id, exc,
+            )
+
+    async def _load_connection(
+        self, connection_id: str,
+    ) -> ResolvedConnection | None:
+        from backend.database import get_db
+        from backend.modules.llm._connections import ConnectionRepository
+        from backend.modules.llm._resolver import _to_resolved
+
+        repo = ConnectionRepository(get_db())
+        doc = await repo.find_any(connection_id)
+        if doc is None:
+            return None
+        return _to_resolved(doc)
+
 
 async def _refresh_connection_into_cache(
     c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
