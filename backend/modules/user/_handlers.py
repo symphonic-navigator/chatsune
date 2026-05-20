@@ -1541,11 +1541,11 @@ async def proxy_mcp_tools_list(
     request — proxy routes do not share session state with WebSocket-bound
     discovery.
     """
-    from backend.modules.tools._mcp_executor import McpExecutor
+    from backend.modules.tools._mcp_executor import McpExecutor, _normalise_mcp_url
 
     gw = await _resolve_gateway(gateway_id, user)
     executor = McpExecutor()
-    mcp_url = gw.url.rstrip("/") + "/mcp"
+    mcp_url = _normalise_mcp_url(gw.url)
     tools = await executor.discover_tools_oneshot(url=mcp_url, api_key=gw.api_key)
     return {"tools": tools}
 
@@ -1559,11 +1559,11 @@ async def proxy_mcp_tool_call(
     """Proxy tools/call to a backend-reachable MCP gateway with full lifecycle."""
     import json as _json
 
-    from backend.modules.tools._mcp_executor import McpExecutor
+    from backend.modules.tools._mcp_executor import McpExecutor, _normalise_mcp_url
 
     gw = await _resolve_gateway(gateway_id, user)
     executor = McpExecutor()
-    mcp_url = gw.url.rstrip("/") + "/mcp"
+    mcp_url = _normalise_mcp_url(gw.url)
     result_json = await executor.call_tool_oneshot(
         url=mcp_url, api_key=gw.api_key,
         tool_name=body.tool_name, arguments=body.arguments,

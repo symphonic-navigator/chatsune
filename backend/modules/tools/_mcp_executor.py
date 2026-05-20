@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from urllib.parse import urlparse
 
 import httpx
 
@@ -14,6 +15,25 @@ _MCP_HTTP_TIMEOUT_S = 30
 _REQUEST_ID_COUNTER = 0
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
+
+
+def _normalise_mcp_url(url: str) -> str:
+    """Return the URL Chatsune should POST MCP JSON-RPC to.
+
+    Users may enter either:
+    - a base URL (``https://mcp.example.com``) — historical Chatsune convention,
+      we append the conventional ``/mcp`` path.
+    - a full URL (``https://mcp.example.com/mcp`` or any other path) — the form
+      every other MCP client (Claude Desktop, etc.) uses, taken verbatim.
+
+    Decision is made on the URL's path: empty or ``"/"`` means base URL,
+    anything else is treated as the full endpoint.
+    """
+    cleaned = url.rstrip("/")
+    parsed = urlparse(cleaned)
+    if parsed.path in ("", "/"):
+        return cleaned + "/mcp"
+    return cleaned
 
 
 def _client_version() -> str:

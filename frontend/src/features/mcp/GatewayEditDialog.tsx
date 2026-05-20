@@ -125,11 +125,15 @@ export function GatewayEditDialog({
             setUrl(e.target.value)
             if (urlError) setUrlError(null)
           }}
-          placeholder="https://mcp.example.com"
+          placeholder="https://mcp.example.com/mcp"
           className={`${INPUT} font-mono`}
         />
-        {urlError && (
+        {urlError ? (
           <p className="mt-1 text-[10px] text-[rgba(243,139,168,0.9)]">{urlError}</p>
+        ) : (
+          <p className="mt-1 text-[10px] text-white/35 font-mono">
+            Full URL including path. <span className="text-white/55">/mcp</span> is auto-added if you only enter the base URL.
+          </p>
         )}
       </div>
 
