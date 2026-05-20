@@ -138,6 +138,13 @@ async def lifespan(app: FastAPI):
     await run_numbered_migrations(db)
     manager = ConnectionManager()
     set_manager(manager)
+
+    from backend.modules.llm import get_model_cache_refresher
+
+    _refresher = get_model_cache_refresher()
+    manager.register_on_first_connect(_refresher.ensure_user_task)
+    manager.register_on_last_disconnect(_refresher.release_user_task)
+
     event_bus = EventBus(redis=redis, manager=manager)
     set_event_bus(event_bus)
 

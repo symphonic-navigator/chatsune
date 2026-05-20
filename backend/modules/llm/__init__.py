@@ -59,6 +59,10 @@ from backend.modules.llm._metadata import (
     refresh_connection_models,
     refresh_premium_models,
 )
+from backend.modules.llm._metadata_refresher import (
+    ModelCacheRefresher,
+    get_model_cache_refresher,
+)
 from backend.modules.llm._registry import (
     ADAPTER_REGISTRY,
     _instantiate_adapter,
@@ -808,4 +812,6 @@ __all__ = [
     "LlmService",
     "ImageNormalisationError",
     "normalise_for_llm",
+    "ModelCacheRefresher",
+    "get_model_cache_refresher",
 ]
