@@ -1,8 +1,12 @@
 import asyncio
+import logging
+from typing import Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
+
+_log = logging.getLogger(__name__)
 
 _manager: "ConnectionManager | None" = None
 
@@ -12,14 +16,43 @@ class ConnectionManager:
         # user_id -> connection_id -> WebSocket
         self._connections: dict[str, dict[str, WebSocket]] = {}
         self._user_roles: dict[str, str] = {}
+        self._on_first_user_connect: list[Callable[[str], Awaitable[None]]] = []
+        self._on_last_user_disconnect: list[Callable[[str], Awaitable[None]]] = []
+
+    def register_on_first_connect(
+        self, cb: Callable[[str], Awaitable[None]],
+    ) -> None:
+        self._on_first_user_connect.append(cb)
+
+    def register_on_last_disconnect(
+        self, cb: Callable[[str], Awaitable[None]],
+    ) -> None:
+        self._on_last_user_disconnect.append(cb)
+
+    async def _fire_hooks(
+        self,
+        hooks: list[Callable[[str], Awaitable[None]]],
+        user_id: str,
+    ) -> None:
+        for hook in hooks:
+            try:
+                await hook(user_id)
+            except Exception:
+                _log.exception(
+                    "lifecycle hook %r failed for user=%s",
+                    getattr(hook, "__name__", repr(hook)), user_id,
+                )
 
     async def connect(self, user_id: str, role: str, ws: WebSocket) -> str:
         """Register a new WebSocket and return its assigned connection id."""
         connection_id = str(uuid4())
-        if user_id not in self._connections:
+        is_first = user_id not in self._connections
+        if is_first:
             self._connections[user_id] = {}
         self._connections[user_id][connection_id] = ws
         self._user_roles[user_id] = role
+        if is_first:
+            await self._fire_hooks(self._on_first_user_connect, user_id)
         return connection_id
 
     async def disconnect(self, user_id: str, ws: WebSocket) -> None:
@@ -29,9 +62,11 @@ class ConnectionManager:
         dead_ids = [cid for cid, w in conns.items() if w is ws]
         for cid in dead_ids:
             del conns[cid]
-        if not conns:
+        became_empty = not conns
+        if became_empty:
             del self._connections[user_id]
             del self._user_roles[user_id]
+            await self._fire_hooks(self._on_last_user_disconnect, user_id)
 
     def _iter_sockets(self, user_id: str) -> list[WebSocket]:
         return list(self._connections.get(user_id, {}).values())
