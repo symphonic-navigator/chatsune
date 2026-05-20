@@ -24,7 +24,7 @@ from backend.modules.llm._registry import _instantiate_adapter
 from shared.dtos.llm import ModelMetaDto
 
 _log = logging.getLogger(__name__)
-_TTL_SECONDS = 30 * 60
+_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def _cache_key(connection_id: str) -> str:
@@ -50,28 +50,21 @@ async def _fetch_and_cache(
 
 
 async def get_models_for_connection(
-    c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
+    c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,  # noqa: ARG001
 ) -> list[ModelMetaDto]:
-    """Return cached or freshly-fetched models; swallow errors for UI calm."""
+    """Return cached models or an empty list. The background refresher owns
+    cache population; this read path no longer fetches synchronously."""
     cached = await redis.get(_cache_key(c.id))
-    if cached:
-        try:
-            return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
-        except ValidationError as exc:
-            # Cache schema drift — a future field-without-default must never
-            # take down the endpoint. Drop the poisoned key and fall through
-            # to the fetch path. See CLAUDE.md §Data-Model Migrations.
-            _log.warning(
-                "stale model cache for connection=%s — dropping and refetching: %s",
-                c.id, exc,
-            )
-            await redis.delete(_cache_key(c.id))
-    try:
-        return await _fetch_and_cache(c, adapter_cls, redis)
-    except NotImplementedError:
+    if cached is None:
         return []
-    except Exception as exc:
-        _log.warning("fetch_models failed for connection=%s: %s", c.id, exc)
+    try:
+        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+    except ValidationError as exc:
+        _log.warning(
+            "stale model cache for connection=%s — dropping: %s",
+            c.id, exc,
+        )
+        await redis.delete(_cache_key(c.id))
         return []
 
 
@@ -106,41 +99,25 @@ async def _fetch_and_cache_premium(
 
 
 async def get_premium_models(
-    c: ResolvedConnection,
-    adapter_cls: type[BaseAdapter],
+    c: ResolvedConnection,  # noqa: ARG001
+    adapter_cls: type[BaseAdapter],  # noqa: ARG001
     redis: Redis,
     user_id: str,
     provider_id: str,
 ) -> list[ModelMetaDto]:
-    """Cached-or-fresh premium-provider model listing for ``user_id``.
-
-    Swallows adapter exceptions to keep the model-picker UI calm — the
-    refresh endpoint is the explicit retry path.
-    """
+    """Return cached premium-provider models or empty. The background
+    refresher owns cache population; no synchronous fetch on miss."""
     cached = await redis.get(_premium_cache_key(user_id, provider_id))
-    if cached:
-        try:
-            return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
-        except ValidationError as exc:
-            # Cache schema drift — see equivalent branch in
-            # ``get_models_for_connection``. CLAUDE.md §Data-Model Migrations.
-            _log.warning(
-                "stale premium model cache for provider=%s user=%s — "
-                "dropping and refetching: %s",
-                provider_id, user_id, exc,
-            )
-            await redis.delete(_premium_cache_key(user_id, provider_id))
-    try:
-        return await _fetch_and_cache_premium(
-            c, adapter_cls, redis, user_id, provider_id,
-        )
-    except NotImplementedError:
+    if cached is None:
         return []
-    except Exception as exc:
+    try:
+        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+    except ValidationError as exc:
         _log.warning(
-            "fetch_models failed for premium provider=%s user=%s: %s",
+            "stale premium model cache for provider=%s user=%s — dropping: %s",
             provider_id, user_id, exc,
         )
+        await redis.delete(_premium_cache_key(user_id, provider_id))
         return []
 
 
