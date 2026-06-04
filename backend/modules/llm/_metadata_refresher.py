@@ -12,7 +12,6 @@ tabs do not create multiple tasks.
 """
 
 import asyncio
-import json
 import logging
 import random
 from datetime import UTC, datetime
@@ -277,14 +276,14 @@ async def _refresh_connection_into_cache(
     c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
     """Fetch and write the connection-scoped cache. Raises on adapter failure."""
-    from backend.modules.llm._metadata import _cache_key
+    from backend.modules.llm._metadata import _cache_key, _encode_cache
     from backend.modules.llm._registry import _instantiate_adapter
 
     adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _cache_key(c.id),
-        json.dumps([m.model_dump(mode="json") for m in models]),
+        _encode_cache(models, adapter.cache_extras()),
         ex=CACHE_TTL_SECONDS,
     )
     return models
@@ -298,14 +297,14 @@ async def _refresh_premium_into_cache(
     provider_id: str,
 ) -> list[ModelMetaDto]:
     """Fetch and write the user-scoped Premium Provider cache. Raises on failure."""
-    from backend.modules.llm._metadata import _premium_cache_key
+    from backend.modules.llm._metadata import _encode_cache, _premium_cache_key
     from backend.modules.llm._registry import _instantiate_adapter
 
     adapter = _instantiate_adapter(adapter_cls, redis)
     models = await adapter.fetch_models(c)
     await redis.set(
         _premium_cache_key(user_id, provider_id),
-        json.dumps([m.model_dump(mode="json") for m in models]),
+        _encode_cache(models, adapter.cache_extras()),
         ex=CACHE_TTL_SECONDS,
     )
     return models
