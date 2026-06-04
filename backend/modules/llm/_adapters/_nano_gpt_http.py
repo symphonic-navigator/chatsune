@@ -1,10 +1,15 @@
 """Nano-GPT HTTP adapter.
 
 Implements the model catalogue (filter / pair / map via
-``_nano_gpt_catalog``), persists the pair map to Redis
-(``_nano_gpt_pair_map``), and drives an OpenAI-compatible SSE
-streaming loop in ``stream_completion`` that picks the correct
-upstream call (slug + body flag) from the pair map at request time.
+``_nano_gpt_catalog``), exposes the pair map as adapter ``cache_extras``
+so it is persisted inside the SAME connection model-metadata cache value
+(``llm:models:{connection_id}``, 7-day TTL, owned by the background
+refresher), and drives an OpenAI-compatible SSE streaming loop in
+``stream_completion`` that picks the correct upstream call (slug + body
+flag) from that cached pair map at request time. Folding the pair map
+into the model-cache envelope means the two can never diverge in cache
+lifetime — a slow refresh can no longer expire the pair map while the
+model list survives.
 
 Thinking activation — nano-gpt has three switching modes captured by
 ``switching_mode`` in the pair map:
@@ -84,7 +89,6 @@ from backend.modules.llm._adapters._nano_gpt_image_groups import (
     seedream_payload,
     zimage_payload,
 )
-from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
 from backend.modules.llm._adapters._types import (
     AdapterTemplate,
     ConfigFieldHint,
@@ -643,6 +647,21 @@ async def _http_get_models(
     return payload.get("data", [])
 
 
+def _validated_pair_map(pair_map: dict) -> dict:
+    """Defensive read of the cached pair map.
+
+    If any entry is not a dict or is missing ``switching_mode`` (a stale
+    or malformed value), treat the WHOLE map as empty — i.e. a cache
+    miss — so ``stream_completion`` signals ``model_not_found`` rather
+    than dispatching with a half-formed pair. The pair map now lives in
+    the connection model-cache envelope, so this guard runs on read.
+    """
+    for value in pair_map.values():
+        if not isinstance(value, dict) or "switching_mode" not in value:
+            return {}
+    return pair_map
+
+
 class NanoGptHttpAdapter(BaseAdapter):
     adapter_type = "nano_gpt_http"
     display_name = "Nano-GPT"
@@ -658,6 +677,10 @@ class NanoGptHttpAdapter(BaseAdapter):
         # the adapter is constructed fresh per request, so there is
         # no cross-request contamination.
         self._dispatch_mode_by_model_id: dict[str, str] = {}
+        # Populated by ``fetch_models`` and surfaced via ``cache_extras``
+        # so the pair map is persisted inside the connection model-cache
+        # envelope (one key, one TTL) rather than a separate Redis key.
+        self._pair_map: dict = {}
 
     @classmethod
     def templates(cls) -> list[AdapterTemplate]:
@@ -757,12 +780,14 @@ class NanoGptHttpAdapter(BaseAdapter):
                 )
             )
 
-        await save_pair_map(
-            self._redis,
-            connection_id=connection.id,
-            pair_map=result.pair_map,
-        )
+        # Stash the pair map on the instance; it is persisted inside the
+        # connection model-cache envelope via ``cache_extras`` — NOT a
+        # separate Redis key — so it shares the model list's 7-day TTL.
+        self._pair_map = result.pair_map
         return dtos
+
+    def cache_extras(self) -> dict:
+        return {"nano_gpt_pair_map": self._pair_map}
 
     def capability_hint(self, model_id: str):
         """Best-effort capability hint based on the dispatch mode the
@@ -809,11 +834,38 @@ class NanoGptHttpAdapter(BaseAdapter):
         base_url = (connection.config.get("base_url") or _DEFAULT_BASE_URL).rstrip("/")
         api_key = connection.config.get("api_key") or ""
 
-        # Load the pair map. ``fetch_models`` populates this; if the user has
-        # never fetched models for this connection, the map is empty and we
+        # Load the pair map from the model-cache envelope. ``fetch_models``
+        # populates it (via ``cache_extras``); if the user has never fetched
+        # models — or the cache has since expired — the map is empty and we
         # signal model_not_found rather than attempting a blind upstream call.
-        from backend.modules.llm._adapters._nano_gpt_pair_map import load_pair_map
-        pair_map = await load_pair_map(self._redis, connection_id=connection.id)
+        #
+        # The cache is keyed two different ways depending on how the
+        # connection was resolved, and the two keys do NOT overlap:
+        #   * Premium-resolved (``id == "premium:{provider_id}"``): written
+        #     under the USER-SCOPED key ``llm:models:premium:{user_id}:{pid}``
+        #     by the refresher / fetch-on-miss. nano-gpt is registered as a
+        #     premium provider, so this is the common path for it.
+        #   * Connection-resolved: written under ``llm:models:{connection.id}``.
+        # Reading the wrong key yields an empty pair map and a spurious
+        # model_not_found on every message — so branch explicitly.
+        #
+        # Function-local import: ``_metadata`` and this adapter are both
+        # intra-module (``backend.modules.llm``); the local import avoids any
+        # import cycle at module load time.
+        from backend.modules.llm._metadata import (
+            get_connection_adapter_extras,
+            get_premium_adapter_extras,
+        )
+        if connection.id.startswith("premium:"):
+            provider_id = connection.id.removeprefix("premium:")
+            extras = await get_premium_adapter_extras(
+                self._redis, connection.user_id, provider_id,
+            )
+        else:
+            extras = await get_connection_adapter_extras(
+                self._redis, connection.id,
+            )
+        pair_map = _validated_pair_map(extras.get("nano_gpt_pair_map") or {})
 
         pair = pair_map.get(request.model)
         if pair is None:

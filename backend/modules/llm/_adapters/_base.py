@@ -37,8 +37,12 @@ class BaseAdapter(ABC):
     Required methods:
 
     - `fetch_models(connection)` — return the list of models this Connection
-                                   can serve. Called on cache miss; result is
-                                   cached per-Connection in Redis for 30 min.
+                                   can serve. The result is cached
+                                   per-Connection in Redis under
+                                   `llm:models:{connection_id}`; cache
+                                   population is owned by the background
+                                   metadata refresher (7-day TTL), not by a
+                                   synchronous fetch-on-miss.
     - `stream_completion(connection, request)` — yield provider stream events
                                                  for the given request. Must
                                                  yield a terminal event
@@ -116,6 +120,12 @@ class BaseAdapter(ABC):
         raise NotImplementedError(
             f"Adapter {self.adapter_type!r} does not implement image generation"
         )
+
+    def cache_extras(self) -> dict:
+        """Adapter-internal data persisted alongside the cached model list,
+        in the same Redis value and lifecycle. Populated as a side effect of
+        the most recent ``fetch_models`` call. Default: no extras."""
+        return {}
 
     def capability_hint(self, model_id: str):
         """Adapter-specific capability override.

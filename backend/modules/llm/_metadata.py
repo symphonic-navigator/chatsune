@@ -35,6 +35,37 @@ def _premium_cache_key(user_id: str, provider_id: str) -> str:
     return f"llm:models:premium:{user_id}:{provider_id}"
 
 
+def _encode_cache(models: list[ModelMetaDto], extras: dict) -> str:
+    """Encode the model list and adapter-internal extras into one JSON
+    envelope. Both share a single Redis value, write, and TTL — so the
+    model list and any adapter-specific sidecar data (e.g. the nano-gpt
+    pair map) can never diverge in cache lifetime."""
+    return json.dumps({
+        "models": [m.model_dump(mode="json") for m in models],
+        "adapter_extras": extras or {},
+    })
+
+
+def _decode_cache(raw: str | bytes) -> tuple[list[dict], dict]:
+    """Decode a cached value into ``(model_dicts, adapter_extras)``.
+
+    Tolerates a LEGACY bare-list value — a pre-envelope cache entry that
+    is a plain JSON list of model dicts — by treating it as
+    ``(list, {})``. This keeps a deploy safe: entries written before this
+    change still read cleanly until the refresher rewrites them in the
+    envelope shape.
+    """
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    parsed = json.loads(raw)
+    if isinstance(parsed, list):
+        # Legacy bare-list value: no extras.
+        return parsed, {}
+    models = parsed.get("models") or []
+    extras = parsed.get("adapter_extras") or {}
+    return models, extras
+
+
 async def _fetch_and_cache(
     c: ResolvedConnection, adapter_cls: type[BaseAdapter], redis: Redis,
 ) -> list[ModelMetaDto]:
@@ -43,7 +74,7 @@ async def _fetch_and_cache(
     models = await adapter.fetch_models(c)
     await redis.set(
         _cache_key(c.id),
-        json.dumps([m.model_dump(mode="json") for m in models]),
+        _encode_cache(models, adapter.cache_extras()),
         ex=_TTL_SECONDS,
     )
     return models
@@ -58,7 +89,8 @@ async def get_models_for_connection(
     if cached is None:
         return []
     try:
-        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        model_dicts, _extras = _decode_cache(cached)
+        return [ModelMetaDto.model_validate(m) for m in model_dicts]
     except ValidationError as exc:
         _log.warning(
             "stale model cache for connection=%s — dropping: %s",
@@ -66,6 +98,49 @@ async def get_models_for_connection(
         )
         await redis.delete(_cache_key(c.id))
         return []
+
+
+async def get_connection_adapter_extras(
+    redis: Redis, connection_id: str,
+) -> dict:
+    """Return the adapter-internal extras dict persisted alongside the
+    cached model list under ``llm:models:{connection_id}``.
+
+    Returns ``{}`` on cache miss, a legacy bare-list value, or any parse
+    error — callers treat an empty result the same as a cold cache."""
+    cached = await redis.get(_cache_key(connection_id))
+    if cached is None:
+        return {}
+    try:
+        _models, extras = _decode_cache(cached)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return extras
+
+
+async def get_premium_adapter_extras(
+    redis: Redis, user_id: str, provider_id: str,
+) -> dict:
+    """Return the adapter-internal extras dict persisted alongside the
+    cached model list under ``llm:models:premium:{user_id}:{provider_id}``.
+
+    The premium cache is user-scoped, so reading it requires both
+    ``user_id`` and ``provider_id`` — unlike the connection-scoped
+    ``get_connection_adapter_extras``, which keys off ``connection_id``
+    alone. A premium-resolved connection has ``id = "premium:{provider_id}"``,
+    which does NOT match the user-scoped premium key, so the connection
+    helper must never be used for the premium path.
+
+    Returns ``{}`` on cache miss, a legacy bare-list value, or any parse
+    error — callers treat an empty result the same as a cold cache."""
+    cached = await redis.get(_premium_cache_key(user_id, provider_id))
+    if cached is None:
+        return {}
+    try:
+        _models, extras = _decode_cache(cached)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return extras
 
 
 async def refresh_connection_models(
@@ -92,7 +167,7 @@ async def _fetch_and_cache_premium(
     models = await adapter.fetch_models(c)
     await redis.set(
         _premium_cache_key(user_id, provider_id),
-        json.dumps([m.model_dump(mode="json") for m in models]),
+        _encode_cache(models, adapter.cache_extras()),
         ex=_TTL_SECONDS,
     )
     return models
@@ -111,7 +186,8 @@ async def get_premium_models(
     if cached is None:
         return []
     try:
-        return [ModelMetaDto.model_validate(m) for m in json.loads(cached)]
+        model_dicts, _extras = _decode_cache(cached)
+        return [ModelMetaDto.model_validate(m) for m in model_dicts]
     except ValidationError as exc:
         _log.warning(
             "stale premium model cache for provider=%s user=%s — dropping: %s",

@@ -144,10 +144,10 @@ async def test_fetch_models_persists_pair_map_in_redis(
     conn = _resolved_conn()
     await adapter.fetch_models(conn)
 
-    # Load the pair map through the real helper to prove the key schema
-    # and JSON encoding stay consistent with the persistence layer.
-    from backend.modules.llm._adapters._nano_gpt_pair_map import load_pair_map
-    pair_map = await load_pair_map(redis_client, connection_id=conn.id)
+    # The pair map is exposed via ``cache_extras`` so it can be persisted
+    # inside the connection model-cache envelope (one key, one 7-day TTL)
+    # rather than a separate short-lived Redis key.
+    pair_map = adapter.cache_extras()["nano_gpt_pair_map"]
 
     assert pair_map, "mini_dump contains pairs; the pair_map must be non-empty"
     # Sanity-check the shape of one entry
@@ -407,7 +407,6 @@ def test_resolve_call_unknown_model_returns_passthrough():
 # stream_completion end-to-end SSE tests
 # ---------------------------------------------------------------------------
 
-from backend.modules.llm._adapters._nano_gpt_pair_map import save_pair_map
 from shared.dtos.chat import ChatSessionExtras
 from shared.dtos.inference import CompletionRequest
 from shared.dtos.llm import ReasoningCapability, ToolCapability
@@ -479,25 +478,31 @@ class _FakeClient:
 
 
 async def _populate_pair_map(redis_client, conn_id: str):
-    await save_pair_map(
-        redis_client, connection_id=conn_id,
-        pair_map={
-            "anthropic/claude-opus-4.6": {
-                "non_thinking_slug": "anthropic/claude-opus-4.6",
-                "thinking_slug": "anthropic/claude-opus-4.6:thinking",
-                "switching_mode": "slug",
-            },
-            "free/phi-small": {
-                "non_thinking_slug": "free/phi-small",
-                "thinking_slug": None,
-                "switching_mode": "none",
-            },
-            "openai/gpt-5": {
-                "non_thinking_slug": "openai/gpt-5",
-                "thinking_slug": "openai/gpt-5",
-                "switching_mode": "flag",
-            },
+    """Write the pair map into the connection model-cache envelope, the
+    same way the refresher does. ``stream_completion`` reads it back from
+    there via ``get_connection_adapter_extras``."""
+    from backend.modules.llm._metadata import _cache_key, _encode_cache
+
+    pair_map = {
+        "anthropic/claude-opus-4.6": {
+            "non_thinking_slug": "anthropic/claude-opus-4.6",
+            "thinking_slug": "anthropic/claude-opus-4.6:thinking",
+            "switching_mode": "slug",
         },
+        "free/phi-small": {
+            "non_thinking_slug": "free/phi-small",
+            "thinking_slug": None,
+            "switching_mode": "none",
+        },
+        "openai/gpt-5": {
+            "non_thinking_slug": "openai/gpt-5",
+            "thinking_slug": "openai/gpt-5",
+            "switching_mode": "flag",
+        },
+    }
+    await redis_client.set(
+        _cache_key(conn_id),
+        _encode_cache([], {"nano_gpt_pair_map": pair_map}),
     )
 
 
