@@ -82,6 +82,9 @@ def _adapter_factory(stub: _StubAdapter):
         async def fetch_models(self, c):
             return await self._inner.fetch_models(c)
 
+        def cache_extras(self) -> dict:
+            return {}
+
     return _Bound
 
 
@@ -93,30 +96,40 @@ def test_premium_cache_key_is_user_scoped():
 
 
 @pytest.mark.asyncio
-async def test_get_premium_models_caches_after_first_fetch():
+async def test_refresh_populates_cache_then_getter_reads_it():
+    # The read path no longer fetches on miss — ``refresh_premium_models``
+    # owns cache population, and ``get_premium_models`` is a pure read.
     redis = fakeredis.aioredis.FakeRedis(decode_responses=False)
     c = _synthetic_conn()
     stub = _StubAdapter()
     stub.will_return([_meta(c)])
 
-    first = await get_premium_models(c, _adapter_factory(stub), redis, "user-1", "xai")
-    second = await get_premium_models(c, _adapter_factory(stub), redis, "user-1", "xai")
+    refreshed = await refresh_premium_models(
+        c, _adapter_factory(stub), redis, "user-1", "xai",
+    )
+    assert stub.calls == 1
+    assert len(refreshed) == 1 and refreshed[0].model_id == "grok-4.1-fast"
 
-    assert len(first) == 1 and len(second) == 1
-    assert first[0].model_id == "grok-4.1-fast"
-    assert stub.calls == 1, "second call must come from Redis cache"
+    cached = await get_premium_models(
+        c, _adapter_factory(stub), redis, "user-1", "xai",
+    )
+    assert len(cached) == 1 and cached[0].model_id == "grok-4.1-fast"
+    assert stub.calls == 1, "getter must read from cache, not fetch"
 
 
 @pytest.mark.asyncio
-async def test_get_premium_models_returns_empty_on_adapter_exception():
+async def test_get_premium_models_returns_empty_on_cache_miss():
+    # A cold cache yields [] and never touches the adapter — the refresher
+    # owns population, so the read path is pure.
     redis = fakeredis.aioredis.FakeRedis(decode_responses=False)
     stub = _StubAdapter()
-    stub.will_raise(RuntimeError("boom"))
+    stub.will_return([_meta(_synthetic_conn())])
 
     result = await get_premium_models(
         _synthetic_conn(), _adapter_factory(stub), redis, "user-1", "xai",
     )
     assert result == []
+    assert stub.calls == 0, "read path must not invoke the adapter"
 
 
 @pytest.mark.asyncio
@@ -126,8 +139,8 @@ async def test_refresh_premium_models_raises_and_clears_cache():
     stub = _StubAdapter()
     stub.will_return([_meta(c)])
 
-    # Warm the cache via the tolerant getter.
-    await get_premium_models(c, _adapter_factory(stub), redis, "user-1", "xai")
+    # Warm the cache via refresh (the read path no longer fetches).
+    await refresh_premium_models(c, _adapter_factory(stub), redis, "user-1", "xai")
     assert stub.calls == 1
     # Now make upstream fail and call refresh — must raise.
     stub.will_raise(RuntimeError("upstream 500"))
@@ -151,7 +164,10 @@ async def test_premium_cache_is_per_user():
     stub = _StubAdapter()
     stub.will_return([_meta(alice_conn)])
 
-    await get_premium_models(alice_conn, _adapter_factory(stub), redis, "alice", "xai")
-    await get_premium_models(bob_conn, _adapter_factory(stub), redis, "bob", "xai")
-    # Both must have triggered the adapter — no cross-user cache hit.
+    await refresh_premium_models(alice_conn, _adapter_factory(stub), redis, "alice", "xai")
+    await refresh_premium_models(bob_conn, _adapter_factory(stub), redis, "bob", "xai")
+    # Each user's refresh triggers its own fetch — no cross-user cache hit.
     assert stub.calls == 2
+    # And each user's key is independently populated.
+    assert await redis.get(_premium_cache_key("alice", "xai")) is not None
+    assert await redis.get(_premium_cache_key("bob", "xai")) is not None
