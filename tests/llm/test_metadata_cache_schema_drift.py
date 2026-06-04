@@ -7,7 +7,9 @@ that ``get_models_for_connection`` and ``get_premium_models``:
 
 * swallow the ``ValidationError`` (no 500 to the user);
 * drop the poisoned cache key so the next call does not redeliver it;
-* fall through to the adapter's ``fetch_models`` so the UI still gets data.
+* degrade to an empty list — the read path no longer fetches on miss
+  (that was removed in 38634c86); the background refresher owns
+  repopulation of a clean value.
 
 This protects the endpoint against any future field-without-default
 landing on top of an existing cache — see CLAUDE.md §Data-Model Migrations.
@@ -103,7 +105,7 @@ def _adapter_factory(stub: _StubAdapter):
 
 
 @pytest.mark.asyncio
-async def test_get_models_for_connection_recovers_from_poisoned_cache():
+async def test_get_models_for_connection_drops_poisoned_cache():
     redis = fakeredis.aioredis.FakeRedis(decode_responses=False)
     c = _synthetic_conn()
     stub = _StubAdapter()
@@ -114,18 +116,15 @@ async def test_get_models_for_connection_recovers_from_poisoned_cache():
 
     result = await get_models_for_connection(c, _adapter_factory(stub), redis)
 
-    assert stub.calls == 1, "must fall through to fetch when cache is poisoned"
-    assert len(result) == 1
-    assert result[0].model_id == "llama3.2"
-    # The fresh fetch path writes the new shape back to Redis, so the key
-    # must be present again — but it must NOT be the poisoned payload.
-    new_cached = await redis.get(key)
-    assert new_cached is not None
-    assert json.loads(new_cached) != _POISONED_PAYLOAD
+    # The read path no longer fetches on miss — it degrades to [] and evicts
+    # the poisoned key so the refresher can write a clean value next cycle.
+    assert result == []
+    assert stub.calls == 0, "read path must not fetch synchronously"
+    assert await redis.get(key) is None, "poisoned key must be evicted"
 
 
 @pytest.mark.asyncio
-async def test_get_premium_models_recovers_from_poisoned_cache():
+async def test_get_premium_models_drops_poisoned_cache():
     redis = fakeredis.aioredis.FakeRedis(decode_responses=False)
     c = _synthetic_conn()
     stub = _StubAdapter()
@@ -138,11 +137,10 @@ async def test_get_premium_models_recovers_from_poisoned_cache():
         c, _adapter_factory(stub), redis, "user-1", "xai",
     )
 
-    assert stub.calls == 1, "must fall through to fetch when cache is poisoned"
-    assert len(result) == 1
-    new_cached = await redis.get(key)
-    assert new_cached is not None
-    assert json.loads(new_cached) != _POISONED_PAYLOAD
+    # Same pure-read contract as the connection path: degrade to [] and evict.
+    assert result == []
+    assert stub.calls == 0, "read path must not fetch synchronously"
+    assert await redis.get(key) is None, "poisoned key must be evicted"
 
 
 @pytest.mark.asyncio
