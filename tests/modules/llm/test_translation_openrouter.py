@@ -170,3 +170,22 @@ def test_openrouter_fable_keeps_effort():
     )
     body = build_request_body(req)
     assert body["reasoning"] == {"enabled": True, "effort": "medium"}
+
+
+def test_openrouter_fable_off_sends_enabled_false_without_effort():
+    """Off-path regression: the Fable exception must not leak effort
+    into a reasoning-off body."""
+    req = _req(
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["low", "medium", "high"], default_bucket="medium",
+            ),
+        ),
+        model="anthropic/claude-fable-5",
+    )
+    body = build_request_body(req)
+    assert body["reasoning"] == {"enabled": False}
