@@ -40,7 +40,7 @@ def is_anthropic_model(model_id: str) -> bool:
 
     Strategy: take only the part after the last ``/`` (or the whole
     string if no ``/`` is present), then regex-match for
-    ``claude.*haiku|sonnet|opus``.
+    ``claude.*haiku|sonnet|opus|fable``.
     """
     tail = model_id.rsplit("/", 1)[-1]
     return bool(_CLAUDE_RE.search(tail))

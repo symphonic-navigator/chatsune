@@ -284,6 +284,8 @@ def test_nano_gpt_fable_keeps_effort():
 
 
 def test_nano_gpt_fable_off_sends_enabled_false_without_effort():
+    """Off-path regression: the Fable exception must not leak effort
+    into a reasoning-off body."""
     req = _req(
         "anthropic/claude-fable-5",
         ChatSessionExtras(
