@@ -13,6 +13,8 @@ from backend.modules.llm._adapters._anthropic_cache import is_anthropic_model
     "claude-3-7-sonnet-20250219",
     "anthropic/claude-3.5-sonnet-vision",
     "ANTHROPIC/Claude-Sonnet-4-5",
+    "anthropic/claude-fable-5",
+    "anthropic/claude-fable-latest",
 ])
 def test_is_anthropic_model_positive(model_id: str) -> None:
     assert is_anthropic_model(model_id)
@@ -33,6 +35,33 @@ def test_is_anthropic_model_positive(model_id: str) -> None:
 ])
 def test_is_anthropic_model_negative(model_id: str) -> None:
     assert not is_anthropic_model(model_id)
+
+
+from backend.modules.llm._adapters._anthropic_cache import (
+    is_effort_based_claude,
+)
+
+
+@pytest.mark.parametrize("model_id", [
+    "anthropic/claude-fable-5",
+    "anthropic/claude-fable-latest",
+    "claude-fable-5",
+    "ANTHROPIC/Claude-Fable-5",   # case-insensitive match
+])
+def test_is_effort_based_claude_positive(model_id: str) -> None:
+    assert is_effort_based_claude(model_id)
+
+
+@pytest.mark.parametrize("model_id", [
+    "anthropic/claude-opus-4.7",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+    "openai/gpt-5",
+    "gemma-4-31B-Fabled",   # 'Fabled' must not match \bfable\b
+    "",
+])
+def test_is_effort_based_claude_negative(model_id: str) -> None:
+    assert not is_effort_based_claude(model_id)
 
 
 from backend.modules.llm._adapters._anthropic_cache import (

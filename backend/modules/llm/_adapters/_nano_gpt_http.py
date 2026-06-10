@@ -404,6 +404,7 @@ def _build_chat_payload(
     from backend.modules.llm._adapters._anthropic_cache import (
         compute_cache_markers,
         is_anthropic_model,
+        is_effort_based_claude,
     )
 
     cc_by_index: dict[int, dict] = {}
@@ -436,7 +437,12 @@ def _build_chat_payload(
         # Effort buckets are NOT sent for Anthropic models — see INS-037.
         # Mirrors openrouter_http: cache survival beats effort control on
         # router-mediated paths. Other vendors keep effort as before.
-        if reasoning_enabled and reasoning_effort and not is_anthropic_model(request.model):
+        # Exception: effort-based Claude (Fable) reasons only when effort
+        # is present, and effort is verified cache-safe there — INS-055.
+        if reasoning_enabled and reasoning_effort and (
+            not is_anthropic_model(request.model)
+            or is_effort_based_claude(request.model)
+        ):
             reasoning_obj["effort"] = reasoning_effort
         payload["reasoning"] = reasoning_obj
     if request.temperature is not None:

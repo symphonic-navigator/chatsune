@@ -149,3 +149,43 @@ def test_openrouter_non_anthropic_keeps_effort_string():
     body = build_request_body(req)
     assert body["reasoning"]["effort"] == "high"
     assert "max_tokens" not in body["reasoning"]
+
+
+def test_openrouter_fable_keeps_effort():
+    """Effort-based Claude (Fable) bypasses the INS-037 omission — the
+    enabled flag alone is a silent no-op for this family (INS-055).
+    Router-wide rule; Fable is first-class on nano-gpt only, but the
+    wire shape must be correct on OpenRouter too."""
+    req = _req(
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort="medium",
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["low", "medium", "high"], default_bucket="medium",
+            ),
+        ),
+        model="anthropic/claude-fable-5",
+    )
+    body = build_request_body(req)
+    assert body["reasoning"] == {"enabled": True, "effort": "medium"}
+
+
+def test_openrouter_fable_off_sends_enabled_false_without_effort():
+    """Off-path regression: the Fable exception must not leak effort
+    into a reasoning-off body."""
+    req = _req(
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
+        ReasoningCapability(
+            kind="optional",
+            effort=ReasoningEffortSpec(
+                buckets=["low", "medium", "high"], default_bucket="medium",
+            ),
+        ),
+        model="anthropic/claude-fable-5",
+    )
+    body = build_request_body(req)
+    assert body["reasoning"] == {"enabled": False}

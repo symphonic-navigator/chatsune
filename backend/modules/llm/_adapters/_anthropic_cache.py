@@ -18,14 +18,14 @@ from typing import Literal
 from shared.dtos.inference import CompletionMessage
 
 # Match "claude" anywhere in the slug tail, followed by a haiku /
-# sonnet / opus token at a word boundary. Older "claude-instant-*"
-# slugs deliberately do not match — they predate cache_control
-# support, so the negative case is correct behaviour.
+# sonnet / opus / fable token at a word boundary. Older
+# "claude-instant-*" slugs deliberately do not match — they predate
+# cache_control support, so the negative case is correct behaviour.
 # ``[^/]*`` (not ``.*``) bounds the wildcard inside the slug tail.
 # ``rsplit("/", 1)[-1]`` already strips any path prefix, so the tail
 # cannot contain ``/`` — the bounded form keeps regex evaluation
 # linear regardless of slug length.
-_CLAUDE_RE = re.compile(r"claude[^/]*\b(haiku|sonnet|opus)\b", re.IGNORECASE)
+_CLAUDE_RE = re.compile(r"claude[^/]*\b(haiku|sonnet|opus|fable)\b", re.IGNORECASE)
 
 
 def is_anthropic_model(model_id: str) -> bool:
@@ -40,10 +40,28 @@ def is_anthropic_model(model_id: str) -> bool:
 
     Strategy: take only the part after the last ``/`` (or the whole
     string if no ``/`` is present), then regex-match for
-    ``claude.*haiku|sonnet|opus``.
+    ``claude.*haiku|sonnet|opus|fable``.
     """
     tail = model_id.rsplit("/", 1)[-1]
     return bool(_CLAUDE_RE.search(tail))
+
+
+# Subset of _CLAUDE_RE — same bounded-wildcard rationale; fable family only.
+_EFFORT_BASED_CLAUDE_RE = re.compile(r"claude[^/]*\bfable\b", re.IGNORECASE)
+
+
+def is_effort_based_claude(model_id: str) -> bool:
+    """True iff ``model_id`` is a Claude model with effort-based thinking.
+
+    Fable-family models do not start thinking on ``enabled: true``
+    alone — the router silently returns a plain completion unless an
+    ``effort`` value is present. They therefore bypass the INS-037
+    effort omission. Effort is verified cache-safe on these routes;
+    see devdocs/specs/2026-06-10-claude-fable-5-nano-gpt-design.md
+    and INS-055.
+    """
+    tail = model_id.rsplit("/", 1)[-1]
+    return bool(_EFFORT_BASED_CLAUDE_RE.search(tail))
 
 
 CacheTtl = Literal["off", "5m", "1h"]

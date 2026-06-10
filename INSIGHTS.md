@@ -2683,3 +2683,27 @@ that adapter.
 
 **Related:** Spec
 `devdocs/superpowers/specs/2026-05-17-nano-gpt-voice-design.md`.
+
+## INS-055 — Fable is effort-based Claude; INS-037 gets an exception (2026-06-10)
+
+**Decision:** ``anthropic/claude-fable-*`` models send
+``reasoning: {enabled: true, effort: <bucket>}`` on the router paths
+(nano-gpt, OpenRouter). ``is_effort_based_claude()`` in
+``_anthropic_cache.py`` carries the exception; all other Claude
+families keep the INS-037 effort omission.
+
+**Context:** Live probes (2026-06-10, nano-gpt) showed that for Fable 5
+``{"enabled": true}`` alone is a **silent no-op** — zero reasoning
+output, while Opus 4.7 reasons on the identical flag. With an
+``effort`` bucket present, reasoning streams and scales plausibly
+(low/medium/high). The INS-037 rationale does not apply here: no
+INS-035-style percentage-budget explosion (Fable handles effort
+natively), and no INS-036-style silent drop — effort and
+``cache_control`` markers coexisted in one body with reasoning intact.
+Unsigned thinking-block replay (nano-gpt streams no signature for
+Fable) is accepted upstream. Cache usage metrics read zero via
+nano-gpt for Fable *and* Opus alike — the known nano-gpt
+cache-visibility gap, not a Fable regression; cache QA stays on
+OpenRouter.
+
+**Probes:** see devdocs/specs/2026-06-10-claude-fable-5-nano-gpt-design.md.

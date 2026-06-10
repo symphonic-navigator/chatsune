@@ -427,6 +427,7 @@ def build_request_body(request: CompletionRequest) -> dict:
     from backend.modules.llm._adapters._anthropic_cache import (
         compute_cache_markers,
         is_anthropic_model,
+        is_effort_based_claude,
     )
 
     cc_by_index: dict[int, dict] = {}
@@ -476,7 +477,12 @@ def build_request_body(request: CompletionRequest) -> dict:
         # to drop on every reasoning turn. Sonnet's adaptive default-effort
         # handles depth choice intelligently; we only toggle on/off here.
         # Other vendors (OpenAI o-series, DeepSeek, etc.) keep effort.
-        if reasoning_on and request.extras.reasoning_effort and not is_anthropic_model(request.model):
+        # Exception: effort-based Claude (Fable) reasons only when effort
+        # is present, and effort is verified cache-safe there — INS-055.
+        if reasoning_on and request.extras.reasoning_effort and (
+            not is_anthropic_model(request.model)
+            or is_effort_based_claude(request.model)
+        ):
             reasoning_obj["effort"] = request.extras.reasoning_effort
         payload["reasoning"] = reasoning_obj
     return payload
