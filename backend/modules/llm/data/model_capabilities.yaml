@@ -109,6 +109,18 @@ models:
       replay_reasoning: true
     tools: { supported: true, exclusive_with_reasoning: false }
 
+  # Claude Fable 5 via nano-gpt — effort-based thinking, see INS-055:
+  # unlike Sonnet/Opus, the enabled flag alone is a silent no-op; effort
+  # is required and verified cache-safe on this route.
+  - adapter: nano_gpt_http
+    pattern: "anthropic/claude-fable-*"
+    reasoning:
+      kind: optional
+      effort: { buckets: [low, medium, high], default_bucket: medium }
+      default_on: true
+      replay_reasoning: true
+    tools: { supported: true, exclusive_with_reasoning: false }
+
   # OpenAI GPT-5 via OpenRouter
   - adapter: openrouter_http
     pattern: "openai/gpt-5*"

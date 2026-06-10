@@ -177,3 +177,46 @@ def test_glm_5_1_novita_http_is_first_class_always_on_reasoning():
     assert res.reasoning.effort is None
     assert res.tools.supported is True
     assert res.tools.exclusive_with_reasoning is False
+
+
+def test_fable_nano_gpt_is_first_class_with_effort_buckets():
+    """Fable 5 via nano-gpt — effort-based thinking (INS-055). Unlike
+    the Sonnet/Opus entries (INS-037, no effort block), Fable carries
+    buckets because the enabled flag alone is a silent no-op."""
+    res = resolve_capabilities(
+        adapter_type="nano_gpt_http",
+        model_id="anthropic/claude-fable-5",
+        adapter=_StubAdapter(),
+    )
+    assert res.first_class_support is True
+    assert res.reasoning.kind == "optional"
+    assert res.reasoning.effort is not None
+    assert res.reasoning.effort.buckets == ["low", "medium", "high"]
+    assert res.reasoning.effort.default_bucket == "medium"
+    assert res.reasoning.default_on is True
+    assert res.reasoning.replay_reasoning is True
+    assert res.tools.supported is True
+    assert res.tools.exclusive_with_reasoning is False
+
+
+def test_fable_latest_alias_matches_same_entry():
+    """The claude-fable-latest alias routes to Fable 5 upstream; the
+    wildcard pattern covers it with identical capabilities."""
+    res = resolve_capabilities(
+        adapter_type="nano_gpt_http",
+        model_id="anthropic/claude-fable-latest",
+        adapter=_StubAdapter(),
+    )
+    assert res.first_class_support is True
+    assert res.reasoning.effort is not None
+    assert res.reasoning.effort.default_bucket == "medium"
+
+
+def test_fable_via_openrouter_is_not_first_class():
+    """Cross-adapter scope: first-class Fable is nano-gpt only (spec §5)."""
+    res = resolve_capabilities(
+        adapter_type="openrouter_http",
+        model_id="anthropic/claude-fable-5",
+        adapter=_StubAdapter(),
+    )
+    assert res.first_class_support is False
