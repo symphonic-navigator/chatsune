@@ -10,6 +10,8 @@ describe('isAnthropicModel', () => {
     'claude-3-7-sonnet-20250219',
     'anthropic/claude-3.5-sonnet-vision',
     'ANTHROPIC/Claude-Sonnet-4-5',
+    'anthropic/claude-fable-5',
+    'anthropic/claude-fable-latest',
   ])('matches %s', (slug) => {
     expect(isAnthropicModel(slug)).toBe(true)
   })

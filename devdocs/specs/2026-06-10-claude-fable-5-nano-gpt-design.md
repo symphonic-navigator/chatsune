@@ -97,9 +97,13 @@ bucket) or shown not to exist.
 - **No OpenRouter YAML entry.** First-class support is nano-gpt only.
   The regex/guard changes are router-wide (correct and intended), but
   Fable on OpenRouter stays heuristic-only.
-- **No frontend changes.** `first_class_support` and effort buckets
-  propagate through existing DTOs; the ThinkingButton effort pop-out
-  is generic.
+- **Almost no frontend changes.** `first_class_support` and effort
+  buckets propagate through existing DTOs; the ThinkingButton effort
+  pop-out is generic. One exception surfaced in final review: the
+  frontend mirror of the Anthropic-detection regex
+  (`frontend/src/features/llm/anthropicCache.ts`, gates the prompt-cache
+  TTL dropdown in persona edit) must gain the `fable` token in
+  lock-step with the Python side.
 - **No preview badge or in-product messaging.** Preview communication
   happens via Discord.
 
