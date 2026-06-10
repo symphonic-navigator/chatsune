@@ -497,11 +497,17 @@ Expected: exit 0, no output.
 
 - [ ] **Step 3: Run the full LLM test trees (adapters touched → full adapter suites, per project convention)**
 
-Run:
+Run (two separate invocations — combining the trees in one pytest call
+fails with a conftest ImportPathMismatchError, and `backend/tests/modules/llm/`
+contains three MongoDB-bound files that hang on the host without Docker):
 ```bash
-PYTHONPATH=/home/chris/workspace/chatsune uv run pytest tests/modules/llm/ backend/tests/modules/llm/ -v
+PYTHONPATH=/home/chris/workspace/chatsune uv run pytest tests/modules/llm/ -v
+PYTHONPATH=/home/chris/workspace/chatsune uv run pytest backend/tests/modules/llm/ -v \
+  --ignore=backend/tests/modules/llm/test_connections_repo.py \
+  --ignore=backend/tests/modules/llm/test_homelab_self_connection.py \
+  --ignore=backend/tests/modules/llm/test_homelabs.py
 ```
-Expected: ALL PASS, no skips beyond pre-existing ones. (No MongoDB needed for these trees.)
+Expected: ALL PASS, no skips beyond pre-existing ones.
 
 - [ ] **Step 4: Commit**
 
