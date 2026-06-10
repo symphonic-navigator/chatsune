@@ -152,6 +152,12 @@ async def get_integration_prompt_extensions(
     """
     enabled_ids = await get_enabled_integration_ids(user_id, persona_id)
     parts: list[str] = []
+    # Two integrations (xai_voice and nano_gpt_voice_xai) legitimately share
+    # the byte-identical xAI voice-expression block, so a user with both
+    # premium accounts would otherwise get the same hundreds of tokens twice.
+    # Deduplicate on template content: keep the first occurrence, skip any
+    # later template whose text is identical. The block stays present once.
+    seen_templates: set[str] = set()
     for iid in enabled_ids:
         defn = get_integration(iid)
         if not defn or not defn.system_prompt_template:
@@ -159,6 +165,9 @@ async def get_integration_prompt_extensions(
         has_tools = bool(defn.tool_definitions)
         if has_tools and not tools_enabled:
             continue
+        if defn.system_prompt_template in seen_templates:
+            continue
+        seen_templates.add(defn.system_prompt_template)
         parts.append(defn.system_prompt_template)
     return "\n\n".join(parts) if parts else None
 
