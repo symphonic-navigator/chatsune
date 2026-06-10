@@ -255,3 +255,63 @@ def test_nano_gpt_non_anthropic_keeps_effort_string():
     body, _slug = build_request_body(req)
     assert body["reasoning"]["effort"] == "medium"
     assert "max_tokens" not in body["reasoning"]
+
+
+# ----- Fable: effort-based Claude bypasses the INS-037 omission -----
+
+
+def _fable_effort_capability() -> ReasoningCapability:
+    return ReasoningCapability(
+        kind="optional",
+        effort=ReasoningEffortSpec(
+            buckets=["low", "medium", "high"], default_bucket="medium",
+        ),
+    )
+
+
+def test_nano_gpt_fable_keeps_effort():
+    """Fable reasons only when effort is present — the INS-037 omission
+    does not apply to effort-based Claude (see INS-055)."""
+    req = _req(
+        "anthropic/claude-fable-5",
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort="medium",
+        ),
+        _fable_effort_capability(),
+    )
+    body, _slug = build_request_body(req)
+    assert body["reasoning"] == {"enabled": True, "effort": "medium"}
+
+
+def test_nano_gpt_fable_off_sends_enabled_false_without_effort():
+    req = _req(
+        "anthropic/claude-fable-5",
+        ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="off", reasoning_effort=None,
+        ),
+        _fable_effort_capability(),
+    )
+    body, _slug = build_request_body(req)
+    assert body["reasoning"] == {"enabled": False}
+
+
+def test_nano_gpt_fable_effort_coexists_with_cache_control():
+    """The whole point of the exception: effort AND cache markers in one
+    body. Verified live against nano-gpt 2026-06-10 (see spec)."""
+    system = CompletionMessage(
+        role="system", content=[ContentPart(type="text", text="be terse")],
+    )
+    req = CompletionRequest(
+        model="anthropic/claude-fable-5",
+        messages=[system, _user("hi")],
+        reasoning=_fable_effort_capability(),
+        tools_capability=ToolCapability(supported=True),
+        extras=ChatSessionExtras(
+            tools_enabled=False, reasoning_mode="on", reasoning_effort="high",
+        ),
+        anthropic_cache_ttl="1h",
+    )
+    body, _slug = build_request_body(req)
+    assert body["reasoning"] == {"enabled": True, "effort": "high"}
+    system_content = body["messages"][0]["content"]
+    assert system_content[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
