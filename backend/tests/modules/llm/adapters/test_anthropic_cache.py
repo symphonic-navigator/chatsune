@@ -46,6 +46,7 @@ from backend.modules.llm._adapters._anthropic_cache import (
     "anthropic/claude-fable-5",
     "anthropic/claude-fable-latest",
     "claude-fable-5",
+    "ANTHROPIC/Claude-Fable-5",   # case-insensitive match
 ])
 def test_is_effort_based_claude_positive(model_id: str) -> None:
     assert is_effort_based_claude(model_id)

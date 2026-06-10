@@ -46,6 +46,7 @@ def is_anthropic_model(model_id: str) -> bool:
     return bool(_CLAUDE_RE.search(tail))
 
 
+# Subset of _CLAUDE_RE — same bounded-wildcard rationale; fable family only.
 _EFFORT_BASED_CLAUDE_RE = re.compile(r"claude[^/]*\bfable\b", re.IGNORECASE)
 
 
